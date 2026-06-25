@@ -2,6 +2,11 @@
 app.py — Servidor principal
 Recebe webhooks do WPPConnect/Baileys, parseia mensagens de falha
 e grava automaticamente no Google Sheets.
+
+Suporta:
+- Mensagens individuais de ocorrência (🔴/🟡/🟢)
+- Mensagens de normalização (✅ + "NORMALIZADO")
+- Rondas diárias completas (múltiplas ocorrências em uma mensagem)
 """
 
 import os, re, json, logging
@@ -16,7 +21,6 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ── Configuração ──────────────────────────────────────────────────────────────
-
 SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
 SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandrino")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
@@ -24,7 +28,6 @@ GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 
 # ── Mapeamento Usina → Cliente ────────────────────────────────────────────────
 CLIENTE_POR_USINA = {
-    # RENOGRID
     "nova xavantina i": "RENOGRID", "nova xavantina 1": "RENOGRID",
     "nova xavantina ii": "RENOGRID", "nova xavantina 2": "RENOGRID",
     "nova xavantina": "RENOGRID",
@@ -33,10 +36,8 @@ CLIENTE_POR_USINA = {
     "colíder ii": "RENOGRID", "colider ii": "RENOGRID",
     "colíder 2": "RENOGRID", "colider 2": "RENOGRID",
     "colíder": "RENOGRID", "colider": "RENOGRID",
-    "nobres": "RENOGRID",
-    "elias fausto": "RENOGRID",
+    "nobres": "RENOGRID", "elias fausto": "RENOGRID",
     "crateús": "RENOGRID", "crateus": "RENOGRID",
-    # THOPEN
     "boa esperança do sul 1": "THOPEN", "boa esperanca do sul 1": "THOPEN",
     "boa esperança do sul 2": "THOPEN", "boa esperanca do sul 2": "THOPEN",
     "boa esperança do sul": "THOPEN", "boa esperanca do sul": "THOPEN",
@@ -59,26 +60,19 @@ CLIENTE_POR_USINA = {
     "canarana ii": "THOPEN", "canarana 2": "THOPEN",
     "canarana": "THOPEN",
     "ribeirão cascalheira": "THOPEN", "ribeirao cascalheira": "THOPEN",
-    # 2C
-    "araputanga": "2C",
-    "sete lagoas": "2C",
-    # GD Energy
+    "araputanga": "2C", "sete lagoas": "2C",
     "guajirú": "GD Energy", "guajiru": "GD Energy",
     "sol do norte i": "GD Energy", "sol do norte 1": "GD Energy",
     "sol do norte ii": "GD Energy", "sol do norte 2": "GD Energy",
     "sol do norte": "GD Energy",
-    # Alves Lima
     "abc morada nova": "Alves Lima",
 }
 
-# ── Usinas permitidas (só essas sobem na planilha) ────────────────────────────
 USINAS_PERMITIDAS = set(CLIENTE_POR_USINA.keys())
 
 STATUS_VALIDOS = {
-    "em aberto": "Em Aberto",
-    "aberto": "Em Aberto",
-    "concluído": "Concluído", "concluido": "Concluído",
-    "resolvido": "Concluído",
+    "em aberto": "Em Aberto", "aberto": "Em Aberto",
+    "concluído": "Concluído", "concluido": "Concluído", "resolvido": "Concluído",
     "aguardando cliente": "Aguardando Cliente",
     "aguardando fabricante": "Aguardando Fabricante",
     "aguardando equipamento": "Aguardando Equipamento",
@@ -86,46 +80,47 @@ STATUS_VALIDOS = {
 
 # ── Padrões de extração ───────────────────────────────────────────────────────
 PADROES = {
-    "usina":       re.compile(r"Usina:[ \t]*([^\n\r]+)",                    re.IGNORECASE),
-    "problema":    re.compile(r"Problema:[ \t]*([^\n\r]+)",                 re.IGNORECASE),
-    "descricao":   re.compile(r"Descrição dos Problemas:[ \t]*([^\n\r]+)",  re.IGNORECASE),
-    "acao":        re.compile(r"Ação:[ \t]*([^\n\r]+)",                     re.IGNORECASE),
-    "equipe":      re.compile(r"Equipe Acionada:[ \t]*([^\n\r]+)",          re.IGNORECASE),
-    "supervisor":  re.compile(r"Supervisor Acionado:[ \t]*([^\n\r]+)",      re.IGNORECASE),
-    "inicio":      re.compile(r"In[ií]cio[ \t]+Ocorrência:[ \t]*([^\n\r]+)",  re.IGNORECASE),
-    "fim":         re.compile(r"Fim[ \t]+Ocorrência:[ \t]*([^\n\r]*)",        re.IGNORECASE),
-    "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",   re.IGNORECASE),
+    "usina":       re.compile(r"(?:🔴|🟡|🟢|🟠|✅|⏸️)?[\s🛠️]*(?:DESVIO:?\s*)?Usina:?[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "problema":    re.compile(r"Probl[eo]ma[s]?:[ \t]*([^\n\r]+)",              re.IGNORECASE),
+    "descricao":   re.compile(r"Descrição[^:]*:[ \t]*([^\n\r]+)",               re.IGNORECASE),
+    "acao":        re.compile(r"Ação:[ \t]*([^\n\r]+)",                          re.IGNORECASE),
+    "equipe":      re.compile(r"Equipe Acionada:[ \t]*([^\n\r]+)",               re.IGNORECASE),
+    "supervisor":  re.compile(r"Supervisor Acionado:[ \t]*([^\n\r]+)",           re.IGNORECASE),
+    "inicio":      re.compile(r"In[ií]ci[oo][ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "fim":         re.compile(r"(?:Fim|Término)[ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]*)", re.IGNORECASE),
+    "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",       re.IGNORECASE),
     "equipamento": re.compile(r"^\*?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
     "causa":       re.compile(r"^\*?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
+    "tipo_manut":  re.compile(r"Tipo Manutenção[^:]*:[ \t]*([^\n\r]+)",         re.IGNORECASE),
+    "identificacao": re.compile(r"identificação:[ \t]*([^\n\r]+)",               re.IGNORECASE),
+    "equip_problema": re.compile(r"Equipamentos com Problema:[ \t]*([^\n\r]+)",  re.IGNORECASE),
 }
 
-# Detecta se a mensagem é uma normalização
-def eh_normalizacao(texto):
-    return bool(re.search(r"normalizado|✅", texto, re.IGNORECASE))
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers de texto ──────────────────────────────────────────────────────────
 
 def extrair(texto, padrao):
     m = padrao.search(texto)
     return m.group(1).strip().lstrip("*").strip() if m else ""
 
 def vazio(v):
-    return not v or str(v).strip() in ("", "--", "-", "N/A", "n/a")
+    return not v or str(v).strip() in ("", "--", "-", "N/A", "n/a", "não", "nao", "Não")
+
+def normalizar_texto(t):
+    """Remove acentos e converte para minúsculo para comparação."""
+    import unicodedata
+    return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode("ascii").strip()
 
 def inferir_cliente(usina):
     u = usina.lower().strip()
-    # Tenta match exato primeiro
     if u in CLIENTE_POR_USINA:
         return CLIENTE_POR_USINA[u]
-    # Tenta match parcial
     for chave, cliente in CLIENTE_POR_USINA.items():
         if chave in u or u in chave:
             return cliente
     return ""
 
 def usina_permitida(usina):
-    """Verifica se a usina está na lista de usinas do Fred."""
     u = usina.lower().strip()
     if u in USINAS_PERMITIDAS:
         return True
@@ -134,27 +129,21 @@ def usina_permitida(usina):
             return True
     return False
 
-def normalizar_status(texto, fim_valido):
-    if fim_valido:
-        return "Concluído"
-    t = str(texto).lower()
-    for chave, val in STATUS_VALIDOS.items():
-        if chave in t:
-            return val
-    return "Em Aberto"
-
 def extrair_tecnico(s):
     m = re.search(r"@([\w\s]+?)(?:\s*[-–]\s*[\w-]+)?\s*$", s)
-    return m.group(1).strip() if m else re.sub(r"^[Ss]im[,\s]*", "", s).strip()
+    if m:
+        return m.group(1).strip()
+    s = re.sub(r"^[Ss]im[,\s]*", "", s).strip()
+    return re.sub(r"@", "", s).strip()
 
-def inferir_equipamento(problema, descricao):
-    fonte = problema or descricao
+def inferir_equipamento(problema, descricao, identificacao="", equip_problema=""):
+    fonte = problema or descricao or identificacao or equip_problema
     m = re.search(
-        r"(INV-\d+|Inversor\s+\d+|Tracker\s+\d+|Motor[\w\s/TCU]*\d+|"
-        r"Câmera[\w\s]*|NVR|GCU|Relé[\w\s]*|Chave[\w\s]+|RSU|"
+        r"(INV-\d+|Inversor[\s\w/]*\d+|Tracker[\s\w/]*\d+|Motor[\w\s/TCU]*\d*|"
+        r"Câmera[\w\s]*|NVR|GCU|Relé[\w\s]*|Chave[\w\s]+|RSU|NCU|ETM|DPS|"
         r"Piranometro[\w\s]+|Fieldlogger|Anemômetro|Exaustor[\w\s]*|"
         r"Nobreak[\w\s]*|EP\d+|Igate[\w\s]*|Otimizador[\w\s]*|"
-        r"Fieldlogger|TCU[\w\s]*|Bateria[\w\s]*|String[\w\s]*)",
+        r"TCU[\w\s]*|Bateria[\w\s]*|String[\w\s]*|Tck[\s\d.,]+)",
         fonte, re.IGNORECASE
     )
     if m:
@@ -164,24 +153,83 @@ def inferir_equipamento(problema, descricao):
         return f"{m2.group(1).capitalize()} {m2.group(2)}"
     return fonte[:60] if fonte else ""
 
-def separar_ocorrencias(texto):
-    partes = re.split(r"(?=🔴|🟡|🟢|🟠)", texto)
-    return [p.strip() for p in partes if p.strip() and len(p.strip()) > 20]
+def eh_normalizacao(texto):
+    return bool(re.search(r"normalizado|normalizada|✅.*normal", texto, re.IGNORECASE))
 
-def parse_mensagem(texto):
-    c = {k: extrair(texto, p) for k, p in PADROES.items()}
+def detectar_status_emoji(bloco):
+    """Detecta o status pelo emoji do bloco."""
+    if re.search(r"✅", bloco):
+        if eh_normalizacao(bloco):
+            return "normalizado"
+        return "Em Aberto"
+    if re.search(r"🔴", bloco): return "Em Aberto"
+    if re.search(r"🟡", bloco): return "Em Aberto"
+    if re.search(r"🟠", bloco): return "Em Aberto"
+    if re.search(r"⏸️", bloco): return "Em Aberto"
+    return "Em Aberto"
+
+def extrair_data_fmt(texto_data, fallback):
+    """Extrai DD/MM de uma string de data."""
+    if vazio(texto_data):
+        return fallback
+    m = re.search(r"(\d{2}/\d{2})", texto_data)
+    return m.group(1) if m else fallback
+
+def similaridade_falha(falha1, falha2):
+    """Verifica se duas falhas são essencialmente a mesma."""
+    n1 = normalizar_texto(falha1)
+    n2 = normalizar_texto(falha2)
+    # Extrai palavras-chave (ignora palavras curtas)
+    palavras1 = set(p for p in n1.split() if len(p) > 3)
+    palavras2 = set(p for p in n2.split() if len(p) > 3)
+    if not palavras1 or not palavras2:
+        return False
+    intersecao = palavras1 & palavras2
+    menor = min(len(palavras1), len(palavras2))
+    return len(intersecao) / menor >= 0.5  # 50% de palavras em comum
+
+
+# ── Parse de blocos ───────────────────────────────────────────────────────────
+
+def separar_blocos(texto):
+    """
+    Separa a mensagem em blocos individuais de ocorrência.
+    Suporta tanto mensagens simples quanto rondas completas.
+    """
+    # Tenta separar por emoji de status no início de linha
+    partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️))", texto, flags=re.MULTILINE)
+    blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 30]
+
+    # Se não encontrou separação, tenta por "Usina:" como separador
+    if len(blocos) <= 1:
+        partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)?[ \t]*(?:DESVIO:?\s*)?Usina:)", texto, flags=re.MULTILINE | re.IGNORECASE)
+        blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 30]
+
+    return blocos if blocos else [texto]
+
+def parse_bloco(bloco):
+    """Parseia um bloco individual de ocorrência."""
+    c = {k: extrair(bloco, p) for k, p in PADROES.items()}
+
     if not c["usina"]:
         return None
 
-    # Verifica se é uma usina permitida
-    if not usina_permitida(c["usina"]):
-        log.info(f"⚪ Usina não permitida, ignorando: {c['usina']}")
+    # Limpa o nome da usina (remove emojis e sufixos como "- NORMALIZADO")
+    usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", c["usina"]).strip()
+    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\d*).*$", "", usina, flags=re.IGNORECASE).strip()
+    usina = usina.rstrip(".,:-")
+
+    if not usina_permitida(usina):
         return None
 
-    equip = c["equipamento"] if not vazio(c["equipamento"]) else inferir_equipamento(c["problema"], c["descricao"])
-    # Causa fica em branco se não informada
+    # Equipamento
+    equip = c["equipamento"] if not vazio(c["equipamento"]) else \
+            inferir_equipamento(c["problema"], c["descricao"], c["identificacao"], c["equip_problema"])
+
+    # Causa
     causa = c["causa"] if not vazio(c["causa"]) else ""
 
+    # Ação
     partes_acao = []
     if not vazio(c["acao"]):
         partes_acao.append(c["acao"])
@@ -190,51 +238,46 @@ def parse_mensagem(texto):
     tec = extrair_tecnico(c["equipe"]) if not vazio(c["equipe"]) else ""
     if not vazio(tec): partes_acao.append(f"Técnico: {tec}")
     sup = re.sub(r"^[Ss]im[,\s]*", "", c["supervisor"]).strip() if not vazio(c["supervisor"]) else ""
+    sup = re.sub(r"@", "", sup).strip()
     if not vazio(sup): partes_acao.append(f"Supervisor: {sup}")
 
-    fim_valido = not vazio(c["fim"])
-    status = normalizar_status("", fim_valido)
-
-    # Histórico no padrão DD/MM - texto
-    hoje = datetime.now().strftime("%d/%m")
-    hist = []
-    if not vazio(c["inicio"]):
-        m_data = re.search(r"(\d{2}/\d{2})", c["inicio"])
-        data_fmt = m_data.group(1) if m_data else hoje
-        hist.append(f"{data_fmt} - Registro inicial")
-    else:
-        hist.append(f"{hoje} - Registro inicial")
-    if not vazio(c["acao"]):
-        hist.append(f"{hoje} - {c['acao']}")
-    if fim_valido:
-        m_data = re.search(r"(\d{2}/\d{2})", c["fim"])
-        data_fmt = m_data.group(1) if m_data else hoje
-        hist.append(f"{data_fmt} - Ocorrência encerrada")
-
-    # Extrai número da OS
+    # OS
     os_num = ""
     if not vazio(c["os"]):
-        m_os = re.search(r"\d+", c["os"])
+        m_os = re.search(r"[\d/]+", c["os"])
         os_num = m_os.group() if m_os else ""
 
-    # Data do fim para normalização
-    fim_data = hoje
-    if fim_valido:
-        m_data = re.search(r"(\d{2}/\d{2})", c["fim"])
-        fim_data = m_data.group(1) if m_data else hoje
+    # Status e normalização
+    status_emoji = detectar_status_emoji(bloco)
+    normalizar = (status_emoji == "normalizado")
+    fim_valido = not vazio(c["fim"])
+
+    # Histórico
+    hoje = datetime.now().strftime("%d/%m")
+    hist = []
+    data_inicio = extrair_data_fmt(c["inicio"], hoje)
+    if normalizar:
+        data_fim = extrair_data_fmt(c["fim"], hoje)
+        hist.append(f"{data_inicio} - Registro inicial")
+        hist.append(f"{data_fim} - Ocorrência normalizada")
+    else:
+        hist.append(f"{data_inicio} - Registro inicial")
+        if not vazio(c["acao"]):
+            hist.append(f"{hoje} - {c['acao']}")
 
     return {
-        "cliente":      inferir_cliente(c["usina"]),
-        "usina":        c["usina"],
+        "usina":        usina,
+        "cliente":      inferir_cliente(usina),
         "equipamento":  equip,
-        "falha":        c["problema"] or c["descricao"],
+        "falha":        c["problema"] or c["descricao"] or c["tipo_manut"] or "",
         "causa":        causa,
         "equip_impact": equip,
         "acao":         " | ".join(partes_acao),
-        "status":       status,
+        "status":       "Concluído" if normalizar else "Em Aberto",
         "historico":    "\n".join(hist),
         "os":           os_num,
-        "fim_data":     fim_data,
+        "normalizar":   normalizar,
+        "acao_texto":   c["acao"],
     }
 
 
@@ -253,71 +296,98 @@ def get_sheet():
     gc = gspread.authorize(creds)
     return gc.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
-def proximo_id_e_linha(ws):
-    todos = ws.get_all_values()
-    maior_id = 0
-    ultima_linha_dados = 1
-    for i, row in enumerate(todos[1:], start=2):
-        if row and row[0] and str(row[0]).strip():
-            ultima_linha_dados = i
+def carregar_planilha(ws):
+    """Carrega todos os dados da planilha em memória."""
+    return ws.get_all_values()
+
+def proximo_id(todos):
+    maior = 0
+    for row in todos[1:]:
+        if row and row[0]:
             try:
-                maior_id = max(maior_id, int(row[0]))
+                maior = max(maior, int(row[0]))
             except ValueError:
                 pass
-    return maior_id + 1, ultima_linha_dados + 1
+    return maior + 1
 
-def buscar_linha_por_usina(ws, usina):
-    """Busca a última linha Em Aberto de uma usina na planilha."""
-    todos = ws.get_all_values()
-    resultado = None
+def buscar_ocorrencia_existente(todos, usina, falha):
+    """
+    Busca ocorrência existente na planilha.
+    Retorna (num_linha, row) se encontrar mesma usina + falha similar Em Aberto.
+    Retorna (num_linha, row, "diferente") se encontrar mesma usina mas falha diferente.
+    """
     for i, row in enumerate(todos[1:], start=2):
-        if len(row) >= 9:
-            usina_planilha = row[2].lower().strip()  # coluna C
-            status = row[8].strip()                   # coluna I
-            if usina.lower().strip() in usina_planilha or usina_planilha in usina.lower().strip():
-                if status not in ("Concluído",):
-                    resultado = (i, row)  # pega a última Em Aberto
-    return resultado
+        if len(row) < 9:
+            continue
+        usina_plan = row[2].strip()   # coluna C
+        falha_plan = row[4].strip()   # coluna E
+        status = row[8].strip()       # coluna I
 
-def normalizar_ocorrencia(dados):
-    """Atualiza linha existente para Concluído quando chega mensagem de normalização."""
-    ws = get_sheet()
-    encontrado = buscar_linha_por_usina(ws, dados["usina"])
+        if status == "Concluído":
+            continue
 
+        # Verifica se é a mesma usina
+        if not (usina.lower() in usina_plan.lower() or usina_plan.lower() in usina.lower()):
+            continue
+
+        # Mesma usina — verifica se é a mesma falha
+        if similaridade_falha(falha, falha_plan):
+            return (i, row, "mesma")
+        else:
+            return (i, row, "diferente")
+
+    return None
+
+def atualizar_ocorrencia(ws, num_linha, row, dados):
+    """Atualiza histórico e ação de uma ocorrência existente."""
     hoje = datetime.now().strftime("%d/%m")
 
-    if encontrado:
-        num_linha, row = encontrado
-        # Atualiza Status → Concluído (coluna I = índice 9)
-        ws.update_cell(num_linha, 9, "Concluído")
-        # Preenche OS se veio na mensagem (coluna K = índice 11)
-        if not vazio(dados.get("os", "")):
+    # Atualiza Ação (coluna H = 8)
+    acao_atual = row[7] if len(row) > 7 else ""
+    nova_acao = dados["acao_texto"]
+    if not vazio(nova_acao) and nova_acao not in acao_atual:
+        nova_acao_completa = acao_atual + "\n" + nova_acao if acao_atual else nova_acao
+        ws.update_cell(num_linha, 8, nova_acao_completa)
+
+    # Atualiza Histórico (coluna L = 12)
+    hist_atual = row[11] if len(row) > 11 else ""
+    nova_entrada = f"{hoje} - {dados['acao_texto']}" if not vazio(dados["acao_texto"]) else f"{hoje} - Atualização de status"
+    if nova_entrada not in hist_atual:
+        novo_hist = hist_atual + "\n" + nova_entrada if hist_atual else nova_entrada
+        ws.update_cell(num_linha, 12, novo_hist)
+
+    # Atualiza OS se veio (coluna K = 11)
+    if not vazio(dados["os"]):
+        os_atual = row[10] if len(row) > 10 else ""
+        if vazio(os_atual):
             ws.update_cell(num_linha, 11, dados["os"])
-        # Adiciona entrada no Histórico (coluna L = índice 12)
-        historico_atual = row[11] if len(row) > 11 else ""
-        fim = dados.get("fim_data", hoje)
-        nova_entrada = f"{fim} - Ocorrência normalizada"
-        if not vazio(dados.get("acao", "")):
-            nova_entrada += f"\n{hoje} - {dados['acao']}"
-        novo_historico = historico_atual + "\n" + nova_entrada if historico_atual else nova_entrada
-        ws.update_cell(num_linha, 12, novo_historico)
-        log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
-        return num_linha
-    else:
-        log.warning(f"⚠️ Usina não encontrada em aberto: {dados['usina']}")
-        return None
 
-def gravar_ocorrencia(dados):
-    ws = get_sheet()
-    novo_id, proxima_linha = proximo_id_e_linha(ws)
+    log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']}")
 
-    # Extrai OS se disponível
-    os_num = dados.get("os", "")
+def normalizar_ocorrencia(ws, num_linha, row, dados):
+    """Marca ocorrência como Concluída."""
+    hoje = datetime.now().strftime("%d/%m")
 
-    # Ordem exata das colunas:
-    # A=ID | B=Cliente | C=Usina | D=Equipamento | E=Falha | F=Causa
-    # G=Equipamentos impactados | H=Ação | I=Status atual
-    # J=Ticket Fabricante | K=Número da OS | L=Histórico Cronológico
+    # Status → Concluído (coluna I = 9)
+    ws.update_cell(num_linha, 9, "Concluído")
+
+    # OS (coluna K = 11)
+    if not vazio(dados["os"]):
+        ws.update_cell(num_linha, 11, dados["os"])
+
+    # Histórico (coluna L = 12)
+    hist_atual = row[11] if len(row) > 11 else ""
+    nova_entrada = f"{hoje} - Ocorrência normalizada"
+    if not vazio(dados["acao_texto"]):
+        nova_entrada += f"\n{hoje} - {dados['acao_texto']}"
+    novo_hist = hist_atual + "\n" + nova_entrada if hist_atual else nova_entrada
+    ws.update_cell(num_linha, 12, novo_hist)
+
+    log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
+
+def gravar_nova_ocorrencia(ws, todos, dados):
+    """Grava uma nova ocorrência na planilha."""
+    novo_id = proximo_id(todos)
     linha = [
         novo_id,
         dados["cliente"],
@@ -328,14 +398,69 @@ def gravar_ocorrencia(dados):
         dados["equip_impact"],
         dados["acao"],
         dados["status"],
-        "",       # J - Ticket Fabricante (preencher manualmente)
-        os_num,   # K - Número da OS
-        dados["historico"],
+        "",           # J - Ticket Fabricante
+        dados["os"],  # K - Número da OS
+        dados["historico"],  # L - Histórico
     ]
-
     ws.append_row(linha, value_input_option="USER_ENTERED")
-    log.info(f"✅ ID={novo_id} | {dados['usina']} — {dados['equipamento']}")
+    log.info(f"➕ Nova ocorrência ID={novo_id} | {dados['usina']} — {dados['equipamento']}")
     return novo_id
+
+
+# ── Processamento principal ───────────────────────────────────────────────────
+
+def processar_texto(texto):
+    """
+    Processa um texto completo (mensagem simples ou ronda completa).
+    Retorna resumo das ações tomadas.
+    """
+    ws = get_sheet()
+    todos = carregar_planilha(ws)
+
+    blocos = separar_blocos(texto)
+    resultado = {"novos": [], "atualizados": [], "normalizados": [], "ignorados": 0}
+
+    for bloco in blocos:
+        dados = parse_bloco(bloco)
+        if not dados:
+            resultado["ignorados"] += 1
+            continue
+
+        existente = buscar_ocorrencia_existente(todos, dados["usina"], dados["falha"])
+
+        if dados["normalizar"]:
+            # Normalização — busca a ocorrência em aberto e marca como concluída
+            if existente:
+                num_linha, row, _ = existente
+                normalizar_ocorrencia(ws, num_linha, row, dados)
+                resultado["normalizados"].append(dados["usina"])
+            else:
+                # Não encontrou em aberto — grava como concluída mesmo assim
+                dados["status"] = "Concluído"
+                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+            # Recarrega planilha após modificação
+            todos = carregar_planilha(ws)
+
+        elif existente:
+            num_linha, row, tipo = existente
+            if tipo == "mesma":
+                # Mesma usina, mesma falha → atualiza histórico e ação
+                atualizar_ocorrencia(ws, num_linha, row, dados)
+                resultado["atualizados"].append(dados["usina"])
+            else:
+                # Mesma usina, falha diferente → nova ocorrência
+                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+            todos = carregar_planilha(ws)
+
+        else:
+            # Não existe → nova ocorrência
+            novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+            resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+            todos = carregar_planilha(ws)
+
+    return resultado
 
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
@@ -373,37 +498,27 @@ def webhook():
             return jsonify({"status": "ignored", "reason": "no text"}), 200
 
         remote_jid = msg_obj.get("key", {}).get("remoteJid", "")
-        eh_grupo = "@g.us" in remote_jid
-        if not eh_grupo:
-            return jsonify({"status": "ignored", "reason": "not a group message"}), 200
+        if "@g.us" not in remote_jid:
+            return jsonify({"status": "ignored", "reason": "not a group"}), 200
 
         if GRUPOS_FILTRO and GRUPOS_FILTRO[0]:
             if not any(g.strip() in remote_jid for g in GRUPOS_FILTRO):
                 return jsonify({"status": "ignored", "reason": "group not in filter"}), 200
 
-        ocorrencias = separar_ocorrencias(texto) or [texto]
-        gravados = []
-        normalizados = []
+        # Verifica se tem algum conteúdo relevante
+        tem_usina = bool(re.search(r"Usina:", texto, re.IGNORECASE))
+        tem_emoji = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
+        if not tem_usina and not tem_emoji:
+            return jsonify({"status": "ignored", "reason": "no failure content"}), 200
 
-        for bloco in ocorrencias:
-            dados = parse_mensagem(bloco)
-            if not dados:
-                continue
+        resultado = processar_texto(texto)
 
-            if eh_normalizacao(bloco):
-                # Mensagem de normalização — atualiza linha existente
-                linha_atualizada = normalizar_ocorrencia(dados)
-                if linha_atualizada:
-                    normalizados.append({"usina": dados["usina"], "linha": linha_atualizada})
-            else:
-                # Nova ocorrência — grava linha nova
-                novo_id = gravar_ocorrencia(dados)
-                gravados.append({"id": novo_id, "usina": dados["usina"]})
+        total = len(resultado["novos"]) + len(resultado["atualizados"]) + len(resultado["normalizados"])
+        if total > 0:
+            log.info(f"✅ Processado: {len(resultado['novos'])} novos, {len(resultado['atualizados'])} atualizados, {len(resultado['normalizados'])} normalizados")
+            return jsonify({"status": "ok", **resultado}), 200
 
-        if gravados or normalizados:
-            return jsonify({"status": "ok", "gravados": gravados, "normalizados": normalizados}), 200
-
-        return jsonify({"status": "ignored", "reason": "no valid failures found"}), 200
+        return jsonify({"status": "ignored", "reason": "no valid content"}), 200
 
     except Exception as e:
         log.error(f"❌ Erro: {e}", exc_info=True)
@@ -417,11 +532,16 @@ def health():
 
 @app.route("/test", methods=["POST"])
 def test_parse():
+    """Testa o parse sem gravar na planilha."""
     payload = request.get_json(force=True) or {}
     texto = payload.get("texto", "")
-    ocorrencias = separar_ocorrencias(texto) or [texto]
-    resultados = [parse_mensagem(b) for b in ocorrencias]
-    return jsonify({"resultados": [r for r in resultados if r]}), 200
+    blocos = separar_blocos(texto)
+    resultados = []
+    for b in blocos:
+        r = parse_bloco(b)
+        if r:
+            resultados.append(r)
+    return jsonify({"total_blocos": len(blocos), "validos": len(resultados), "resultados": resultados}), 200
 
 
 if __name__ == "__main__":
