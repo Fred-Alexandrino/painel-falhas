@@ -385,9 +385,19 @@ def normalizar_ocorrencia(ws, num_linha, row, dados):
 
     log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
 
+def primeira_linha_vazia(todos):
+    """Encontra a primeira linha vazia após os dados (ignora linhas vazias no meio)."""
+    ultima_com_dado = 1
+    for i, row in enumerate(todos[1:], start=2):
+        if row and row[0] and str(row[0]).strip():
+            ultima_com_dado = i
+    return ultima_com_dado + 1
+
 def gravar_nova_ocorrencia(ws, todos, dados):
-    """Grava uma nova ocorrência na planilha."""
+    """Grava uma nova ocorrência na planilha na primeira linha vazia após os dados."""
     novo_id = proximo_id(todos)
+    proxima_linha = primeira_linha_vazia(todos)
+
     linha = [
         novo_id,
         dados["cliente"],
@@ -402,8 +412,8 @@ def gravar_nova_ocorrencia(ws, todos, dados):
         dados["os"],  # K - Número da OS
         dados["historico"],  # L - Histórico
     ]
-    ws.append_row(linha, value_input_option="USER_ENTERED")
-    log.info(f"➕ Nova ocorrência ID={novo_id} | {dados['usina']} — {dados['equipamento']}")
+    ws.update(f"A{proxima_linha}:L{proxima_linha}", [linha])
+    log.info(f"➕ Nova ocorrência ID={novo_id} | {dados['usina']} — {dados['equipamento']} | linha {proxima_linha}")
     return novo_id
 
 
