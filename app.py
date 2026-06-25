@@ -175,10 +175,14 @@ def parse_mensagem(texto):
         return None
 
     equip = c["equipamento"] if not vazio(c["equipamento"]) else inferir_equipamento(c["problema"], c["descricao"])
-    causa = c["causa"] if not vazio(c["causa"]) else (c["descricao"] if not vazio(c["descricao"]) else "Em análise")
+    # Causa fica em branco se não informada
+    causa = c["causa"] if not vazio(c["causa"]) else ""
 
     partes_acao = []
-    if not vazio(c["acao"]): partes_acao.append(c["acao"])
+    if not vazio(c["acao"]):
+        partes_acao.append(c["acao"])
+    else:
+        partes_acao.append("Inspeção em campo")
     tec = extrair_tecnico(c["equipe"]) if not vazio(c["equipe"]) else ""
     if not vazio(tec): partes_acao.append(f"Técnico: {tec}")
     sup = re.sub(r"^[Ss]im[,\s]*", "", c["supervisor"]).strip() if not vazio(c["supervisor"]) else ""
