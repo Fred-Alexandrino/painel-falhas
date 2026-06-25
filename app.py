@@ -92,12 +92,16 @@ PADROES = {
     "acao":        re.compile(r"Ação:[ \t]*([^\n\r]+)",                     re.IGNORECASE),
     "equipe":      re.compile(r"Equipe Acionada:[ \t]*([^\n\r]+)",          re.IGNORECASE),
     "supervisor":  re.compile(r"Supervisor Acionado:[ \t]*([^\n\r]+)",      re.IGNORECASE),
-    "inicio":      re.compile(r"Inicio ocorrência:[ \t]*([^\n\r]+)",        re.IGNORECASE),
-    "fim":         re.compile(r"Fim ocorrência:[ \t]*([^\n\r]*)",           re.IGNORECASE),
-    "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",  re.IGNORECASE),
+    "inicio":      re.compile(r"In[ií]cio[ \t]+Ocorrência:[ \t]*([^\n\r]+)",  re.IGNORECASE),
+    "fim":         re.compile(r"Fim[ \t]+Ocorrência:[ \t]*([^\n\r]*)",        re.IGNORECASE),
+    "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",   re.IGNORECASE),
     "equipamento": re.compile(r"^\*?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
     "causa":       re.compile(r"^\*?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
 }
+
+# Detecta se a mensagem é uma normalização
+def eh_normalizacao(texto):
+    return bool(re.search(r"normalizado|✅", texto, re.IGNORECASE))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -207,6 +211,18 @@ def parse_mensagem(texto):
         data_fmt = m_data.group(1) if m_data else hoje
         hist.append(f"{data_fmt} - Ocorrência encerrada")
 
+    # Extrai número da OS
+    os_num = ""
+    if not vazio(c["os"]):
+        m_os = re.search(r"\d+", c["os"])
+        os_num = m_os.group() if m_os else ""
+
+    # Data do fim para normalização
+    fim_data = hoje
+    if fim_valido:
+        m_data = re.search(r"(\d{2}/\d{2})", c["fim"])
+        fim_data = m_data.group(1) if m_data else hoje
+
     return {
         "cliente":      inferir_cliente(c["usina"]),
         "usina":        c["usina"],
@@ -217,6 +233,8 @@ def parse_mensagem(texto):
         "acao":         " | ".join(partes_acao),
         "status":       status,
         "historico":    "\n".join(hist),
+        "os":           os_num,
+        "fim_data":     fim_data,
     }
 
 
@@ -248,9 +266,53 @@ def proximo_id_e_linha(ws):
                 pass
     return maior_id + 1, ultima_linha_dados + 1
 
+def buscar_linha_por_usina(ws, usina):
+    """Busca a última linha Em Aberto de uma usina na planilha."""
+    todos = ws.get_all_values()
+    resultado = None
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) >= 9:
+            usina_planilha = row[2].lower().strip()  # coluna C
+            status = row[8].strip()                   # coluna I
+            if usina.lower().strip() in usina_planilha or usina_planilha in usina.lower().strip():
+                if status not in ("Concluído",):
+                    resultado = (i, row)  # pega a última Em Aberto
+    return resultado
+
+def normalizar_ocorrencia(dados):
+    """Atualiza linha existente para Concluído quando chega mensagem de normalização."""
+    ws = get_sheet()
+    encontrado = buscar_linha_por_usina(ws, dados["usina"])
+
+    hoje = datetime.now().strftime("%d/%m")
+
+    if encontrado:
+        num_linha, row = encontrado
+        # Atualiza Status → Concluído (coluna I = índice 9)
+        ws.update_cell(num_linha, 9, "Concluído")
+        # Preenche OS se veio na mensagem (coluna K = índice 11)
+        if not vazio(dados.get("os", "")):
+            ws.update_cell(num_linha, 11, dados["os"])
+        # Adiciona entrada no Histórico (coluna L = índice 12)
+        historico_atual = row[11] if len(row) > 11 else ""
+        fim = dados.get("fim_data", hoje)
+        nova_entrada = f"{fim} - Ocorrência normalizada"
+        if not vazio(dados.get("acao", "")):
+            nova_entrada += f"\n{hoje} - {dados['acao']}"
+        novo_historico = historico_atual + "\n" + nova_entrada if historico_atual else nova_entrada
+        ws.update_cell(num_linha, 12, novo_historico)
+        log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
+        return num_linha
+    else:
+        log.warning(f"⚠️ Usina não encontrada em aberto: {dados['usina']}")
+        return None
+
 def gravar_ocorrencia(dados):
     ws = get_sheet()
     novo_id, proxima_linha = proximo_id_e_linha(ws)
+
+    # Extrai OS se disponível
+    os_num = dados.get("os", "")
 
     # Ordem exata das colunas:
     # A=ID | B=Cliente | C=Usina | D=Equipamento | E=Falha | F=Causa
@@ -266,9 +328,9 @@ def gravar_ocorrencia(dados):
         dados["equip_impact"],
         dados["acao"],
         dados["status"],
-        "",                  # J - Ticket Fabricante (preencher manualmente)
-        "",                  # K - Número da OS (preencher manualmente)
-        dados["historico"],  # L - Histórico Cronológico
+        "",       # J - Ticket Fabricante (preencher manualmente)
+        os_num,   # K - Número da OS
+        dados["historico"],
     ]
 
     ws.append_row(linha, value_input_option="USER_ENTERED")
@@ -321,19 +383,25 @@ def webhook():
 
         ocorrencias = separar_ocorrencias(texto) or [texto]
         gravados = []
-        ignorados = []
+        normalizados = []
 
         for bloco in ocorrencias:
             dados = parse_mensagem(bloco)
-            if dados:
+            if not dados:
+                continue
+
+            if eh_normalizacao(bloco):
+                # Mensagem de normalização — atualiza linha existente
+                linha_atualizada = normalizar_ocorrencia(dados)
+                if linha_atualizada:
+                    normalizados.append({"usina": dados["usina"], "linha": linha_atualizada})
+            else:
+                # Nova ocorrência — grava linha nova
                 novo_id = gravar_ocorrencia(dados)
                 gravados.append({"id": novo_id, "usina": dados["usina"]})
-            else:
-                ignorados.append("não é falha ou usina não permitida")
 
-        if gravados:
-            log.info(f"✅ {len(gravados)} ocorrência(s) gravada(s): {gravados}")
-            return jsonify({"status": "ok", "gravados": gravados}), 200
+        if gravados or normalizados:
+            return jsonify({"status": "ok", "gravados": gravados, "normalizados": normalizados}), 200
 
         return jsonify({"status": "ignored", "reason": "no valid failures found"}), 200
 
