@@ -86,13 +86,14 @@ STATUS_VALIDOS = {
 PADROES = {
     "usina":       re.compile(r"(?:🔴|🟡|🟢|🟠|✅|⏸️)?[\s🛠️]*(?:DESVIO:?\s*)?Usina:?[ \t]*([^\n\r]+)", re.IGNORECASE),
     "problema":    re.compile(r"Probl[eo]ma[s]?:[ \t]*([^\n\r]+)",              re.IGNORECASE),
-    "descricao":   re.compile(r"Descrição[^:]*:[ \t]*([^\n\r]+)",               re.IGNORECASE),
+    "descricao":   re.compile(r"Descri(?:ção|cao|çao|ção)[^:]*:[ \t]*([^\n\r]+)", re.IGNORECASE),
     "acao":        re.compile(r"Ação:[ \t]*([^\n\r]+)",                          re.IGNORECASE),
     "equipe":      re.compile(r"Equipe Acionada:[ \t]*([^\n\r]+)",               re.IGNORECASE),
     "supervisor":  re.compile(r"Supervisor Acionado:[ \t]*([^\n\r]+)",           re.IGNORECASE),
-    "inicio":      re.compile(r"In[ií]ci[oo][ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "inicio":      re.compile(r"In[ií]ci[oo][ \t]+(?:d[ao][ \t]+)?[Oo]corrên?cia:[ \t]*([^\n\r]+)", re.IGNORECASE),
     "fim":         re.compile(r"(?:Fim|Término)[ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]*)", re.IGNORECASE),
     "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",       re.IGNORECASE),
+    "impacto":     re.compile(r"Impacto:[ \t]*([^\n\r]+)",                         re.IGNORECASE),
     "equipamento": re.compile(r"^\*?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
     "causa":       re.compile(r"^\*?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
     "tipo_manut":  re.compile(r"Tipo Manutenção[^:]*:[ \t]*([^\n\r]+)",         re.IGNORECASE),
@@ -140,21 +141,53 @@ def extrair_tecnico(s):
     s = re.sub(r"^[Ss]im[,\s]*", "", s).strip()
     return re.sub(r"@", "", s).strip()
 
-def inferir_equipamento(problema, descricao, identificacao="", equip_problema=""):
-    fonte = problema or descricao or identificacao or equip_problema
-    m = re.search(
-        r"(INV-\d+|Inversor[\s\w/]*\d+|Tracker[\s\w/]*\d+|Motor[\w\s/TCU]*\d*|"
-        r"Câmera[\w\s]*|NVR|GCU|Relé[\w\s]*|Chave[\w\s]+|RSU|NCU|ETM|DPS|"
-        r"Piranometro[\w\s]+|Fieldlogger|Anemômetro|Exaustor[\w\s]*|"
-        r"Nobreak[\w\s]*|EP\d+|Igate[\w\s]*|Otimizador[\w\s]*|"
-        r"TCU[\w\s]*|Bateria[\w\s]*|String[\w\s]*|Tck[\s\d.,]+)",
-        fonte, re.IGNORECASE
-    )
-    if m:
-        return m.group(0).strip()
-    m2 = re.search(r"([A-Za-zÀ-ÿ]+)\s+(?:\w+\s+)?(\d+)\s*$", fonte)
-    if m2:
-        return f"{m2.group(1).capitalize()} {m2.group(2)}"
+# Regex completa para identificar equipamentos em qualquer campo da mensagem
+_REGEX_EQUIP = re.compile(
+    r"(?<![\w-])("
+    r"INV-\d+|"
+    r"Inversor(?:es)?\s+\d+(?:[,\s]+\d+)*(?:\s+e\s+\d+)*|"
+    r"Tracker(?:s)?\s+\d+(?:[,\s]+\d+)*(?:\s+e\s+\d+)*|"
+    r"Tck(?:s)?\s+\d+(?:[,\s]+\d+)*|"
+    r"Motor(?:[\w\s/]*Tracker)?\s*\d*|"
+    r"TCU(?:[\w\s]*Tracker)?\s*\d*|"
+    r"Fieldlogger|Smartlogger|"
+    r"Rel[eé](?:\s+(?:UPR|EP\d+|de\s+[Pp]roteção|de\s+[Tt]emperatura|[A-Z0-9]+))?|"
+    r"ETM|NVR|GCU|RSU|NCU|DPS|"
+    r"Nobreak(?:\s+[\w]+)?|"
+    r"EP\d+|Igate(?:[\w\s]*)?|"
+    r"Câmera(?:s)?(?:[\w\s]*)?|"
+    r"Piranometro(?:[\w\s]*)?|Anemômetro|"
+    r"Exaustor(?:[\w\s]*)?|"
+    r"Otimizador(?:es)?(?:[\w\s]*)?\d*|"
+    r"Chave\s+Seccionadora(?:[\w\s]*)?|"
+    r"Stringbox|Combiner(?:[\w\s]*)?\d*|"
+    r"Transformador(?:[\w\s]*)?\d*|"
+    r"Ventilador(?:[\w\s]*)?|Switch(?:[\w\s]*)?|"
+    r"Bateria(?:[\w\s-]*)?(?:Tracker\s+\d+)?"
+    r")(?![\w-])",
+    re.IGNORECASE
+)
+
+def _limpar_equipamento(equip):
+    equip = equip.strip()
+    equip = re.sub(r"Tck\s*", "Tracker ", equip, flags=re.IGNORECASE)
+    equip = re.sub(r"(?<=[Tt]racker\s)0+(\d)", r"\1", equip)
+    equip = re.sub(r"(?<=[Mm]otor\s)0+(\d)", r"\1", equip)
+    if equip:
+        equip = equip[0].upper() + equip[1:]
+    for tipo in [r"Rel[eé]\s+\w+", r"Nobreak\s+\w+", r"ETM", r"Igate\s*\w*"]:
+        equip = re.sub(rf"({tipo})\s+(?:com|de|para|que|na|no|em)\s+.*", r"\1", equip, flags=re.IGNORECASE)
+    return equip.strip()
+
+def inferir_equipamento(problema="", descricao="", identificacao="", equip_problema="", acao="", impacto=""):
+    """Extrai equipamento buscando em todos os campos na ordem de prioridade."""
+    for texto in [identificacao, problema, descricao, impacto, acao, equip_problema]:
+        if not texto or str(texto).strip() in ("", "--", "-", "N/A"):
+            continue
+        m = _REGEX_EQUIP.search(texto)
+        if m:
+            return _limpar_equipamento(m.group(0))
+    fonte = problema or descricao or ""
     return fonte[:60] if fonte else ""
 
 def eh_normalizacao(texto):
@@ -312,7 +345,7 @@ def parse_bloco(bloco):
         # identificacao → Equipamento (ex: "Tck 53" → "Tracker 53")
         id_raw = c["identificacao"] if not vazio(c["identificacao"]) else ""
         id_fmt = re.sub(r"Tck\s*", "Tracker ", id_raw, flags=re.IGNORECASE).strip()
-        equip = id_fmt if id_fmt else inferir_equipamento(c["problema"], c["descricao"])
+        equip = id_fmt if id_fmt else inferir_equipamento(problema=c["problema"], descricao=c["descricao"], acao=c["acao"], impacto=c.get("impacto",""))
 
         # equip_problema → Causa (ex: "baterias da TCU com falha")
         equip_prob = c["equip_problema"] if not vazio(c["equip_problema"]) else ""
@@ -335,7 +368,7 @@ def parse_bloco(bloco):
     else:
         # Formato padrão
         equip = c["equipamento"] if not vazio(c["equipamento"]) else \
-                inferir_equipamento(c["problema"], c["descricao"], c["identificacao"], c["equip_problema"])
+                inferir_equipamento(problema=c["problema"], descricao=c["descricao"], identificacao=c["identificacao"], equip_problema=c["equip_problema"], acao=c["acao"], impacto=c.get("impacto",""))
         causa = c["causa"] if not vazio(c["causa"]) else ""
 
         partes_acao = []
