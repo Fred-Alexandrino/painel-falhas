@@ -132,16 +132,17 @@ def parse_mensagem(texto):
     fim_valido = not vazio(c["fim"])
     status = normalizar_status(c.get("status", ""), fim_valido)
 
-    hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
+    hoje = datetime.now().strftime("%d/%m")
     hist = []
     if not vazio(c["inicio"]):
-        hist.append(f"{c['inicio']} - Abertura da ocorrência")
-    if not vazio(c["descricao"]):
-        hist.append(f"{hoje} - {c['descricao']}")
+        # Extrai só DD/MM da data de início
+        m_data = re.search(r"(\d{2}/\d{2})", c["inicio"])
+        data_fmt = m_data.group(1) if m_data else hoje
+        hist.append(f"{data_fmt} - Registro inicial")
+    else:
+        hist.append(f"{hoje} - Registro inicial")
     if not vazio(c["acao"]):
         hist.append(f"{hoje} - {c['acao']}")
-    if fim_valido:
-        hist.append(f"{c['fim']} - Ocorrência encerrada")
 
     return {
         "cliente":     inferir_cliente(c["usina"]),
@@ -191,17 +192,23 @@ def gravar_ocorrencia(dados):
     ws = get_sheet()
     novo_id, proxima_linha = proximo_id_e_linha(ws)
 
+    # Ordem exata das colunas da planilha:
+    # A=ID | B=Cliente | C=Usina | D=Equipamento | E=Falha | F=Causa
+    # G=Equipamentos impactados | H=Ação | I=Status atual
+    # J=Ticket Fabricante | K=Número da OS | L=Histórico Cronológico
     linha = [
-        novo_id,
-        dados["cliente"],
-        dados["usina"],
-        dados["equipamento"],
-        dados["falha"],
-        dados["causa"],
-        dados["equip_impact"],
-        dados["acao"],
-        dados["status"],
-        dados["historico"],
+        novo_id,            # A - ID
+        dados["cliente"],   # B - Cliente
+        dados["usina"],     # C - Usina
+        dados["equipamento"],  # D - Equipamento
+        dados["falha"],     # E - Falha
+        dados["causa"],     # F - Causa
+        dados["equip_impact"],  # G - Equipamentos impactados
+        dados["acao"],      # H - Ação
+        dados["status"],    # I - Status atual
+        "",                 # J - Ticket Fabricante (vazio, preencher manualmente)
+        "",                 # K - Número da OS (vazio, preencher manualmente)
+        dados["historico"], # L - Histórico Cronológico
     ]
 
     ws.insert_row(linha, proxima_linha)
