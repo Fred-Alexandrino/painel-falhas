@@ -195,6 +195,79 @@ def similaridade_falha(falha1, falha2):
 
 # ── Parse de blocos ───────────────────────────────────────────────────────────
 
+
+def normalizar_num(num_str):
+    """Normaliza número removendo zeros à esquerda: '08' → '8'"""
+    try:
+        return str(int(num_str))
+    except:
+        return num_str
+
+def extrair_atualizacoes_por_ativo(texto_acao):
+    """
+    Analisa o texto da Ação e extrai atualizações individuais por equipamento.
+    Ex: "Tracker 24 normalizado. Tracker 48 em garantia."
+    → [{"equipamento": "Tracker 24", "normalizar": True}, {"equipamento": "Tracker 48", "normalizar": False}]
+    """
+    PRIORIDADE = {"normalizado": 3, "tratativa fabricante": 2, "garantia": 1, "outro": 0}
+
+    padroes_ativo = [
+        (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+normalizado[s]?", re.IGNORECASE), "normalizado"),
+        (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+em\s+operação", re.IGNORECASE), "normalizado"),
+        (re.compile(r"TCU\s+dos\s+(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+em\s+garantia", re.IGNORECASE), "garantia"),
+        (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+permanece\s+em\s+garantia", re.IGNORECASE), "garantia"),
+        (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+em\s+garantia", re.IGNORECASE), "garantia"),
+        (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+em\s+tratativa\s+com\s+fabricante", re.IGNORECASE), "tratativa fabricante"),
+        (re.compile(r"(INV[-\s]\d+|Inversor\s+\d+)\s+normalizado[s]?", re.IGNORECASE), "normalizado"),
+        (re.compile(r"(INV[-\s]\d+|Inversor\s+\d+)\s+em\s+(?:operação|funcionamento)", re.IGNORECASE), "normalizado"),
+        (re.compile(r"(INV[-\s]\d+|Inversor\s+\d+)\s+em\s+garantia", re.IGNORECASE), "garantia"),
+        (re.compile(r"(INV[-\s]\d+|Inversor\s+\d+)\s+em\s+tratativa\s+com\s+fabricante", re.IGNORECASE), "tratativa fabricante"),
+    ]
+
+    melhor = {}
+    for padrao, status in padroes_ativo:
+        for m in padrao.finditer(texto_acao):
+            ativo_raw = m.group(1).strip()
+            nums = re.findall(r"\d+", ativo_raw)
+            tipo = re.search(r"(Tracker|INV|Inversor|TCU|Motor)", ativo_raw, re.IGNORECASE)
+            tipo_str = tipo.group(1).capitalize() if tipo else "Tracker"
+            if tipo_str.upper() == "INV":
+                tipo_str = "Inversor"
+            for num in nums:
+                num_norm = normalizar_num(num)
+                chave = f"{tipo_str.lower()}_{num_norm}"
+                pri_nova = PRIORIDADE.get(status, 0)
+                if chave not in melhor or pri_nova > PRIORIDADE.get(melhor[chave]["status_update"], 0):
+                    melhor[chave] = {
+                        "equipamento": f"{tipo_str} {num_norm}",
+                        "status_update": status,
+                        "normalizar": (status == "normalizado"),
+                        "acao_resumida": status.capitalize(),
+                    }
+    return list(melhor.values())
+
+def equipamento_match(equip_planilha, equip_busca):
+    """Verifica se dois nomes de equipamento se referem ao mesmo ativo."""
+    def norm(s):
+        s = s.lower().strip()
+        s = re.sub(r"motor\s*", "tracker ", s)
+        s = re.sub(r"tcu\s*tracker\s*", "tracker ", s)
+        s = re.sub(r"inv-", "inversor ", s)
+        nums = re.findall(r"\d+", s)
+        tipo = re.search(r"(tracker|inversor|motor|tcu|inv)", s)
+        tipo_str = tipo.group(1) if tipo else ""
+        if tipo_str == "inv":
+            tipo_str = "inversor"
+        return tipo_str, [normalizar_num(n) for n in nums]
+
+    tipo1, nums1 = norm(equip_planilha)
+    tipo2, nums2 = norm(equip_busca)
+    if not nums1 or not nums2:
+        return False
+    tipos_ok = tipo1 == tipo2 or not tipo1 or not tipo2
+    nums_ok = bool(set(nums1) & set(nums2))
+    return tipos_ok and nums_ok
+
 def separar_blocos(texto):
     """
     Separa a mensagem em blocos individuais de ocorrência.
@@ -474,38 +547,77 @@ def processar_texto(texto):
             resultado["ignorados"] += 1
             continue
 
-        existente = buscar_ocorrencia_existente(todos, dados["usina"], dados["falha"])
+        # Verifica se a ação contém atualizações individuais por ativo
+        atualizacoes_individuais = extrair_atualizacoes_por_ativo(dados.get("acao_texto", ""))
 
-        if dados["normalizar"]:
-            # Normalização — busca a ocorrência em aberto e marca como concluída
+        if atualizacoes_individuais:
+            # Ação analítica: aplica cada atualização no ativo correto
+            alguma_acao = False
+            for upd in atualizacoes_individuais:
+                # Busca a linha do ativo específico na planilha
+                linha_ativo = None
+                for i, row in enumerate(todos[1:], start=2):
+                    if len(row) < 9: continue
+                    usina_p = row[2].strip()
+                    equip_p = row[3].strip()
+                    status_p = row[8].strip()
+                    if status_p == "Concluído": continue
+                    usina_ok = dados["usina"].lower() in usina_p.lower() or usina_p.lower() in dados["usina"].lower()
+                    equip_ok = equipamento_match(equip_p, upd["equipamento"])
+                    if usina_ok and equip_ok:
+                        linha_ativo = (i, row)
+                        break
+
+                if linha_ativo:
+                    num_linha, row = linha_ativo
+                    hoje = datetime.now().strftime("%d/%m")
+                    if upd["normalizar"]:
+                        normalizar_ocorrencia(ws, num_linha, row, {
+                            **dados,
+                            "acao_texto": upd["acao_resumida"],
+                            "os": dados.get("os", "")
+                        })
+                        resultado["normalizados"].append(f"{dados['usina']} - {upd['equipamento']}")
+                    else:
+                        atualizar_ocorrencia(ws, num_linha, row, {
+                            **dados,
+                            "acao_texto": upd["acao_resumida"]
+                        })
+                        resultado["atualizados"].append(f"{dados['usina']} - {upd['equipamento']}")
+                    alguma_acao = True
+                    todos = carregar_planilha(ws)
+
+            if not alguma_acao:
+                # Não encontrou nenhum ativo existente — grava como nova
+                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+                todos = carregar_planilha(ws)
+
+        elif dados["normalizar"]:
+            existente = buscar_ocorrencia_existente(todos, dados["usina"], dados["falha"])
             if existente:
                 num_linha, row, _ = existente
                 normalizar_ocorrencia(ws, num_linha, row, dados)
                 resultado["normalizados"].append(dados["usina"])
             else:
-                # Não encontrou em aberto — grava como concluída mesmo assim
                 dados["status"] = "Concluído"
-                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
-                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
-            # Recarrega planilha após modificação
-            todos = carregar_planilha(ws)
-
-        elif existente:
-            num_linha, row, tipo = existente
-            if tipo == "mesma":
-                # Mesma usina, mesma falha → atualiza histórico e ação
-                atualizar_ocorrencia(ws, num_linha, row, dados)
-                resultado["atualizados"].append(dados["usina"])
-            else:
-                # Mesma usina, falha diferente → nova ocorrência
                 novo_id = gravar_nova_ocorrencia(ws, todos, dados)
                 resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
             todos = carregar_planilha(ws)
 
         else:
-            # Não existe → nova ocorrência
-            novo_id = gravar_nova_ocorrencia(ws, todos, dados)
-            resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+            existente = buscar_ocorrencia_existente(todos, dados["usina"], dados["falha"])
+            if existente:
+                num_linha, row, tipo = existente
+                if tipo == "mesma":
+                    atualizar_ocorrencia(ws, num_linha, row, dados)
+                    resultado["atualizados"].append(dados["usina"])
+                else:
+                    novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+                    resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+            else:
+                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
             todos = carregar_planilha(ws)
 
     return resultado
