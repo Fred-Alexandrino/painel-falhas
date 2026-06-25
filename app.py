@@ -39,7 +39,11 @@ CLIENTE_POR_USINA = {
     "nobres": "RENOGRID", "elias fausto": "RENOGRID",
     "crateús": "RENOGRID", "crateus": "RENOGRID",
     "boa esperança do sul 1": "THOPEN", "boa esperanca do sul 1": "THOPEN",
+    "boa esperança do sul 1a": "THOPEN", "boa esperanca do sul 1a": "THOPEN",
+    "boa esperança do sul ia": "THOPEN", "boa esperanca do sul ia": "THOPEN",
     "boa esperança do sul 2": "THOPEN", "boa esperanca do sul 2": "THOPEN",
+    "boa esperança do sul 1b": "THOPEN", "boa esperanca do sul 1b": "THOPEN",
+    "boa esperança do sul ib": "THOPEN", "boa esperanca do sul ib": "THOPEN",
     "boa esperança do sul": "THOPEN", "boa esperanca do sul": "THOPEN",
     "boa esperança": "THOPEN", "boa esperanca": "THOPEN",
     "ibaté i": "THOPEN", "ibate i": "THOPEN",
@@ -218,23 +222,55 @@ def parse_bloco(bloco):
     usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", c["usina"]).strip()
     usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\d*).*$", "", usina, flags=re.IGNORECASE).strip()
     usina = usina.rstrip(".,:-")
+    # Normaliza sufixos: IA→1, IB→2, IIA→1, IIB→2
+    usina = re.sub(r"\s+1[Aa]$", " 1", usina)
+    usina = re.sub(r"\s+1[Bb]$", " 2", usina)
+    usina = re.sub(r"\s+[Ii][Aa]$", " 1", usina)
+    usina = re.sub(r"\s+[Ii][Bb]$", " 2", usina)
 
     if not usina_permitida(usina):
         return None
 
-    # Equipamento
-    equip = c["equipamento"] if not vazio(c["equipamento"]) else \
-            inferir_equipamento(c["problema"], c["descricao"], c["identificacao"], c["equip_problema"])
+    # Detecta formato 🔧 (Ronda de Trackers)
+    eh_formato_tracker = not vazio(c["identificacao"]) or not vazio(c["equip_problema"])
 
-    # Causa
-    causa = c["causa"] if not vazio(c["causa"]) else ""
+    if eh_formato_tracker:
+        # Formato 🔧:
+        # identificacao → Equipamento (ex: "Tck 53" → "Tracker 53")
+        id_raw = c["identificacao"] if not vazio(c["identificacao"]) else ""
+        id_fmt = re.sub(r"Tck\s*", "Tracker ", id_raw, flags=re.IGNORECASE).strip()
+        equip = id_fmt if id_fmt else inferir_equipamento(c["problema"], c["descricao"])
 
-    # Ação
-    partes_acao = []
-    if not vazio(c["acao"]):
-        partes_acao.append(c["acao"])
+        # equip_problema → Causa (ex: "baterias da TCU com falha")
+        equip_prob = c["equip_problema"] if not vazio(c["equip_problema"]) else ""
+        # Separa causa da ação: texto antes de "acionado" é causa, depois é ação
+        m_acao = re.search(r"(.+?)\.\s*(acionado.+)$", equip_prob, re.IGNORECASE | re.DOTALL)
+        if m_acao:
+            causa = m_acao.group(1).strip()
+            acao_tracker = m_acao.group(2).strip().capitalize()
+        else:
+            causa = equip_prob
+            acao_tracker = ""
+
+        partes_acao = []
+        if acao_tracker:
+            partes_acao.append(acao_tracker)
+        elif not vazio(c["acao"]):
+            partes_acao.append(c["acao"])
+        else:
+            partes_acao.append("Inspeção em campo")
     else:
-        partes_acao.append("Inspeção em campo")
+        # Formato padrão
+        equip = c["equipamento"] if not vazio(c["equipamento"]) else \
+                inferir_equipamento(c["problema"], c["descricao"], c["identificacao"], c["equip_problema"])
+        causa = c["causa"] if not vazio(c["causa"]) else ""
+
+        partes_acao = []
+        if not vazio(c["acao"]):
+            partes_acao.append(c["acao"])
+        else:
+            partes_acao.append("Inspeção em campo")
+
     tec = extrair_tecnico(c["equipe"]) if not vazio(c["equipe"]) else ""
     if not vazio(tec): partes_acao.append(f"Técnico: {tec}")
     sup = re.sub(r"^[Ss]im[,\s]*", "", c["supervisor"]).strip() if not vazio(c["supervisor"]) else ""
@@ -262,14 +298,16 @@ def parse_bloco(bloco):
         hist.append(f"{data_fim} - Ocorrência normalizada")
     else:
         hist.append(f"{data_inicio} - Registro inicial")
-        if not vazio(c["acao"]):
-            hist.append(f"{hoje} - {c['acao']}")
+        # Para formato tracker usa acao_tracker, senão usa c["acao"]
+        acao_hist = acao_tracker if eh_formato_tracker and not vazio(acao_tracker) else c["acao"]
+        if not vazio(acao_hist):
+            hist.append(f"{hoje} - {acao_hist}")
 
     return {
         "usina":        usina,
         "cliente":      inferir_cliente(usina),
         "equipamento":  equip,
-        "falha":        c["problema"] or c["descricao"] or c["tipo_manut"] or "",
+        "falha":        (c["problema"] or c["descricao"] or c["tipo_manut"] or (f"Tracker parado - {causa}" if eh_formato_tracker else "") or ""),
         "causa":        causa,
         "equip_impact": equip,
         "acao":         " | ".join(partes_acao),
