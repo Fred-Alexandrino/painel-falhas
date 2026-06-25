@@ -1,6 +1,6 @@
 """
 app.py — Servidor principal
-Recebe webhooks da Evolution API, parseia mensagens de falha
+Recebe webhooks do WPPConnect/Baileys, parseia mensagens de falha
 e grava automaticamente no Google Sheets.
 """
 
@@ -15,40 +15,76 @@ log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ── Configuração ─────────────────────────────────────────────────────────────
+# ── Configuração ──────────────────────────────────────────────────────────────
 
-SHEET_ID        = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
-SHEET_NAME      = os.environ.get("SHEET_NAME", "Acompanhamento de Falhas - O&M V2")
-WEBHOOK_SECRET  = os.environ.get("WEBHOOK_SECRET", "")          # opcional mas recomendado
-GRUPOS_FILTRO   = os.environ.get("GRUPOS_IDS", "").split(",")   # IDs dos grupos, separados por vírgula
+SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
+SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandrino")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 
-# Mapeamento Usina → Cliente (baseado na sua planilha real)
+# ── Mapeamento Usina → Cliente ────────────────────────────────────────────────
 CLIENTE_POR_USINA = {
-    "ibaté": "THOPEN", "ibate": "THOPEN",
-    "boa esperança": "THOPEN", "boa esperanca": "THOPEN",
-    "matão": "THOPEN", "matao": "THOPEN",
-    "poconé": "THOPEN", "pocone": "THOPEN",
-    "sítio bonfim": "THOPEN", "sitio bonfim": "THOPEN",
-    "topázio": "THOPEN", "topazio": "THOPEN",
-    "colíder": "RENOGRID", "colider": "RENOGRID",
-    "elias fausto": "RENOGRID",
-    "nobres": "RENOGRID",
+    # RENOGRID
+    "nova xavantina i": "RENOGRID", "nova xavantina 1": "RENOGRID",
+    "nova xavantina ii": "RENOGRID", "nova xavantina 2": "RENOGRID",
     "nova xavantina": "RENOGRID",
+    "colíder i": "RENOGRID", "colider i": "RENOGRID",
+    "colíder 1": "RENOGRID", "colider 1": "RENOGRID",
+    "colíder ii": "RENOGRID", "colider ii": "RENOGRID",
+    "colíder 2": "RENOGRID", "colider 2": "RENOGRID",
+    "colíder": "RENOGRID", "colider": "RENOGRID",
+    "nobres": "RENOGRID",
+    "elias fausto": "RENOGRID",
+    "crateús": "RENOGRID", "crateus": "RENOGRID",
+    # THOPEN
+    "boa esperança do sul 1": "THOPEN", "boa esperanca do sul 1": "THOPEN",
+    "boa esperança do sul 2": "THOPEN", "boa esperanca do sul 2": "THOPEN",
+    "boa esperança do sul": "THOPEN", "boa esperanca do sul": "THOPEN",
+    "boa esperança": "THOPEN", "boa esperanca": "THOPEN",
+    "ibaté i": "THOPEN", "ibate i": "THOPEN",
+    "ibaté 1": "THOPEN", "ibate 1": "THOPEN",
+    "ibaté ii": "THOPEN", "ibate ii": "THOPEN",
+    "ibaté 2": "THOPEN", "ibate 2": "THOPEN",
+    "ibaté": "THOPEN", "ibate": "THOPEN",
+    "matão i": "THOPEN", "matao i": "THOPEN",
+    "matão 1": "THOPEN", "matao 1": "THOPEN",
+    "matão ii": "THOPEN", "matao ii": "THOPEN",
+    "matão 2 - topázio": "THOPEN", "matao 2 - topazio": "THOPEN",
+    "matão 2": "THOPEN", "matao 2": "THOPEN",
+    "matão": "THOPEN", "matao": "THOPEN",
+    "topázio": "THOPEN", "topazio": "THOPEN",
+    "sítio bonfim": "THOPEN", "sitio bonfim": "THOPEN",
+    "poconé": "THOPEN", "pocone": "THOPEN",
+    "canarana i": "THOPEN", "canarana 1": "THOPEN",
+    "canarana ii": "THOPEN", "canarana 2": "THOPEN",
+    "canarana": "THOPEN",
+    "ribeirão cascalheira": "THOPEN", "ribeirao cascalheira": "THOPEN",
+    # 2C
     "araputanga": "2C",
+    "sete lagoas": "2C",
+    # GD Energy
+    "guajirú": "GD Energy", "guajiru": "GD Energy",
+    "sol do norte i": "GD Energy", "sol do norte 1": "GD Energy",
+    "sol do norte ii": "GD Energy", "sol do norte 2": "GD Energy",
+    "sol do norte": "GD Energy",
+    # Alves Lima
+    "abc morada nova": "Alves Lima",
 }
+
+# ── Usinas permitidas (só essas sobem na planilha) ────────────────────────────
+USINAS_PERMITIDAS = set(CLIENTE_POR_USINA.keys())
 
 STATUS_VALIDOS = {
     "em aberto": "Em Aberto",
     "aberto": "Em Aberto",
-    "concluído": "Concluído",
-    "concluido": "Concluído",
+    "concluído": "Concluído", "concluido": "Concluído",
     "resolvido": "Concluído",
     "aguardando cliente": "Aguardando Cliente",
     "aguardando fabricante": "Aguardando Fabricante",
     "aguardando equipamento": "Aguardando Equipamento",
 }
 
-# Padrões de extração — usa [ \t]* para não cruzar linhas
+# ── Padrões de extração ───────────────────────────────────────────────────────
 PADROES = {
     "usina":       re.compile(r"Usina:[ \t]*([^\n\r]+)",                    re.IGNORECASE),
     "problema":    re.compile(r"Problema:[ \t]*([^\n\r]+)",                 re.IGNORECASE),
@@ -61,11 +97,10 @@ PADROES = {
     "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",  re.IGNORECASE),
     "equipamento": re.compile(r"^\*?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
     "causa":       re.compile(r"^\*?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
-    "impacto":     re.compile(r"Impacto:[ \t]*([^\n\r]+)",                  re.IGNORECASE),
 }
 
 
-# ── Helpers de parse ─────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def extrair(texto, padrao):
     m = padrao.search(texto)
@@ -75,11 +110,25 @@ def vazio(v):
     return not v or str(v).strip() in ("", "--", "-", "N/A", "n/a")
 
 def inferir_cliente(usina):
-    u = usina.lower()
+    u = usina.lower().strip()
+    # Tenta match exato primeiro
+    if u in CLIENTE_POR_USINA:
+        return CLIENTE_POR_USINA[u]
+    # Tenta match parcial
     for chave, cliente in CLIENTE_POR_USINA.items():
-        if chave in u:
+        if chave in u or u in chave:
             return cliente
     return ""
+
+def usina_permitida(usina):
+    """Verifica se a usina está na lista de usinas do Fred."""
+    u = usina.lower().strip()
+    if u in USINAS_PERMITIDAS:
+        return True
+    for permitida in USINAS_PERMITIDAS:
+        if permitida in u or u in permitida:
+            return True
+    return False
 
 def normalizar_status(texto, fim_valido):
     if fim_valido:
@@ -98,9 +147,10 @@ def inferir_equipamento(problema, descricao):
     fonte = problema or descricao
     m = re.search(
         r"(INV-\d+|Inversor\s+\d+|Tracker\s+\d+|Motor[\w\s/TCU]*\d+|"
-        r"Câmera[\w\s]*|NVR|GCU|Relé[\w\s]*|Chave[\w\s]+|"
+        r"Câmera[\w\s]*|NVR|GCU|Relé[\w\s]*|Chave[\w\s]+|RSU|"
         r"Piranometro[\w\s]+|Fieldlogger|Anemômetro|Exaustor[\w\s]*|"
-        r"Nobreak[\w\s]*|EP\d+|Igate[\w\s]*)",
+        r"Nobreak[\w\s]*|EP\d+|Igate[\w\s]*|Otimizador[\w\s]*|"
+        r"Fieldlogger|TCU[\w\s]*|Bateria[\w\s]*|String[\w\s]*)",
         fonte, re.IGNORECASE
     )
     if m:
@@ -108,7 +158,7 @@ def inferir_equipamento(problema, descricao):
     m2 = re.search(r"([A-Za-zÀ-ÿ]+)\s+(?:\w+\s+)?(\d+)\s*$", fonte)
     if m2:
         return f"{m2.group(1).capitalize()} {m2.group(2)}"
-    return (fonte[:60] if fonte else "")
+    return fonte[:60] if fonte else ""
 
 def separar_ocorrencias(texto):
     partes = re.split(r"(?=🔴|🟡|🟢|🟠)", texto)
@@ -117,6 +167,11 @@ def separar_ocorrencias(texto):
 def parse_mensagem(texto):
     c = {k: extrair(texto, p) for k, p in PADROES.items()}
     if not c["usina"]:
+        return None
+
+    # Verifica se é uma usina permitida
+    if not usina_permitida(c["usina"]):
+        log.info(f"⚪ Usina não permitida, ignorando: {c['usina']}")
         return None
 
     equip = c["equipamento"] if not vazio(c["equipamento"]) else inferir_equipamento(c["problema"], c["descricao"])
@@ -130,12 +185,12 @@ def parse_mensagem(texto):
     if not vazio(sup): partes_acao.append(f"Supervisor: {sup}")
 
     fim_valido = not vazio(c["fim"])
-    status = normalizar_status(c.get("status", ""), fim_valido)
+    status = normalizar_status("", fim_valido)
 
+    # Histórico no padrão DD/MM - texto
     hoje = datetime.now().strftime("%d/%m")
     hist = []
     if not vazio(c["inicio"]):
-        # Extrai só DD/MM da data de início
         m_data = re.search(r"(\d{2}/\d{2})", c["inicio"])
         data_fmt = m_data.group(1) if m_data else hoje
         hist.append(f"{data_fmt} - Registro inicial")
@@ -143,24 +198,27 @@ def parse_mensagem(texto):
         hist.append(f"{hoje} - Registro inicial")
     if not vazio(c["acao"]):
         hist.append(f"{hoje} - {c['acao']}")
+    if fim_valido:
+        m_data = re.search(r"(\d{2}/\d{2})", c["fim"])
+        data_fmt = m_data.group(1) if m_data else hoje
+        hist.append(f"{data_fmt} - Ocorrência encerrada")
 
     return {
-        "cliente":     inferir_cliente(c["usina"]),
-        "usina":       c["usina"],
-        "equipamento": equip,
-        "falha":       c["problema"] or c["descricao"],
-        "causa":       causa,
+        "cliente":      inferir_cliente(c["usina"]),
+        "usina":        c["usina"],
+        "equipamento":  equip,
+        "falha":        c["problema"] or c["descricao"],
+        "causa":        causa,
         "equip_impact": equip,
-        "acao":        " | ".join(partes_acao),
-        "status":      status,
-        "historico":   "\n".join(hist),
+        "acao":         " | ".join(partes_acao),
+        "status":       status,
+        "historico":    "\n".join(hist),
     }
 
 
 # ── Google Sheets ─────────────────────────────────────────────────────────────
 
 def get_sheet():
-    """Conecta ao Google Sheets via Service Account."""
     creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS_JSON não configurado")
@@ -174,11 +232,10 @@ def get_sheet():
     return gc.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
 def proximo_id_e_linha(ws):
-    """Retorna (próximo_id, próxima_linha) baseado nos dados existentes."""
     todos = ws.get_all_values()
     maior_id = 0
-    ultima_linha_dados = 1  # linha 1 = cabeçalho
-    for i, row in enumerate(todos[1:], start=2):  # pula cabeçalho
+    ultima_linha_dados = 1
+    for i, row in enumerate(todos[1:], start=2):
         if row and row[0] and str(row[0]).strip():
             ultima_linha_dados = i
             try:
@@ -188,31 +245,30 @@ def proximo_id_e_linha(ws):
     return maior_id + 1, ultima_linha_dados + 1
 
 def gravar_ocorrencia(dados):
-    """Grava uma linha nova na planilha."""
     ws = get_sheet()
     novo_id, proxima_linha = proximo_id_e_linha(ws)
 
-    # Ordem exata das colunas da planilha:
+    # Ordem exata das colunas:
     # A=ID | B=Cliente | C=Usina | D=Equipamento | E=Falha | F=Causa
     # G=Equipamentos impactados | H=Ação | I=Status atual
     # J=Ticket Fabricante | K=Número da OS | L=Histórico Cronológico
     linha = [
-        novo_id,            # A - ID
-        dados["cliente"],   # B - Cliente
-        dados["usina"],     # C - Usina
-        dados["equipamento"],  # D - Equipamento
-        dados["falha"],     # E - Falha
-        dados["causa"],     # F - Causa
-        dados["equip_impact"],  # G - Equipamentos impactados
-        dados["acao"],      # H - Ação
-        dados["status"],    # I - Status atual
-        "",                 # J - Ticket Fabricante (vazio, preencher manualmente)
-        "",                 # K - Número da OS (vazio, preencher manualmente)
-        dados["historico"], # L - Histórico Cronológico
+        novo_id,
+        dados["cliente"],
+        dados["usina"],
+        dados["equipamento"],
+        dados["falha"],
+        dados["causa"],
+        dados["equip_impact"],
+        dados["acao"],
+        dados["status"],
+        "",                  # J - Ticket Fabricante (preencher manualmente)
+        "",                  # K - Número da OS (preencher manualmente)
+        dados["historico"],  # L - Histórico Cronológico
     ]
 
     ws.insert_row(linha, proxima_linha)
-    log.info(f"✅ Gravado ID={novo_id} | {dados['usina']} — {dados['equipamento']} na linha {proxima_linha}")
+    log.info(f"✅ ID={novo_id} | {dados['usina']} — {dados['equipamento']} | linha {proxima_linha}")
     return novo_id
 
 
@@ -220,33 +276,26 @@ def gravar_ocorrencia(dados):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Recebe eventos da Evolution API."""
     try:
         payload = request.get_json(force=True)
         if not payload:
             return jsonify({"status": "ignored", "reason": "empty payload"}), 200
 
-        # Valida secret opcional
         if WEBHOOK_SECRET:
             secret = request.headers.get("X-Webhook-Secret", "")
             if secret != WEBHOOK_SECRET:
                 return jsonify({"error": "unauthorized"}), 401
 
         evento = payload.get("event", "")
-        log.info(f"Evento recebido: {evento}")
-
-        # Só processa mensagens recebidas
         if evento not in ("messages.upsert", "MESSAGES_UPSERT"):
             return jsonify({"status": "ignored", "event": evento}), 200
 
         data = payload.get("data", {})
         msg_obj = data if "message" in data else payload
 
-        # Ignora mensagens próprias
         if msg_obj.get("key", {}).get("fromMe"):
             return jsonify({"status": "ignored", "reason": "own message"}), 200
 
-        # Extrai texto
         message = msg_obj.get("message", {})
         texto = (
             message.get("conversation")
@@ -257,7 +306,6 @@ def webhook():
         if not texto:
             return jsonify({"status": "ignored", "reason": "no text"}), 200
 
-        # Filtra por grupos se configurado
         remote_jid = msg_obj.get("key", {}).get("remoteJid", "")
         eh_grupo = "@g.us" in remote_jid
         if not eh_grupo:
@@ -267,28 +315,26 @@ def webhook():
             if not any(g.strip() in remote_jid for g in GRUPOS_FILTRO):
                 return jsonify({"status": "ignored", "reason": "group not in filter"}), 200
 
-        # Processa ocorrências na mensagem
-        ocorrencias = separar_ocorrencias(texto)
-        if not ocorrencias:
-            # Tenta a mensagem inteira como uma única ocorrência
-            ocorrencias = [texto]
-
+        ocorrencias = separar_ocorrencias(texto) or [texto]
         gravados = []
+        ignorados = []
+
         for bloco in ocorrencias:
             dados = parse_mensagem(bloco)
             if dados:
                 novo_id = gravar_ocorrencia(dados)
-                gravados.append({"id": novo_id, "usina": dados["usina"], "equipamento": dados["equipamento"]})
+                gravados.append({"id": novo_id, "usina": dados["usina"]})
+            else:
+                ignorados.append("não é falha ou usina não permitida")
 
         if gravados:
             log.info(f"✅ {len(gravados)} ocorrência(s) gravada(s): {gravados}")
             return jsonify({"status": "ok", "gravados": gravados}), 200
-        else:
-            log.info("⚪ Mensagem recebida mas não é uma ocorrência de falha")
-            return jsonify({"status": "ignored", "reason": "not a failure message"}), 200
+
+        return jsonify({"status": "ignored", "reason": "no valid failures found"}), 200
 
     except Exception as e:
-        log.error(f"❌ Erro no webhook: {e}", exc_info=True)
+        log.error(f"❌ Erro: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -299,7 +345,6 @@ def health():
 
 @app.route("/test", methods=["POST"])
 def test_parse():
-    """Endpoint para testar o parse sem gravar na planilha."""
     payload = request.get_json(force=True) or {}
     texto = payload.get("texto", "")
     ocorrencias = separar_ocorrencias(texto) or [texto]
