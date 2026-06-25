@@ -271,8 +271,8 @@ def gravar_ocorrencia(dados):
         dados["historico"],  # L - Histórico Cronológico
     ]
 
-    ws.insert_row(linha, proxima_linha)
-    log.info(f"✅ ID={novo_id} | {dados['usina']} — {dados['equipamento']} | linha {proxima_linha}")
+    ws.append_row(linha, value_input_option="USER_ENTERED")
+    log.info(f"✅ ID={novo_id} | {dados['usina']} — {dados['equipamento']}")
     return novo_id
 
 
