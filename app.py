@@ -936,7 +936,7 @@ def verificar_rondas():
             if secret != WEBHOOK_SECRET:
                 return jsonify({"error": "unauthorized"}), 401
 
-        horas = int(payload.get("horas", 24))
+        horas = int(payload.get("horas", 6))  # padrão: últimas 6 horas
 
         # Busca histórico de mensagens via Baileys/WPPConnect
         # O servidor de WhatsApp deve estar rodando e expor /messages
