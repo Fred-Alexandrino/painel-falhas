@@ -32,6 +32,10 @@ CLIENTE_POR_USINA = {
     "nova xavantina i": "RENOGRID", "nova xavantina 1": "RENOGRID",
     "nova xavantina ii": "RENOGRID", "nova xavantina 2": "RENOGRID",
     "nova xavantina": "RENOGRID",
+    # Aliases curtos sem "nova" (ex: "Xavantina 1", "Xavantina 2")
+    "xavantina i": "RENOGRID", "xavantina 1": "RENOGRID",
+    "xavantina ii": "RENOGRID", "xavantina 2": "RENOGRID",
+    "xavantina": "RENOGRID",
     "colíder i": "RENOGRID", "colider i": "RENOGRID",
     "colíder 1": "RENOGRID", "colider 1": "RENOGRID",
     "colíder ii": "RENOGRID", "colider ii": "RENOGRID",
@@ -83,33 +87,118 @@ STATUS_VALIDOS = {
     "aguardando equipamento": "Aguardando Equipamento",
 }
 
-# ── Padrões de extração ───────────────────────────────────────────────────────
+# ── Padrões de extração (cobre todas as variações conhecidas de formato) ─────
+# Prefixos comuns de campo: *, ·, -, –, espaço
+_P = r"^[\s*·\-–]*"  # prefixo de campo (início de linha)
+
 PADROES = {
-    "usina":          re.compile(r"(?:🔴|🟡|🟢|🟠|✅|⏸️)?[\s🛠️]*(?:DESVIO:?\s*)?Usina:?[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "problema":       re.compile(r"Probl[eo]ma[s]?:[ \t]*([^\n\r]+)",                re.IGNORECASE),
-    "descricao":      re.compile(r"Descri(?:ção|cao|çao|ção)[^:]*:[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "acao":           re.compile(r"Ação:[ \t]*([^\n\r]+)",                            re.IGNORECASE),
-    "equipe":         re.compile(r"Equipe[:\s]+(?:Acionada:?)?[ \t]*([^\n\r]+)",     re.IGNORECASE),
-    "supervisor":     re.compile(r"Supervisor[:\s]+(?:Acionado:?)?[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "inicio":         re.compile(r"In[ií]ci[oo][ \t]+(?:d[ao][ \t]+)?[Oo]corrên?cia:[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "fim":            re.compile(r"(?:Fim|Término)[ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]*)", re.IGNORECASE),
-    "os":             re.compile(r"N[ºo°]?\.?[ \t]*da[ \t]*OS:?[ \t]*([^\n\r]+)",   re.IGNORECASE),
-    "impacto":        re.compile(r"Impacto:[ \t]*([^\n\r]+)",                          re.IGNORECASE),
-    "equipamento":    re.compile(r"^\*?·?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
-    "causa":          re.compile(r"^\*?·?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
-    "tipo_manut":     re.compile(r"Tipo Manutenção[^:]*:[ \t]*([^\n\r]+)",           re.IGNORECASE),
-    "identificacao":  re.compile(r"identificação:[ \t]*([^\n\r]+)",                   re.IGNORECASE),
-    "equip_problema": re.compile(r"Equipamentos com Problema:[ \t]*([^\n\r]+)",       re.IGNORECASE),
-    # ── Campos do formato Cos Grid (bullets ·) ──────────────────────────────
-    "cos_problema":   re.compile(r"·\s*Problema:[ \t]*([^\n\r]+)",                   re.IGNORECASE),
-    "cos_descricao":  re.compile(r"·\s*Descri[çc][aã]o:[ \t]*([^\n\r]+)",           re.IGNORECASE),
-    "cos_impacto":    re.compile(r"·\s*Impacto:[ \t]*([^\n\r]+)",                    re.IGNORECASE),
-    "cos_acao":       re.compile(r"·\s*A[çc][aã]o:[ \t]*([^\n\r]+)",                re.IGNORECASE),
-    "cos_equipe":     re.compile(r"·\s*Equipe Acionada:[ \t]*([^\n\r]+)",            re.IGNORECASE),
-    "cos_supervisor": re.compile(r"·\s*Supervisor Acionado:[ \t]*([^\n\r]+)",        re.IGNORECASE),
-    "cos_inicio":     re.compile(r"·\s*In[ií]cio da [Oo]corrência:[ \t]*([^\n\r]+)",re.IGNORECASE),
-    "cos_fim":        re.compile(r"·\s*Fim da [Oo]corrência:[ \t]*([^\n\r]*)",       re.IGNORECASE),
-    "cos_os":         re.compile(r"·\s*N[ºo°]\.?[ \t]*da[ \t]*OS:?[ \t]*([^\n\r]+)",re.IGNORECASE),
+    # Usina: extrai apenas de linhas com marcadores explícitos (Usina:, DESVIO:, emoji)
+    # Não extrai de linhas genéricas para evitar falsos positivos
+    "usina": re.compile(
+        r"^(?:(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)[\s]*)?(?:DESVIO:[\s]*|UFV[\s]+DESVIO:[\s]*)?(?:UFV[\s]+)?Usina:?[\s]*([^\n\r*·:]{2,60}?)\s*$",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Problema: "Problema:", "Problemas:", "Problem:", com qualquer prefixo
+    "problema": re.compile(
+        _P + r"Probl[eo]ma[s]?(?:\s+do\s+\w+)?:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Descrição: múltiplas grafias e sufixos
+    "descricao": re.compile(
+        _P + r"Descri(?:ção|cao|çao|ção|c[aã]o)?(?:\s+d[oa]s?\s+\w+)?:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Ação: "Ação:", "Acao:", "Ações:"
+    "acao": re.compile(
+        _P + r"A[çc][aã]o(?:es)?:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Equipe: "Equipe Acionada:", "Equipe:", "Técnico Acionado:"
+    "equipe": re.compile(
+        _P + r"(?:Equipe[:\s]+(?:Acionada:?)?|T[eé]cnico\s+Acionado:)[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Supervisor: "Supervisor Acionado:", "Supervisor:"
+    "supervisor": re.compile(
+        _P + r"Supervisor[:\s]+(?:Acionado:?)?[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Início: múltiplas grafias ("Início Ocorrência:", "Inicio da Ocorrência:", etc.)
+    "inicio": re.compile(
+        _P + r"In[ií]ci[oo](?:[\s]+(?:d[ao][\s]+)?[Oo]corrên?cia)?:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Fim: "Fim Ocorrência:", "Fim da Ocorrência:", "Término:"
+    "fim": re.compile(
+        _P + r"(?:Fim|T[eé]rmino)(?:[\s]+(?:d[ao][\s]+)?[Oo]corrên?cia)?:[ \t]*([^\n\r]*)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # OS: "Nº da OS:", "N° OS:", "OS:", "Nº OS:", "N.º da OS:"
+    "os": re.compile(
+        _P + r"N[ºo°]?\.?[\s]*(?:da[\s]+)?OS:?[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Impacto: "Impacto:", "Impactos:"
+    "impacto": re.compile(
+        _P + r"Impacto[s]?:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Equipamento: "Equipamento:", "Equipamentos:"
+    "equipamento": re.compile(
+        _P + r"Equipamento[s]?[^:\n]*:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Causa: "Causa:", "Causa da Falha:"
+    "causa": re.compile(
+        _P + r"Causa[^:\n]*:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Chamado concessionária
+    "chamado_conc": re.compile(
+        _P + r"Chamado\s+Concession[aá]ria:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Tipo de manutenção
+    "tipo_manut": re.compile(
+        _P + r"Tipo\s+Manuten[çc][aã]o[^:]*:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Identificação (formato tracker)
+    "identificacao": re.compile(
+        _P + r"[Ii]dentifica[çc][aã]o:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # Equipamentos com problema (formato tracker)
+    "equip_problema": re.compile(
+        _P + r"Equipamentos\s+com\s+Problema:[ \t]*([^\n\r]+)",
+        re.IGNORECASE | re.MULTILINE
+    ),
+
+    # ── Campos do formato Cos Grid (bullets ·) ────────────────────────────
+    "cos_problema":   re.compile(r"·\s*Probl[eo]ma[s]?:[ \t]*([^\n\r]+)",           re.IGNORECASE),
+    "cos_descricao":  re.compile(r"·\s*Descri[çc][aã]o[^:]*:[ \t]*([^\n\r]+)",      re.IGNORECASE),
+    "cos_impacto":    re.compile(r"·\s*Impacto[s]?:[ \t]*([^\n\r]+)",               re.IGNORECASE),
+    "cos_acao":       re.compile(r"·\s*A[çc][aã]o(?:es)?:[ \t]*([^\n\r]+)",         re.IGNORECASE),
+    "cos_equipe":     re.compile(r"·\s*(?:Equipe\s+Acionada|T[eé]cnico\s+Acionado):[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "cos_supervisor": re.compile(r"·\s*Supervisor(?:\s+Acionado)?:[ \t]*([^\n\r]+)",re.IGNORECASE),
+    "cos_inicio":     re.compile(r"·\s*In[ií]ci[oo](?:\s+da\s+[Oo]corrência)?:[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "cos_fim":        re.compile(r"·\s*(?:Fim|T[eé]rmino)(?:\s+da\s+[Oo]corrência)?:[ \t]*([^\n\r]*)", re.IGNORECASE),
+    "cos_os":         re.compile(r"·\s*N[ºo°]\.?[\s]*(?:da[\s]+)?OS:?[ \t]*([^\n\r]+)", re.IGNORECASE),
 }
 
 # ── Detecção de formato Cos Grid ─────────────────────────────────────────────
@@ -169,9 +258,13 @@ def extrair_tecnico(s):
     return re.sub(r"@", "", s).strip()
 
 def limpar_nome(s):
-    """Remove 'Sim,' e '@' de nomes de técnicos/supervisores."""
+    """Remove 'Sim,', '@', '~' e prefixos comuns de nomes de técnicos/supervisores."""
     s = re.sub(r"^[Ss]im[,\s]+", "", s).strip()
-    s = re.sub(r"@", "", s).strip()
+    s = re.sub(r"[@~]", "", s).strip()
+    # Remove sufixos como "| Elias Fausto" ou "| Grid Co."
+    s = re.sub(r"\s*\|.*$", "", s).strip()
+    # Remove "Técnico" prefix se vier antes do nome
+    s = re.sub(r"^[Tt][eé]cnico\s+", "", s).strip()
     return s
 
 _REGEX_EQUIP = re.compile(
@@ -275,10 +368,11 @@ def parse_bloco_cos_grid(bloco):
 
     # Limpa nome da usina — remove emojis, pipes, sufixos como "| NORMALIZADA | Trip 59B"
     usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", usina_raw).strip()
-    # Remove tudo após "|" ou "-" quando seguido de NORMALIZ*, OK, TRIP, etc.
     usina = re.sub(r"\s*\|.*$", "", usina, flags=re.IGNORECASE).strip()
     usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\w*).*$", "", usina, flags=re.IGNORECASE).strip()
     usina = usina.rstrip(".,:-|").strip()
+    usina = re.sub(r"^(?:UFV\s+|DESVIO:\s*)", "", usina, flags=re.IGNORECASE).strip()
+    usina = usina.rstrip(":").strip()
 
     # Detecta normalização já no campo usina_raw (ex: "Crateus | NORMALIZADA | Trip 59B")
     normalizar_usina = bool(re.search(r"NORMALIZ", usina_raw, re.IGNORECASE))
@@ -438,17 +532,18 @@ def equipamento_match(equip_planilha, equip_busca):
 def separar_blocos(texto):
     # Detecta formato Cos Grid — mensagem inteira é um bloco
     if eh_formato_cos_grid(texto):
-        # Tenta separar múltiplas ocorrências por "Usina:" no formato Cos Grid
         partes = re.split(r"(?=(?:^|\n)Usina:)", texto, flags=re.MULTILINE | re.IGNORECASE)
         blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 20]
         return blocos if blocos else [texto]
 
-    # Formato original com emojis
+    # Formato original — separa por emoji de status no início de linha
+    # Aceita: 🔴, 🟡, 🟢, 🟠, ✅, ⏸️ seguidos de qualquer texto (Usina:, DESVIO:, etc.)
     partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️))", texto, flags=re.MULTILINE)
     blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 30]
 
     if len(blocos) <= 1:
-        partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)?[ \t]*(?:DESVIO:?\s*)?Usina:)", texto, flags=re.MULTILINE | re.IGNORECASE)
+        # Tenta separar por "Usina:" como separador
+        partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)?[ \t]*(?:DESVIO:?\s*)?(?:Usina|UFV):)", texto, flags=re.MULTILINE | re.IGNORECASE)
         blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 30]
 
     return blocos if blocos else [texto]
@@ -465,6 +560,15 @@ def parse_bloco(bloco):
     # Formato original
     c = {k: extrair(bloco, p) for k, p in PADROES.items()}
 
+    # Para formato DESVIO (🟡 DESVIO: Elias Fausto), extrai usina da primeira linha
+    if not c["usina"] or len(c["usina"]) > 60:
+        primeira = bloco.split('\n')[0].strip()
+        m_desvio = re.search(r'(?:🔴|🟡|🟢|🟠|✅|⏸️)?\s*(?:DESVIO:\s*|Usina:\s*)?(?:UFV\s+)?(.+?)[\s:*]*$', primeira, re.IGNORECASE)
+        if m_desvio:
+            candidato = m_desvio.group(1).strip().rstrip(':*').strip()
+            if candidato and len(candidato) < 60:
+                c["usina"] = candidato
+
     if not c["usina"]:
         return None
 
@@ -472,6 +576,18 @@ def parse_bloco(bloco):
     usina = re.sub(r"\s*\|.*$", "", usina, flags=re.IGNORECASE).strip()
     usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\w*).*$", "", usina, flags=re.IGNORECASE).strip()
     usina = usina.rstrip(".,:-|").strip()
+    # Remove prefixo "UFV " e "DESVIO: " e "UFV " etc
+    usina = re.sub(r"^(?:UFV\s+|DESVIO:\s*|UFV\s*DESVIO:\s*)", "", usina, flags=re.IGNORECASE).strip()
+    usina = usina.rstrip(":").strip()
+    # Expande aliases curtos → nomes completos padronizados
+    # Xavantina 1/2 → Nova Xavantina I/II (com ou sem "UFV " na frente)
+    usina = re.sub(r"^(?:UFV\s+)?[Xx]avantina\s+[1I]$", "Nova Xavantina I", usina)
+    usina = re.sub(r"^(?:UFV\s+)?[Xx]avantina\s+(?:2|II)$", "Nova Xavantina II", usina)
+    # Colíder 1/2 → Colíder I/II
+    usina = re.sub(r"^Col[ií]der\s+[1I]$", "Colíder I", usina, flags=re.IGNORECASE)
+    usina = re.sub(r"^Col[ií]der\s+(?:2|II)$", "Colíder II", usina, flags=re.IGNORECASE)
+    # Remove "UFV " residual que possa ter sobrado
+    usina = re.sub(r"^UFV\s+", "", usina, flags=re.IGNORECASE).strip()
     usina = re.sub(r"\s+1[Aa]$", " 1", usina)
     usina = re.sub(r"\s+1[Bb]$", " 2", usina)
     usina = re.sub(r"\s+[Ii][Aa]$", " 1", usina)
@@ -798,6 +914,105 @@ def webhook():
     except Exception as e:
         log.error(f"❌ Erro: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/rondas", methods=["POST"])
+def verificar_rondas():
+    """
+    Busca as últimas mensagens de ronda nos grupos configurados
+    e processa as que ainda não foram gravadas na planilha.
+
+    Body esperado (opcional):
+    {
+      "horas": 24,        // quantas horas para trás buscar (padrão: 24)
+      "reprocessar": false // força reprocessar mesmo se já gravado
+    }
+    """
+    try:
+        payload = request.get_json(force=True) or {}
+
+        if WEBHOOK_SECRET:
+            secret = request.headers.get("X-Webhook-Secret", "")
+            if secret != WEBHOOK_SECRET:
+                return jsonify({"error": "unauthorized"}), 401
+
+        horas = int(payload.get("horas", 24))
+
+        # Busca histórico de mensagens via Baileys/WPPConnect
+        # O servidor de WhatsApp deve estar rodando e expor /messages
+        WPP_URL = os.environ.get("WPP_SERVER_URL", "")
+        if not WPP_URL:
+            return jsonify({
+                "ok": False,
+                "error": "WPP_SERVER_URL não configurado",
+                "hint": "Configure a variável de ambiente WPP_SERVER_URL com a URL do servidor WhatsApp"
+            }), 400
+
+        import urllib.request, time
+        agora   = int(time.time())
+        desde   = agora - (horas * 3600)
+
+        grupos_ids = [g.strip() for g in GRUPOS_FILTRO if g.strip()]
+        if not grupos_ids:
+            return jsonify({"ok": False, "error": "GRUPOS_IDS não configurado"}), 400
+
+        resultado_total = {"novos": [], "atualizados": [], "normalizados": [], "ignorados": 0, "grupos": []}
+
+        for grupo_id in grupos_ids:
+            try:
+                # Busca mensagens do grupo
+                url = f"{WPP_URL}/api/messages/{grupo_id}?limit=200&sinceTimestamp={desde}"
+                req = urllib.request.Request(url, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    msgs_data = json.loads(resp.read().decode())
+
+                mensagens = msgs_data.get("messages", msgs_data if isinstance(msgs_data, list) else [])
+                log.info(f"[Rondas] Grupo {grupo_id}: {len(mensagens)} mensagens")
+
+                for msg in mensagens:
+                    texto = (
+                        msg.get("message", {}).get("conversation") or
+                        msg.get("message", {}).get("extendedTextMessage", {}).get("text") or
+                        msg.get("body") or
+                        msg.get("text") or ""
+                    )
+                    if not texto:
+                        continue
+
+                    # Filtra apenas mensagens de ronda/ocorrência
+                    tem_usina  = bool(re.search(r"Usina:", texto, re.IGNORECASE))
+                    tem_emoji  = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
+                    tem_desvio = bool(re.search(r"DESVIO:", texto, re.IGNORECASE))
+                    tem_bullet = eh_formato_cos_grid(texto)
+
+                    if not (tem_usina or tem_emoji or tem_desvio or tem_bullet):
+                        continue
+
+                    try:
+                        res = processar_texto(texto)
+                        resultado_total["novos"]       += res.get("novos", [])
+                        resultado_total["atualizados"] += res.get("atualizados", [])
+                        resultado_total["normalizados"]+= res.get("normalizados", [])
+                        resultado_total["ignorados"]   += res.get("ignorados", 0)
+                    except Exception as e:
+                        log.error(f"[Rondas] Erro ao processar mensagem: {e}")
+
+                resultado_total["grupos"].append({
+                    "id": grupo_id,
+                    "mensagens_lidas": len(mensagens),
+                })
+
+            except Exception as e:
+                log.error(f"[Rondas] Erro ao buscar grupo {grupo_id}: {e}")
+                resultado_total["grupos"].append({"id": grupo_id, "erro": str(e)})
+
+        total = len(resultado_total["novos"]) + len(resultado_total["atualizados"]) + len(resultado_total["normalizados"])
+        log.info(f"[Rondas] Concluído: {total} ações")
+        return jsonify({"ok": True, **resultado_total}), 200
+
+    except Exception as e:
+        log.error(f"[Rondas] Erro geral: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/health", methods=["GET"])
