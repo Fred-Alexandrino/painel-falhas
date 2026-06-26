@@ -7,6 +7,7 @@ Suporta:
 - Mensagens individuais de ocorrência (🔴/🟡/🟢)
 - Mensagens de normalização (✅ + "NORMALIZADO")
 - Rondas diárias completas (múltiplas ocorrências em uma mensagem)
+- Formato Cos Grid com bullets (·) sem emojis
 """
 
 import os, re, json, logging
@@ -84,35 +85,61 @@ STATUS_VALIDOS = {
 
 # ── Padrões de extração ───────────────────────────────────────────────────────
 PADROES = {
-    "usina":       re.compile(r"(?:🔴|🟡|🟢|🟠|✅|⏸️)?[\s🛠️]*(?:DESVIO:?\s*)?Usina:?[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "problema":    re.compile(r"Probl[eo]ma[s]?:[ \t]*([^\n\r]+)",              re.IGNORECASE),
-    "descricao":   re.compile(r"Descri(?:ção|cao|çao|ção)[^:]*:[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "acao":        re.compile(r"Ação:[ \t]*([^\n\r]+)",                          re.IGNORECASE),
-    "equipe":      re.compile(r"Equipe Acionada:[ \t]*([^\n\r]+)",               re.IGNORECASE),
-    "supervisor":  re.compile(r"Supervisor Acionado:[ \t]*([^\n\r]+)",           re.IGNORECASE),
-    "inicio":      re.compile(r"In[ií]ci[oo][ \t]+(?:d[ao][ \t]+)?[Oo]corrên?cia:[ \t]*([^\n\r]+)", re.IGNORECASE),
-    "fim":         re.compile(r"(?:Fim|Término)[ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]*)", re.IGNORECASE),
-    "os":          re.compile(r"N[ºo°][ \t]*da[ \t]*OS:[ \t]*([^\n\r]+)",       re.IGNORECASE),
-    "impacto":     re.compile(r"Impacto:[ \t]*([^\n\r]+)",                         re.IGNORECASE),
-    "equipamento": re.compile(r"^\*?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
-    "causa":       re.compile(r"^\*?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
-    "tipo_manut":  re.compile(r"Tipo Manutenção[^:]*:[ \t]*([^\n\r]+)",         re.IGNORECASE),
-    "identificacao": re.compile(r"identificação:[ \t]*([^\n\r]+)",               re.IGNORECASE),
-    "equip_problema": re.compile(r"Equipamentos com Problema:[ \t]*([^\n\r]+)",  re.IGNORECASE),
+    "usina":          re.compile(r"(?:🔴|🟡|🟢|🟠|✅|⏸️)?[\s🛠️]*(?:DESVIO:?\s*)?Usina:?[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "problema":       re.compile(r"Probl[eo]ma[s]?:[ \t]*([^\n\r]+)",                re.IGNORECASE),
+    "descricao":      re.compile(r"Descri(?:ção|cao|çao|ção)[^:]*:[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "acao":           re.compile(r"Ação:[ \t]*([^\n\r]+)",                            re.IGNORECASE),
+    "equipe":         re.compile(r"Equipe[:\s]+(?:Acionada:?)?[ \t]*([^\n\r]+)",     re.IGNORECASE),
+    "supervisor":     re.compile(r"Supervisor[:\s]+(?:Acionado:?)?[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "inicio":         re.compile(r"In[ií]ci[oo][ \t]+(?:d[ao][ \t]+)?[Oo]corrên?cia:[ \t]*([^\n\r]+)", re.IGNORECASE),
+    "fim":            re.compile(r"(?:Fim|Término)[ \t]+(?:d[ao][ \t]+)?[Oo]corrência:[ \t]*([^\n\r]*)", re.IGNORECASE),
+    "os":             re.compile(r"N[ºo°]?\.?[ \t]*da[ \t]*OS:?[ \t]*([^\n\r]+)",   re.IGNORECASE),
+    "impacto":        re.compile(r"Impacto:[ \t]*([^\n\r]+)",                          re.IGNORECASE),
+    "equipamento":    re.compile(r"^\*?·?[ \t]*Equipamento[^:\n]*:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
+    "causa":          re.compile(r"^\*?·?[ \t]*Causa[^:\n]*:[ \t]*([^\n\r]+)",       re.IGNORECASE | re.MULTILINE),
+    "tipo_manut":     re.compile(r"Tipo Manutenção[^:]*:[ \t]*([^\n\r]+)",           re.IGNORECASE),
+    "identificacao":  re.compile(r"identificação:[ \t]*([^\n\r]+)",                   re.IGNORECASE),
+    "equip_problema": re.compile(r"Equipamentos com Problema:[ \t]*([^\n\r]+)",       re.IGNORECASE),
+    # ── Campos do formato Cos Grid (bullets ·) ──────────────────────────────
+    "cos_problema":   re.compile(r"·\s*Problema:[ \t]*([^\n\r]+)",                   re.IGNORECASE),
+    "cos_descricao":  re.compile(r"·\s*Descri[çc][aã]o:[ \t]*([^\n\r]+)",           re.IGNORECASE),
+    "cos_impacto":    re.compile(r"·\s*Impacto:[ \t]*([^\n\r]+)",                    re.IGNORECASE),
+    "cos_acao":       re.compile(r"·\s*A[çc][aã]o:[ \t]*([^\n\r]+)",                re.IGNORECASE),
+    "cos_equipe":     re.compile(r"·\s*Equipe Acionada:[ \t]*([^\n\r]+)",            re.IGNORECASE),
+    "cos_supervisor": re.compile(r"·\s*Supervisor Acionado:[ \t]*([^\n\r]+)",        re.IGNORECASE),
+    "cos_inicio":     re.compile(r"·\s*In[ií]cio da [Oo]corrência:[ \t]*([^\n\r]+)",re.IGNORECASE),
+    "cos_fim":        re.compile(r"·\s*Fim da [Oo]corrência:[ \t]*([^\n\r]*)",       re.IGNORECASE),
+    "cos_os":         re.compile(r"·\s*N[ºo°]\.?[ \t]*da[ \t]*OS:?[ \t]*([^\n\r]+)",re.IGNORECASE),
 }
+
+# ── Detecção de formato Cos Grid ─────────────────────────────────────────────
+def eh_formato_cos_grid(texto):
+    """
+    Detecta mensagens no formato Cos Grid (bullets ·, sem emojis de status).
+    Exemplo:
+      Usina: Crateús
+      · Problema: Usina desligada
+      · Descrição: ...
+      · Equipe Acionada: Sim, Railson
+      · Supervisor Acionado: Sim, Fred
+      · Início da Ocorrência: 26/06/2026 08:18
+      · Nº da OS: 8491
+    """
+    tem_bullet = bool(re.search(r"·\s*(?:Problema|Descrição|Impacto|Ação|Equipe|Supervisor|Início|Fim|Nº)", texto, re.IGNORECASE))
+    tem_usina  = bool(re.search(r"Usina:", texto, re.IGNORECASE))
+    return tem_bullet and tem_usina
 
 
 # ── Helpers de texto ──────────────────────────────────────────────────────────
 
 def extrair(texto, padrao):
     m = padrao.search(texto)
-    return m.group(1).strip().lstrip("*").strip() if m else ""
+    return m.group(1).strip().lstrip("*·").strip() if m else ""
 
 def vazio(v):
     return not v or str(v).strip() in ("", "--", "-", "N/A", "n/a", "não", "nao", "Não")
 
 def normalizar_texto(t):
-    """Remove acentos e converte para minúsculo para comparação."""
     import unicodedata
     return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode("ascii").strip()
 
@@ -141,7 +168,12 @@ def extrair_tecnico(s):
     s = re.sub(r"^[Ss]im[,\s]*", "", s).strip()
     return re.sub(r"@", "", s).strip()
 
-# Regex completa para identificar equipamentos em qualquer campo da mensagem
+def limpar_nome(s):
+    """Remove 'Sim,' e '@' de nomes de técnicos/supervisores."""
+    s = re.sub(r"^[Ss]im[,\s]+", "", s).strip()
+    s = re.sub(r"@", "", s).strip()
+    return s
+
 _REGEX_EQUIP = re.compile(
     r"(?<![\w-])("
     r"INV-\d+|"
@@ -175,12 +207,9 @@ def _limpar_equipamento(equip):
     equip = re.sub(r"(?<=[Mm]otor\s)0+(\d)", r"\1", equip)
     if equip:
         equip = equip[0].upper() + equip[1:]
-    for tipo in [r"Rel[eé]\s+\w+", r"Nobreak\s+\w+", r"ETM", r"Igate\s*\w*"]:
-        equip = re.sub(rf"({tipo})\s+(?:com|de|para|que|na|no|em)\s+.*", r"\1", equip, flags=re.IGNORECASE)
     return equip.strip()
 
 def inferir_equipamento(problema="", descricao="", identificacao="", equip_problema="", acao="", impacto=""):
-    """Extrai equipamento buscando em todos os campos na ordem de prioridade."""
     for texto in [identificacao, problema, descricao, impacto, acao, equip_problema]:
         if not texto or str(texto).strip() in ("", "--", "-", "N/A"):
             continue
@@ -194,7 +223,6 @@ def eh_normalizacao(texto):
     return bool(re.search(r"normalizado|normalizada|✅.*normal", texto, re.IGNORECASE))
 
 def detectar_status_emoji(bloco):
-    """Detecta o status pelo emoji do bloco."""
     if re.search(r"✅", bloco):
         if eh_normalizacao(bloco):
             return "normalizado"
@@ -206,44 +234,147 @@ def detectar_status_emoji(bloco):
     return "Em Aberto"
 
 def extrair_data_fmt(texto_data, fallback):
-    """Extrai DD/MM de uma string de data."""
     if vazio(texto_data):
         return fallback
     m = re.search(r"(\d{2}/\d{2})", texto_data)
     return m.group(1) if m else fallback
 
 def similaridade_falha(falha1, falha2):
-    """Verifica se duas falhas são essencialmente a mesma."""
     n1 = normalizar_texto(falha1)
     n2 = normalizar_texto(falha2)
-    # Extrai palavras-chave (ignora palavras curtas)
     palavras1 = set(p for p in n1.split() if len(p) > 3)
     palavras2 = set(p for p in n2.split() if len(p) > 3)
     if not palavras1 or not palavras2:
         return False
     intersecao = palavras1 & palavras2
     menor = min(len(palavras1), len(palavras2))
-    return len(intersecao) / menor >= 0.5  # 50% de palavras em comum
+    return len(intersecao) / menor >= 0.5
 
 
-# ── Parse de blocos ───────────────────────────────────────────────────────────
+# ── Parse formato Cos Grid (bullets ·) ───────────────────────────────────────
 
+def parse_bloco_cos_grid(bloco):
+    """
+    Parseia mensagens no formato Cos Grid com bullets (·).
+    Exemplo:
+      Usina: Crateús
+      · Problema: Usina desligada
+      · Descrição: Usina encontra-se desligada.
+      · Impacto: Geração total
+      · Ação: Técnico em campo atuando para normalização da UFV.
+      · Equipe Acionada: Sim, Railson
+      · Supervisor Acionado: Sim, Fred
+      · Início da Ocorrência: 26/06/2026 08:18
+      · Fim da Ocorrência:
+      · Nº da OS: 8491
+    """
+    # Extrai usina (primeira linha após o cabeçalho, ou via padrão)
+    usina_raw = extrair(bloco, PADROES["usina"])
+    if not usina_raw:
+        return None
+
+    # Limpa nome da usina
+    usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", usina_raw).strip()
+    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK).*$", "", usina, flags=re.IGNORECASE).strip()
+    usina = usina.rstrip(".,:-")
+
+    if not usina_permitida(usina):
+        log.info(f"Usina não permitida (Cos Grid): {usina}")
+        return None
+
+    # Extrai campos com bullets
+    problema    = extrair(bloco, PADROES["cos_problema"])
+    descricao   = extrair(bloco, PADROES["cos_descricao"])
+    impacto     = extrair(bloco, PADROES["cos_impacto"])
+    acao_txt    = extrair(bloco, PADROES["cos_acao"])
+    equipe_raw  = extrair(bloco, PADROES["cos_equipe"])
+    superv_raw  = extrair(bloco, PADROES["cos_supervisor"])
+    inicio_txt  = extrair(bloco, PADROES["cos_inicio"])
+    fim_txt     = extrair(bloco, PADROES["cos_fim"])
+    os_txt      = extrair(bloco, PADROES["cos_os"])
+
+    # Fallback para padrões originais se bullet não capturou
+    if not problema:  problema  = extrair(bloco, PADROES["problema"])
+    if not descricao: descricao = extrair(bloco, PADROES["descricao"])
+    if not acao_txt:  acao_txt  = extrair(bloco, PADROES["acao"])
+    if not os_txt:    os_txt    = extrair(bloco, PADROES["os"])
+
+    # Falha = problema ou descrição
+    falha = problema or descricao or impacto or ""
+
+    # Equipamento — tenta inferir da falha/descrição/ação
+    equip = inferir_equipamento(
+        problema=problema, descricao=descricao,
+        acao=acao_txt, impacto=impacto
+    )
+    # Se não encontrou equipamento específico, usa a usina como unidade
+    if not equip:
+        equip = "Usina / Sistema Geral"
+
+    # Técnico e supervisor
+    tec  = limpar_nome(equipe_raw) if not vazio(equipe_raw) else ""
+    sup  = limpar_nome(superv_raw) if not vazio(superv_raw) else ""
+
+    # Ação composta
+    partes_acao = []
+    if not vazio(acao_txt):
+        partes_acao.append(acao_txt)
+    if not vazio(tec):
+        partes_acao.append(f"Técnico: {tec}")
+    if not vazio(sup):
+        partes_acao.append(f"Supervisor: {sup}")
+    if not partes_acao:
+        partes_acao.append("Inspeção em campo")
+
+    # OS
+    os_num = ""
+    if not vazio(os_txt):
+        m_os = re.search(r"[\d]+", os_txt)
+        os_num = m_os.group() if m_os else ""
+
+    # Normalização
+    normalizar = eh_normalizacao(bloco) or not vazio(fim_txt)
+
+    # Histórico
+    hoje       = datetime.now().strftime("%d/%m")
+    data_ini   = extrair_data_fmt(inicio_txt, hoje)
+    hist       = [f"{data_ini} - Registro inicial"]
+    if not vazio(acao_txt):
+        hist.append(f"{hoje} - {acao_txt}")
+    if not vazio(tec):
+        hist.append(f"{hoje} - Técnico em campo: {tec}")
+    if normalizar:
+        data_fim = extrair_data_fmt(fim_txt, hoje)
+        hist.append(f"{data_fim} - Ocorrência normalizada")
+
+    log.info(f"[Cos Grid] Parseado: usina={usina} | falha={falha[:50]} | equip={equip} | OS={os_num}")
+
+    return {
+        "usina":        usina,
+        "cliente":      inferir_cliente(usina),
+        "equipamento":  equip,
+        "falha":        falha,
+        "causa":        impacto or "",
+        "equip_impact": equip,
+        "acao":         " | ".join(partes_acao),
+        "status":       "Concluído" if normalizar else "Em Aberto",
+        "historico":    "\n".join(hist),
+        "os":           os_num,
+        "normalizar":   normalizar,
+        "acao_texto":   acao_txt,
+    }
+
+
+# ── Parse de blocos (formato original) ───────────────────────────────────────
 
 def normalizar_num(num_str):
-    """Normaliza número removendo zeros à esquerda: '08' → '8'"""
     try:
         return str(int(num_str))
     except:
         return num_str
 
 def extrair_atualizacoes_por_ativo(texto_acao):
-    """
-    Analisa o texto da Ação e extrai atualizações individuais por equipamento.
-    Ex: "Tracker 24 normalizado. Tracker 48 em garantia."
-    → [{"equipamento": "Tracker 24", "normalizar": True}, {"equipamento": "Tracker 48", "normalizar": False}]
-    """
     PRIORIDADE = {"normalizado": 3, "tratativa fabricante": 2, "garantia": 1, "outro": 0}
-
     padroes_ativo = [
         (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+normalizado[s]?", re.IGNORECASE), "normalizado"),
         (re.compile(r"(Tracker[s]?\s+[\d,\s]+(?:e\s+\d+)?)\s+em\s+operação", re.IGNORECASE), "normalizado"),
@@ -256,7 +387,6 @@ def extrair_atualizacoes_por_ativo(texto_acao):
         (re.compile(r"(INV[-\s]\d+|Inversor\s+\d+)\s+em\s+garantia", re.IGNORECASE), "garantia"),
         (re.compile(r"(INV[-\s]\d+|Inversor\s+\d+)\s+em\s+tratativa\s+com\s+fabricante", re.IGNORECASE), "tratativa fabricante"),
     ]
-
     melhor = {}
     for padrao, status in padroes_ativo:
         for m in padrao.finditer(texto_acao):
@@ -280,7 +410,6 @@ def extrair_atualizacoes_por_ativo(texto_acao):
     return list(melhor.values())
 
 def equipamento_match(equip_planilha, equip_busca):
-    """Verifica se dois nomes de equipamento se referem ao mesmo ativo."""
     def norm(s):
         s = s.lower().strip()
         s = re.sub(r"motor\s*", "tracker ", s)
@@ -292,7 +421,6 @@ def equipamento_match(equip_planilha, equip_busca):
         if tipo_str == "inv":
             tipo_str = "inversor"
         return tipo_str, [normalizar_num(n) for n in nums]
-
     tipo1, nums1 = norm(equip_planilha)
     tipo2, nums2 = norm(equip_busca)
     if not nums1 or not nums2:
@@ -302,15 +430,17 @@ def equipamento_match(equip_planilha, equip_busca):
     return tipos_ok and nums_ok
 
 def separar_blocos(texto):
-    """
-    Separa a mensagem em blocos individuais de ocorrência.
-    Suporta tanto mensagens simples quanto rondas completas.
-    """
-    # Tenta separar por emoji de status no início de linha
+    # Detecta formato Cos Grid — mensagem inteira é um bloco
+    if eh_formato_cos_grid(texto):
+        # Tenta separar múltiplas ocorrências por "Usina:" no formato Cos Grid
+        partes = re.split(r"(?=(?:^|\n)Usina:)", texto, flags=re.MULTILINE | re.IGNORECASE)
+        blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 20]
+        return blocos if blocos else [texto]
+
+    # Formato original com emojis
     partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️))", texto, flags=re.MULTILINE)
     blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 30]
 
-    # Se não encontrou separação, tenta por "Usina:" como separador
     if len(blocos) <= 1:
         partes = re.split(r"(?=(?:^|\n)[ \t]*(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)?[ \t]*(?:DESVIO:?\s*)?Usina:)", texto, flags=re.MULTILINE | re.IGNORECASE)
         blocos = [p.strip() for p in partes if p.strip() and len(p.strip()) > 30]
@@ -318,17 +448,23 @@ def separar_blocos(texto):
     return blocos if blocos else [texto]
 
 def parse_bloco(bloco):
-    """Parseia um bloco individual de ocorrência."""
+    """
+    Parseia um bloco individual.
+    Detecta automaticamente o formato (Cos Grid ou original).
+    """
+    # Detecta formato Cos Grid
+    if eh_formato_cos_grid(bloco):
+        return parse_bloco_cos_grid(bloco)
+
+    # Formato original
     c = {k: extrair(bloco, p) for k, p in PADROES.items()}
 
     if not c["usina"]:
         return None
 
-    # Limpa o nome da usina (remove emojis e sufixos como "- NORMALIZADO")
     usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", c["usina"]).strip()
     usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\d*).*$", "", usina, flags=re.IGNORECASE).strip()
     usina = usina.rstrip(".,:-")
-    # Normaliza sufixos: IA→1, IB→2, IIA→1, IIB→2
     usina = re.sub(r"\s+1[Aa]$", " 1", usina)
     usina = re.sub(r"\s+1[Bb]$", " 2", usina)
     usina = re.sub(r"\s+[Ii][Aa]$", " 1", usina)
@@ -337,19 +473,13 @@ def parse_bloco(bloco):
     if not usina_permitida(usina):
         return None
 
-    # Detecta formato 🔧 (Ronda de Trackers)
     eh_formato_tracker = not vazio(c["identificacao"]) or not vazio(c["equip_problema"])
 
     if eh_formato_tracker:
-        # Formato 🔧:
-        # identificacao → Equipamento (ex: "Tck 53" → "Tracker 53")
         id_raw = c["identificacao"] if not vazio(c["identificacao"]) else ""
         id_fmt = re.sub(r"Tck\s*", "Tracker ", id_raw, flags=re.IGNORECASE).strip()
         equip = id_fmt if id_fmt else inferir_equipamento(problema=c["problema"], descricao=c["descricao"], acao=c["acao"], impacto=c.get("impacto",""))
-
-        # equip_problema → Causa (ex: "baterias da TCU com falha")
         equip_prob = c["equip_problema"] if not vazio(c["equip_problema"]) else ""
-        # Separa causa da ação: texto antes de "acionado" é causa, depois é ação
         m_acao = re.search(r"(.+?)\.\s*(acionado.+)$", equip_prob, re.IGNORECASE | re.DOTALL)
         if m_acao:
             causa = m_acao.group(1).strip()
@@ -357,7 +487,6 @@ def parse_bloco(bloco):
         else:
             causa = equip_prob
             acao_tracker = ""
-
         partes_acao = []
         if acao_tracker:
             partes_acao.append(acao_tracker)
@@ -366,11 +495,9 @@ def parse_bloco(bloco):
         else:
             partes_acao.append("Inspeção em campo")
     else:
-        # Formato padrão
         equip = c["equipamento"] if not vazio(c["equipamento"]) else \
                 inferir_equipamento(problema=c["problema"], descricao=c["descricao"], identificacao=c["identificacao"], equip_problema=c["equip_problema"], acao=c["acao"], impacto=c.get("impacto",""))
         causa = c["causa"] if not vazio(c["causa"]) else ""
-
         partes_acao = []
         if not vazio(c["acao"]):
             partes_acao.append(c["acao"])
@@ -383,18 +510,15 @@ def parse_bloco(bloco):
     sup = re.sub(r"@", "", sup).strip()
     if not vazio(sup): partes_acao.append(f"Supervisor: {sup}")
 
-    # OS
     os_num = ""
     if not vazio(c["os"]):
         m_os = re.search(r"[\d/]+", c["os"])
         os_num = m_os.group() if m_os else ""
 
-    # Status e normalização
     status_emoji = detectar_status_emoji(bloco)
     normalizar = (status_emoji == "normalizado")
     fim_valido = not vazio(c["fim"])
 
-    # Histórico
     hoje = datetime.now().strftime("%d/%m")
     hist = []
     data_inicio = extrair_data_fmt(c["inicio"], hoje)
@@ -404,7 +528,6 @@ def parse_bloco(bloco):
         hist.append(f"{data_fim} - Ocorrência normalizada")
     else:
         hist.append(f"{data_inicio} - Registro inicial")
-        # Para formato tracker usa acao_tracker, senão usa c["acao"]
         acao_hist = acao_tracker if eh_formato_tracker and not vazio(acao_tracker) else c["acao"]
         if not vazio(acao_hist):
             hist.append(f"{hoje} - {acao_hist}")
@@ -441,7 +564,6 @@ def get_sheet():
     return gc.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
 def carregar_planilha(ws):
-    """Carrega todos os dados da planilha em memória."""
     return ws.get_all_values()
 
 def proximo_id(todos):
@@ -455,82 +577,54 @@ def proximo_id(todos):
     return maior + 1
 
 def buscar_ocorrencia_existente(todos, usina, falha):
-    """
-    Busca ocorrência existente na planilha.
-    Retorna (num_linha, row) se encontrar mesma usina + falha similar Em Aberto.
-    Retorna (num_linha, row, "diferente") se encontrar mesma usina mas falha diferente.
-    """
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < 9:
             continue
-        usina_plan = row[2].strip()   # coluna C
-        falha_plan = row[4].strip()   # coluna E
-        status = row[8].strip()       # coluna I
-
+        usina_plan = row[2].strip()
+        falha_plan = row[4].strip()
+        status = row[8].strip()
         if status == "Concluído":
             continue
-
-        # Verifica se é a mesma usina
         if not (usina.lower() in usina_plan.lower() or usina_plan.lower() in usina.lower()):
             continue
-
-        # Mesma usina — verifica se é a mesma falha
         if similaridade_falha(falha, falha_plan):
             return (i, row, "mesma")
         else:
             return (i, row, "diferente")
-
     return None
 
 def atualizar_ocorrencia(ws, num_linha, row, dados):
-    """Atualiza histórico e ação de uma ocorrência existente."""
     hoje = datetime.now().strftime("%d/%m")
-
-    # Atualiza Ação (coluna H = 8)
     acao_atual = row[7] if len(row) > 7 else ""
     nova_acao = dados["acao_texto"]
     if not vazio(nova_acao) and nova_acao not in acao_atual:
         nova_acao_completa = acao_atual + "\n" + nova_acao if acao_atual else nova_acao
         ws.update_cell(num_linha, 8, nova_acao_completa)
-
-    # Atualiza Histórico (coluna L = 12)
     hist_atual = row[11] if len(row) > 11 else ""
     nova_entrada = f"{hoje} - {dados['acao_texto']}" if not vazio(dados["acao_texto"]) else f"{hoje} - Atualização de status"
     if nova_entrada not in hist_atual:
         novo_hist = hist_atual + "\n" + nova_entrada if hist_atual else nova_entrada
         ws.update_cell(num_linha, 12, novo_hist)
-
-    # Atualiza OS se veio (coluna K = 11)
     if not vazio(dados["os"]):
         os_atual = row[10] if len(row) > 10 else ""
         if vazio(os_atual):
             ws.update_cell(num_linha, 11, dados["os"])
-
     log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']}")
 
 def normalizar_ocorrencia(ws, num_linha, row, dados):
-    """Marca ocorrência como Concluída."""
     hoje = datetime.now().strftime("%d/%m")
-
-    # Status → Concluído (coluna I = 9)
     ws.update_cell(num_linha, 9, "Concluído")
-
-    # OS (coluna K = 11)
     if not vazio(dados["os"]):
         ws.update_cell(num_linha, 11, dados["os"])
-
-    # Histórico (coluna L = 12)
     hist_atual = row[11] if len(row) > 11 else ""
     nova_entrada = f"{hoje} - Ocorrência normalizada"
     if not vazio(dados["acao_texto"]):
         nova_entrada += f"\n{hoje} - {dados['acao_texto']}"
     novo_hist = hist_atual + "\n" + nova_entrada if hist_atual else nova_entrada
     ws.update_cell(num_linha, 12, novo_hist)
-
     log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
 
 def primeira_linha_vazia(todos):
-    """Encontra a primeira linha vazia após os dados (ignora linhas vazias no meio)."""
     ultima_com_dado = 1
     for i, row in enumerate(todos[1:], start=2):
         if row and row[0] and str(row[0]).strip():
@@ -538,10 +632,8 @@ def primeira_linha_vazia(todos):
     return ultima_com_dado + 1
 
 def gravar_nova_ocorrencia(ws, todos, dados):
-    """Grava uma nova ocorrência na planilha na primeira linha vazia após os dados."""
     novo_id = proximo_id(todos)
     proxima_linha = primeira_linha_vazia(todos)
-
     linha = [
         novo_id,
         dados["cliente"],
@@ -552,9 +644,9 @@ def gravar_nova_ocorrencia(ws, todos, dados):
         dados["equip_impact"],
         dados["acao"],
         dados["status"],
-        "",           # J - Ticket Fabricante
-        dados["os"],  # K - Número da OS
-        dados["historico"],  # L - Histórico
+        "",
+        dados["os"],
+        dados["historico"],
     ]
     ws.update(f"A{proxima_linha}:L{proxima_linha}", [linha])
     log.info(f"➕ Nova ocorrência ID={novo_id} | {dados['usina']} — {dados['equipamento']} | linha {proxima_linha}")
@@ -564,13 +656,8 @@ def gravar_nova_ocorrencia(ws, todos, dados):
 # ── Processamento principal ───────────────────────────────────────────────────
 
 def processar_texto(texto):
-    """
-    Processa um texto completo (mensagem simples ou ronda completa).
-    Retorna resumo das ações tomadas.
-    """
     ws = get_sheet()
     todos = carregar_planilha(ws)
-
     blocos = separar_blocos(texto)
     resultado = {"novos": [], "atualizados": [], "normalizados": [], "ignorados": 0}
 
@@ -580,14 +667,11 @@ def processar_texto(texto):
             resultado["ignorados"] += 1
             continue
 
-        # Verifica se a ação contém atualizações individuais por ativo
         atualizacoes_individuais = extrair_atualizacoes_por_ativo(dados.get("acao_texto", ""))
 
         if atualizacoes_individuais:
-            # Ação analítica: aplica cada atualização no ativo correto
             alguma_acao = False
             for upd in atualizacoes_individuais:
-                # Busca a linha do ativo específico na planilha
                 linha_ativo = None
                 for i, row in enumerate(todos[1:], start=2):
                     if len(row) < 9: continue
@@ -600,28 +684,17 @@ def processar_texto(texto):
                     if usina_ok and equip_ok:
                         linha_ativo = (i, row)
                         break
-
                 if linha_ativo:
                     num_linha, row = linha_ativo
-                    hoje = datetime.now().strftime("%d/%m")
                     if upd["normalizar"]:
-                        normalizar_ocorrencia(ws, num_linha, row, {
-                            **dados,
-                            "acao_texto": upd["acao_resumida"],
-                            "os": dados.get("os", "")
-                        })
+                        normalizar_ocorrencia(ws, num_linha, row, {**dados, "acao_texto": upd["acao_resumida"], "os": dados.get("os", "")})
                         resultado["normalizados"].append(f"{dados['usina']} - {upd['equipamento']}")
                     else:
-                        atualizar_ocorrencia(ws, num_linha, row, {
-                            **dados,
-                            "acao_texto": upd["acao_resumida"]
-                        })
+                        atualizar_ocorrencia(ws, num_linha, row, {**dados, "acao_texto": upd["acao_resumida"]})
                         resultado["atualizados"].append(f"{dados['usina']} - {upd['equipamento']}")
                     alguma_acao = True
                     todos = carregar_planilha(ws)
-
             if not alguma_acao:
-                # Não encontrou nenhum ativo existente — grava como nova
                 novo_id = gravar_nova_ocorrencia(ws, todos, dados)
                 resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
                 todos = carregar_planilha(ws)
@@ -698,10 +771,12 @@ def webhook():
             if not any(g.strip() in remote_jid for g in GRUPOS_FILTRO):
                 return jsonify({"status": "ignored", "reason": "group not in filter"}), 200
 
-        # Verifica se tem algum conteúdo relevante
-        tem_usina = bool(re.search(r"Usina:", texto, re.IGNORECASE))
-        tem_emoji = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
-        if not tem_usina and not tem_emoji:
+        # Aceita mensagens com "Usina:" OU emojis de status OU formato Cos Grid
+        tem_usina  = bool(re.search(r"Usina:", texto, re.IGNORECASE))
+        tem_emoji  = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
+        tem_bullet = eh_formato_cos_grid(texto)
+
+        if not tem_usina and not tem_emoji and not tem_bullet:
             return jsonify({"status": "ignored", "reason": "no failure content"}), 200
 
         resultado = processar_texto(texto)
