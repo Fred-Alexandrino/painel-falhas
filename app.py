@@ -273,10 +273,15 @@ def parse_bloco_cos_grid(bloco):
     if not usina_raw:
         return None
 
-    # Limpa nome da usina
+    # Limpa nome da usina — remove emojis, pipes, sufixos como "| NORMALIZADA | Trip 59B"
     usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", usina_raw).strip()
-    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK).*$", "", usina, flags=re.IGNORECASE).strip()
-    usina = usina.rstrip(".,:-")
+    # Remove tudo após "|" ou "-" quando seguido de NORMALIZ*, OK, TRIP, etc.
+    usina = re.sub(r"\s*\|.*$", "", usina, flags=re.IGNORECASE).strip()
+    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\w*).*$", "", usina, flags=re.IGNORECASE).strip()
+    usina = usina.rstrip(".,:-|").strip()
+
+    # Detecta normalização já no campo usina_raw (ex: "Crateus | NORMALIZADA | Trip 59B")
+    normalizar_usina = bool(re.search(r"NORMALIZ", usina_raw, re.IGNORECASE))
 
     if not usina_permitida(usina):
         log.info(f"Usina não permitida (Cos Grid): {usina}")
@@ -332,8 +337,9 @@ def parse_bloco_cos_grid(bloco):
         m_os = re.search(r"[\d]+", os_txt)
         os_num = m_os.group() if m_os else ""
 
-    # Normalização
-    normalizar = eh_normalizacao(bloco) or not vazio(fim_txt)
+    # Normalização: detecta por texto na usina, fim preenchido, ou palavra "normalizado" no bloco
+    fim_preenchido = not vazio(fim_txt) and fim_txt.strip() not in ("", "-", "--")
+    normalizar = normalizar_usina or fim_preenchido or eh_normalizacao(bloco)
 
     # Histórico
     hoje       = datetime.now().strftime("%d/%m")
@@ -463,8 +469,9 @@ def parse_bloco(bloco):
         return None
 
     usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", c["usina"]).strip()
-    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\d*).*$", "", usina, flags=re.IGNORECASE).strip()
-    usina = usina.rstrip(".,:-")
+    usina = re.sub(r"\s*\|.*$", "", usina, flags=re.IGNORECASE).strip()
+    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\w*).*$", "", usina, flags=re.IGNORECASE).strip()
+    usina = usina.rstrip(".,:-|").strip()
     usina = re.sub(r"\s+1[Aa]$", " 1", usina)
     usina = re.sub(r"\s+1[Bb]$", " 2", usina)
     usina = re.sub(r"\s+[Ii][Aa]$", " 1", usina)
