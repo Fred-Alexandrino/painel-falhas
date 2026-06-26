@@ -21,6 +21,20 @@ log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# 25002500 CORS 2014 permite chamadas do GitHub Pages 25002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"]  = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Webhook-Secret"
+    return response
+
+@app.route("/rondas", methods=["OPTIONS"])
+@app.route("/webhook", methods=["OPTIONS"])
+@app.route("/health", methods=["OPTIONS"])
+def handle_options():
+    return "", 204
+
 # ── Configuração ──────────────────────────────────────────────────────────────
 SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
 SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandrino")
@@ -700,6 +714,11 @@ def proximo_id(todos):
     return maior + 1
 
 def buscar_ocorrencia_existente(todos, usina, falha):
+    """
+    Busca linha existente na planilha com mesma usina e falha similar.
+    Quando falha está vazia (normalização), retorna o primeiro registro
+    não-concluído da usina.
+    """
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < 9:
             continue
@@ -708,8 +727,13 @@ def buscar_ocorrencia_existente(todos, usina, falha):
         status = row[8].strip()
         if status == "Concluído":
             continue
-        if not (usina.lower() in usina_plan.lower() or usina_plan.lower() in usina.lower()):
+        usina_ok = (usina.lower() in usina_plan.lower() or usina_plan.lower() in usina.lower())
+        if not usina_ok:
             continue
+        # Se falha está vazia (ex: normalização simples), retorna qualquer
+        # ocorrência em aberto da mesma usina
+        if not falha.strip():
+            return (i, row, "mesma")
         if similaridade_falha(falha, falha_plan):
             return (i, row, "mesma")
         else:
