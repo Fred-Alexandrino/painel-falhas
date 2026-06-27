@@ -558,6 +558,21 @@ def extrair_inversores_multiplos(bloco, dados_base):
 
 
 
+def eh_normalizacao(texto):
+    """
+    Detecta se um bloco/texto indica normalização de ocorrência.
+    Cobre:
+      - ✅ + NORMALIZADO (qualquer posição)
+      - Palavra NORMALIZADO/NORMALIZADA no campo usina (ex: 'Colider 1 - NORMALIZADO')
+      - Fim da Ocorrência preenchido
+      - Termos como 'ocorrência normalizada', 'usina normalizada'
+    """
+    return bool(re.search(
+        r'normalizado|normalizada|✅.*normal|normal.*✅|ocorr[êe]ncia\s+encerrada',
+        texto, re.IGNORECASE
+    ))
+
+
 def detectar_status_emoji(bloco):
     if re.search(r"✅", bloco):
         if eh_normalizacao(bloco):
