@@ -1007,21 +1007,115 @@ def fingerprint_ocorrencia(usina, equipamento, falha):
     return f"{usina_n}|{tipo_str}|{num_str}|{'_'.join(palavras)}"
 
 
-def buscar_por_fingerprint(todos, usina, equipamento, falha):
+def _norm_equip_key(equip):
     """
-    Busca na planilha a primeira ocorrência EM ABERTO com o mesmo fingerprint.
+    Gera chave de comparação de equipamento:
+    extrai tipo + números normalizados.
+    Ex: "INV-03" → ("inversor", ["3"])
+        "Tracker 08" → ("tracker", ["8"])
+        "Motor Tracker 5" → ("tracker", ["5"])
+    """
+    s = _norm(equip)
+    s = re.sub(r"motor\s+tracker", "tracker", s)
+    s = re.sub(r"tcu\s+tracker", "tracker", s)
+    s = re.sub(r"inv-?", "inversor ", s)
+    tipo_m = re.search(
+        r"(inversor|tracker|motor|tcu|nobreak|camera|exaustor|piranometro|"
+        r"fieldlogger|smartlogger|igate|rele|switch|transformador|"
+        r"bateria|stringbox|otimizador|seccionadora|combiner|ep\d+)",
+        s
+    )
+    tipo = tipo_m.group(1) if tipo_m else s[:10]
+    nums = [str(int(n)) for n in re.findall(r"\d+", s)]
+    return tipo, nums
+
+
+def equipamentos_sao_iguais(equip1, equip2):
+    """
+    Compara dois equipamentos de forma tolerante.
+    Considera iguais se tipo E pelo menos um número coincidem.
+    """
+    if not equip1 or not equip2: return False
+    tipo1, nums1 = _norm_equip_key(equip1)
+    tipo2, nums2 = _norm_equip_key(equip2)
+    if not nums1 or not nums2: return False
+    tipos_ok = tipo1 == tipo2 or not tipo1 or not tipo2
+    nums_ok  = bool(set(nums1) & set(nums2))
+    return tipos_ok and nums_ok
+
+
+def usinas_sao_iguais(usina1, usina2):
+    """Compara usinas usando o catálogo canônico."""
+    c1 = canonizar_usina(usina1) or _norm(usina1)
+    c2 = canonizar_usina(usina2) or _norm(usina2)
+    return c1 == c2
+
+
+def buscar_por_fingerprint(todos, usina, equipamento, falha, os_num=""):
+    """
+    Busca ocorrência existente EM ABERTO usando hierarquia de critérios:
+
+    NÍVEL 1 (mais forte) — OS + usina + equipamento:
+      Se a mensagem tem número de OS, busca por OS+usina+equip.
+      Isso garante que atualizações de um chamado específico sempre
+      encontrem a ocorrência certa, independente da descrição da falha.
+
+    NÍVEL 2 — usina + equipamento (tipo + número):
+      Compara usina (via catálogo canônico) + tipo e número do equipamento.
+      Ex: INV-03 e "Inversor 3" são o mesmo; Tracker 8 e Motor 08 também.
+
+    NÍVEL 3 (fallback) — fingerprint de palavras:
+      Só usa se os níveis anteriores não encontrarem nada.
+
     Retorna (num_linha, row) ou None.
     """
-    fp = fingerprint_ocorrencia(usina, equipamento, falha)
+    candidatos = []
+
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < 9: continue
         status = row[8].strip().lower()
+        # Ignora concluídas/resolvidas
         if "conclu" in status or "resolv" in status or "fechad" in status:
             continue
-        fp_p = fingerprint_ocorrencia(row[2], row[3], row[4])
-        if fp == fp_p:
-            return (i, row)
-    return None
+
+        usina_plan = row[2].strip()
+        equip_plan = row[3].strip()
+        os_plan    = (row[10] if len(row) > 10 else "").strip()
+
+        # Usinas devem ser a mesma (obrigatório em todos os níveis)
+        if not usinas_sao_iguais(usina, usina_plan):
+            continue
+
+        # NÍVEL 1: OS + usina + equipamento (mais específico)
+        if os_num and os_plan and os_num.strip() == os_plan.strip():
+            if equipamentos_sao_iguais(equipamento, equip_plan):
+                log.info(f"🎯 Match NÍVEL 1 (OS+usina+equip): linha {i} | OS={os_num} | {equip_plan}")
+                return (i, row)
+
+        # NÍVEL 2: usina + equipamento
+        if equipamentos_sao_iguais(equipamento, equip_plan):
+            candidatos.append((i, row, "equip"))
+            continue
+
+        # NÍVEL 3: fingerprint de palavras (fallback)
+        fp_novo   = fingerprint_ocorrencia(usina, equipamento, falha)
+        fp_plan   = fingerprint_ocorrencia(usina_plan, equip_plan, row[4])
+        if fp_novo == fp_plan:
+            candidatos.append((i, row, "fingerprint"))
+
+    if not candidatos:
+        return None
+
+    # Prioriza match por equipamento sobre fingerprint
+    por_equip = [c for c in candidatos if c[2] == "equip"]
+    if por_equip:
+        i, row, _ = por_equip[0]
+        log.info(f"🎯 Match NÍVEL 2 (usina+equip): linha {i} | {row[3]}")
+        return (i, row)
+
+    i, row, _ = candidatos[0]
+    log.info(f"🎯 Match NÍVEL 3 (fingerprint): linha {i} | {row[3]}")
+    return (i, row)
 
 
 def acao_mudou(row, acao_nova):
@@ -1183,7 +1277,7 @@ def processar_texto(texto):
         if atualizacoes_individuais:
             alguma_acao = False
             for upd in atualizacoes_individuais:
-                existente = buscar_por_fingerprint(todos, usina, upd["equipamento"], falha)
+                existente = buscar_por_fingerprint(todos, usina, upd["equipamento"], falha, dados.get("os",""))
                 if existente:
                     num_linha, row = existente
                     if upd["normalizar"]:
@@ -1213,7 +1307,7 @@ def processar_texto(texto):
         multi_inv = extrair_inversores_multiplos(bloco, dados)
         if multi_inv:
             for dados_inv in multi_inv:
-                existente_inv = buscar_por_fingerprint(todos, dados_inv["usina"], dados_inv["equipamento"], dados_inv["falha"])
+                existente_inv = buscar_por_fingerprint(todos, dados_inv["usina"], dados_inv["equipamento"], dados_inv["falha"], dados_inv.get("os",""))
                 if not existente_inv:
                     novo_id = gravar_nova_ocorrencia(ws, todos, dados_inv)
                     resultado["novos"].append({"id": novo_id, "usina": dados_inv["usina"]})
@@ -1241,7 +1335,7 @@ def processar_texto(texto):
         falha = dados["falha"]
 
         # ── Fluxo principal ────────────────────────────────────────────────
-        existente = buscar_por_fingerprint(todos, usina, equip, falha)
+        existente = buscar_por_fingerprint(todos, usina, equip, falha, dados.get("os",""))
 
         if not existente:
             # CASO A — nova ocorrência
