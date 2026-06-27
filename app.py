@@ -41,56 +41,287 @@ GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 # URL do servidor WhatsApp (Baileys) — usado pelo endpoint /rondas
 WPP_SERVER_URL = os.environ.get("WPP_SERVER_URL", "").rstrip("/")
 
-# ── Mapeamento Usina → Cliente ────────────────────────────────────────────────
-CLIENTE_POR_USINA = {
-    "nova xavantina i": "RENOGRID", "nova xavantina 1": "RENOGRID",
-    "nova xavantina ii": "RENOGRID", "nova xavantina 2": "RENOGRID",
-    "nova xavantina": "RENOGRID",
-    "xavantina i": "RENOGRID", "xavantina 1": "RENOGRID",
-    "xavantina ii": "RENOGRID", "xavantina 2": "RENOGRID",
-    "xavantina": "RENOGRID",
-    "colíder i": "RENOGRID", "colider i": "RENOGRID",
-    "colíder 1": "RENOGRID", "colider 1": "RENOGRID",
-    "colíder ii": "RENOGRID", "colider ii": "RENOGRID",
-    "colíder 2": "RENOGRID", "colider 2": "RENOGRID",
-    "colíder": "RENOGRID", "colider": "RENOGRID",
-    "nobres": "RENOGRID", "elias fausto": "RENOGRID",
-    "crateús": "RENOGRID", "crateus": "RENOGRID",
-    "boa esperança do sul 1": "THOPEN", "boa esperanca do sul 1": "THOPEN",
-    "boa esperança do sul 1a": "THOPEN", "boa esperanca do sul 1a": "THOPEN",
-    "boa esperança do sul ia": "THOPEN", "boa esperanca do sul ia": "THOPEN",
-    "boa esperança do sul 2": "THOPEN", "boa esperanca do sul 2": "THOPEN",
-    "boa esperança do sul 1b": "THOPEN", "boa esperanca do sul 1b": "THOPEN",
-    "boa esperança do sul ib": "THOPEN", "boa esperanca do sul ib": "THOPEN",
-    "boa esperança do sul": "THOPEN", "boa esperanca do sul": "THOPEN",
-    "boa esperança": "THOPEN", "boa esperanca": "THOPEN",
-    "ibaté i": "THOPEN", "ibate i": "THOPEN",
-    "ibaté 1": "THOPEN", "ibate 1": "THOPEN",
-    "ibaté ii": "THOPEN", "ibate ii": "THOPEN",
-    "ibaté 2": "THOPEN", "ibate 2": "THOPEN",
-    "ibaté": "THOPEN", "ibate": "THOPEN",
-    "matão i": "THOPEN", "matao i": "THOPEN",
-    "matão 1": "THOPEN", "matao 1": "THOPEN",
-    "matão ii": "THOPEN", "matao ii": "THOPEN",
-    "matão 2 - topázio": "THOPEN", "matao 2 - topazio": "THOPEN",
-    "matão 2": "THOPEN", "matao 2": "THOPEN",
-    "matão": "THOPEN", "matao": "THOPEN",
-    "topázio": "THOPEN", "topazio": "THOPEN",
-    "sítio bonfim": "THOPEN", "sitio bonfim": "THOPEN",
-    "poconé": "THOPEN", "pocone": "THOPEN",
-    "canarana i": "THOPEN", "canarana 1": "THOPEN",
-    "canarana ii": "THOPEN", "canarana 2": "THOPEN",
-    "canarana": "THOPEN",
-    "ribeirão cascalheira": "THOPEN", "ribeirao cascalheira": "THOPEN",
-    "araputanga": "2C", "sete lagoas": "2C",
-    "guajirú": "GD Energy", "guajiru": "GD Energy",
-    "sol do norte i": "GD Energy", "sol do norte 1": "GD Energy",
-    "sol do norte ii": "GD Energy", "sol do norte 2": "GD Energy",
-    "sol do norte": "GD Energy",
-    "abc morada nova": "Alves Lima",
+# ══════════════════════════════════════════════════════════════════════════════
+# CATÁLOGO CANÔNICO DE USINAS
+#
+# Estrutura: nome_oficial → { cliente, aliases: [lista de variações] }
+#
+# Regras gerais aplicadas automaticamente pela função canonizar_usina():
+#   - Remove prefixos "UFV ", "Usina ", "UFV Usina "
+#   - Normaliza acentos para comparação (ç→c, ã→a, etc.)
+#   - Trata 1/I/A/1A/IA como sufixo "1" e 2/II/B/1B/IB como sufixo "2"
+#   - Usinas sem alias explícito são reconhecidas pelo nome base
+# ══════════════════════════════════════════════════════════════════════════════
+
+CATALOGO_USINAS = {
+    # ── RENOGRID ──────────────────────────────────────────────────────────────
+    "Nova Xavantina I": {
+        "cliente": "RENOGRID",
+        "aliases": [
+            "nova xavantina 1", "nova xavantina i",
+            "xavantina 1", "xavantina i",
+            "nova xavantina 1a", "nova xavantina ia",
+            "xavantina 1a", "xavantina ia",
+        ],
+    },
+    "Nova Xavantina II": {
+        "cliente": "RENOGRID",
+        "aliases": [
+            "nova xavantina 2", "nova xavantina ii",
+            "xavantina 2", "xavantina ii",
+            "nova xavantina 1b", "nova xavantina ib",
+            "xavantina 1b", "xavantina ib",
+        ],
+    },
+    "Colíder I": {
+        "cliente": "RENOGRID",
+        "aliases": [
+            "colider i", "colider 1", "colíder 1", "colíder i",
+            "colider 1a", "colider ia", "colíder 1a", "colíder ia",
+        ],
+    },
+    "Colíder II": {
+        "cliente": "RENOGRID",
+        "aliases": [
+            "colider ii", "colider 2", "colíder 2", "colíder ii",
+            "colider 1b", "colider ib", "colíder 1b", "colíder ib",
+        ],
+    },
+    "Nobres": {
+        "cliente": "RENOGRID",
+        "aliases": ["nobres"],
+    },
+    "Elias Fausto": {
+        "cliente": "RENOGRID",
+        "aliases": ["elias fausto"],
+    },
+    "Crateús": {
+        "cliente": "RENOGRID",
+        "aliases": ["crateus", "crateús", "cratéus"],
+    },
+
+    # ── THOPEN ────────────────────────────────────────────────────────────────
+    "Boa Esperança do Sul I": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "boa esperanca do sul i", "boa esperanca do sul 1",
+            "boa esperanca do sul a", "boa esperanca do sul 1a",
+            "boa esperanca do sul ia",
+            "boa esperança do sul i", "boa esperança do sul 1",
+            "boa esperança do sul a", "boa esperança do sul 1a",
+            "boa esperança do sul ia",
+            "boa esperanca i", "boa esperanca 1",
+            "boa esperança i", "boa esperança 1",
+        ],
+    },
+    "Boa Esperança do Sul II": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "boa esperanca do sul ii", "boa esperanca do sul 2",
+            "boa esperanca do sul b", "boa esperanca do sul 1b",
+            "boa esperanca do sul ib",
+            "boa esperança do sul ii", "boa esperança do sul 2",
+            "boa esperança do sul b", "boa esperança do sul 1b",
+            "boa esperança do sul ib",
+            "boa esperanca ii", "boa esperanca 2",
+            "boa esperança ii", "boa esperança 2",
+        ],
+    },
+    "Ibaté I": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "ibate i", "ibate 1", "ibate 1a", "ibate ia", "ibate a",
+            "ibaté i", "ibaté 1", "ibaté 1a", "ibaté ia", "ibaté a",
+        ],
+    },
+    "Ibaté II": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "ibate ii", "ibate 2", "ibate 1b", "ibate ib", "ibate b",
+            "ibaté ii", "ibaté 2", "ibaté 1b", "ibaté ib", "ibaté b",
+        ],
+    },
+    "Matão 1": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "matao 1", "matao i", "matao 1a", "matao ia", "matao a",
+            "matão 1", "matão i", "matão 1a", "matão ia", "matão a",
+        ],
+    },
+    "Matão II - Topázio": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "matao 2", "matao ii", "matao 1b", "matao ib", "matao b",
+            "matão 2", "matão ii", "matão 1b", "matão ib", "matão b",
+            "matao 2 topazio", "matão 2 topázio",
+            "topazio", "topázio",
+        ],
+    },
+    "Sítio Bonfim": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "sitio bonfim", "sítio bonfim",
+            "bonfim",
+        ],
+    },
+    "Poconé": {
+        "cliente": "THOPEN",
+        "aliases": ["pocone", "poconé", "poconé"],
+    },
+    "Canarana I": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "canarana i", "canarana 1", "canarana 1a", "canarana ia", "canarana a",
+        ],
+    },
+    "Canarana II": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "canarana ii", "canarana 2", "canarana 1b", "canarana ib", "canarana b",
+        ],
+    },
+    "Ribeirão Cascalheira": {
+        "cliente": "THOPEN",
+        "aliases": [
+            "ribeirao cascalheira", "ribeirão cascalheira",
+            "ribeirao", "cascalheira",
+        ],
+    },
+
+    # ── 2C ───────────────────────────────────────────────────────────────────
+    "Araputanga": {
+        "cliente": "2C",
+        "aliases": ["araputanga"],
+    },
+    "Sete Lagoas": {
+        "cliente": "2C",
+        "aliases": ["sete lagoas"],
+    },
+
+    # ── GD Energy ─────────────────────────────────────────────────────────────
+    "Guajirú": {
+        "cliente": "GD Energy",
+        "aliases": ["guajiru", "guajirú", "guajiru"],
+    },
+    "Sol do Norte I": {
+        "cliente": "GD Energy",
+        "aliases": [
+            "sol do norte i", "sol do norte 1",
+            "sol do norte 1a", "sol do norte ia", "sol do norte a",
+        ],
+    },
+    "Sol do Norte II": {
+        "cliente": "GD Energy",
+        "aliases": [
+            "sol do norte ii", "sol do norte 2",
+            "sol do norte 1b", "sol do norte ib", "sol do norte b",
+        ],
+    },
+
+    # ── Alves Lima ────────────────────────────────────────────────────────────
+    "ABC Morada Nova": {
+        "cliente": "Alves Lima",
+        "aliases": ["abc morada nova", "morada nova"],
+    },
 }
 
-USINAS_PERMITIDAS = set(CLIENTE_POR_USINA.keys())
+# ── Índice invertido: alias_normalizado → nome_oficial ────────────────────────
+import unicodedata as _ud_usina
+
+def _norm_usina(s):
+    """Normaliza string de usina para lookup: sem acento, minúsculo, sem espaços duplos."""
+    s = _ud_usina.normalize("NFKD", (s or "").lower())
+    s = s.encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+# Constrói índice na inicialização
+_ALIAS_INDEX = {}   # alias_norm → nome_oficial
+_CLIENTE_INDEX = {} # nome_oficial → cliente
+
+for _nome_oficial, _info in CATALOGO_USINAS.items():
+    _CLIENTE_INDEX[_nome_oficial] = _info["cliente"]
+    # Adiciona o próprio nome oficial como alias
+    _ALIAS_INDEX[_norm_usina(_nome_oficial)] = _nome_oficial
+    for _alias in _info["aliases"]:
+        _ALIAS_INDEX[_norm_usina(_alias)] = _nome_oficial
+
+# Prefixos a remover antes de lookup
+_PREFIXOS_USINA = re.compile(
+    r"^(?:ufv\s+)?(?:usina\s+)?(?:ufv\s+)?",
+    re.IGNORECASE
+)
+# Sufixos a remover (lixo que pode vir junto)
+_SUFIXOS_USINA = re.compile(
+    r"\s*[-–|]\s*(?:normaliz\w+|ok|trip\s*\w*|desvio\w*).*$",
+    re.IGNORECASE
+)
+
+def canonizar_usina(texto_bruto):
+    """
+    Recebe qualquer variação de nome de usina e retorna o nome oficial canônico.
+    Retorna None se a usina não estiver no catálogo (outro supervisor).
+
+    Exemplos:
+      "UFV Xavantina 1"         → "Nova Xavantina I"
+      "Boa Esperança do Sul IB" → "Boa Esperança do Sul II"
+      "Usina Crateus"           → "Crateús"
+      "UFV Topázio"             → "Matão II - Topázio"
+      "Fazenda XYZ"             → None  (fora do catálogo)
+    """
+    if not texto_bruto:
+        return None
+
+    # Remove emojis e caracteres especiais comuns
+    s = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", texto_bruto).strip()
+    # Remove sufixos como "| NORMALIZADA | Trip 59B"
+    s = _SUFIXOS_USINA.sub("", s).strip()
+    # Remove prefixos "UFV ", "Usina ", etc.
+    s = _PREFIXOS_USINA.sub("", s).strip()
+    # Remove pontuação final
+    s = s.rstrip(".,:-|").strip()
+
+    # Normaliza para lookup
+    s_norm = _norm_usina(s)
+
+    # 1. Lookup direto no índice
+    if s_norm in _ALIAS_INDEX:
+        return _ALIAS_INDEX[s_norm]
+
+    # 2. Busca parcial — útil para variações não previstas
+    # Tenta encontrar qual usina tem maior sobreposição com o texto
+    melhor = None
+    melhor_score = 0
+    for alias_norm, nome_oficial in _ALIAS_INDEX.items():
+        # Match se o alias está contido no texto ou vice-versa
+        if alias_norm in s_norm or s_norm in alias_norm:
+            score = len(alias_norm)  # prefere matches mais longos
+            if score > melhor_score:
+                melhor_score = score
+                melhor = nome_oficial
+
+    if melhor and melhor_score >= 4:  # evita matches em strings muito curtas
+        return melhor
+
+    return None  # usina não reconhecida — ignorar
+
+
+def inferir_cliente(usina_canonical):
+    """Retorna o cliente dado o nome canônico da usina."""
+    return _CLIENTE_INDEX.get(usina_canonical, "")
+
+
+def usina_permitida(texto):
+    """Retorna True se a usina for reconhecida no catálogo."""
+    return canonizar_usina(texto) is not None
+
+
+# Mantém compatibilidade com código legado que usava CLIENTE_POR_USINA
+CLIENTE_POR_USINA = {
+    _norm_usina(nome): info["cliente"]
+    for nome, info in CATALOGO_USINAS.items()
+}
+USINAS_PERMITIDAS = set(CATALOGO_USINAS.keys())
 
 STATUS_VALIDOS = {
     "em aberto": "Em Aberto", "aberto": "Em Aberto",
@@ -152,23 +383,7 @@ def normalizar_texto(t):
     import unicodedata
     return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode("ascii").strip()
 
-def inferir_cliente(usina):
-    u = usina.lower().strip()
-    if u in CLIENTE_POR_USINA:
-        return CLIENTE_POR_USINA[u]
-    for chave, cliente in CLIENTE_POR_USINA.items():
-        if chave in u or u in chave:
-            return cliente
-    return ""
-
-def usina_permitida(usina):
-    u = usina.lower().strip()
-    if u in USINAS_PERMITIDAS:
-        return True
-    for permitida in USINAS_PERMITIDAS:
-        if permitida in u or u in permitida:
-            return True
-    return False
+# inferir_cliente e usina_permitida definidas acima via canonizar_usina()
 
 def extrair_tecnico(s):
     m = re.search(r"@([\w\s]+?)(?:\s*[-–]\s*[\w-]+)?\s*$", s)
@@ -265,18 +480,14 @@ def parse_bloco_cos_grid(bloco):
     if not usina_raw:
         return None
 
-    usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", usina_raw).strip()
-    usina = re.sub(r"\s*\|.*$", "", usina, flags=re.IGNORECASE).strip()
-    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\w*).*$", "", usina, flags=re.IGNORECASE).strip()
-    usina = usina.rstrip(".,:-|").strip()
-    usina = re.sub(r"^(?:UFV\s+|DESVIO:\s*)", "", usina, flags=re.IGNORECASE).strip()
-    usina = usina.rstrip(":").strip()
+    # Canoniza usando o catálogo oficial — resolve qualquer variação de nome
+    usina_canonical = canonizar_usina(usina_raw)
+    if not usina_canonical:
+        log.info(f"Usina não reconhecida (Cos Grid): {usina_raw!r}")
+        return None
+    usina = usina_canonical
 
     normalizar_usina = bool(re.search(r"NORMALIZ", usina_raw, re.IGNORECASE))
-
-    if not usina_permitida(usina):
-        log.info(f"Usina não permitida (Cos Grid): {usina}")
-        return None
 
     problema    = extrair(bloco, PADROES["cos_problema"])
     descricao   = extrair(bloco, PADROES["cos_descricao"])
@@ -437,24 +648,12 @@ def parse_bloco(bloco):
     if not c["usina"]:
         return None
 
-    usina = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", c["usina"]).strip()
-    usina = re.sub(r"\s*\|.*$", "", usina, flags=re.IGNORECASE).strip()
-    usina = re.sub(r"\s*[-–]\s*(?:NORMALIZADO|NORMALIZADA|OK|TRIP\s*\w*).*$", "", usina, flags=re.IGNORECASE).strip()
-    usina = usina.rstrip(".,:-|").strip()
-    usina = re.sub(r"^(?:UFV\s+|DESVIO:\s*|UFV\s*DESVIO:\s*)", "", usina, flags=re.IGNORECASE).strip()
-    usina = usina.rstrip(":").strip()
-    usina = re.sub(r"^(?:UFV\s+)?[Xx]avantina\s+[1I]$", "Nova Xavantina I", usina)
-    usina = re.sub(r"^(?:UFV\s+)?[Xx]avantina\s+(?:2|II)$", "Nova Xavantina II", usina)
-    usina = re.sub(r"^Col[ií]der\s+[1I]$", "Colíder I", usina, flags=re.IGNORECASE)
-    usina = re.sub(r"^Col[ií]der\s+(?:2|II)$", "Colíder II", usina, flags=re.IGNORECASE)
-    usina = re.sub(r"^UFV\s+", "", usina, flags=re.IGNORECASE).strip()
-    usina = re.sub(r"\s+1[Aa]$", " 1", usina)
-    usina = re.sub(r"\s+1[Bb]$", " 2", usina)
-    usina = re.sub(r"\s+[Ii][Aa]$", " 1", usina)
-    usina = re.sub(r"\s+[Ii][Bb]$", " 2", usina)
-
-    if not usina_permitida(usina):
+    # Canoniza usando o catálogo oficial — resolve qualquer variação de nome
+    usina_canonical = canonizar_usina(c["usina"])
+    if not usina_canonical:
+        log.info(f"Usina não reconhecida (formato original): {c['usina']!r}")
         return None
+    usina = usina_canonical
 
     eh_formato_tracker = not vazio(c["identificacao"]) or not vazio(c["equip_problema"])
 
@@ -559,51 +758,154 @@ def proximo_id(todos):
                 pass
     return maior + 1
 
-def buscar_ocorrencia_existente(todos, usina, falha):
+# ── Fingerprint de deduplicação ───────────────────────────────────────────────
+
+import unicodedata as _ud
+
+def _norm(s):
+    """Normaliza string para comparação: sem acento, minúsculo, só alfanum."""
+    s = _ud.normalize("NFKD", (s or "").lower())
+    s = s.encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    return " ".join(s.split())
+
+def fingerprint_ocorrencia(usina, equipamento, falha):
+    """
+    Chave de identidade única de uma ocorrência.
+    Formato: usina | tipo_equip | num_equip | palavras_falha
+    Exemplos:
+      "boa esperanca do sul 1 | tracker | 6 | geracao inversores perda"
+      "ibate ii | inversor | 4 | funcionamento parcial strings"
+    """
+    usina_n = _norm(usina)
+    equip_n = _norm(equipamento)
+
+    # Números do equipamento ("Tracker 06" → "6")
+    nums    = [str(int(n)) for n in re.findall(r"\d+", equip_n)]
+    num_str = "_".join(nums) if nums else ""
+
+    # Tipo do equipamento
+    tipo_m  = re.search(
+        r"(tracker|inversor|motor|tcu|nobreak|camera|exaustor|piranometro|"
+        r"fieldlogger|smartlogger|ep\d+|igate|rele|switch|transformador|"
+        r"bateria|stringbox|anemometro|otimizador|seccionadora|combiner|ncu|gcu|etm|nvr)",
+        equip_n
+    )
+    tipo_str = tipo_m.group(1) if tipo_m else equip_n[:12]
+
+    # Top-5 palavras significativas da falha
+    stop = {"para", "com", "que", "dos", "das", "nos", "nas", "pelo", "pela",
+            "esse", "esta", "este", "uma", "uns", "umas", "nao", "sem"}
+    palavras = sorted(set(
+        p for p in _norm(falha).split()
+        if len(p) > 3 and p not in stop
+    ))[:5]
+
+    return f"{usina_n}|{tipo_str}|{num_str}|{'_'.join(palavras)}"
+
+
+def buscar_por_fingerprint(todos, usina, equipamento, falha):
+    """
+    Busca na planilha a primeira ocorrência EM ABERTO com o mesmo fingerprint.
+    Retorna (num_linha, row) ou None.
+    """
+    fp = fingerprint_ocorrencia(usina, equipamento, falha)
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < 9: continue
-        usina_plan = row[2].strip()
-        falha_plan = row[4].strip()
-        status     = row[8].strip()
-        if status == "Concluído": continue
-        if not (usina.lower() in usina_plan.lower() or usina_plan.lower() in usina.lower()):
+        status = row[8].strip().lower()
+        if "conclu" in status or "resolv" in status or "fechad" in status:
             continue
-        if similaridade_falha(falha, falha_plan):
-            return (i, row, "mesma")
-        else:
-            return (i, row, "diferente")
+        fp_p = fingerprint_ocorrencia(row[2], row[3], row[4])
+        if fp == fp_p:
+            return (i, row)
     return None
 
+
+def acao_mudou(row, acao_nova):
+    """
+    Retorna True se a ação nova contém informação não presente no campo Ação
+    atual nem no Histórico cronológico da planilha.
+    """
+    if vazio(acao_nova):
+        return False
+    acao_atual = _norm(row[7] if len(row) > 7 else "")
+    historico  = _norm(row[11] if len(row) > 11 else "")
+    acao_norm  = _norm(acao_nova)
+    # Considera mudança se pelo menos 60% das palavras novas não estão no conteúdo atual
+    palavras_novas = [p for p in acao_norm.split() if len(p) > 3]
+    if not palavras_novas:
+        return False
+    ja_conhecidas = sum(1 for p in palavras_novas if p in acao_atual or p in historico)
+    return (ja_conhecidas / len(palavras_novas)) < 0.6
+
+
+def status_mudou(row, novo_status):
+    """Retorna True se o status da planilha é diferente do novo."""
+    atual = (row[8] if len(row) > 8 else "").strip().lower()
+    novo  = (novo_status or "").strip().lower()
+    return atual != novo and not vazio(novo_status)
+
+
+# ── Operações na planilha ─────────────────────────────────────────────────────
+
 def atualizar_ocorrencia(ws, num_linha, row, dados):
-    hoje     = datetime.now().strftime("%d/%m")
-    acao_atual = row[7] if len(row) > 7 else ""
-    nova_acao  = dados["acao_texto"]
-    if not vazio(nova_acao) and nova_acao not in acao_atual:
-        nova_acao_completa = acao_atual + "\n" + nova_acao if acao_atual else nova_acao
-        ws.update_cell(num_linha, 8, nova_acao_completa)
-    hist_atual   = row[11] if len(row) > 11 else ""
-    nova_entrada = f"{hoje} - {dados['acao_texto']}" if not vazio(dados["acao_texto"]) else f"{hoje} - Atualização de status"
-    if nova_entrada not in hist_atual:
-        novo_hist = hist_atual + "\n" + nova_entrada if hist_atual else nova_entrada
+    """
+    Atualiza uma ocorrência existente:
+    - Acrescenta ação nova no campo Ação (col H)
+    - Acrescenta entrada no Histórico cronológico (col L)
+    - Atualiza Status se mudou (col I)
+    - Preenche OS se estava vazio (col K)
+    """
+    hoje = datetime.now().strftime("%d/%m")
+
+    # Ação — acrescenta (não sobrescreve)
+    acao_nova = (dados.get("acao_texto") or "").strip()
+    if not vazio(acao_nova):
+        acao_atual = (row[7] if len(row) > 7 else "").strip()
+        if acao_nova not in acao_atual:
+            nova_acao = (acao_atual + "\n" + acao_nova).strip() if acao_atual else acao_nova
+            ws.update_cell(num_linha, 8, nova_acao)
+
+    # Histórico — sempre acrescenta entrada nova
+    hist_atual = (row[11] if len(row) > 11 else "").strip()
+    entrada_hist = f"{hoje} - {acao_nova}" if not vazio(acao_nova) else f"{hoje} - Atualização de status"
+    if entrada_hist not in hist_atual:
+        novo_hist = (hist_atual + "\n" + entrada_hist).strip() if hist_atual else entrada_hist
         ws.update_cell(num_linha, 12, novo_hist)
-    if not vazio(dados["os"]):
-        os_atual = row[10] if len(row) > 10 else ""
+
+    # Status — atualiza se mudou
+    novo_status = dados.get("status", "")
+    if status_mudou(row, novo_status):
+        ws.update_cell(num_linha, 9, novo_status)
+        log.info(f"   → Status atualizado: {row[8]} → {novo_status}")
+
+    # OS — preenche se estava vazio
+    os_num = dados.get("os", "")
+    if not vazio(os_num):
+        os_atual = (row[10] if len(row) > 10 else "").strip()
         if vazio(os_atual):
-            ws.update_cell(num_linha, 11, dados["os"])
-    log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']}")
+            ws.update_cell(num_linha, 11, os_num)
+
+    log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']} / {dados.get('equipamento','')}")
+
 
 def normalizar_ocorrencia(ws, num_linha, row, dados):
+    """Fecha uma ocorrência: status → Concluído + entrada no histórico."""
     hoje = datetime.now().strftime("%d/%m")
     ws.update_cell(num_linha, 9, "Concluído")
-    if not vazio(dados["os"]):
+
+    if not vazio(dados.get("os", "")):
         ws.update_cell(num_linha, 11, dados["os"])
-    hist_atual   = row[11] if len(row) > 11 else ""
+
+    hist_atual   = (row[11] if len(row) > 11 else "").strip()
     nova_entrada = f"{hoje} - Ocorrência normalizada"
-    if not vazio(dados["acao_texto"]):
-        nova_entrada += f"\n{hoje} - {dados['acao_texto']}"
-    novo_hist = hist_atual + "\n" + nova_entrada if hist_atual else nova_entrada
+    acao_txt = dados.get("acao_texto", "")
+    if not vazio(acao_txt):
+        nova_entrada += f"\n{hoje} - {acao_txt}"
+    novo_hist = (hist_atual + "\n" + nova_entrada).strip() if hist_atual else nova_entrada
     ws.update_cell(num_linha, 12, novo_hist)
     log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
+
 
 def primeira_linha_vazia(todos):
     ultima_com_dado = 1
@@ -612,8 +914,9 @@ def primeira_linha_vazia(todos):
             ultima_com_dado = i
     return ultima_com_dado + 1
 
+
 def gravar_nova_ocorrencia(ws, todos, dados):
-    novo_id      = proximo_id(todos)
+    novo_id       = proximo_id(todos)
     proxima_linha = primeira_linha_vazia(todos)
     linha = [
         novo_id,
@@ -635,6 +938,23 @@ def gravar_nova_ocorrencia(ws, todos, dados):
 
 
 # ── Processamento principal ───────────────────────────────────────────────────
+#
+# LÓGICA POR BLOCO (mesma para tempo real e botão Verificar Rondas):
+#
+#  1. Parseia o bloco → extrai usina, equipamento, falha, ação, status, OS
+#  2. Busca na planilha por fingerprint (usina + tipo_equip + num + palavras_falha)
+#
+#  CASO A — NÃO encontrou na planilha:
+#    → CRIA nova linha
+#
+#  CASO B — Encontrou, é normalização (✅ NORMALIZADO):
+#    → FECHA a ocorrência (status = Concluído, histórico atualizado)
+#
+#  CASO C — Encontrou, ação NÃO mudou e status NÃO mudou:
+#    → IGNORA (mensagem repetida de ronda sem informação nova)
+#
+#  CASO D — Encontrou, ação OU status mudou:
+#    → ATUALIZA (acrescenta ação + entrada no histórico + status se diferente)
 
 def processar_texto(texto):
     ws     = get_sheet()
@@ -648,64 +968,76 @@ def processar_texto(texto):
             resultado["ignorados"] += 1
             continue
 
+        usina     = dados.get("usina", "")
+        equip     = dados.get("equipamento", "")
+        falha     = dados.get("falha", "")
+        normalizar = dados.get("normalizar", False)
+
+        # ── Caso especial: formato com atualizações individuais por ativo ──
+        # Ex: "Tracker 3 normalizado, Tracker 5 em garantia"
         atualizacoes_individuais = extrair_atualizacoes_por_ativo(dados.get("acao_texto", ""))
 
         if atualizacoes_individuais:
             alguma_acao = False
             for upd in atualizacoes_individuais:
-                linha_ativo = None
-                for i, row in enumerate(todos[1:], start=2):
-                    if len(row) < 9: continue
-                    usina_p  = row[2].strip()
-                    equip_p  = row[3].strip()
-                    status_p = row[8].strip()
-                    if status_p == "Concluído": continue
-                    usina_ok = dados["usina"].lower() in usina_p.lower() or usina_p.lower() in dados["usina"].lower()
-                    equip_ok = equipamento_match(equip_p, upd["equipamento"])
-                    if usina_ok and equip_ok:
-                        linha_ativo = (i, row)
-                        break
-                if linha_ativo:
-                    num_linha, row = linha_ativo
+                existente = buscar_por_fingerprint(todos, usina, upd["equipamento"], falha)
+                if existente:
+                    num_linha, row = existente
                     if upd["normalizar"]:
-                        normalizar_ocorrencia(ws, num_linha, row, {**dados, "acao_texto": upd["acao_resumida"], "os": dados.get("os", "")})
-                        resultado["normalizados"].append(f"{dados['usina']} - {upd['equipamento']}")
+                        normalizar_ocorrencia(ws, num_linha, row, {
+                            **dados,
+                            "acao_texto": upd["acao_resumida"],
+                            "os": dados.get("os", ""),
+                        })
+                        resultado["normalizados"].append(f"{usina} - {upd['equipamento']}")
                     else:
-                        atualizar_ocorrencia(ws, num_linha, row, {**dados, "acao_texto": upd["acao_resumida"]})
-                        resultado["atualizados"].append(f"{dados['usina']} - {upd['equipamento']}")
+                        atualizar_ocorrencia(ws, num_linha, row, {
+                            **dados,
+                            "acao_texto": upd["acao_resumida"],
+                        })
+                        resultado["atualizados"].append(f"{usina} - {upd['equipamento']}")
                     alguma_acao = True
                     todos = carregar_planilha(ws)
             if not alguma_acao:
+                # Nenhum ativo encontrado → cria novo
                 novo_id = gravar_nova_ocorrencia(ws, todos, dados)
-                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+                resultado["novos"].append({"id": novo_id, "usina": usina})
                 todos = carregar_planilha(ws)
+            continue
 
-        elif dados["normalizar"]:
-            existente = buscar_ocorrencia_existente(todos, dados["usina"], dados["falha"])
-            if existente:
-                num_linha, row, _ = existente
-                normalizar_ocorrencia(ws, num_linha, row, dados)
-                resultado["normalizados"].append(dados["usina"])
-            else:
-                dados["status"] = "Concluído"
-                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
-                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+        # ── Fluxo principal ────────────────────────────────────────────────
+        existente = buscar_por_fingerprint(todos, usina, equip, falha)
+
+        if not existente:
+            # CASO A — nova ocorrência
+            novo_id = gravar_nova_ocorrencia(ws, todos, dados)
+            resultado["novos"].append({"id": novo_id, "usina": usina})
+            todos = carregar_planilha(ws)
+
+        elif normalizar:
+            # CASO B — normalização / conclusão
+            num_linha, row = existente
+            normalizar_ocorrencia(ws, num_linha, row, dados)
+            resultado["normalizados"].append(usina)
             todos = carregar_planilha(ws)
 
         else:
-            existente = buscar_ocorrencia_existente(todos, dados["usina"], dados["falha"])
-            if existente:
-                num_linha, row, tipo = existente
-                if tipo == "mesma":
-                    atualizar_ocorrencia(ws, num_linha, row, dados)
-                    resultado["atualizados"].append(dados["usina"])
-                else:
-                    novo_id = gravar_nova_ocorrencia(ws, todos, dados)
-                    resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
+            num_linha, row = existente
+            acao_nova = dados.get("acao_texto", "")
+            novo_status = dados.get("status", "")
+
+            mudou_acao   = acao_mudou(row, acao_nova)
+            mudou_status = status_mudou(row, novo_status)
+
+            if mudou_acao or mudou_status:
+                # CASO D — algo mudou → atualiza
+                atualizar_ocorrencia(ws, num_linha, row, dados)
+                resultado["atualizados"].append(usina)
+                todos = carregar_planilha(ws)
             else:
-                novo_id = gravar_nova_ocorrencia(ws, todos, dados)
-                resultado["novos"].append({"id": novo_id, "usina": dados["usina"]})
-            todos = carregar_planilha(ws)
+                # CASO C — nenhuma informação nova → ignora
+                log.info(f"⏭️  Sem novidade: {usina} / {equip} — ignorado")
+                resultado["ignorados"] += 1
 
     return resultado
 
@@ -786,15 +1118,15 @@ def verificar_rondas():
 
     O monitoramento em tempo real NÃO é afetado por este endpoint.
 
+    NOTA: Este endpoint é chamado diretamente pelo dashboard (GitHub Pages)
+    via fetch(). Por isso NÃO exige WEBHOOK_SECRET — a autenticação é feita
+    pelo login do próprio dashboard. O WEBHOOK_SECRET é usado apenas na
+    comunicação interna entre server.js → /webhook.
+
     Body (opcional):
       { "horas": 6 }
     """
     try:
-        if WEBHOOK_SECRET:
-            secret = request.headers.get("X-Webhook-Secret", "")
-            if secret != WEBHOOK_SECRET:
-                return jsonify({"error": "unauthorized"}), 401
-
         payload = request.get_json(force=True) or {}
         horas   = int(payload.get("horas", 6))
 
@@ -909,6 +1241,103 @@ def health():
         "timestamp":  datetime.now().isoformat(),
         "wpp_server": WPP_SERVER_URL or "não configurado",
     }), 200
+
+
+@app.route("/limpar-duplicatas", methods=["GET", "POST"])
+def limpar_duplicatas():
+    """
+    Limpa duplicatas da planilha.
+
+    Acesse direto pelo navegador (GET):
+      https://whatsapp-painel-falhas.onrender.com/limpar-duplicatas?secret=falhas2026
+
+    Para cada grupo de linhas com mesmo fingerprint (usina+equip+falha)
+    em aberto, mantém apenas a PRIMEIRA (menor ID) e remove as demais,
+    consolidando as ações e o histórico na linha mantida.
+
+    Seguro para executar múltiplas vezes (idempotente).
+    Retorna: { ok, removidas, consolidadas, mantidas }
+    """
+    try:
+        # Aceita secret via query string (GET) ou header (POST)
+        secret_qs     = request.args.get("secret", "")
+        secret_header = request.headers.get("X-Webhook-Secret", "")
+        secret        = secret_qs or secret_header
+        if WEBHOOK_SECRET and secret != WEBHOOK_SECRET:
+            return jsonify({"error": "unauthorized — adicione ?secret=VALOR na URL"}), 401
+
+        ws    = get_sheet()
+        todos = carregar_planilha(ws)
+
+        # Indexa todas as linhas abertas por fingerprint
+        grupos = {}  # fingerprint → [(num_linha, row), ...]
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < 9: continue
+            id_val = (row[0] or "").strip()
+            if not id_val: continue
+            status = row[8].strip().lower()
+            if "conclu" in status or "resolv" in status or "fechad" in status:
+                continue
+            fp = fingerprint_ocorrencia(row[2], row[3], row[4])
+            if not fp: continue
+            grupos.setdefault(fp, []).append((i, row))
+
+        removidas    = 0
+        consolidadas = 0
+        mantidas     = 0
+
+        for fp, linhas in grupos.items():
+            if len(linhas) <= 1:
+                mantidas += 1
+                continue
+
+            # Ordena por ID numérico — mantém a primeira
+            linhas_ord = sorted(linhas, key=lambda x: int(x[1][0]) if x[1][0].isdigit() else 999999)
+            linha_principal_num, linha_principal_row = linhas_ord[0]
+            duplicatas = linhas_ord[1:]
+
+            # Consolida ações e histórico das duplicatas na linha principal
+            acao_consolidada  = (linha_principal_row[7] if len(linha_principal_row) > 7 else "").strip()
+            hist_consolidado  = (linha_principal_row[11] if len(linha_principal_row) > 11 else "").strip()
+
+            for _, dup_row in duplicatas:
+                acao_dup = (dup_row[7] if len(dup_row) > 7 else "").strip()
+                hist_dup = (dup_row[11] if len(dup_row) > 11 else "").strip()
+
+                # Acrescenta ação da duplicata se tiver informação nova
+                if acao_dup and acao_dup not in acao_consolidada:
+                    acao_consolidada = (acao_consolidada + "\n" + acao_dup).strip()
+
+                # Acrescenta entradas do histórico que não existem ainda
+                for linha_hist in hist_dup.split("\n"):
+                    linha_hist = linha_hist.strip()
+                    if linha_hist and linha_hist not in hist_consolidado:
+                        hist_consolidado = (hist_consolidado + "\n" + linha_hist).strip()
+
+            # Atualiza linha principal com conteúdo consolidado
+            ws.update_cell(linha_principal_num, 8,  acao_consolidada)
+            ws.update_cell(linha_principal_num, 12, hist_consolidado)
+            mantidas += 1
+            consolidadas += 1
+
+            # Remove duplicatas (limpa o conteúdo das células — não deleta a linha
+            # para não deslocar índices; marca como removida com ID vazio)
+            for dup_num, dup_row in duplicatas:
+                ws.update(f"A{dup_num}:L{dup_num}", [["" for _ in range(12)]])
+                removidas += 1
+                log.info(f"🗑️  Removida duplicata linha {dup_num} | ID={dup_row[0]} | {dup_row[2]} / {dup_row[3]}")
+
+        log.info(f"[Limpar] Concluído: {removidas} removidas, {consolidadas} consolidadas, {mantidas} mantidas")
+        return jsonify({
+            "ok":          True,
+            "removidas":   removidas,
+            "consolidadas": consolidadas,
+            "mantidas":    mantidas,
+        }), 200
+
+    except Exception as e:
+        log.error(f"[Limpar] Erro: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/test", methods=["POST"])
