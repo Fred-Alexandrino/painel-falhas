@@ -430,7 +430,10 @@ def _limpar_equipamento(equip):
     equip = re.sub(r"Tck\s*", "Tracker ", equip, flags=re.IGNORECASE)
     equip = re.sub(r"(?<=[Tt]racker\s)0+(\d)", r"\1", equip)
     equip = re.sub(r"(?<=[Mm]otor\s)0+(\d)", r"\1", equip)
-    if equip:
+    # Normaliza Inversor N e INV-N → INV-NN
+    equip = re.sub(r"(?i)\bInversor(?:es)?\s+(\d+)\b", lambda m: f"INV-{int(m.group(1)):02d}", equip)
+    equip = re.sub(r"\bINV-?(\d+)\b", lambda m: f"INV-{int(m.group(1)):02d}", equip)
+    if equip and not equip.startswith("INV-"):
         equip = equip[0].upper() + equip[1:]
     return equip.strip()
 
@@ -444,8 +447,116 @@ def inferir_equipamento(problema="", descricao="", identificacao="", equip_probl
     fonte = problema or descricao or ""
     return fonte[:60] if fonte else ""
 
-def eh_normalizacao(texto):
-    return bool(re.search(r"normalizado|normalizada|✅.*normal", texto, re.IGNORECASE))
+def normalizar_inversores(texto):
+    """
+    Padroniza nomenclatura de inversores para INV-XX.
+    Exemplos:
+      "inversor 4"    → "INV-04"
+      "inversor 04"   → "INV-04"
+      "Inversor 14"   → "INV-14"
+      "INV-4"         → "INV-04"
+    """
+    if not texto:
+        return texto
+    def fmt(n):
+        return f"INV-{int(n):02d}"
+    # inversor N → INV-NN
+    texto = re.sub(
+        r'\bInversor(?:es)?\s+(\d+)\b',
+        lambda m: fmt(m.group(1)),
+        texto, flags=re.IGNORECASE
+    )
+    # INV-N → INV-NN (sem zero à esquerda)
+    texto = re.sub(
+        r'\bINV-(\d+)\b',
+        lambda m: fmt(m.group(1)),
+        texto
+    )
+    return texto
+
+
+def extrair_inversores_multiplos(bloco, dados_base):
+    """
+    Detecta mensagens com múltiplos inversores (ex: "Inversores 6 e 7")
+    e retorna lista de dados individuais, um por inversor.
+
+    Se houver ações/causas individuais por inversor no texto, distribui.
+    Caso contrário, replica as mesmas informações para cada um.
+
+    Retorna [] se não houver múltiplos inversores (processamento normal).
+    """
+    falha = dados_base.get("falha", "")
+    acao  = dados_base.get("acao_texto", "") or dados_base.get("acao", "")
+
+    # Detecta padrão: "inversores N e M" ou "inversores N, M e K"
+    # Exemplos: "Inversores 6 e 7", "Inversores 06, 07 e 08"
+    m = re.search(
+        r'\bInversores?\s+((?:\d+(?:\s*[,e]\s*)?)+)',
+        falha + " " + acao,
+        re.IGNORECASE
+    )
+    if not m:
+        return []
+
+    nums_raw = re.findall(r'\d+', m.group(1))
+    if len(nums_raw) < 2:
+        return []  # só um inversor — processamento normal
+
+    nums = [f"{int(n):02d}" for n in nums_raw]
+    log.info(f"[Multi-INV] Detectados {len(nums)} inversores: {nums}")
+
+    # Tenta extrair ações individuais por inversor no texto completo
+    # Padrão: "INV-06: texto... INV-07: texto..."
+    acoes_individuais = {}
+    causas_individuais = {}
+
+    for num in nums:
+        inv_tag = f"INV-{num}"
+        # Busca padrão "INV-XX: ..." ou "Inversor XX: ..."
+        m_acao = re.search(
+            rf'(?:INV-{num}|[Ii]nversor\s+0*{int(num)})\s*[:\-–]\s*([^\n\.]+)',
+            acao
+        )
+        if m_acao:
+            acoes_individuais[num] = m_acao.group(1).strip()
+
+        m_causa = re.search(
+            rf'(?:INV-{num}|[Ii]nversor\s+0*{int(num)})\s*[:\-–]\s*([^\n\.]+)',
+            dados_base.get("causa", "")
+        )
+        if m_causa:
+            causas_individuais[num] = m_causa.group(1).strip()
+
+    # Gera lista de dados individuais
+    lista = []
+    for num in nums:
+        inv_nome = f"INV-{num}"
+        # Falha: substitui referência genérica pelo inversor específico
+        # Ex: "Falha nos inversores 6 e 7" → "Falha no INV-06"
+        falha_ind = re.sub(
+            r'(?:nos\s+|no\s+)?\bInversores?\s+[\d,\s]+(?:e\s+\d+)?',
+            f"no {inv_nome}",
+            falha, flags=re.IGNORECASE
+        ).strip() or falha
+
+        dados_ind = {
+            **dados_base,
+            "equipamento":  inv_nome,
+            "equip_impact": inv_nome,
+            "falha":        falha_ind,
+            "acao_texto":   acoes_individuais.get(num, dados_base.get("acao_texto", "")),
+            "causa":        causas_individuais.get(num, dados_base.get("causa", "")),
+        }
+        # Recalcula ação composta
+        partes = []
+        if dados_ind["acao_texto"]:
+            partes.append(dados_ind["acao_texto"])
+        dados_ind["acao"] = " | ".join(partes) if partes else dados_base.get("acao", "")
+        lista.append(dados_ind)
+
+    return lista
+
+
 
 def detectar_status_emoji(bloco):
     if re.search(r"✅", bloco):
@@ -1004,6 +1115,38 @@ def processar_texto(texto):
                 resultado["novos"].append({"id": novo_id, "usina": usina})
                 todos = carregar_planilha(ws)
             continue
+
+        # ── Múltiplos inversores numa mesma mensagem ──────────────────────
+        # Ex: "Inversores 6 e 7" → cria/atualiza INV-06 e INV-07 separadamente
+        multi_inv = extrair_inversores_multiplos(bloco, dados)
+        if multi_inv:
+            for dados_inv in multi_inv:
+                existente_inv = buscar_por_fingerprint(todos, dados_inv["usina"], dados_inv["equipamento"], dados_inv["falha"])
+                if not existente_inv:
+                    novo_id = gravar_nova_ocorrencia(ws, todos, dados_inv)
+                    resultado["novos"].append({"id": novo_id, "usina": dados_inv["usina"]})
+                    todos = carregar_planilha(ws)
+                elif dados_inv.get("normalizar"):
+                    num_linha, row = existente_inv
+                    normalizar_ocorrencia(ws, num_linha, row, dados_inv)
+                    resultado["normalizados"].append(f"{dados_inv['usina']} - {dados_inv['equipamento']}")
+                    todos = carregar_planilha(ws)
+                else:
+                    num_linha, row = existente_inv
+                    if acao_mudou(row, dados_inv.get("acao_texto","")) or status_mudou(row, dados_inv.get("status","")):
+                        atualizar_ocorrencia(ws, num_linha, row, dados_inv)
+                        resultado["atualizados"].append(f"{dados_inv['usina']} - {dados_inv['equipamento']}")
+                        todos = carregar_planilha(ws)
+                    else:
+                        resultado["ignorados"] += 1
+            continue  # pula o fluxo principal — já foi tratado acima
+
+        # ── Normaliza nomenclatura de inversores na falha ──────────────────
+        dados["falha"]        = normalizar_inversores(dados.get("falha", ""))
+        dados["equipamento"]  = _limpar_equipamento(dados.get("equipamento", ""))
+        dados["equip_impact"] = dados["equipamento"]
+        equip = dados["equipamento"]
+        falha = dados["falha"]
 
         # ── Fluxo principal ────────────────────────────────────────────────
         existente = buscar_por_fingerprint(todos, usina, equip, falha)
