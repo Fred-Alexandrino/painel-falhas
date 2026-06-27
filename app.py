@@ -41,6 +41,92 @@ GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 # URL do servidor WhatsApp (Baileys) — usado pelo endpoint /rondas
 WPP_SERVER_URL = os.environ.get("WPP_SERVER_URL", "").rstrip("/")
 
+# Nome da aba de log de mensagens
+LOG_SHEET_NAME = "Log de Mensagens"
+
+# ── Cache de credenciais Google (reutiliza a conexão) ────────────────────────
+_gc_cache = None
+
+def get_gc():
+    global _gc_cache
+    if _gc_cache is None:
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if not creds_json:
+            raise ValueError("GOOGLE_CREDENTIALS_JSON não configurado")
+        creds_dict = json.loads(creds_json)
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        from google.oauth2.service_account import Credentials as _Creds
+        creds = _Creds.from_service_account_info(creds_dict, scopes=scopes)
+        _gc_cache = gspread.authorize(creds)
+    return _gc_cache
+
+def get_log_sheet():
+    """Retorna a aba 'Log de Mensagens' da planilha."""
+    gc = get_gc()
+    return gc.open_by_key(SHEET_ID).worksheet(LOG_SHEET_NAME)
+
+def gravar_log_mensagem(grupo_id, grupo_nome, texto):
+    """
+    Grava uma mensagem recebida na aba 'Log de Mensagens'.
+    Colunas: Timestamp | GrupoId | GrupoNome | Texto | Processado
+    """
+    try:
+        ws_log = get_log_sheet()
+        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        ws_log.append_row([ts, grupo_id, grupo_nome, texto, ""])
+        log.info(f"📝 [Log] Mensagem gravada: {grupo_id}")
+    except Exception as e:
+        log.error(f"❌ [Log] Erro ao gravar mensagem: {e}")
+
+def ler_log_mensagens(horas=6):
+    """
+    Lê mensagens do log das últimas N horas.
+    Retorna lista de dicts com grupo_id, texto, timestamp.
+    """
+    import time
+    try:
+        ws_log = get_log_sheet()
+        rows   = ws_log.get_all_values()
+        if len(rows) < 2:
+            return []
+
+        desde = datetime.now().timestamp() - (horas * 3600)
+        mensagens = []
+
+        for row in rows[1:]:  # pula cabeçalho
+            if len(row) < 4: continue
+            ts_str   = row[0].strip()
+            grupo_id = row[1].strip()
+            texto    = row[3].strip()
+            if not texto or not grupo_id: continue
+
+            # Converte timestamp
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.strptime(ts_str, "%d/%m/%Y %H:%M:%S")
+                ts = dt.timestamp()
+            except:
+                continue
+
+            if ts < desde: continue
+            mensagens.append({"grupo_id": grupo_id, "texto": texto, "timestamp": ts_str})
+
+        log.info(f"[Log] {len(mensagens)} mensagens nas últimas {horas}h")
+        return mensagens
+    except Exception as e:
+        log.error(f"❌ [Log] Erro ao ler mensagens: {e}")
+        return []
+
+def marcar_processado(ws_log, linha_idx):
+    """Marca uma linha do log como processada (coluna E)."""
+    try:
+        ws_log.update_cell(linha_idx, 5, "✅")
+    except:
+        pass
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CATÁLOGO CANÔNICO DE USINAS
 #
@@ -859,16 +945,7 @@ def parse_bloco(bloco):
 # ── Google Sheets ─────────────────────────────────────────────────────────────
 
 def get_sheet():
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if not creds_json:
-        raise ValueError("GOOGLE_CREDENTIALS_JSON não configurado")
-    creds_dict = json.loads(creds_json)
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    gc    = gspread.authorize(creds)
+    gc = get_gc()
     return gc.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
 def carregar_planilha(ws):
@@ -1252,6 +1329,10 @@ def webhook():
         if not tem_usina and not tem_emoji and not tem_bullet:
             return jsonify({"status": "ignored", "reason": "no failure content"}), 200
 
+        # Grava no log antes de processar (para histórico de varredura)
+        grupo_nome = remote_jid.split("@")[0]
+        gravar_log_mensagem(remote_jid, grupo_nome, texto)
+
         resultado = processar_texto(texto)
 
         total = len(resultado["novos"]) + len(resultado["atualizados"]) + len(resultado["normalizados"])
@@ -1295,96 +1376,50 @@ def verificar_rondas():
                 "hint":  "Adicione a variável de ambiente WPP_SERVER_URL com a URL do servidor Baileys (server.js)",
             }), 400
 
-        grupos_ids = [g.strip() for g in GRUPOS_FILTRO if g.strip()]
-        if not grupos_ids:
-            return jsonify({"ok": False, "error": "GRUPOS_IDS não configurado"}), 400
-
-        import urllib.request, time
-        agora = int(time.time())
-        desde = agora - (horas * 3600)
-
-        log.info(f"[Rondas] Iniciando varredura | {horas}h para trás | {len(grupos_ids)} grupo(s)")
+        log.info(f"[Rondas] Iniciando varredura no log | últimas {horas}h")
 
         resultado_total = {
             "novos":        [],
             "atualizados":  [],
             "normalizados": [],
             "ignorados":    0,
-            "grupos":       [],
+            "mensagens_lidas": 0,
+            "mensagens_processadas": 0,
         }
 
-        headers_req = {"Content-Type": "application/json"}
-        if WEBHOOK_SECRET:
-            headers_req["X-Webhook-Secret"] = WEBHOOK_SECRET
+        # Lê mensagens do log das últimas N horas
+        mensagens = ler_log_mensagens(horas)
+        resultado_total["mensagens_lidas"] = len(mensagens)
 
-        for grupo_id in grupos_ids:
-            grupo_id = grupo_id.strip()
-            if not grupo_id:
+        for msg in mensagens:
+            texto = msg.get("texto", "")
+            if not texto:
                 continue
+
+            # Filtra apenas mensagens de ronda/ocorrência
+            tem_usina  = bool(re.search(r"Usina:", texto, re.IGNORECASE))
+            tem_emoji  = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
+            tem_desvio = bool(re.search(r"DESVIO:", texto, re.IGNORECASE))
+            tem_bullet = eh_formato_cos_grid(texto)
+
+            if not (tem_usina or tem_emoji or tem_desvio or tem_bullet):
+                continue
+
             try:
-                url = f"{WPP_SERVER_URL}/api/messages/{grupo_id}?limit=200&sinceTimestamp={desde}"
-                req = urllib.request.Request(url, headers=headers_req)
-
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    msgs_data = json.loads(resp.read().decode())
-
-                mensagens = msgs_data.get("messages", [])
-                if isinstance(msgs_data, list):
-                    mensagens = msgs_data
-
-                log.info(f"[Rondas] Grupo {grupo_id}: {len(mensagens)} mensagens recebidas")
-
-                msgs_processadas = 0
-                for msg in mensagens:
-                    texto = (
-                        msg.get("message", {}).get("conversation") or
-                        msg.get("message", {}).get("extendedTextMessage", {}).get("text") or
-                        msg.get("body") or
-                        msg.get("text") or ""
-                    )
-                    if not texto:
-                        continue
-
-                    # Filtra apenas mensagens de ronda/ocorrência
-                    tem_usina  = bool(re.search(r"Usina:", texto, re.IGNORECASE))
-                    tem_emoji  = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
-                    tem_desvio = bool(re.search(r"DESVIO:", texto, re.IGNORECASE))
-                    tem_bullet = eh_formato_cos_grid(texto)
-
-                    if not (tem_usina or tem_emoji or tem_desvio or tem_bullet):
-                        continue
-
-                    try:
-                        res = processar_texto(texto)
-                        resultado_total["novos"]        += res.get("novos", [])
-                        resultado_total["atualizados"]  += res.get("atualizados", [])
-                        resultado_total["normalizados"] += res.get("normalizados", [])
-                        resultado_total["ignorados"]    += res.get("ignorados", 0)
-                        msgs_processadas += 1
-                    except Exception as e:
-                        log.error(f"[Rondas] Erro ao processar mensagem do grupo {grupo_id}: {e}")
-
-                resultado_total["grupos"].append({
-                    "id":                grupo_id,
-                    "mensagens_lidas":   len(mensagens),
-                    "mensagens_falha":   msgs_processadas,
-                })
-
-            except urllib.error.HTTPError as e:
-                log.error(f"[Rondas] HTTP {e.code} ao buscar grupo {grupo_id}: {e.reason}")
-                resultado_total["grupos"].append({"id": grupo_id, "erro": f"HTTP {e.code}: {e.reason}"})
-            except urllib.error.URLError as e:
-                log.error(f"[Rondas] Erro de conexão ao buscar grupo {grupo_id}: {e.reason}")
-                resultado_total["grupos"].append({"id": grupo_id, "erro": f"Conexão: {e.reason}"})
+                res = processar_texto(texto)
+                resultado_total["novos"]        += res.get("novos", [])
+                resultado_total["atualizados"]  += res.get("atualizados", [])
+                resultado_total["normalizados"] += res.get("normalizados", [])
+                resultado_total["ignorados"]    += res.get("ignorados", 0)
+                resultado_total["mensagens_processadas"] += 1
             except Exception as e:
-                log.error(f"[Rondas] Erro inesperado no grupo {grupo_id}: {e}")
-                resultado_total["grupos"].append({"id": grupo_id, "erro": str(e)})
+                log.error(f"[Rondas] Erro ao processar mensagem: {e}")
 
         total = (len(resultado_total["novos"]) +
                  len(resultado_total["atualizados"]) +
                  len(resultado_total["normalizados"]))
 
-        log.info(f"[Rondas] Concluído: {total} ação(ões) na planilha")
+        log.info(f"[Rondas] Concluído: {total} ação(ões) | {resultado_total['mensagens_lidas']} msgs lidas do log")
         return jsonify({"ok": True, "horas_verificadas": horas, **resultado_total}), 200
 
     except Exception as e:
