@@ -415,6 +415,10 @@ STATUS_VALIDOS = {
     "aguardando cliente": "Aguardando Cliente",
     "aguardando fabricante": "Aguardando Fabricante",
     "aguardando equipamento": "Aguardando Equipamento",
+    "em andamento": "Em Andamento",
+    "corrigir ronda": "Corrigir Ronda - COS",
+    "corrigir ronda - cos": "Corrigir Ronda - COS",
+    "fechado": "Fechado",
 }
 
 # ── Padrões de extração ───────────────────────────────────────────────────────
