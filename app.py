@@ -157,6 +157,93 @@ def marcar_processado(ws_log, linha_idx):
     except:
         pass
 
+def ler_log_historico(horas=24):
+    """
+    Lê TODAS as mensagens do log das últimas N horas — incluindo já processadas.
+    Usada pelo endpoint /rondas/grupos para exibição histórica (somente leitura).
+    """
+    import time
+    try:
+        ws_log = get_log_sheet()
+        agora = time.time()
+        if agora - _log_cache["ts"] > 60 or _log_cache["rows"] is None:
+            _log_cache["rows"] = ws_log.get_all_values()
+            _log_cache["ts"]   = agora
+        rows = _log_cache["rows"]
+        if len(rows) < 2:
+            return []
+
+        desde = datetime.now().timestamp() - (horas * 3600)
+        mensagens = []
+        for row in rows[1:]:
+            if len(row) < 4: continue
+            ts_str   = row[0].strip()
+            grupo_id = row[1].strip()
+            texto    = row[3].strip()
+            processado = row[4].strip() if len(row) > 4 else ""
+            if not texto or not grupo_id: continue
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.strptime(ts_str, "%d/%m/%Y %H:%M:%S")
+                ts = dt.timestamp()
+            except:
+                continue
+            if ts < desde: continue
+            mensagens.append({
+                "grupo_id":   grupo_id,
+                "texto":      texto,
+                "timestamp":  ts_str,
+                "processado": processado == "✅",
+                "linha_idx":  rows[1:].index(row) + 2
+            })
+        return mensagens
+    except Exception as e:
+        log.error(f"❌ [Log] Erro ao ler histórico: {e}")
+        return []
+
+def limpar_log_antigo():
+    """
+    Remove linhas do 'Log de Mensagens' com mais de 5 dias.
+    Chamado automaticamente no endpoint /rondas.
+    """
+    import time
+    try:
+        ws_log = get_log_sheet()
+        rows = ws_log.get_all_values()
+        if len(rows) < 2:
+            return 0
+
+        limite = datetime.now().timestamp() - (5 * 24 * 3600)
+        linhas_deletar = []
+
+        for i, row in enumerate(rows[1:], start=2):  # pula cabeçalho
+            if len(row) < 1: continue
+            ts_str = row[0].strip()
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.strptime(ts_str, "%d/%m/%Y %H:%M:%S")
+                if dt.timestamp() < limite:
+                    linhas_deletar.append(i)
+            except:
+                continue
+
+        if not linhas_deletar:
+            return 0
+
+        # Deleta de baixo para cima (evita deslocamento de índices)
+        for idx in reversed(linhas_deletar):
+            ws_log.delete_rows(idx)
+
+        # Invalida cache após limpeza
+        _log_cache["ts"]   = 0
+        _log_cache["rows"] = None
+
+        log.info(f"🧹 [Log] {len(linhas_deletar)} linha(s) antigas removidas (>5 dias)")
+        return len(linhas_deletar)
+    except Exception as e:
+        log.error(f"❌ [Log] Erro ao limpar log antigo: {e}")
+        return 0
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CATÁLOGO CANÔNICO DE USINAS
 #
@@ -1554,6 +1641,14 @@ def webhook():
         total = len(resultado["novos"]) + len(resultado["atualizados"]) + len(resultado["normalizados"])
         if total > 0:
             log.info(f"✅ [Tempo real] {len(resultado['novos'])} novos, {len(resultado['atualizados'])} atualizados, {len(resultado['normalizados'])} normalizados")
+
+        # Limpeza automática: remove linhas do log com mais de 5 dias
+        try:
+            removidas = limpar_log_antigo()
+            if removidas > 0:
+                log.info(f"🧹 [Rondas] Log limpo: {removidas} linha(s) com mais de 5 dias removidas")
+        except Exception as e_clean:
+            log.warning(f"[Rondas] Limpeza do log falhou (não crítico): {e_clean}")
             return jsonify({"status": "ok", **resultado}), 200
 
         return jsonify({"status": "ignored", "reason": "no valid content"}), 200
@@ -1781,13 +1876,14 @@ def push_test():
 @app.route("/rondas/grupos", methods=["POST"])
 def rondas_por_grupo():
     """
-    Retorna as últimas mensagens de cada grupo monitorado,
-    lidas do log do Google Sheets.
+    Retorna as últimas mensagens de CADA grupo monitorado — somente leitura.
+    Usa ler_log_historico() que inclui mensagens já processadas.
     """
     try:
         payload = request.get_json(force=True) or {}
         horas   = int(payload.get("horas", 24))
-        mensagens = ler_log_mensagens(horas)
+        # Usa histórico completo (inclui processadas) — somente para visualização
+        mensagens = ler_log_historico(horas)
 
         # Agrupa por grupo_id
         grupos_map = {}
@@ -1796,8 +1892,9 @@ def rondas_por_grupo():
             if gid not in grupos_map:
                 grupos_map[gid] = []
             grupos_map[gid].append({
-                "texto":     msg.get("texto", ""),
-                "timestamp": msg.get("timestamp", ""),
+                "texto":      msg.get("texto", ""),
+                "timestamp":  msg.get("timestamp", ""),
+                "processado": msg.get("processado", False),
             })
 
         grupos = []
@@ -1805,7 +1902,7 @@ def rondas_por_grupo():
             grupos.append({
                 "id":        gid,
                 "total":     len(msgs),
-                "mensagens": msgs[-3:],  # últimas 3
+                "mensagens": msgs[-5:],  # últimas 5 por grupo
             })
 
         # Garante que todos os grupos configurados aparecem (mesmo sem msgs)
