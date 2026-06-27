@@ -99,15 +99,24 @@ def gravar_log_mensagem(grupo_id, grupo_nome, texto):
     except Exception as e:
         log.error(f"❌ [Log] Erro ao gravar mensagem: {e}")
 
+_log_cache = {"ts": 0, "rows": None}
+
 def ler_log_mensagens(horas=6):
     """
     Lê mensagens do log das últimas N horas.
+    Usa cache de 60s para não estourar quota da API do Google.
     Retorna lista de dicts com grupo_id, texto, timestamp.
     """
     import time
     try:
         ws_log = get_log_sheet()
-        rows   = ws_log.get_all_values()
+        # Cache de 60s para evitar quota exceeded
+        agora = time.time()
+        if agora - _log_cache["ts"] > 60 or _log_cache["rows"] is None:
+            _log_cache["rows"] = ws_log.get_all_values()
+            _log_cache["ts"]   = agora
+            log.info("[Log] Cache atualizado")
+        rows = _log_cache["rows"]
         if len(rows) < 2:
             return []
 
@@ -116,9 +125,12 @@ def ler_log_mensagens(horas=6):
 
         for row in rows[1:]:  # pula cabeçalho
             if len(row) < 4: continue
-            ts_str   = row[0].strip()
-            grupo_id = row[1].strip()
-            texto    = row[3].strip()
+            ts_str     = row[0].strip()
+            grupo_id   = row[1].strip()
+            texto      = row[3].strip()
+            processado = row[4].strip() if len(row) > 4 else ""
+            # Pula mensagens já processadas pelo botão Verificar Rondas
+            if processado == "✅": continue
             if not texto or not grupo_id: continue
 
             # Converte timestamp
@@ -130,7 +142,7 @@ def ler_log_mensagens(horas=6):
                 continue
 
             if ts < desde: continue
-            mensagens.append({"grupo_id": grupo_id, "texto": texto, "timestamp": ts_str})
+            mensagens.append({"grupo_id": grupo_id, "texto": texto, "timestamp": ts_str, "linha_idx": rows[1:].index(row) + 2})
 
         log.info(f"[Log] {len(mensagens)} mensagens nas últimas {horas}h")
         return mensagens
@@ -1536,7 +1548,12 @@ def verificar_rondas():
         mensagens = ler_log_mensagens(horas)
         resultado_total["mensagens_lidas"] = len(mensagens)
 
-        for msg in mensagens:
+        # Marca todas as mensagens como processadas em lote após processar
+        ws_log = get_log_sheet()
+        rows_log = ws_log.get_all_values()
+        linhas_para_marcar = []
+
+        for i, msg in enumerate(mensagens):
             texto = msg.get("texto", "")
             if not texto:
                 continue
@@ -1547,18 +1564,35 @@ def verificar_rondas():
             tem_desvio = bool(re.search(r"DESVIO:", texto, re.IGNORECASE))
             tem_bullet = eh_formato_cos_grid(texto)
 
-            if not (tem_usina or tem_emoji or tem_desvio or tem_bullet):
-                continue
+            relevante = tem_usina or tem_emoji or tem_desvio or tem_bullet
 
-            try:
-                res = processar_texto(texto)
-                resultado_total["novos"]        += res.get("novos", [])
-                resultado_total["atualizados"]  += res.get("atualizados", [])
-                resultado_total["normalizados"] += res.get("normalizados", [])
-                resultado_total["ignorados"]    += res.get("ignorados", 0)
-                resultado_total["mensagens_processadas"] += 1
-            except Exception as e:
-                log.error(f"[Rondas] Erro ao processar mensagem: {e}")
+            if relevante:
+                try:
+                    res = processar_texto(texto)
+                    resultado_total["novos"]        += res.get("novos", [])
+                    resultado_total["atualizados"]  += res.get("atualizados", [])
+                    resultado_total["normalizados"] += res.get("normalizados", [])
+                    resultado_total["ignorados"]    += res.get("ignorados", 0)
+                    resultado_total["mensagens_processadas"] += 1
+                except Exception as e:
+                    log.error(f"[Rondas] Erro ao processar mensagem: {e}")
+
+            # Marca como processada (relevante ou não) para não reprocessar
+            linhas_para_marcar.append(msg.get("linha_idx"))
+
+        # Marca em lote no Sheets — uma única requisição para todas as linhas
+        try:
+            if linhas_para_marcar:
+                idxs_validos = [idx for idx in linhas_para_marcar if idx]
+                if idxs_validos:
+                    # batch_update: uma única chamada à API
+                    ws_log.batch_update([{
+                        'range': f'E{idx}',
+                        'values': [['✅']]
+                    } for idx in idxs_validos])
+                    log.info(f"[Rondas] {len(idxs_validos)} mensagens marcadas como processadas")
+        except Exception as e:
+            log.warning(f"[Rondas] Erro ao marcar processadas: {e}")
 
         total = (len(resultado_total["novos"]) +
                  len(resultado_total["atualizados"]) +
