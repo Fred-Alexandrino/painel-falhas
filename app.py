@@ -23,6 +23,15 @@ from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
 
+# Push notifications (pywebpush)
+try:
+    from pywebpush import webpush, WebPushException
+    PUSH_ENABLED = True
+except ImportError:
+    PUSH_ENABLED = False
+    log_push = logging.getLogger(__name__)
+    log_push.warning("pywebpush não instalado — notificações push desabilitadas")
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
@@ -38,7 +47,16 @@ SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandri
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 
-# URL do servidor WhatsApp (Baileys) — usado pelo endpoint /rondas
+# ── Configuração VAPID para notificações push ────────────────────────────────
+VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "BPU55JogEEcV6GlCUONmzkVam8Tt9a0DuX3FYfn_ltgKc8p1fahQiE8v5RGECnMkSYEXMyUzOYBtslhUdiOJ6Jk")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_CLAIMS      = {"sub": "mailto:fred@gridco.com.br"}
+
+# Subscriptions em memória (persistidas na planilha em produção)
+# { endpoint: subscription_json }
+_push_subscriptions = {}
+
+# ── URL do servidor WhatsApp (Baileys) — usado pelo endpoint /rondas (Baileys) — usado pelo endpoint /rondas
 WPP_SERVER_URL = os.environ.get("WPP_SERVER_URL", "").rstrip("/")
 
 # Nome da aba de log de mensagens
@@ -1235,6 +1253,35 @@ def gravar_nova_ocorrencia(ws, todos, dados):
     ]
     ws.update(f"A{proxima_linha}:L{proxima_linha}", [linha])
     log.info(f"➕ Nova ocorrência ID={novo_id} | {dados['usina']} — {dados['equipamento']} | linha {proxima_linha}")
+
+    # Notificação push — nova ocorrência
+    try:
+        usina_nome = dados.get("usina", "")
+        equip_nome = dados.get("equipamento", "")
+        falha_txt  = dados.get("falha", "")
+        cliente    = dados.get("cliente", "")
+
+        # Detecta desligamento
+        fc = (falha_txt + " " + dados.get("causa", "")).lower()
+        eh_deslig = bool(re.search(
+            r"usina\s+desligad|ufv\s+desligad|desligamento\s+da\s+usina|usina\s+parad", fc
+        ))
+
+        if eh_deslig:
+            enviar_push(
+                titulo=f"⚡ USINA DESLIGADA — {usina_nome}",
+                corpo=f"{falha_txt or 'Usina sem geração'} · {cliente}",
+                tipo="desligamento",
+            )
+        else:
+            enviar_push(
+                titulo=f"🔴 Nova falha — {usina_nome}",
+                corpo=f"{equip_nome}: {falha_txt[:80] if falha_txt else 'Nova ocorrência registrada'} · {cliente}",
+                tipo="nova_ocorrencia",
+            )
+    except Exception as e:
+        log.error(f"[Push] Erro ao notificar nova ocorrência: {e}")
+
     return novo_id
 
 
@@ -1523,6 +1570,119 @@ def verificar_rondas():
     except Exception as e:
         log.error(f"[Rondas] Erro geral: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Notificações Push ────────────────────────────────────────────────────────
+
+def enviar_push(titulo, corpo, tipo="geral", url="https://fred-alexandrino.github.io/PAINELDEFALHAS/"):
+    """
+    Envia notificação push para todos os dispositivos registrados.
+    tipo: "desligamento" | "nova_ocorrencia" | "geral"
+    """
+    if not PUSH_ENABLED:
+        log.warning("[Push] pywebpush não disponível")
+        return 0
+    if not VAPID_PRIVATE_KEY:
+        log.warning("[Push] VAPID_PRIVATE_KEY não configurada")
+        return 0
+    if not _push_subscriptions:
+        log.info("[Push] Nenhum dispositivo registrado")
+        return 0
+
+    payload = json.dumps({
+        "title": titulo,
+        "body":  corpo,
+        "tipo":  tipo,
+        "url":   url,
+        "tag":   f"painel-{tipo}",
+        "icon":  "https://fred-alexandrino.github.io/PAINELDEFALHAS/icon-192.png",
+    })
+
+    enviados = 0
+    expirados = []
+    for endpoint, sub in list(_push_subscriptions.items()):
+        try:
+            webpush(
+                subscription_info=sub,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+            )
+            enviados += 1
+            log.info(f"[Push] Enviado para {endpoint[:40]}...")
+        except WebPushException as e:
+            if "410" in str(e) or "404" in str(e):
+                # Subscription expirada — remove
+                expirados.append(endpoint)
+                log.info(f"[Push] Subscription expirada removida: {endpoint[:40]}")
+            else:
+                log.error(f"[Push] Erro ao enviar: {e}")
+        except Exception as e:
+            log.error(f"[Push] Erro inesperado: {e}")
+
+    for ep in expirados:
+        _push_subscriptions.pop(ep, None)
+
+    log.info(f"[Push] {enviados} notificação(ões) enviada(s)")
+    return enviados
+
+
+@app.route("/push/subscribe", methods=["POST", "OPTIONS"])
+def push_subscribe():
+    """
+    Registra subscription de notificação push de um dispositivo.
+    Chamado pelo dashboard ao clicar em "Ativar Notificações".
+    """
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+
+    try:
+        payload = request.get_json(force=True) or {}
+        sub = payload.get("subscription")
+        if not sub or not sub.get("endpoint"):
+            return jsonify({"error": "subscription inválida"}), 400
+
+        endpoint = sub["endpoint"]
+        _push_subscriptions[endpoint] = sub
+        log.info(f"[Push] Nova subscription registrada: {endpoint[:60]}...")
+        log.info(f"[Push] Total de dispositivos: {len(_push_subscriptions)}")
+
+        # Envia notificação de boas-vindas
+        try:
+            webpush(
+                subscription_info=sub,
+                data=json.dumps({
+                    "title": "🔔 Painel O&M — Notificações ativas!",
+                    "body":  "Você receberá alertas de desligamentos e novas ocorrências.",
+                    "tipo":  "geral",
+                    "url":   "https://fred-alexandrino.github.io/PAINELDEFALHAS/",
+                }),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+            ) if PUSH_ENABLED and VAPID_PRIVATE_KEY else None
+        except Exception as e:
+            log.warning(f"[Push] Erro na notificação de boas-vindas: {e}")
+
+        return jsonify({"ok": True, "total": len(_push_subscriptions)}), 200
+
+    except Exception as e:
+        log.error(f"[Push] Erro ao registrar subscription: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/push/test", methods=["POST"])
+def push_test():
+    """Envia notificação de teste para todos os dispositivos registrados."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+    n = enviar_push(
+        titulo="🧪 Teste — Painel O&M",
+        corpo="Se você está vendo isso, as notificações estão funcionando!",
+        tipo="geral",
+    )
+    return jsonify({"ok": True, "enviados": n}), 200
 
 
 @app.route("/health", methods=["GET"])
