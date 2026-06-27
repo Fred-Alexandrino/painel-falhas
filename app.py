@@ -1685,6 +1685,50 @@ def push_test():
     return jsonify({"ok": True, "enviados": n}), 200
 
 
+@app.route("/rondas/grupos", methods=["POST"])
+def rondas_por_grupo():
+    """
+    Retorna as últimas mensagens de cada grupo monitorado,
+    lidas do log do Google Sheets.
+    """
+    try:
+        payload = request.get_json(force=True) or {}
+        horas   = int(payload.get("horas", 24))
+        mensagens = ler_log_mensagens(horas)
+
+        # Agrupa por grupo_id
+        grupos_map = {}
+        for msg in mensagens:
+            gid = msg.get("grupo_id", "")
+            if gid not in grupos_map:
+                grupos_map[gid] = []
+            grupos_map[gid].append({
+                "texto":     msg.get("texto", ""),
+                "timestamp": msg.get("timestamp", ""),
+            })
+
+        grupos = []
+        for gid, msgs in grupos_map.items():
+            grupos.append({
+                "id":        gid,
+                "total":     len(msgs),
+                "mensagens": msgs[-3:],  # últimas 3
+            })
+
+        # Garante que todos os grupos configurados aparecem (mesmo sem msgs)
+        ids_com_msgs = {g["id"] for g in grupos}
+        for gid in GRUPOS_FILTRO:
+            gid = gid.strip()
+            if gid and gid not in ids_com_msgs:
+                grupos.append({"id": gid, "total": 0, "mensagens": []})
+
+        return jsonify({"ok": True, "horas": horas, "grupos": grupos}), 200
+
+    except Exception as e:
+        log.error(f"[Grupos] Erro: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
