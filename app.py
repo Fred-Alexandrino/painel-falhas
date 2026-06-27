@@ -784,15 +784,29 @@ def parse_bloco_cos_grid(bloco):
         data_fim = extrair_data_fmt(fim_txt, hoje)
         hist.append(f"{data_fim} - Ocorrência normalizada")
 
+    # "Descrição dos Problemas" → causa (motivo técnico da falha)
+    # "Impacto"               → equipamentos impactados
+    causa_final = descricao or ""
+    equip_impact = impacto or equip
+
+    # Status: se equipe foi acionada = "Em Andamento", senão "Em Aberto"
+    equipe_acionada = not vazio(equipe_raw)
+    if normalizar:
+        status_calc = "Concluído"
+    elif equipe_acionada:
+        status_calc = "Em Andamento"
+    else:
+        status_calc = "Em Aberto"
+
     return {
         "usina":       usina,
         "cliente":     inferir_cliente(usina),
         "equipamento": equip,
         "falha":       falha,
-        "causa":       impacto or "",
-        "equip_impact":equip,
+        "causa":       causa_final,
+        "equip_impact":equip_impact,
         "acao":        " | ".join(partes_acao),
-        "status":      "Concluído" if normalizar else "Em Aberto",
+        "status":      status_calc,
         "historico":   "\n".join(hist),
         "os":          os_num,
         "normalizar":  normalizar,
@@ -1105,12 +1119,12 @@ def buscar_por_fingerprint(todos, usina, equipamento, falha, os_num=""):
     """
     candidatos = []
 
+    candidatos_concluidos = []  # para reabrir recentemente concluídas
+
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < 9: continue
         status = row[8].strip().lower()
-        # Ignora concluídas/resolvidas
-        if "conclu" in status or "resolv" in status or "fechad" in status:
-            continue
+        eh_concluido = "conclu" in status or "resolv" in status or "fechad" in status
 
         usina_plan = row[2].strip()
         equip_plan = row[3].strip()
@@ -1120,11 +1134,30 @@ def buscar_por_fingerprint(todos, usina, equipamento, falha, os_num=""):
         if not usinas_sao_iguais(usina, usina_plan):
             continue
 
-        # NÍVEL 1: OS + usina + equipamento (mais específico)
+        # NÍVEL 1a: OS + usina (mais forte — mesma OS = mesma ocorrência)
         if os_num and os_plan and os_num.strip() == os_plan.strip():
-            if equipamentos_sao_iguais(equipamento, equip_plan):
-                log.info(f"🎯 Match NÍVEL 1 (OS+usina+equip): linha {i} | OS={os_num} | {equip_plan}")
-                return (i, row)
+            log.info(f"🎯 Match NÍVEL 1 (OS+usina): linha {i} | OS={os_num} | {equip_plan}")
+            return (i, row)
+
+        if eh_concluido:
+            # Verifica se foi concluída recentemente (≤ 7 dias) pelo histórico
+            hist_txt = row[11] if len(row) > 11 else ""
+            hoje = datetime.now()
+            datas = re.findall(r"(\d{1,2})/(\d{1,2})(?:/(\d{4}))?", hist_txt)
+            reabrir = False
+            for d_match in datas:
+                try:
+                    dia, mes = int(d_match[0]), int(d_match[1])
+                    ano = int(d_match[2]) if d_match[2] else hoje.year
+                    dt = datetime(ano, mes, dia)
+                    if (hoje - dt).days <= 7:
+                        reabrir = True
+                        break
+                except:
+                    pass
+            if reabrir and equipamentos_sao_iguais(equipamento, equip_plan):
+                candidatos_concluidos.append((i, row, "reabrir"))
+            continue  # não adiciona concluídas nos candidatos normais
 
         # NÍVEL 2: usina + equipamento
         if equipamentos_sao_iguais(equipamento, equip_plan):
@@ -1138,6 +1171,11 @@ def buscar_por_fingerprint(todos, usina, equipamento, falha, os_num=""):
             candidatos.append((i, row, "fingerprint"))
 
     if not candidatos:
+        # Tenta reabrir ocorrência recentemente concluída (reincidência < 7 dias)
+        if candidatos_concluidos:
+            i, row, _ = candidatos_concluidos[0]
+            log.info(f"🔄 Reincidência detectada — reabrindo linha {i} | {row[3]} (concluída há ≤ 7 dias)")
+            return (i, row)
         return None
 
     # Prioriza match por equipamento sobre fingerprint
@@ -1400,7 +1438,23 @@ def processar_texto(texto):
         # ── Fluxo principal ────────────────────────────────────────────────
         existente = buscar_por_fingerprint(todos, usina, equip, falha, dados.get("os",""))
 
-        if not existente:
+        # Se não encontrou aberta e é normalização, busca também nas concluídas
+        # (para não criar linha nova quando a ocorrência já estava concluída em outro grupo)
+        if not existente and normalizar:
+            for i2, row2 in enumerate(todos[1:], start=2):
+                if len(row2) < 4: continue
+                if not usinas_sao_iguais(usina, row2[2].strip()): continue
+                if equipamentos_sao_iguais(equip, row2[3].strip()):
+                    existente = (i2, row2)
+                    log.info(f"[Normaliz] Encontrada ocorrência (incl. concluídas) para {usina} / {equip}: linha {i2}")
+                    break
+
+        if not existente and normalizar:
+            # Normalização sem ocorrência existente — ignora, não cria linha nova
+            log.info(f"[Normaliz] Sem ocorrência para normalizar — ignorando: {usina} / {equip}")
+            resultado["ignorados"] += 1
+
+        elif not existente:
             # CASO A — nova ocorrência
             novo_id = gravar_nova_ocorrencia(ws, todos, dados)
             resultado["novos"].append({"id": novo_id, "usina": usina})
@@ -1409,9 +1463,14 @@ def processar_texto(texto):
         elif normalizar:
             # CASO B — normalização / conclusão
             num_linha, row = existente
-            normalizar_ocorrencia(ws, num_linha, row, dados)
-            resultado["normalizados"].append(usina)
-            todos = carregar_planilha(ws)
+            status_atual = row[8].strip().lower() if len(row) > 8 else ""
+            if "conclu" in status_atual or "resolv" in status_atual:
+                log.info(f"[Normaliz] Já concluída — ignorando duplicata: {usina} / {equip}")
+                resultado["ignorados"] += 1
+            else:
+                normalizar_ocorrencia(ws, num_linha, row, dados)
+                resultado["normalizados"].append(usina)
+                todos = carregar_planilha(ws)
 
         else:
             num_linha, row = existente
