@@ -19,6 +19,7 @@ Suporta:
 import os, re, json, logging
 from datetime import datetime
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -26,6 +27,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Permite requisições do GitHub Pages e de qualquer origem
+# (o dashboard fica em fred-alexandrino.github.io)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ── Configuração ──────────────────────────────────────────────────────────────
 SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
