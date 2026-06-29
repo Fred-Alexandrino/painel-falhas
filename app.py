@@ -941,7 +941,11 @@ def extrair_atualizacoes_por_ativo(texto_acao):
                         "equipamento": f"{tipo_str} {num_norm}",
                         "status_update": status,
                         "normalizar": (status == "normalizado"),
-                        "acao_resumida": status.capitalize(),
+                        "acao_resumida": {
+                            "normalizado":          "Ocorrência normalizada em campo",
+                            "garantia":             "Aguardando garantia com fabricante",
+                            "tratativa fabricante": "Em tratativa com fabricante",
+                        }.get(status, status.capitalize()),
                     }
     return list(melhor.values())
 
@@ -1222,7 +1226,17 @@ def buscar_por_fingerprint(todos, usina, equipamento, falha, os_num=""):
             continue
 
         # NÍVEL 1a: OS + usina (mais forte — mesma OS = mesma ocorrência)
-        if os_num and os_plan and os_num.strip() == os_plan.strip():
+        # Normaliza: remove prefixos "OS", "#", zeros à esquerda, espaços
+        def _norm_os(s):
+            s = s.strip()
+            m = re.match(r"(?i)^(?:os|n[oº°]?|#)\s*(\d+)", s)
+            if m: return str(int(m.group(1)))
+            try: return str(int(s))
+            except: return s.lower().strip()
+        os_n  = _norm_os(os_num)
+        os_p  = _norm_os(os_plan)
+        invalidos = {"", "n/a", "na", "-", "s/n", "sn", "0"}
+        if os_n and os_p and os_n not in invalidos and os_p not in invalidos and os_n == os_p:
             log.info(f"🎯 Match NÍVEL 1 (OS+usina): linha {i} | OS={os_num} | {equip_plan}")
             return (i, row)
 
@@ -1304,13 +1318,42 @@ def status_mudou(row, novo_status):
 
 # ── Operações na planilha ─────────────────────────────────────────────────────
 
-def atualizar_ocorrencia(ws, num_linha, row, dados):
+def detectar_aguardando_fabricante(texto):
     """
-    Atualiza uma ocorrência existente:
-    - Acrescenta ação nova no campo Ação (col H)
-    - Acrescenta entrada no Histórico cronológico (col L)
-    - Atualiza Status se mudou (col I)
-    - Preenche OS se estava vazio (col K)
+    Retorna True quando o texto indica:
+      A) Número de chamado com fabricante (Case #XXXXX, Chamado Nº XXXXX, etc.)
+      B) Normalidade em campo (normal em campo, 100% normal, etc.)
+    Nessa combinação → status deve ser 'Aguardando Fabricante'.
+    """
+    if not texto:
+        return False
+    t = texto.lower()
+    import re as _re
+    tem_chamado = bool(_re.search(
+        r'(?:case|chamado|ticket|n°)\s*[#°]?\s*\d{5,}',
+        t
+    ))
+    tem_normal_campo = any(p in t for p in [
+        "normal em campo", "normalizado em campo", "normalidade em campo",
+        "em campo está normal", "campo está normal",
+        "em campo esta normal", "campo esta normal",
+        "100% normal", "100 % normal", "normalizado no campo",
+        "apresenta normalidade em campo",
+    ])
+    return tem_chamado and tem_normal_campo
+
+
+def atualizar_ocorrencia(ws, num_linha, row, dados, origem="webhook"):
+    """
+    Atualiza uma ocorrência existente.
+
+    REGRAS DE STATUS:
+    - origem="webhook" (tempo real): status atualiza normalmente se mudou.
+    - origem="ronda"  (reprocessamento): status NUNCA é alterado pela ronda,
+      EXCETO quando detecta chamado fabricante + normal em campo
+      → nesse caso define 'Aguardando Fabricante'.
+
+    Histórico e Ação: sempre acrescenta (nunca substitui).
     """
     hoje = datetime.now().strftime("%d/%m")
 
@@ -1324,16 +1367,41 @@ def atualizar_ocorrencia(ws, num_linha, row, dados):
 
     # Histórico — sempre acrescenta entrada nova
     hist_atual = (row[11] if len(row) > 11 else "").strip()
-    entrada_hist = f"{hoje} - {acao_nova}" if not vazio(acao_nova) else f"{hoje} - Atualização de status"
+    # Monta entrada do histórico com o texto mais informativo disponível
+    if not vazio(acao_nova):
+        entrada_hist = f"{hoje} - {acao_nova}"
+    else:
+        novo_status = dados.get("status", "")
+        if not vazio(novo_status):
+            entrada_hist = f"{hoje} - Status: {novo_status}"
+        else:
+            entrada_hist = f"{hoje} - Atualização"
     if entrada_hist not in hist_atual:
         novo_hist = (hist_atual + "\n" + entrada_hist).strip() if hist_atual else entrada_hist
         ws.update_cell(num_linha, 12, novo_hist)
 
-    # Status — atualiza se mudou
-    novo_status = dados.get("status", "")
-    if status_mudou(row, novo_status):
-        ws.update_cell(num_linha, 9, novo_status)
-        log.info(f"   → Status atualizado: {row[8]} → {novo_status}")
+    # Status
+    status_atual = (row[8] if len(row) > 8 else "").strip().lower()
+    ja_concluido = any(x in status_atual for x in ["conclu", "resolv", "fechad"])
+
+    if not ja_concluido:
+        novo_status = dados.get("status", "")
+        if origem == "webhook":
+            # Tempo real: atualiza status normalmente
+            if status_mudou(row, novo_status):
+                ws.update_cell(num_linha, 9, novo_status)
+                log.info(f"   → Status (webhook): {row[8]} → {novo_status}")
+        else:
+            # Ronda: só muda se detectar chamado fabricante + campo normal
+            texto_analise = " ".join(filter(None, [
+                acao_nova,
+                dados.get("causa", ""),
+                dados.get("falha", ""),
+            ]))
+            if detectar_aguardando_fabricante(texto_analise):
+                if status_atual not in ["aguardando fabricante"]:
+                    ws.update_cell(num_linha, 9, "Aguardando Fabricante")
+                    log.info(f"   → Status → Aguardando Fabricante (chamado+campo normal): linha {num_linha}")
 
     # OS — preenche se estava vazio
     os_num = dados.get("os", "")
@@ -1342,7 +1410,8 @@ def atualizar_ocorrencia(ws, num_linha, row, dados):
         if vazio(os_atual):
             ws.update_cell(num_linha, 11, os_num)
 
-    log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']} / {dados.get('equipamento','')}")
+    log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']} / {dados.get('equipamento','')} [{origem}]")
+
 
 
 def normalizar_ocorrencia(ws, num_linha, row, dados):
@@ -1441,7 +1510,7 @@ def gravar_nova_ocorrencia(ws, todos, dados):
 #  CASO D — Encontrou, ação OU status mudou:
 #    → ATUALIZA (acrescenta ação + entrada no histórico + status se diferente)
 
-def processar_texto(texto):
+def processar_texto(texto, origem="webhook"):
     ws     = get_sheet()
     todos  = carregar_planilha(ws)
     blocos = separar_blocos(texto)
@@ -1479,7 +1548,7 @@ def processar_texto(texto):
                         atualizar_ocorrencia(ws, num_linha, row, {
                             **dados,
                             "acao_texto": upd["acao_resumida"],
-                        })
+                        }, origem=origem)
                         resultado["atualizados"].append(f"{usina} - {upd['equipamento']}")
                     alguma_acao = True
                     todos = carregar_planilha(ws)
@@ -1507,8 +1576,8 @@ def processar_texto(texto):
                     todos = carregar_planilha(ws)
                 else:
                     num_linha, row = existente_inv
-                    if acao_mudou(row, dados_inv.get("acao_texto","")) or status_mudou(row, dados_inv.get("status","")):
-                        atualizar_ocorrencia(ws, num_linha, row, dados_inv)
+                    if acao_mudou(row, dados_inv.get("acao_texto","")):
+                        atualizar_ocorrencia(ws, num_linha, row, dados_inv, origem="ronda")
                         resultado["atualizados"].append(f"{dados_inv['usina']} - {dados_inv['equipamento']}")
                         todos = carregar_planilha(ws)
                     else:
@@ -1567,9 +1636,13 @@ def processar_texto(texto):
             mudou_acao   = acao_mudou(row, acao_nova)
             mudou_status = status_mudou(row, novo_status)
 
-            if mudou_acao or mudou_status:
-                # CASO D — algo mudou → atualiza
-                atualizar_ocorrencia(ws, num_linha, row, dados)
+            # Rondas: só verifica ação nova — status nunca é alterado por ronda
+            # (a lógica de Aguardando Fabricante fica dentro de atualizar_ocorrencia)
+            if mudou_acao or detectar_aguardando_fabricante(
+                " ".join(filter(None, [dados.get("acao_texto",""), dados.get("causa",""), dados.get("falha","")]))
+            ):
+                # CASO D — ação mudou ou detectou chamado+campo normal
+                atualizar_ocorrencia(ws, num_linha, row, dados, origem="ronda")
                 resultado["atualizados"].append(usina)
                 todos = carregar_planilha(ws)
             else:
@@ -1722,7 +1795,7 @@ def verificar_rondas():
 
             if relevante:
                 try:
-                    res = processar_texto(texto)
+                    res = processar_texto(texto, origem="ronda")
                     resultado_total["novos"]        += res.get("novos", [])
                     resultado_total["atualizados"]  += res.get("atualizados", [])
                     resultado_total["normalizados"] += res.get("normalizados", [])
