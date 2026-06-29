@@ -839,6 +839,11 @@ def parse_bloco_cos_grid(bloco):
 
     falha = problema or descricao or impacto or ""
 
+    # Não cria ocorrência se não há falha identificada E não é normalização
+    if vazio(falha) and not normalizar_usina:
+        log.info(f"[COS Grid] Sem falha/problema identificado para {usina} — ignorando")
+        return None
+
     equip = inferir_equipamento(problema=problema, descricao=descricao, acao=acao_txt, impacto=impacto)
     if not equip:
         equip = "Usina / Sistema Geral"
@@ -1653,6 +1658,49 @@ def processar_texto(texto, origem="webhook"):
     return resultado
 
 
+def eh_ronda_status_ok(texto):
+    """
+    Retorna True quando a mensagem é uma ronda de status informando que
+    tudo está OK na usina — sem falhas, sem ocorrências.
+
+    Detecta combinações como:
+    - "RONDA DIÁRIA" + "Sem Ocorrência" (em Ocorrências durante o turno E pendentes)
+    - "<usina> OK." sem emoji de falha (🔴🟡🟠)
+    - "Status Atual:" + "<usina> OK" + "Sem Ocorrência"
+    """
+    t = texto.lower()
+
+    # Presença de emoji de falha = há problema real → não ignorar
+    tem_falha_emoji = bool(re.search(r"🔴|🟡|🟠|⏸️", texto))
+    if tem_falha_emoji:
+        return False
+
+    # Padrão 1: RONDA DIÁRIA / RONDA / Status do dia com "Sem Ocorrência" explícito
+    eh_ronda = bool(re.search(
+        r"(?:ronda\s+di[aá]ria|status\s+do\s+dia|status\s+operacional|cos\s+[-–]\s*grid|ronda\s+de\s+campo)",
+        t
+    ))
+    sem_ocorrencia = bool(re.search(
+        r"sem\s+ocorr[eê]ncia|sem\s+ocorr[eê]ncias|sem\s+ocorr[eê]nci[ao]",
+        t
+    ))
+
+    if eh_ronda and sem_ocorrencia:
+        return True
+
+    # Padrão 2: "<usina nome> OK." sem qualquer desvio (formato COS Grid OK)
+    # Ex: "ABC Morada Nova OK." ou "Araputanga OK."
+    tem_usina_ok = bool(re.search(r"\w[\w\s]+\s+ok\.", t))
+    tem_desvio = bool(re.search(
+        r"desvio|falha|problema|ocorr[eê]ncia|parado|desligad|comunica[cç]",
+        t
+    ))
+    if tem_usina_ok and not tem_desvio and sem_ocorrencia:
+        return True
+
+    return False
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.route("/webhook", methods=["POST"])
@@ -1704,6 +1752,11 @@ def webhook():
 
         if not tem_usina and not tem_emoji and not tem_bullet:
             return jsonify({"status": "ignored", "reason": "no failure content"}), 200
+
+        # Ignora mensagens de ronda diária que informam tudo OK / sem ocorrência
+        if eh_ronda_status_ok(texto):
+            gravar_log_mensagem(remote_jid, remote_jid.split("@")[0], texto)
+            return jsonify({"status": "ignored", "reason": "ronda_diaria_ok"}), 200
 
         # Grava no log antes de processar (para histórico de varredura)
         grupo_nome = remote_jid.split("@")[0]
@@ -1792,6 +1845,11 @@ def verificar_rondas():
             tem_bullet = eh_formato_cos_grid(texto)
 
             relevante = tem_usina or tem_emoji or tem_desvio or tem_bullet
+
+            # Mensagem de ronda diária informando tudo OK → não cria ocorrências
+            if relevante and eh_ronda_status_ok(texto):
+                relevante = False
+                log.info(f"[Rondas] Ronda diária OK ignorada: {texto[:60]!r}")
 
             if relevante:
                 try:
