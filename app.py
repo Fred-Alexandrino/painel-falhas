@@ -1348,17 +1348,17 @@ def detectar_aguardando_fabricante(texto):
     return tem_chamado and tem_normal_campo
 
 
-def atualizar_ocorrencia(ws, num_linha, row, dados, origem="webhook"):
+def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
     """
     Atualiza uma ocorrência existente.
 
-    REGRAS DE STATUS:
-    - origem="webhook" (tempo real): status atualiza normalmente se mudou.
-    - origem="ronda"  (reprocessamento): status NUNCA é alterado pela ronda,
-      EXCETO quando detecta chamado fabricante + normal em campo
-      → nesse caso define 'Aguardando Fabricante'.
-
-    Histórico e Ação: sempre acrescenta (nunca substitui).
+    REGRAS:
+    - Status de ocorrência existente NUNCA é alterado por esta função,
+      EXCETO quando detecta chamado fabricante + campo normal
+      → define 'Aguardando Fabricante'.
+    - Status só é definido na CRIAÇÃO (gravar_nova_ocorrencia) ou
+      na NORMALIZAÇÃO (normalizar_ocorrencia → Concluído).
+    - Histórico e Ação: sempre acrescenta (nunca substitui).
     """
     hoje = datetime.now().strftime("%d/%m")
 
@@ -1385,28 +1385,28 @@ def atualizar_ocorrencia(ws, num_linha, row, dados, origem="webhook"):
         novo_hist = (hist_atual + "\n" + entrada_hist).strip() if hist_atual else entrada_hist
         ws.update_cell(num_linha, 12, novo_hist)
 
-    # Status
+    # Status — NUNCA é alterado ao atualizar ocorrência existente.
+    # O status só muda em dois casos:
+    #   1. Criação de nova ocorrência (gravar_nova_ocorrencia) — usa o status do parse
+    #   2. Normalização (normalizar_ocorrencia) — define Concluído
+    #   3. Detecção explícita de "Aguardando Fabricante" (chamado + campo normal)
+    #
+    # Mensagens de grupo (webhook ou ronda) NÃO alteram o status de ocorrências abertas.
     status_atual = (row[8] if len(row) > 8 else "").strip().lower()
     ja_concluido = any(x in status_atual for x in ["conclu", "resolv", "fechad"])
 
     if not ja_concluido:
-        novo_status = dados.get("status", "")
-        if origem == "webhook":
-            # Tempo real: atualiza status normalmente
-            if status_mudou(row, novo_status):
-                ws.update_cell(num_linha, 9, novo_status)
-                log.info(f"   → Status (webhook): {row[8]} → {novo_status}")
-        else:
-            # Ronda: só muda se detectar chamado fabricante + campo normal
-            texto_analise = " ".join(filter(None, [
-                acao_nova,
-                dados.get("causa", ""),
-                dados.get("falha", ""),
-            ]))
-            if detectar_aguardando_fabricante(texto_analise):
-                if status_atual not in ["aguardando fabricante"]:
-                    ws.update_cell(num_linha, 9, "Aguardando Fabricante")
-                    log.info(f"   → Status → Aguardando Fabricante (chamado+campo normal): linha {num_linha}")
+        # Única exceção permitida: detecção de chamado fabricante + campo normal
+        texto_analise = " ".join(filter(None, [
+            acao_nova,
+            dados.get("causa", ""),
+            dados.get("falha", ""),
+        ]))
+        if detectar_aguardando_fabricante(texto_analise):
+            if status_atual not in ["aguardando fabricante"]:
+                ws.update_cell(num_linha, 9, "Aguardando Fabricante")
+                log.info(f"   → Status → Aguardando Fabricante (chamado+campo normal): linha {num_linha}")
+        # NENHUMA outra condição altera o status de uma ocorrência existente
 
     # OS — preenche se estava vazio
     os_num = dados.get("os", "")
@@ -1636,17 +1636,15 @@ def processar_texto(texto, origem="webhook"):
         else:
             num_linha, row = existente
             acao_nova = dados.get("acao_texto", "")
-            novo_status = dados.get("status", "")
 
-            mudou_acao   = acao_mudou(row, acao_nova)
-            mudou_status = status_mudou(row, novo_status)
+            # CASO D: atualiza apenas se houver ação nova OU chamado+campo normal
+            # Status NUNCA é alterado ao atualizar ocorrência existente
+            tem_info_nova = acao_mudou(row, acao_nova)
+            tem_aguardando = detectar_aguardando_fabricante(
+                " ".join(filter(None, [acao_nova, dados.get("causa",""), dados.get("falha","")]))
+            )
 
-            # Rondas: só verifica ação nova — status nunca é alterado por ronda
-            # (a lógica de Aguardando Fabricante fica dentro de atualizar_ocorrencia)
-            if mudou_acao or detectar_aguardando_fabricante(
-                " ".join(filter(None, [dados.get("acao_texto",""), dados.get("causa",""), dados.get("falha","")]))
-            ):
-                # CASO D — ação mudou ou detectou chamado+campo normal
+            if tem_info_nova or tem_aguardando:
                 atualizar_ocorrencia(ws, num_linha, row, dados, origem="ronda")
                 resultado["atualizados"].append(usina)
                 todos = carregar_planilha(ws)
