@@ -586,6 +586,26 @@ def extrair(texto, padrao):
 def vazio(v):
     return not v or str(v).strip() in ("", "--", "-", "N/A", "n/a", "não", "nao", "Não")
 
+
+def gravar_data_se_vazia(ws, num_linha, coluna_idx, row, label=""):
+    """
+    Grava a data/hora atual (datetime.now()) na coluna informada, SOMENTE se a
+    célula ainda estiver vazia. Nunca sobrescreve um valor já existente —
+    seja ele gravado pelo robô antes, seja uma correção manual feita por Fred
+    direto na planilha.
+
+    coluna_idx: índice 0-based da coluna dentro de `row` (M=12, N=13, O=14).
+    A escrita usa update_cell com o índice 1-based correspondente.
+    """
+    valor_atual = (row[coluna_idx] if len(row) > coluna_idx else "").strip()
+    if not vazio(valor_atual):
+        return False  # já preenchido (robô ou manual) — não mexe
+
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    ws.update_cell(num_linha, coluna_idx + 1, agora)
+    log.info(f"   → {label} gravada automaticamente: linha {num_linha} = {agora}")
+    return True
+
 def normalizar_texto(t):
     import unicodedata
     return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode("ascii").strip()
@@ -1348,6 +1368,123 @@ def detectar_aguardando_fabricante(texto):
     return tem_chamado and tem_normal_campo
 
 
+# ── Detecção de gatilhos T1 / T2 / T3 (Tempo Ativo O&M) ────────────────────
+#
+# Estas funções alimentam as colunas M/N/O (Data 1ª Ação, Data Encaminhamento,
+# Data Retorno Externo) da planilha. A regra de ouro é: o app.py SÓ grava
+# nessas colunas se a célula estiver VAZIA — nunca sobrescreve uma correção
+# manual feita por Fred na planilha. Essa checagem é feita em
+# gravar_nova_ocorrencia() e atualizar_ocorrencia(), não aqui — estas funções
+# apenas respondem True/False para o texto analisado.
+
+def detectar_primeira_acao(texto):
+    """
+    Retorna True quando o texto da mensagem (de abertura ou de uma atualização)
+    já indica que a equipe Grid começou a atuar na ocorrência — ex: técnico
+    acionado, equipe a caminho, já verificando, etc.
+
+    Cobre tanto o caso em que a 1ª ação vem embutida na própria mensagem de
+    abertura (T1 ~ 0) quanto uma atualização posterior que só agora informa
+    que a equipe agiu.
+    """
+    if not texto:
+        return False
+    t = texto.lower()
+    termos = [
+        "técnico acionado", "tecnico acionado",
+        "equipe acionada", "equipe foi acionada",
+        "técnico a caminho", "tecnico a caminho",
+        "equipe a caminho", "em deslocamento",
+        "já estamos verificando", "ja estamos verificando",
+        "já está verificando", "ja esta verificando",
+        "estamos verificando", "equipe verificando",
+        "verificando em campo", "verificando a ocorrência",
+        "técnico em campo", "tecnico em campo",
+        "equipe em campo", "equipe em atendimento",
+        "atendimento iniciado", "iniciado atendimento",
+        "já em atendimento", "ja em atendimento",
+        "técnico foi enviado", "tecnico foi enviado",
+        "enviamos técnico", "enviamos tecnico",
+        "deslocando equipe", "deslocando técnico", "deslocando tecnico",
+        "iniciada a verificação", "iniciada a verificacao",
+        "já estamos atuando", "ja estamos atuando",
+        "equipe já está no local", "equipe ja esta no local",
+        "técnico já está no local", "tecnico ja esta no local",
+        "já iniciamos o atendimento", "ja iniciamos o atendimento",
+    ]
+    return any(p in t for p in termos)
+
+
+def detectar_encaminhamento(texto):
+    """
+    Retorna True quando o texto indica que a ocorrência foi encaminhada para
+    fora do controle direto da equipe Grid — fabricante, cliente ou
+    fornecedor de equipamento. Reaproveita a varredura de
+    detectar_aguardando_fabricante() e expande para Aguardando Cliente /
+    Aguardando Equipamento.
+
+    Marca o fim do T2 e o início do T3 (espera externa).
+    """
+    if not texto:
+        return False
+    t = texto.lower()
+
+    # Reaproveita a lógica de chamado fabricante + campo normal
+    if detectar_aguardando_fabricante(texto):
+        return True
+
+    termos = [
+        "aguardando fabricante", "aguardando o fabricante",
+        "aguardando cliente", "aguardando o cliente",
+        "aguardando equipamento", "aguardando peça", "aguardando peca",
+        "aguardando material", "aguardando envio",
+        "encaminhado ao fabricante", "encaminhado para o fabricante",
+        "encaminhado ao cliente", "encaminhado para o cliente",
+        "chamado aberto no fabricante", "chamado aberto com o fabricante",
+        "chamado aberto com fabricante", "chamado aberto fabricante",
+        "os aberta no fabricante", "os aberta com o fabricante",
+        "solicitado ao fabricante", "solicitamos ao fabricante",
+        "acionamos o fabricante", "acionado o fabricante",
+        "aguardando retorno do fabricante", "aguardando retorno fabricante",
+        "aguardando posição do fabricante", "aguardando posicao do fabricante",
+        "aguardando garantia", "em garantia",
+        "peça solicitada", "peca solicitada",
+        "material solicitado",
+    ]
+    return any(p in t for p in termos)
+
+
+def detectar_retorno_externo(texto):
+    """
+    Retorna True quando o texto indica que o fabricante/cliente respondeu
+    ou que o material/equipamento chegou — fim da espera externa (T3),
+    início da execução final pela equipe Grid (T4).
+    """
+    if not texto:
+        return False
+    t = texto.lower()
+    termos = [
+        "fabricante retornou", "fabricante respondeu",
+        "cliente retornou", "cliente respondeu",
+        "peça chegou", "peca chegou",
+        "material chegou", "equipamento chegou",
+        "peça recebida", "peca recebida",
+        "material recebido", "equipamento recebido",
+        "peça entregue", "peca entregue",
+        "material entregue",
+        "retorno do fabricante", "retorno do cliente",
+        "posição do fabricante", "posicao do fabricante",
+        "fabricante enviou", "fabricante autorizou",
+        "garantia aprovada", "garantia autorizada",
+        "liberado pelo fabricante", "liberado pelo cliente",
+        "chegou a peça", "chegou a peca", "chegou o material",
+        "chegou o equipamento",
+        "já estamos com a peça", "ja estamos com a peca",
+        "já estamos com o material", "ja estamos com o material",
+    ]
+    return any(p in t for p in termos)
+
+
 def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
     """
     Atualiza uma ocorrência existente.
@@ -1415,6 +1552,30 @@ def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
         if vazio(os_atual):
             ws.update_cell(num_linha, 11, os_num)
 
+    # ── Tempo Ativo O&M (T1-T3) — colunas M/N/O ─────────────────────────────
+    # Cada gatilho só grava se a célula correspondente ainda estiver vazia
+    # (preserva qualquer correção manual feita por Fred direto na planilha).
+    try:
+        texto_gatilho = " ".join(filter(None, [
+            acao_nova,
+            dados.get("causa", ""),
+            dados.get("falha", ""),
+        ]))
+
+        # N — Data 1ª Ação (T1): equipe começou a atuar
+        if detectar_primeira_acao(texto_gatilho):
+            gravar_data_se_vazia(ws, num_linha, 13, row, label="Data 1ª Ação")
+
+        # O — Data Encaminhamento (T2 → T3): foi pra fabricante/cliente/equipamento
+        if detectar_encaminhamento(texto_gatilho):
+            gravar_data_se_vazia(ws, num_linha, 14, row, label="Data Encaminhamento")
+
+        # P — Data Retorno Externo (T3 → T4): fabricante/cliente retornou
+        if detectar_retorno_externo(texto_gatilho):
+            gravar_data_se_vazia(ws, num_linha, 15, row, label="Data Retorno Externo")
+    except Exception as e:
+        log.error(f"[T1-T4] Erro ao avaliar gatilhos de tempo ativo O&M: {e}")
+
     log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']} / {dados.get('equipamento','')} [{origem}]")
 
 
@@ -1434,6 +1595,16 @@ def normalizar_ocorrencia(ws, num_linha, row, dados):
         nova_entrada += f"\n{hoje} - {acao_txt}"
     novo_hist = (hist_atual + "\n" + nova_entrada).strip() if hist_atual else nova_entrada
     ws.update_cell(num_linha, 12, novo_hist)
+
+    # ── Data de Fechamento (U) — gravada na normalização, SOMENTE se vazia ──
+    # Mesma regra de prioridade das demais datas (M/N/O/P): preenchimento
+    # manual sempre tem prioridade sobre o automático. Se Fred já corrigiu
+    # essa célula manualmente, o robô nunca sobrescreve.
+    try:
+        gravar_data_se_vazia(ws, num_linha, 20, row, label="Data de Fechamento")
+    except Exception as e:
+        log.error(f"[T1-T4] Erro ao gravar Data de Fechamento: {e}")
+
     log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
 
 
@@ -1448,6 +1619,7 @@ def primeira_linha_vazia(todos):
 def gravar_nova_ocorrencia(ws, todos, dados):
     novo_id       = proximo_id(todos)
     proxima_linha = primeira_linha_vazia(todos)
+    agora_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     linha = [
         novo_id,
         dados["cliente"],
@@ -1464,6 +1636,25 @@ def gravar_nova_ocorrencia(ws, todos, dados):
     ]
     ws.update(f"A{proxima_linha}:L{proxima_linha}", [linha])
     log.info(f"➕ Nova ocorrência ID={novo_id} | {dados['usina']} — {dados['equipamento']} | linha {proxima_linha}")
+
+    # ── Data de Abertura (M) — sempre gravada na criação ───────────────────
+    try:
+        ws.update_cell(proxima_linha, 13, agora_str)
+    except Exception as e:
+        log.error(f"[T1-T4] Erro ao gravar Data de Abertura: {e}")
+
+    # ── Data 1ª Ação (N) — se a própria mensagem de abertura já indicar que
+    #    a equipe começou a atuar (técnico acionado, equipe a caminho, etc.)
+    try:
+        texto_analise = " ".join(filter(None, [
+            dados.get("acao", ""), dados.get("falha", ""), dados.get("historico", ""),
+        ]))
+        if detectar_primeira_acao(texto_analise):
+            ws.update_cell(proxima_linha, 14, agora_str)
+            log.info(f"   → Data 1ª Ação gravada na abertura (gatilho na própria mensagem): linha {proxima_linha}")
+    except Exception as e:
+        log.error(f"[T1-T4] Erro ao gravar Data 1ª Ação na abertura: {e}")
+
 
     # Notificação push — nova ocorrência
     try:
