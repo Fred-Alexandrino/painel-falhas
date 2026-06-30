@@ -606,6 +606,29 @@ def gravar_data_se_vazia(ws, num_linha, coluna_idx, row, label=""):
     log.info(f"   → {label} gravada automaticamente: linha {num_linha} = {agora}")
     return True
 
+
+def anexar_mensagem_original(ws, num_linha, coluna_idx, row, texto_bruto):
+    """
+    Anexa o texto bruto da mensagem do WhatsApp (já segmentado por ocorrência,
+    vindo de parse_bloco) na coluna de 'Mensagens Originais' (V), no mesmo
+    padrão do Histórico Cronológico: timestamp + texto, separado por linha
+    em branco do conteúdo anterior. Sempre acrescenta, nunca substitui.
+
+    Evita duplicar a mesma mensagem se o webhook reprocessar o mesmo texto
+    (reenvio, retry de rede) — mesma proteção usada no Histórico Cronológico.
+    """
+    if vazio(texto_bruto):
+        return
+    texto_limpo = texto_bruto.strip()
+    atual = (row[coluna_idx] if len(row) > coluna_idx else "").strip()
+    if texto_limpo in atual:
+        return  # mensagem idêntica já registrada — não duplica
+    agora = datetime.now().strftime("%d/%m %H:%M")
+    entrada = f"{agora} - {texto_limpo}"
+    novo = (atual + "\n\n" + entrada).strip() if atual else entrada
+    ws.update_cell(num_linha, coluna_idx + 1, novo)
+
+
 def normalizar_texto(t):
     import unicodedata
     return unicodedata.normalize("NFKD", t.lower()).encode("ascii", "ignore").decode("ascii").strip()
@@ -923,6 +946,7 @@ def parse_bloco_cos_grid(bloco):
         "os":          os_num,
         "normalizar":  normalizar,
         "acao_texto":  acao_txt,
+        "mensagem_bruta": bloco.strip(),
     }
 
 
@@ -1103,6 +1127,7 @@ def parse_bloco(bloco):
         "os":          os_num,
         "normalizar":  normalizar,
         "acao_texto":  c["acao"],
+        "mensagem_bruta": bloco.strip(),
     }
 
 
@@ -1368,6 +1393,50 @@ def detectar_aguardando_fabricante(texto):
     return tem_chamado and tem_normal_campo
 
 
+def extrair_ticket_fabricante(texto):
+    """
+    Extrai o número/código do chamado/ticket do fabricante a partir do texto
+    da mensagem, cobrindo os formatos reais usados no dia a dia:
+      - Prefixados: "SOL-10596", "SOL - 12634", "RMA 25814"
+      - Explícitos: "Chamado 25065", "Ticket 6843263", "Case #45231"
+      - Contextuais: "Caso deferido 6843263", "Acionamento Fabricante 15817311"
+    Retorna a string do ticket (ex: "SOL-10596") ou "" se não encontrar.
+    Não confundir com 'os_num' (Número da OS interna), que é capturado
+    separadamente por outro padrão.
+    """
+    if not texto:
+        return ""
+
+    # Formato prefixado: SOL-12345, SOL 12345, RMA-25814 (aceita espaços/
+    # hífen variáveis ao redor do prefixo). Exclui prefixos que na prática
+    # são outra coisa (código de rastreio, OS interna, etc.)
+    m = re.search(r'\b([A-Z]{2,5})\s*[-\s]\s*(\d{4,})\b', texto, re.IGNORECASE)
+    if m:
+        prefixo = m.group(1).upper()
+        numero  = m.group(2)
+        if prefixo not in ("OS", "PV", "EP", "ID", "QN", "AD", "OY", "BR"):
+            return f"{prefixo}-{numero}"
+
+    # Formato explícito: "chamado/case/ticket/n°/rma + número longo"
+    m = re.search(
+        r'(?:case|chamado|ticket|n°|rma)\s*[#°]?\s*(\d{5,})',
+        texto, re.IGNORECASE
+    )
+    if m:
+        return m.group(1)
+
+    # Contexto de fabricante/garantia próximo a um número isolado de 6-8
+    # dígitos (cobre "Caso deferido 6843263", "Acionamento Fabricante 15817311")
+    m = re.search(
+        r'(?:fabricante|deferid[oa]|garantia)\D{0,30}\b(\d{6,8})\b',
+        texto, re.IGNORECASE
+    )
+    if m:
+        return m.group(1)
+
+    return ""
+
+
 # ── Detecção de gatilhos T1 / T2 / T3 (Tempo Ativo O&M) ────────────────────
 #
 # Estas funções alimentam as colunas M/N/O (Data 1ª Ação, Data Encaminhamento,
@@ -1552,6 +1621,21 @@ def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
         if vazio(os_atual):
             ws.update_cell(num_linha, 11, os_num)
 
+    # Ticket Fabricante (J) — extrai do texto e preenche SOMENTE se vazio
+    # (preserva qualquer ticket já preenchido manualmente por Fred).
+    try:
+        ticket_atual = (row[9] if len(row) > 9 else "").strip()
+        if vazio(ticket_atual):
+            texto_para_ticket = " ".join(filter(None, [
+                acao_nova, dados.get("falha", ""), dados.get("causa", ""),
+            ]))
+            ticket_novo = extrair_ticket_fabricante(texto_para_ticket)
+            if ticket_novo:
+                ws.update_cell(num_linha, 10, ticket_novo)
+                log.info(f"   → Ticket Fabricante detectado e gravado: linha {num_linha} = {ticket_novo}")
+    except Exception as e:
+        log.error(f"[Ticket] Erro ao extrair/gravar ticket fabricante: {e}")
+
     # ── Tempo Ativo O&M (T1-T3) — colunas M/N/O ─────────────────────────────
     # Cada gatilho só grava se a célula correspondente ainda estiver vazia
     # (preserva qualquer correção manual feita por Fred direto na planilha).
@@ -1575,6 +1659,14 @@ def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
             gravar_data_se_vazia(ws, num_linha, 15, row, label="Data Retorno Externo")
     except Exception as e:
         log.error(f"[T1-T4] Erro ao avaliar gatilhos de tempo ativo O&M: {e}")
+
+    # ── Mensagem Original (V) — anexa o texto bruto desta atualização ─────────
+    try:
+        msg_bruta = dados.get("mensagem_bruta", "")
+        if not vazio(msg_bruta):
+            anexar_mensagem_original(ws, num_linha, 21, row, msg_bruta)
+    except Exception as e:
+        log.error(f"[Mensagens] Erro ao anexar mensagem original: {e}")
 
     log.info(f"🔄 Atualizado linha {num_linha} | {dados['usina']} / {dados.get('equipamento','')} [{origem}]")
 
@@ -1605,6 +1697,14 @@ def normalizar_ocorrencia(ws, num_linha, row, dados):
     except Exception as e:
         log.error(f"[T1-T4] Erro ao gravar Data de Fechamento: {e}")
 
+    # ── Mensagem Original (V) — anexa a mensagem de normalização ──────────────
+    try:
+        msg_bruta = dados.get("mensagem_bruta", "")
+        if not vazio(msg_bruta):
+            anexar_mensagem_original(ws, num_linha, 21, row, msg_bruta)
+    except Exception as e:
+        log.error(f"[Mensagens] Erro ao anexar mensagem original na normalização: {e}")
+
     log.info(f"✅ Normalizado linha {num_linha} | {dados['usina']}")
 
 
@@ -1620,6 +1720,14 @@ def gravar_nova_ocorrencia(ws, todos, dados):
     novo_id       = proximo_id(todos)
     proxima_linha = primeira_linha_vazia(todos)
     agora_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    # Tenta extrair o número do chamado/ticket do fabricante já na abertura
+    texto_para_ticket = " ".join(filter(None, [
+        dados.get("acao", ""), dados.get("acao_texto", ""),
+        dados.get("falha", ""), dados.get("causa", ""), dados.get("historico", ""),
+    ]))
+    ticket = extrair_ticket_fabricante(texto_para_ticket)
+
     linha = [
         novo_id,
         dados["cliente"],
@@ -1630,7 +1738,7 @@ def gravar_nova_ocorrencia(ws, todos, dados):
         dados["equip_impact"],
         dados["acao"],
         dados["status"],
-        "",
+        ticket,
         dados["os"],
         dados["historico"],
     ]
@@ -1654,6 +1762,14 @@ def gravar_nova_ocorrencia(ws, todos, dados):
             log.info(f"   → Data 1ª Ação gravada na abertura (gatilho na própria mensagem): linha {proxima_linha}")
     except Exception as e:
         log.error(f"[T1-T4] Erro ao gravar Data 1ª Ação na abertura: {e}")
+
+    # ── Mensagem Original (V) — guarda o texto bruto que originou o registro ──
+    try:
+        msg_bruta = dados.get("mensagem_bruta", "")
+        if not vazio(msg_bruta):
+            ws.update_cell(proxima_linha, 22, f"{datetime.now().strftime('%d/%m %H:%M')} - {msg_bruta.strip()}")
+    except Exception as e:
+        log.error(f"[Mensagens] Erro ao gravar mensagem original na abertura: {e}")
 
 
     # Notificação push — nova ocorrência
