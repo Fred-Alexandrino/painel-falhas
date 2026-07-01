@@ -2446,7 +2446,59 @@ def atualizar_campo():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/gerar-os", methods=["POST", "OPTIONS"])
+@app.route("/nova-ocorrencia", methods=["POST", "OPTIONS"])
+def nova_ocorrencia_dashboard():
+    """
+    Registra uma nova ocorrência criada manualmente pelo dashboard.
+    Body JSON: { cliente, usina, equipamento, falha, causa, acao, status, historico, editor }
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    cliente    = body.get("cliente", "").strip()
+    usina      = body.get("usina", "").strip()
+    equipamento= body.get("equipamento", "").strip()
+    falha      = body.get("falha", "").strip()
+    causa      = body.get("causa", "").strip()
+    acao       = body.get("acao", "").strip()
+    status     = body.get("status", "Em Aberto").strip()
+    historico  = body.get("historico", "").strip()
+    editor     = body.get("editor", "dashboard").strip()
+
+    if not equipamento or not falha:
+        return jsonify({"ok": False, "error": "equipamento e falha são obrigatórios"}), 400
+
+    try:
+        ws   = get_worksheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        log.error(f"[nova-ocorrencia] Erro ao abrir planilha: {e}")
+        return jsonify({"ok": False, "error": "Erro ao acessar planilha"}), 500
+
+    try:
+        dados = {
+            "cliente":      cliente,
+            "usina":        usina,
+            "equipamento":  equipamento,
+            "falha":        falha,
+            "causa":        causa,
+            "equip_impact": equipamento,
+            "acao":         acao,
+            "status":       status,
+            "os":           "",
+            "historico":    historico or f"{datetime.now().strftime('%d/%m')} - Registro inicial via dashboard.",
+        }
+        gravar_nova_ocorrencia(ws, todos, dados)
+        log.info(f"[nova-ocorrencia] {usina} — {equipamento} | editor={editor}")
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        log.error(f"[nova-ocorrencia] Erro ao gravar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 def gerar_os():
     """
     Gera o texto de solicitação de OS (Título + Comentários) a partir do
