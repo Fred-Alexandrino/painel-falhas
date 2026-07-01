@@ -2419,7 +2419,11 @@ def atualizar_campo():
         log.error(f"[atualizar-campo] Erro ao abrir planilha: {e}")
         return jsonify({"ok": False, "error": f"Erro ao acessar planilha: {str(e)}"}), 500
 
-    # Normaliza o ID para comparar sem decimais e espaços ("68.0" == "68")
+    # Busca por ID + Equipamento + OS (chave composta para evitar colisão de IDs duplicados)
+    # Body pode trazer campos extras: equipamento, numeroOS
+    equip_busca = str(body.get("equipamento", "")).strip().upper()
+    os_busca    = str(body.get("numeroOS", body.get("os", ""))).strip()
+
     def _norm_id(v):
         v = str(v).strip()
         try: v = str(int(float(v)))
@@ -2427,16 +2431,45 @@ def atualizar_campo():
         return v
 
     ocorrencia_id_norm = _norm_id(ocorrencia_id)
-    num_linha = None
+    candidatos = []
     for i, row in enumerate(rows[1:], start=2):
+        if not row or len(row) < 1:
+            continue
         if _norm_id(row[0]) == ocorrencia_id_norm:
-            num_linha = i
-            break
+            candidatos.append((i, row))
+
+    num_linha = None
+    if len(candidatos) == 1:
+        # ID único — usa direto
+        num_linha = candidatos[0][0]
+    elif len(candidatos) > 1:
+        # ID duplicado — refina por Equipamento (col D = índice 3) e OS (col K = índice 10)
+        for (i, row) in candidatos:
+            row_equip = row[3].strip().upper() if len(row) > 3 else ""
+            row_os    = row[10].strip() if len(row) > 10 else ""
+            equip_match = (not equip_busca) or (equip_busca in row_equip) or (row_equip in equip_busca)
+            os_match    = (not os_busca) or (os_busca == row_os)
+            if equip_match and os_match:
+                num_linha = i
+                break
+        # Se não achou com os dois critérios, tenta só por equipamento
+        if num_linha is None and equip_busca:
+            for (i, row) in candidatos:
+                row_equip = row[3].strip().upper() if len(row) > 3 else ""
+                if equip_busca in row_equip or row_equip in equip_busca:
+                    num_linha = i
+                    break
+        # Último recurso: primeiro candidato
+        if num_linha is None:
+            num_linha = candidatos[0][0]
+            log.warning(f"[atualizar-campo] ID {ocorrencia_id} duplicado, sem match por equip/OS — usando linha {num_linha}")
 
     if num_linha is None:
         ids_existentes = [_norm_id(r[0]) for r in rows[1:5] if r]
         log.warning(f"[atualizar-campo] ID {ocorrencia_id!r} não encontrado. Primeiros IDs: {ids_existentes}")
-        return jsonify({"ok": False, "error": f"Ocorrência {ocorrencia_id} não encontrada. IDs disponíveis (amostra): {ids_existentes}"}), 404
+        return jsonify({"ok": False, "error": f"Ocorrência {ocorrencia_id} não encontrada"}), 404
+
+    log.info(f"[atualizar-campo] ID={ocorrencia_id} → linha={num_linha} (candidatos={len(candidatos)}, equip={equip_busca!r})")
 
     try:
         if field == "historico" and append:
