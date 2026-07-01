@@ -17,6 +17,7 @@ Suporta:
 """
 
 import os, re, json, logging
+import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -50,6 +51,7 @@ GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 # ── Configuração VAPID para notificações push ────────────────────────────────
 VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "BPU55JogEEcV6GlCUONmzkVam8Tt9a0DuX3FYfn_ltgKc8p1fahQiE8v5RGECnMkSYEXMyUzOYBtslhUdiOJ6Jk")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 VAPID_CLAIMS      = {"sub": "mailto:fred@gridco.com.br"}
 
 # Subscriptions em memória (persistidas na planilha em produção)
@@ -2362,6 +2364,192 @@ def health():
         "timestamp":  datetime.now().isoformat(),
         "wpp_server": WPP_SERVER_URL or "não configurado",
     }), 200
+
+
+# ── Mapeamento de campo (nome JS) → coluna na planilha (1-based) ──────────
+CAMPO_COL = {
+    "falha":               5,
+    "causa":               6,
+    "impactados":          7,
+    "acao":                8,
+    "status":              9,
+    "ticketFabricante":    10,
+    "numeroOS":            11,
+    "historico":           12,
+    "dataAbertura":        13,
+    "dataPrimeiraAcao":    14,
+    "dataEncaminhamento":  15,
+    "dataRetornoExterno":  16,
+    "dataFechamento":      21,
+}
+
+@app.route("/atualizar-campo", methods=["POST", "OPTIONS"])
+def atualizar_campo():
+    """
+    Endpoint chamado pelo dashboard para salvar alterações de campo individual.
+    Body JSON: { id, field, value, editor, append? }
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    ocorrencia_id = str(body.get("id", "")).strip()
+    field         = str(body.get("field", "")).strip()
+    value         = str(body.get("value", "")).strip()
+    append        = body.get("append", False)
+    editor        = str(body.get("editor", "dashboard")).strip()
+
+    if not ocorrencia_id or not field:
+        return jsonify({"ok": False, "error": "id e field são obrigatórios"}), 400
+
+    col = CAMPO_COL.get(field)
+    if col is None:
+        return jsonify({"ok": False, "error": f"Campo '{field}' não mapeado"}), 400
+
+    try:
+        ws   = get_worksheet()
+        rows = ws.get_all_values()
+    except Exception as e:
+        log.error(f"[atualizar-campo] Erro ao abrir planilha: {e}")
+        return jsonify({"ok": False, "error": "Erro ao acessar planilha"}), 500
+
+    # Localiza a linha com o ID correto (coluna A = índice 0)
+    num_linha = None
+    for i, row in enumerate(rows[1:], start=2):   # pula cabeçalho
+        if str(row[0]).strip() == ocorrencia_id:
+            num_linha = i
+            break
+
+    if num_linha is None:
+        return jsonify({"ok": False, "error": f"Ocorrência {ocorrencia_id} não encontrada"}), 404
+
+    try:
+        if field == "historico" and append:
+            # Acrescenta ao histórico existente sem sobrescrever
+            hist_atual = (rows[num_linha - 1][11] if len(rows[num_linha - 1]) > 11 else "").strip()
+            hoje = datetime.now().strftime("%d/%m")
+            nova_entrada = f"{hoje} - {value}"
+            # Deduplicação: não adiciona se já existir
+            if nova_entrada in hist_atual or value in hist_atual.split("\n")[-1]:
+                return jsonify({"ok": True, "dedup": True}), 200
+            novo_hist = (hist_atual + "\n" + nova_entrada).strip() if hist_atual else nova_entrada
+            ws.update_cell(num_linha, col, novo_hist)
+        else:
+            ws.update_cell(num_linha, col, value)
+        log.info(f"[atualizar-campo] ID={ocorrencia_id} campo={field} valor={value[:40]!r} editor={editor}")
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        log.error(f"[atualizar-campo] Erro ao gravar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/gerar-os", methods=["POST", "OPTIONS"])
+def gerar_os():
+    """
+    Gera o texto de solicitação de OS (Título + Comentários) a partir do
+    contexto de uma falha, chamando a API da Anthropic do lado do servidor
+    (a chave nunca é exposta ao navegador/dashboard).
+
+    Body esperado (JSON):
+    {
+      "equipamento": "...", "usina": "...", "falha": "...", "causa": "...",
+      "impactados": "...", "acao": "...", "historico": "..."
+    }
+
+    Retorna: {"ok": true, "texto": "Título:\n...\n\nComentários:\n..."}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    if not ANTHROPIC_API_KEY:
+        return jsonify({"ok": False, "error": "ANTHROPIC_API_KEY não configurada no servidor."}), 500
+
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido — esperado JSON."}), 400
+
+    equipamento = body.get("equipamento", "")
+    usina       = body.get("usina", "")
+    falha       = body.get("falha", "")
+    causa       = body.get("causa", "")
+    impactados  = body.get("impactados", "")
+    acao        = body.get("acao", "")
+    historico   = body.get("historico", "")
+
+    system_prompt = (
+        "Você é um engenheiro de O&M (operação e manutenção) de usinas solares, "
+        "redigindo solicitações de Ordem de Serviço (OS) técnica para equipe de campo.\n\n"
+        "Gere SEMPRE a saída EXATAMENTE neste formato, sem nenhum texto antes ou depois:\n\n"
+        "Título:\n"
+        "<uma linha, objetiva, descrevendo o diagnóstico/inspeção necessária para o "
+        "equipamento e a falha específica>\n\n"
+        "Comentários:\n\n"
+        "* <item 1 do checklist técnico>\n"
+        "* <item 2 do checklist técnico>\n"
+        "* <item 3 do checklist técnico>\n"
+        "* <item 4 ou mais itens, conforme necessário — geralmente entre 4 e 6 itens>\n\n"
+        "Regras:\n"
+        "- O checklist deve ser ESPECÍFICO ao tipo de equipamento (inversor, tracker, "
+        "motor, TCU, câmera/CFTV, nobreak, transformador, chave seccionadora, "
+        "piranômetro, etc.) e à causa da falha informada — nunca genérico.\n"
+        "- Use linguagem técnica de campo, direta, em formato de instrução (verbos no "
+        "infinitivo: verificar, conferir, inspecionar, avaliar, registrar, medir, testar).\n"
+        "- Considere o histórico cronológico para não repetir verificações já feitas, e "
+        "para direcionar o checklist ao que ainda falta investigar/resolver.\n"
+        "- Considere os equipamentos impactados para garantir que o checklist cubra "
+        "todos eles quando relevante.\n"
+        "- O título deve mencionar o equipamento/local específico quando disponível.\n"
+        "- Nunca inclua explicações, saudações, ou qualquer texto fora do formato "
+        "Título/Comentários especificado."
+    )
+
+    user_content = (
+        f"Equipamento: {equipamento or 'não informado'}\n"
+        f"Usina: {usina or 'não informado'}\n"
+        f"Falha: {falha or 'não informado'}\n"
+        f"Causa: {causa or 'não informado'}\n"
+        f"Equipamentos impactados: {impactados or 'não informado'}\n"
+        f"Ações já realizadas: {acao or 'nenhuma registrada'}\n"
+        f"Histórico cronológico:\n{historico or 'sem histórico registrado'}"
+    )
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 600,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_content}],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        texto = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                texto = block.get("text", "").strip()
+                break
+        if not texto:
+            return jsonify({"ok": False, "error": "Resposta vazia da IA."}), 502
+        return jsonify({"ok": True, "texto": texto}), 200
+
+    except requests.exceptions.RequestException as e:
+        log.error(f"[GerarOS] Erro na chamada à API Anthropic: {e}")
+        return jsonify({"ok": False, "error": f"Erro ao chamar a API: {str(e)}"}), 502
+    except Exception as e:
+        log.error(f"[GerarOS] Erro inesperado: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/limpar-duplicatas", methods=["GET", "POST"])
