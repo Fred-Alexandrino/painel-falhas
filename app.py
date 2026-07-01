@@ -2416,15 +2416,24 @@ def atualizar_campo():
         log.error(f"[atualizar-campo] Erro ao abrir planilha: {e}")
         return jsonify({"ok": False, "error": "Erro ao acessar planilha"}), 500
 
-    # Localiza a linha com o ID correto (coluna A = índice 0)
+    # Normaliza o ID para comparar sem decimais e espaços ("68.0" == "68")
+    def _norm_id(v):
+        v = str(v).strip()
+        try: v = str(int(float(v)))
+        except: pass
+        return v
+
+    ocorrencia_id_norm = _norm_id(ocorrencia_id)
     num_linha = None
-    for i, row in enumerate(rows[1:], start=2):   # pula cabeçalho
-        if str(row[0]).strip() == ocorrencia_id:
+    for i, row in enumerate(rows[1:], start=2):
+        if _norm_id(row[0]) == ocorrencia_id_norm:
             num_linha = i
             break
 
     if num_linha is None:
-        return jsonify({"ok": False, "error": f"Ocorrência {ocorrencia_id} não encontrada"}), 404
+        ids_existentes = [_norm_id(r[0]) for r in rows[1:5] if r]
+        log.warning(f"[atualizar-campo] ID {ocorrencia_id!r} não encontrado. Primeiros IDs: {ids_existentes}")
+        return jsonify({"ok": False, "error": f"Ocorrência {ocorrencia_id} não encontrada. IDs disponíveis (amostra): {ids_existentes}"}), 404
 
     try:
         if field == "historico" and append:
