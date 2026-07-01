@@ -64,6 +64,9 @@ WPP_SERVER_URL = os.environ.get("WPP_SERVER_URL", "").rstrip("/")
 # Nome da aba de log de mensagens
 LOG_SHEET_NAME = "Log de Mensagens"
 
+# Nome da aba onde as subscriptions de push são persistidas (sobrevive a reinícios do Render)
+PUSH_SHEET_NAME = "Push Subscriptions"
+
 # ── Cache de credenciais Google (reutiliza a conexão) ────────────────────────
 _gc_cache = None
 
@@ -2200,6 +2203,62 @@ def verificar_rondas():
 
 # ── Notificações Push ────────────────────────────────────────────────────────
 
+def get_push_sheet():
+    """Retorna a aba 'Push Subscriptions', criando-a com cabeçalho se não existir."""
+    gc = get_gc()
+    sh = gc.open_by_key(SHEET_ID)
+    try:
+        return sh.worksheet(PUSH_SHEET_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=PUSH_SHEET_NAME, rows=200, cols=3)
+        ws.update("A1:C1", [["Endpoint", "Subscription", "DataCriacao"]])
+        return ws
+
+def carregar_push_subscriptions():
+    """
+    Carrega as subscriptions salvas na planilha para dentro de _push_subscriptions
+    (em memória). Chamado uma vez na inicialização do processo, para que os
+    dispositivos cadastrados sobrevivam a reinícios do Render.
+    """
+    try:
+        ws = get_push_sheet()
+        rows = ws.get_all_values()[1:]  # pula cabeçalho
+        carregadas = 0
+        for row in rows:
+            if len(row) < 2 or not row[0] or not row[1]:
+                continue
+            try:
+                _push_subscriptions[row[0]] = json.loads(row[1])
+                carregadas += 1
+            except (json.JSONDecodeError, TypeError):
+                continue
+        log.info(f"[Push] {carregadas} subscription(ões) carregada(s) da planilha")
+    except Exception as e:
+        log.error(f"[Push] Erro ao carregar subscriptions da planilha: {e}")
+
+def salvar_push_subscription(endpoint, sub):
+    """Persiste (ou atualiza) uma subscription na planilha."""
+    try:
+        ws = get_push_sheet()
+        cell = ws.find(endpoint, in_column=1)
+        linha = [endpoint, json.dumps(sub), datetime.now().strftime("%d/%m/%Y %H:%M:%S")]
+        if cell:
+            ws.update(f"A{cell.row}:C{cell.row}", [linha])
+        else:
+            ws.append_row(linha)
+    except Exception as e:
+        log.error(f"[Push] Erro ao salvar subscription na planilha: {e}")
+
+def remover_push_subscription(endpoint):
+    """Remove uma subscription da planilha (expirada ou desativada pelo usuário)."""
+    try:
+        ws = get_push_sheet()
+        cell = ws.find(endpoint, in_column=1)
+        if cell:
+            ws.delete_rows(cell.row)
+    except Exception as e:
+        log.error(f"[Push] Erro ao remover subscription da planilha: {e}")
+
 def enviar_push(titulo, corpo, tipo="geral", url="https://fred-alexandrino.github.io/PAINELDEFALHAS/"):
     """
     Envia notificação push para todos os dispositivos registrados.
@@ -2248,6 +2307,7 @@ def enviar_push(titulo, corpo, tipo="geral", url="https://fred-alexandrino.githu
 
     for ep in expirados:
         _push_subscriptions.pop(ep, None)
+        remover_push_subscription(ep)
 
     log.info(f"[Push] {enviados} notificação(ões) enviada(s)")
     return enviados
@@ -2269,30 +2329,58 @@ def push_subscribe():
             return jsonify({"error": "subscription inválida"}), 400
 
         endpoint = sub["endpoint"]
+        ja_existia = endpoint in _push_subscriptions
         _push_subscriptions[endpoint] = sub
-        log.info(f"[Push] Nova subscription registrada: {endpoint[:60]}...")
+        salvar_push_subscription(endpoint, sub)
+        log.info(f"[Push] Subscription registrada ({'já existia' if ja_existia else 'nova'}): {endpoint[:60]}...")
         log.info(f"[Push] Total de dispositivos: {len(_push_subscriptions)}")
 
-        # Envia notificação de boas-vindas
-        try:
-            webpush(
-                subscription_info=sub,
-                data=json.dumps({
-                    "title": "🔔 Painel O&M — Notificações ativas!",
-                    "body":  "Você receberá alertas de desligamentos e novas ocorrências.",
-                    "tipo":  "geral",
-                    "url":   "https://fred-alexandrino.github.io/PAINELDEFALHAS/",
-                }),
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims=VAPID_CLAIMS,
-            ) if PUSH_ENABLED and VAPID_PRIVATE_KEY else None
-        except Exception as e:
-            log.warning(f"[Push] Erro na notificação de boas-vindas: {e}")
+        # Envia notificação de boas-vindas apenas para dispositivos realmente novos
+        if not ja_existia:
+            try:
+                webpush(
+                    subscription_info=sub,
+                    data=json.dumps({
+                        "title": "🔔 Painel O&M — Notificações ativas!",
+                        "body":  "Você receberá alertas de desligamentos e novas ocorrências.",
+                        "tipo":  "geral",
+                        "url":   "https://fred-alexandrino.github.io/PAINELDEFALHAS/",
+                    }),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=VAPID_CLAIMS,
+                ) if PUSH_ENABLED and VAPID_PRIVATE_KEY else None
+            except Exception as e:
+                log.warning(f"[Push] Erro na notificação de boas-vindas: {e}")
 
         return jsonify({"ok": True, "total": len(_push_subscriptions)}), 200
 
     except Exception as e:
         log.error(f"[Push] Erro ao registrar subscription: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/push/unsubscribe", methods=["POST", "OPTIONS"])
+def push_unsubscribe():
+    """
+    Remove a subscription de notificação push de um dispositivo (do backend
+    e da planilha). Chamado pelo dashboard ao clicar em "Desativar Notificações".
+    """
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+
+    try:
+        payload = request.get_json(force=True) or {}
+        endpoint = payload.get("endpoint") or (payload.get("subscription") or {}).get("endpoint")
+        if not endpoint:
+            return jsonify({"error": "endpoint não informado"}), 400
+
+        _push_subscriptions.pop(endpoint, None)
+        remover_push_subscription(endpoint)
+        log.info(f"[Push] Subscription removida: {endpoint[:60]}...")
+        return jsonify({"ok": True, "total": len(_push_subscriptions)}), 200
+
+    except Exception as e:
+        log.error(f"[Push] Erro ao remover subscription: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -2759,6 +2847,11 @@ def test_parse():
             resultados.append(r)
     return jsonify({"total_blocos": len(blocos), "validos": len(resultados), "resultados": resultados}), 200
 
+
+try:
+    carregar_push_subscriptions()
+except Exception as e:
+    log.error(f"[Push] Erro na carga inicial de subscriptions: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
