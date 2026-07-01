@@ -2357,10 +2357,13 @@ def rondas_por_grupo():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+APP_VERSION = "2026-07-01-fix-get_sheet"
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "status":     "ok",
+        "version":    APP_VERSION,
         "timestamp":  datetime.now().isoformat(),
         "wpp_server": WPP_SERVER_URL or "não configurado",
     }), 200
@@ -2448,8 +2451,8 @@ def atualizar_campo():
             ws.update_cell(num_linha, col, novo_hist)
         else:
             ws.update_cell(num_linha, col, value)
-        log.info(f"[atualizar-campo] ID={ocorrencia_id} campo={field} valor={value[:40]!r} editor={editor}")
-        return jsonify({"ok": True}), 200
+        log.info(f"[atualizar-campo] ✅ GRAVADO ID={ocorrencia_id} linha={num_linha} campo={field} valor={value[:40]!r}")
+        return jsonify({"ok": True, "linha": num_linha}), 200
     except Exception as e:
         log.error(f"[atualizar-campo] Erro ao gravar: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
