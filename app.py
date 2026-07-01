@@ -2410,11 +2410,11 @@ def atualizar_campo():
         return jsonify({"ok": False, "error": f"Campo '{field}' não mapeado"}), 400
 
     try:
-        ws   = get_worksheet()
+        ws   = get_sheet()
         rows = ws.get_all_values()
     except Exception as e:
         log.error(f"[atualizar-campo] Erro ao abrir planilha: {e}")
-        return jsonify({"ok": False, "error": "Erro ao acessar planilha"}), 500
+        return jsonify({"ok": False, "error": f"Erro ao acessar planilha: {str(e)}"}), 500
 
     # Normaliza o ID para comparar sem decimais e espaços ("68.0" == "68")
     def _norm_id(v):
@@ -2482,11 +2482,11 @@ def nova_ocorrencia_dashboard():
         return jsonify({"ok": False, "error": "equipamento e falha são obrigatórios"}), 400
 
     try:
-        ws   = get_worksheet()
+        ws   = get_sheet()
         todos = ws.get_all_values()
     except Exception as e:
         log.error(f"[nova-ocorrencia] Erro ao abrir planilha: {e}")
-        return jsonify({"ok": False, "error": "Erro ao acessar planilha"}), 500
+        return jsonify({"ok": False, "error": f"Erro ao acessar planilha: {str(e)}"}), 500
 
     try:
         dados = {
