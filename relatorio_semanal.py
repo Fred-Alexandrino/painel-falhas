@@ -256,20 +256,58 @@ def gerar_texto_chamados(chamados):
     return "\n".join(linhas)
 
 
-def gerar_texto_zeladoria(usinas):
+# Layout real da aba "Zeladoria" (gid 987654321): linha 1 = título dos grupos,
+# linha 2 = subcabeçalhos, dados a partir da linha 3.
+# Colunas (0-based): A Cliente, B Usina, depois 4 grupos de 4 colunas cada
+# (Última Data, Próxima Data, Quantidade, Status): Roçada, Poda Química, Lavagem dos Módulos, Controle de Pragas.
+ZEL_COL_CLIENTE, ZEL_COL_USINA = 0, 1
+ZEL_GRUPOS = [
+    ("Roçada",               2),   # Última Data=2, Próxima=3, Qtd=4, Status=5
+    ("Poda Química",         6),   # Última Data=6, Próxima=7, Qtd=8, Status=9
+    ("Lavagem dos Módulos", 10),   # Última Data=10, Próxima=11, Qtd=12, Status=13
+    ("Controle de Pragas",  14),   # Última Data=14, Próxima=15, Qtd=16, Status=17
+]
+
+
+def coletar_zeladoria(zeladoria_valores, cliente):
     """
-    Esqueleto por usina/frente (Supressão vegetal, Poda química, Limpeza dos módulos,
-    Controle de pragas). Status "A confirmar" até a Zeladoria ser persistida na planilha —
-    Fred completa manualmente no PowerPoint até lá.
+    zeladoria_valores: ws.get_all_values() da aba Zeladoria (linhas 1-2 = cabeçalho).
+    Retorna lista de dicts: [{"usina": ..., "grupos": [{"nome":, "status":, "ultima_data":}, ...]}, ...]
     """
-    if not usinas:
-        return "Nenhuma usina encontrada para este cliente."
+    cliente_norm = _norm(cliente)
+    resultado = []
+    for row in zeladoria_valores[2:]:  # pula as 2 linhas de cabeçalho
+        if len(row) <= ZEL_GRUPOS[-1][1] + 3:
+            row = row + [""] * (ZEL_GRUPOS[-1][1] + 4 - len(row))
+        if not row[ZEL_COL_USINA].strip():
+            continue
+        if cliente_norm not in _norm(row[ZEL_COL_CLIENTE]):
+            continue
+
+        grupos_usina = []
+        for nome, col_ini in ZEL_GRUPOS:
+            ultima_data = row[col_ini].strip()
+            status = row[col_ini + 3].strip()
+            grupos_usina.append({"nome": nome, "status": status, "ultima_data": ultima_data})
+
+        resultado.append({"usina": row[ZEL_COL_USINA].strip(), "grupos": grupos_usina})
+    return resultado
+
+
+def gerar_texto_zeladoria(zeladoria_usinas):
+    """Uma linha por usina, com o status de cada uma das 4 frentes."""
+    if not zeladoria_usinas:
+        return "Nenhuma usina encontrada na aba de Zeladoria para este cliente."
     linhas = []
-    for usina in usinas:
-        linhas.append(
-            f"{usina} – Supressão vegetal: A confirmar · Poda química: A confirmar · "
-            f"Limpeza dos módulos: A confirmar · Controle de pragas: A confirmar."
-        )
+    for item in zeladoria_usinas:
+        partes = []
+        for g in item["grupos"]:
+            status = g["status"] or "Sem informação"
+            if g["ultima_data"] and status.lower() not in ("sem informação", "sem info"):
+                partes.append(f"{g['nome']}: {status} (última {g['ultima_data']})")
+            else:
+                partes.append(f"{g['nome']}: {status}")
+        linhas.append(f"{item['usina']} – " + " · ".join(partes) + ".")
     return "\n".join(linhas)
 
 
@@ -374,7 +412,7 @@ def agrupar_em_paginas(grupos, orcamento_chars=1400):
     return paginas
 
 
-def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=None, usinas_cliente=None):
+def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=None, zeladoria_usinas=None):
     """
     grupos: dict categoria -> {"concluidas": [...], "abertas": [...]}
     chamados: lista de linhas com Ticket Fabricante em aberto (opcional)
@@ -395,7 +433,7 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
     topicos = list(grupos.keys())
     if chamados:
         topicos.append("Chamados em aberto")
-    if usinas_cliente:
+    if zeladoria_usinas:
         topicos.append("Zeladoria")
     ata = _duplicate_slide(prs, 1)
     shp_lista = _find_shape(ata, "Desligamentos")  # caixa de texto com a lista de tópicos
@@ -435,7 +473,7 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
             _set_text_preservando_estilo(shp_corpo, gerar_texto_chamados(chamados))
 
     # --- Página: Zeladoria --------------------------------------------------
-    if usinas_cliente:
+    if zeladoria_usinas:
         pg_zeladoria = _duplicate_slide(prs, 2)
         _remover_fotos(pg_zeladoria)
         shp_cat = _find_shape(pg_zeladoria, "DESLIGAMENTOS")
@@ -443,7 +481,7 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
         if shp_cat:
             _set_text_preservando_estilo(shp_cat, "ZELADORIA")
         if shp_corpo:
-            _set_text_preservando_estilo(shp_corpo, gerar_texto_zeladoria(usinas_cliente))
+            _set_text_preservando_estilo(shp_corpo, gerar_texto_zeladoria(zeladoria_usinas))
 
     # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
     # sldIdLst atual: [0]capa-orig [1]ata-orig [2..5]conteudo-orig [6]contato-orig
