@@ -1152,9 +1152,8 @@ def get_zeladoria_sheet():
     return gc.open_by_key(SHEET_ID).get_worksheet_by_id(ZELADORIA_GID)
 
 ATIVIDADES_SHEET_NAME = "Painel de Atividades"
-ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Descricao", "Responsavel", "Prazo",
-                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor",
-                       "Equipamento"]
+ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Equipamento", "Descricao", "Responsavel", "Prazo",
+                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor"]
 
 def get_atividades_sheet():
     gc = get_gc()
@@ -2676,13 +2675,12 @@ def _proximo_id_atividade(todos):
     return str(max(ids) + 1) if ids else "1"
 
 
-ATIV_HEADERS_JSON = ["id", "cliente", "usina", "descricao", "responsavel", "prazo",
-                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
-                      "equipamento"]
+ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "responsavel", "prazo",
+                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor"]
 
 ATIV_CAMPO_COL = {
-    "cliente": 2, "usina": 3, "descricao": 4, "responsavel": 5,
-    "prazo": 6, "prioridade": 7, "status": 8, "historico": 11, "equipamento": 13,
+    "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
+    "prazo": 7, "prioridade": 8, "status": 9, "historico": 12,
 }
 
 
@@ -2733,13 +2731,20 @@ def nova_atividade():
         agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
 
-        ws.append_row([novo_id, cliente, usina, descricao, responsavel, prazo,
-                        prioridade, status, agora, "", historico_inicial, editor, equipamento])
+        ws.append_row([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
+                        prioridade, status, agora, "", historico_inicial, editor])
         log.info(f"[nova-atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
         return jsonify({"ok": True, "id": novo_id})
     except Exception as e:
         log.error(f"[Atividades] Erro ao criar: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+ATIV_CAMPO_LABEL = {
+    "cliente": "Cliente", "usina": "Usina", "equipamento": "Equipamento", "descricao": "Descrição",
+    "responsavel": "Responsável", "prazo": "Prazo", "prioridade": "Prioridade", "status": "Status",
+}
+ATIV_COL_HISTORICO = ATIV_CAMPO_COL["historico"]
 
 
 @app.route("/atualizar-campo-atividade", methods=["POST", "OPTIONS"])
@@ -2755,6 +2760,7 @@ def atualizar_campo_atividade():
     field  = body.get("field", "").strip()
     value  = body.get("value", "")
     append = bool(body.get("append", False))
+    editor = body.get("editor", "dashboard").strip()
 
     if not atividade_id or field not in ATIV_CAMPO_COL:
         return jsonify({"ok": False, "error": "id ou campo inválido"}), 400
@@ -2763,24 +2769,36 @@ def atualizar_campo_atividade():
         ws = get_atividades_sheet()
         todos = ws.get_all_values()
         linha_idx = None
+        linha_atual = None
         for i, row in enumerate(todos[1:], start=2):
             if row and str(row[0]).strip() == atividade_id:
                 linha_idx = i
+                linha_atual = row
                 break
         if not linha_idx:
             return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
 
         col = ATIV_CAMPO_COL[field]
+
         if field == "historico" and append:
-            linha_atual = todos[linha_idx - 1]
-            atual = linha_atual[10] if len(linha_atual) > 10 else ""
+            atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
             novo = f"{atual}\n{value}".strip() if atual else value
             ws.update_cell(linha_idx, col, novo)
         else:
+            valor_antigo = linha_atual[col - 1] if len(linha_atual) >= col else ""
             ws.update_cell(linha_idx, col, value)
 
-        if field == "status" and _is_concluido_atividade(value):
-            ws.update_cell(linha_idx, 10, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))  # DataConclusao
+            # Registra automaticamente a alteração no histórico cronológico
+            if str(valor_antigo).strip() != str(value).strip():
+                label = ATIV_CAMPO_LABEL.get(field, field)
+                entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
+                         f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
+                hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
+                novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+                ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
+
+            if field == "status" and _is_concluido_atividade(value):
+                ws.update_cell(linha_idx, 11, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))  # DataConclusao
 
         return jsonify({"ok": True})
     except Exception as e:
