@@ -23,7 +23,8 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
-from relatorio_semanal import coletar_ocorrencias_semana, gerar_relatorio_pptx
+from relatorio_semanal import (coletar_ocorrencias_semana, gerar_relatorio_pptx,
+                                coletar_chamados_abertos, listar_usinas_cliente)
 
 # Push notifications (pywebpush)
 try:
@@ -2651,12 +2652,15 @@ def gerar_relatorio_semanal_route():
         ws = get_sheet()
         todos = carregar_planilha(ws)
         grupos = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
-        if not grupos:
+        chamados = coletar_chamados_abertos(todos, cliente)
+        usinas_cliente = listar_usinas_cliente(todos, cliente)
+        if not grupos and not chamados:
             return jsonify({"ok": False, "error": "Nenhuma ocorrencia encontrada no periodo"}), 404
 
-        usinas_label = ", ".join(sorted({r[2] for g in grupos.values() for r in (g["concluidas"] + g["abertas"])}))
+        usinas_label = ", ".join(usinas_cliente) if usinas_cliente else cliente
         semana_label = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m/%Y')}"
-        buf = gerar_relatorio_pptx(cliente, usinas_label or cliente, semana_label, grupos)
+        buf = gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos,
+                                    chamados=chamados, usinas_cliente=usinas_cliente)
 
         nome_arquivo = f"Relatorio_{cliente}_{data_inicio.strftime('%Y%m%d')}.pptx".replace(" ", "_")
         return send_file(
