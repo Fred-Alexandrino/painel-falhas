@@ -5,12 +5,9 @@ relatorio_semanal.py
 Geração automática do "Relatório Semanal" (.pptx) no modelo Grid Co.,
 a partir das ocorrências já registradas na planilha do Painel de Falhas.
 
-Não usa nenhuma API de IA — o texto narrativo é montado por regras
-determinísticas em cima dos campos: Falha, Causa, Ação e Histórico.
-
-Como plugar no app.py:
-    from relatorio_semanal import gerar_relatorio_pptx
-    (ver bloco de rota Flask no final deste arquivo)
+Não usa nenhuma API de IA — o texto é montado por regras determinísticas
+em cima dos campos: Equipamento, Falha e Status (resumido, sem despejar
+o histórico bruto de ações).
 """
 
 import os
@@ -25,10 +22,9 @@ from pptx.oxml.ns import qn
 
 # ── Configuração ───────────────────────────────────────────────────────────
 
-# Caminho do modelo Grid Co. (subir este arquivo no repo, ex: templates/modelo_relatorio_semanal.pptx)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "modelo_relatorio_semanal.pptx")
 
-# Índices das colunas da planilha (0-based, iguais ao app.py / CAMPO_COL)
+# Índices das colunas da planilha principal (0-based, iguais ao app.py / CAMPO_COL)
 COL_ID, COL_CLIENTE, COL_USINA, COL_EQUIP = 0, 1, 2, 3
 COL_FALHA, COL_CAUSA, COL_IMPACTADOS, COL_ACAO = 4, 5, 6, 7
 COL_STATUS, COL_TICKET, COL_OS, COL_HISTORICO = 8, 9, 10, 11
@@ -94,6 +90,12 @@ def _is_concluido(status):
     return any(x in s for x in STATUS_CONCLUIDO)
 
 
+def _ticket_valido(ticket):
+    """Só considera 'chamado real' se houver um número/identificador de verdade."""
+    t = (ticket or "").strip().lower()
+    return t not in ("", "n/a", "na", "-", "--", "nao", "não", "sem chamado", "sem ticket", "s/n")
+
+
 # ── Coleta e agrupamento dos dados ──────────────────────────────────────────
 
 def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
@@ -102,13 +104,7 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
     cliente: nome do cliente (comparação por 'contains', case-insensitive)
     data_inicio / data_fim: datetime (00:00 do dia inicial até 23:59 do dia final)
 
-    Retorna dict:
-        {
-          "categoria": {
-              "concluidas": [linha, linha, ...],
-              "abertas":    [linha, linha, ...],
-          }, ...
-        }
+    Retorna dict: {"categoria": {"concluidas": [linha,...], "abertas": [linha,...]}, ...}
     """
     cliente_norm = _norm(cliente)
     grupos = {}
@@ -139,9 +135,7 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
         elif em_aberto_backlog:
             grupos[categoria]["abertas"].append(row)
 
-    # remove categorias que ficaram vazias
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
-
 
 
 def listar_usinas_cliente(todos_valores, cliente):
@@ -163,7 +157,7 @@ def listar_usinas_cliente(todos_valores, cliente):
 
 
 def coletar_chamados_abertos(todos_valores, cliente):
-    """Ocorrências do cliente com Ticket Fabricante preenchido e ainda não concluídas."""
+    """Ocorrências do cliente com número de chamado/ticket fabricante válido e ainda não concluídas."""
     cliente_norm = _norm(cliente)
     chamados = []
     for row in todos_valores[1:]:
@@ -172,88 +166,63 @@ def coletar_chamados_abertos(todos_valores, cliente):
         if cliente_norm not in _norm(row[COL_CLIENTE]):
             continue
         ticket = row[COL_TICKET].strip()
-        if not ticket or _is_concluido(row[COL_STATUS]):
+        if not _ticket_valido(ticket) or _is_concluido(row[COL_STATUS]):
             continue
         chamados.append(row)
     return chamados
 
 
-# ── Geração da narrativa (offline, sem IA) ─────────────────────────────────
+# ── Geração de conteúdo (offline, sem IA) — parágrafos com negrito por usina ─
 
-def _frase_ocorrencia(row, concluida):
-    usina = row[COL_USINA].strip()
-    falha = row[COL_FALHA].strip()
-    causa = row[COL_CAUSA].strip()
-    acao = row[COL_ACAO].strip()
-    historico = row[COL_HISTORICO].strip()
-    dt_abertura = _parse_data(row[COL_DATA_ABERTURA])
-    dt_fecham = _parse_data(row[COL_DATA_FECHAMENTO])
-
-    partes = []
-
-    abertura_txt = f" em {dt_abertura.strftime('%d/%m')}" if dt_abertura else ""
-    if falha:
-        partes.append(f"Foi registrada ocorrência na usina {usina}{abertura_txt}: {falha}.")
-    else:
-        partes.append(f"Foi registrada ocorrência na usina {usina}{abertura_txt}.")
-
-    if causa:
-        partes.append(f"A causa identificada foi {causa[0].lower()}{causa[1:]}.")
-
-    if acao:
-        partes.append(f"A equipe Grid Co. atuou com: {acao[0].lower()}{acao[1:]}.")
-
-    if concluida:
-        fecham_txt = f" em {dt_fecham.strftime('%d/%m')}" if dt_fecham else ""
-        partes.append(f"O caso foi normalizado{fecham_txt}, com a operação restabelecida.")
-    else:
-        partes.append("O caso segue em acompanhamento pela equipe até a normalização completa.")
-
-    return " ".join(partes)
+def _linha_ocorrencia(row):
+    """Linha resumida: Equipamento – Falha. Status: X. (sem despejar causa/ação/histórico)"""
+    equip = row[COL_EQUIP].strip() or "Equipamento não informado"
+    falha = row[COL_FALHA].strip() or "Falha não especificada"
+    if len(falha) > 180:
+        falha = falha[:177].rstrip() + "..."
+    status = row[COL_STATUS].strip() or "Em aberto"
+    return f"{equip} – {falha}. Status: {status}."
 
 
-def gerar_texto_categoria(categoria, dados):
-    """Monta o parágrafo narrativo de uma categoria, no tom Grid Co."""
-    frases = []
-    concluidas = dados["concluidas"]
-    abertas = dados["abertas"]
+def gerar_paragrafos_categoria(categoria, dados):
+    """
+    Agrupa as ocorrências de uma categoria por usina (nome da usina em negrito,
+    seguido de um bullet resumido por ocorrência).
+    Retorna lista de dicts: {"texto": str, "bold": bool}
+    """
+    todas = list(dados["concluidas"]) + list(dados["abertas"])
+    por_usina = {}
+    for row in todas:
+        usina = row[COL_USINA].strip() or "Usina não informada"
+        por_usina.setdefault(usina, []).append(row)
 
-    if concluidas:
-        if len(concluidas) == 1:
-            frases.append(_frase_ocorrencia(concluidas[0], concluida=True))
-        else:
-            frases.append(
-                f"Na semana, foram normalizadas {len(concluidas)} ocorrências relacionadas a "
-                f"{categoria.lower()}, com destaque para os seguintes atendimentos:"
-            )
-            for r in concluidas:
-                frases.append("• " + _frase_ocorrencia(r, concluida=True))
-
-    if abertas:
-        if concluidas:
-            frases.append("Seguem em acompanhamento, ainda em aberto:")
-        if len(abertas) == 1:
-            frases.append(_frase_ocorrencia(abertas[0], concluida=False))
-        else:
-            for r in abertas:
-                frases.append("• " + _frase_ocorrencia(r, concluida=False))
-
-    return "\n".join(frases)
+    paragrafos = []
+    for usina in sorted(por_usina.keys()):
+        paragrafos.append({"texto": usina, "bold": True})
+        for row in por_usina[usina]:
+            paragrafos.append({"texto": "• " + _linha_ocorrencia(row), "bold": False})
+    return paragrafos
 
 
-
-def gerar_texto_chamados(chamados):
-    """Uma linha por chamado, no formato: Usina - Case #ticket -> resumo -> status."""
+def gerar_paragrafos_chamados(chamados):
+    """Chamados com ticket válido, agrupados por usina em negrito."""
     if not chamados:
-        return "Nenhum chamado em aberto nesta semana."
-    linhas = []
+        return [{"texto": "Nenhum chamado em aberto nesta semana.", "bold": False}]
+
+    por_usina = {}
     for row in chamados:
-        usina = row[COL_USINA].strip()
-        ticket = row[COL_TICKET].strip()
-        resumo = (row[COL_FALHA].strip() or row[COL_CAUSA].strip() or "Sem descrição detalhada")
-        status = row[COL_STATUS].strip() or "Em análise"
-        linhas.append(f"{usina} – {ticket} -> {resumo} -> {status}.")
-    return "\n".join(linhas)
+        usina = row[COL_USINA].strip() or "Usina não informada"
+        por_usina.setdefault(usina, []).append(row)
+
+    paragrafos = []
+    for usina in sorted(por_usina.keys()):
+        paragrafos.append({"texto": usina, "bold": True})
+        for row in por_usina[usina]:
+            ticket = row[COL_TICKET].strip()
+            resumo = row[COL_FALHA].strip() or row[COL_CAUSA].strip() or "Sem descrição detalhada"
+            status = row[COL_STATUS].strip() or "Em análise"
+            paragrafos.append({"texto": f"• {ticket} -> {resumo} -> {status}.", "bold": False})
+    return paragrafos
 
 
 # Layout real da aba "Zeladoria" (gid 987654321): linha 1 = título dos grupos,
@@ -262,10 +231,10 @@ def gerar_texto_chamados(chamados):
 # (Última Data, Próxima Data, Quantidade, Status): Roçada, Poda Química, Lavagem dos Módulos, Controle de Pragas.
 ZEL_COL_CLIENTE, ZEL_COL_USINA = 0, 1
 ZEL_GRUPOS = [
-    ("Roçada",               2),   # Última Data=2, Próxima=3, Qtd=4, Status=5
-    ("Poda Química",         6),   # Última Data=6, Próxima=7, Qtd=8, Status=9
-    ("Lavagem dos Módulos", 10),   # Última Data=10, Próxima=11, Qtd=12, Status=13
-    ("Controle de Pragas",  14),   # Última Data=14, Próxima=15, Qtd=16, Status=17
+    ("Roçada",               2),
+    ("Poda Química",         6),
+    ("Lavagem dos Módulos", 10),
+    ("Controle de Pragas",  14),
 ]
 
 
@@ -276,7 +245,7 @@ def coletar_zeladoria(zeladoria_valores, cliente):
     """
     cliente_norm = _norm(cliente)
     resultado = []
-    for row in zeladoria_valores[2:]:  # pula as 2 linhas de cabeçalho
+    for row in zeladoria_valores[2:]:
         if len(row) <= ZEL_GRUPOS[-1][1] + 3:
             row = row + [""] * (ZEL_GRUPOS[-1][1] + 4 - len(row))
         if not row[ZEL_COL_USINA].strip():
@@ -294,21 +263,22 @@ def coletar_zeladoria(zeladoria_valores, cliente):
     return resultado
 
 
-def gerar_texto_zeladoria(zeladoria_usinas):
-    """Uma linha por usina, com o status de cada uma das 4 frentes."""
+def gerar_paragrafos_zeladoria(zeladoria_usinas):
+    """Uma usina em negrito, seguida de um bullet por frente (Roçada, Poda, Lavagem, Pragas)."""
     if not zeladoria_usinas:
-        return "Nenhuma usina encontrada na aba de Zeladoria para este cliente."
-    linhas = []
+        return [{"texto": "Nenhuma usina encontrada na aba de Zeladoria para este cliente.", "bold": False}]
+
+    paragrafos = []
     for item in zeladoria_usinas:
-        partes = []
+        paragrafos.append({"texto": item["usina"], "bold": True})
         for g in item["grupos"]:
             status = g["status"] or "Sem informação"
             if g["ultima_data"] and status.lower() not in ("sem informação", "sem info"):
-                partes.append(f"{g['nome']}: {status} (última {g['ultima_data']})")
+                linha = f"• {g['nome']}: {status} (última {g['ultima_data']})"
             else:
-                partes.append(f"{g['nome']}: {status}")
-        linhas.append(f"{item['usina']} – " + " · ".join(partes) + ".")
-    return "\n".join(linhas)
+                linha = f"• {g['nome']}: {status}"
+            paragrafos.append({"texto": linha, "bold": False})
+    return paragrafos
 
 
 # ── Clonagem de slides (mantém 100% do estilo do modelo Grid Co.) ──────────
@@ -340,22 +310,28 @@ def _duplicate_slide(prs, index):
     return dest
 
 
-def _set_text_preservando_estilo(shape, novo_texto):
-    """Substitui o texto de um text box mantendo a formatação do 1º run."""
+def _extrair_formato_base(shape):
+    """Extrai fonte/tamanho/itálico/cor do 1º run existente na shape (pra reaplicar depois)."""
     tf = shape.text_frame
     primeiro_par = tf.paragraphs[0]
-    if primeiro_par.runs:
-        modelo_run = primeiro_par.runs[0]
-        font = modelo_run.font
+    if not primeiro_par.runs:
+        return None
+    font = primeiro_par.runs[0].font
+    cor_rgb = None
+    try:
+        if font.color and font.color.type is not None:
+            cor_rgb = font.color.rgb  # levanta AttributeError se for cor de tema (schemeClr)
+    except AttributeError:
         cor_rgb = None
-        try:
-            if font.color and font.color.type is not None:
-                cor_rgb = font.color.rgb  # levanta AttributeError se for cor de tema (schemeClr)
-        except AttributeError:
-            cor_rgb = None
-        fmt = (font.name, font.size, font.bold, font.italic, cor_rgb)
-    else:
-        fmt = None
+    return (font.name, font.size, font.italic, cor_rgb)
+
+
+def _set_text_preservando_estilo(shape, novo_texto):
+    """Substitui o texto de um text box mantendo a formatação (incl. negrito) do 1º run."""
+    tf = shape.text_frame
+    primeiro_par = tf.paragraphs[0]
+    bold_original = primeiro_par.runs[0].font.bold if primeiro_par.runs else None
+    fmt = _extrair_formato_base(shape)
 
     tf.clear()
     linhas = novo_texto.split("\n")
@@ -369,11 +345,40 @@ def _set_text_preservando_estilo(shape, novo_texto):
             if fmt[1]:
                 run.font.size = fmt[1]
             if fmt[2] is not None:
-                run.font.bold = fmt[2]
-            if fmt[3] is not None:
-                run.font.italic = fmt[3]
-            if fmt[4]:
-                run.font.color.rgb = fmt[4]
+                run.font.italic = fmt[2]
+            if fmt[3]:
+                run.font.color.rgb = fmt[3]
+        if bold_original is not None:
+            run.font.bold = bold_original
+
+
+def _set_paragrafos_com_estilo(shape, paragrafos):
+    """
+    Substitui o conteúdo de um text box por uma lista de parágrafos, permitindo
+    alternar negrito por parágrafo (usado para destacar nome de usina/categoria).
+    paragrafos: lista de dicts {"texto": str, "bold": bool}
+    """
+    fmt = _extrair_formato_base(shape)
+    tf = shape.text_frame
+    tf.clear()
+
+    if not paragrafos:
+        paragrafos = [{"texto": "", "bold": False}]
+
+    for i, p in enumerate(paragrafos):
+        par = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        run = par.add_run()
+        run.text = p["texto"]
+        if fmt:
+            if fmt[0]:
+                run.font.name = fmt[0]
+            if fmt[1]:
+                run.font.size = fmt[1]
+            if fmt[2] is not None:
+                run.font.italic = fmt[2]
+            if fmt[3]:
+                run.font.color.rgb = fmt[3]
+        run.font.bold = bool(p.get("bold", False))
 
 
 def _remover_fotos(slide):
@@ -392,41 +397,46 @@ def _find_shape(slide, contem_texto):
 
 # ── Montagem do PPTX final ──────────────────────────────────────────────────
 
+def _tamanho_paragrafos(paragrafos):
+    return sum(len(p["texto"]) for p in paragrafos)
+
+
 def agrupar_em_paginas(grupos, orcamento_chars=1400):
     """
-    Agrupa categorias em páginas por orçamento de caracteres, para não desperdiçar
-    slide com pouco conteúdo nem lotar demais uma página. Retorna lista de páginas,
-    cada página = lista de tuplas (categoria, texto).
+    Agrupa categorias em páginas por orçamento de caracteres. Retorna lista de
+    páginas, cada página = lista de tuplas (categoria, paragrafos).
     """
-    blocos = [(cat, gerar_texto_categoria(cat, dados)) for cat, dados in grupos.items()]
+    blocos = [(cat, gerar_paragrafos_categoria(cat, dados)) for cat, dados in grupos.items()]
     paginas, atual, atual_len = [], [], 0
-    for cat, texto in blocos:
-        tam = len(texto) + len(cat) + 10
+    for cat, paragrafos in blocos:
+        tam = _tamanho_paragrafos(paragrafos) + len(cat) + 10
         if atual and (atual_len + tam > orcamento_chars):
             paginas.append(atual)
             atual, atual_len = [], 0
-        atual.append((cat, texto))
+        atual.append((cat, paragrafos))
         atual_len += tam
     if atual:
         paginas.append(atual)
     return paginas
 
 
-def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=None, zeladoria_usinas=None):
+def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None, zeladoria_usinas=None):
     """
     grupos: dict categoria -> {"concluidas": [...], "abertas": [...]}
-    chamados: lista de linhas com Ticket Fabricante em aberto (opcional)
-    usinas_cliente: lista de nomes de usina do cliente, para a página de Zeladoria (opcional)
+    semana_num: número da semana do ano (baseado na data final do período)
+    data_label: data final formatada (dd/mm/aaaa)
+    chamados: lista de linhas com chamado/ticket válido em aberto (opcional)
+    zeladoria_usinas: retorno de coletar_zeladoria() (opcional)
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
 
-    # --- Slide 1: Capa (clona o slide 0 do modelo e troca o texto) --------
+    # --- Slide 1: Capa — só cliente, semana e data -------------------------
     capa = _duplicate_slide(prs, 0)
     shp_titulo = _find_shape(capa, "O&M")
     if shp_titulo:
         _set_text_preservando_estilo(
-            shp_titulo, f"O&M – {cliente}\n{usinas_label}\n{semana_label}"
+            shp_titulo, f"O&M – {cliente}\nSemana {semana_num}\n{data_label}"
         )
 
     # --- Slide 2: Ata da reunião (tópicos/categorias da semana + extras) --
@@ -436,7 +446,7 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
     if zeladoria_usinas:
         topicos.append("Zeladoria")
     ata = _duplicate_slide(prs, 1)
-    shp_lista = _find_shape(ata, "Desligamentos")  # caixa de texto com a lista de tópicos
+    shp_lista = _find_shape(ata, "Desligamentos")
     if shp_lista:
         _set_text_preservando_estilo(shp_lista, "\n".join(topicos))
 
@@ -449,19 +459,22 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
         shp_corpo = _find_shape(novo, "Foram registradas")
 
         if len(pagina) == 1:
-            categoria, texto = pagina[0]
+            categoria, paragrafos = pagina[0]
             if shp_categoria:
                 _set_text_preservando_estilo(shp_categoria, categoria)
             if shp_corpo:
-                _set_text_preservando_estilo(shp_corpo, texto)
+                _set_paragrafos_com_estilo(shp_corpo, paragrafos)
         else:
             if shp_categoria:
                 _set_text_preservando_estilo(shp_categoria, "OCORRÊNCIAS DA SEMANA")
             if shp_corpo:
-                blocos_txt = [f"{cat}\n{texto}" for cat, texto in pagina]
-                _set_text_preservando_estilo(shp_corpo, "\n\n".join(blocos_txt))
+                combinados = []
+                for cat, paragrafos in pagina:
+                    combinados.append({"texto": cat, "bold": True})
+                    combinados.extend(paragrafos)
+                _set_paragrafos_com_estilo(shp_corpo, combinados)
 
-    # --- Página: Chamados em aberto ----------------------------------------
+    # --- Página: Chamados em aberto (só com ticket/case válido) ------------
     if chamados:
         pg_chamados = _duplicate_slide(prs, 2)
         _remover_fotos(pg_chamados)
@@ -470,7 +483,7 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
         if shp_cat:
             _set_text_preservando_estilo(shp_cat, "CHAMADOS EM ABERTO")
         if shp_corpo:
-            _set_text_preservando_estilo(shp_corpo, gerar_texto_chamados(chamados))
+            _set_paragrafos_com_estilo(shp_corpo, gerar_paragrafos_chamados(chamados))
 
     # --- Página: Zeladoria --------------------------------------------------
     if zeladoria_usinas:
@@ -481,11 +494,9 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
         if shp_cat:
             _set_text_preservando_estilo(shp_cat, "ZELADORIA")
         if shp_corpo:
-            _set_text_preservando_estilo(shp_corpo, gerar_texto_zeladoria(zeladoria_usinas))
+            _set_paragrafos_com_estilo(shp_corpo, gerar_paragrafos_zeladoria(zeladoria_usinas))
 
     # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
-    # sldIdLst atual: [0]capa-orig [1]ata-orig [2..5]conteudo-orig [6]contato-orig
-    #                 [7]capa-clone [8]ata-clone [9:]páginas-clone (nesta ordem de criação)
     xml_slides = prs.slides._sldIdLst
     todos_els = list(xml_slides)
     contato_el = todos_els[6]
@@ -502,44 +513,3 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=N
     prs.save(buf)
     buf.seek(0)
     return buf
-
-
-# ── Rota Flask (adicionar ao app.py) ────────────────────────────────────────
-"""
-from flask import request, send_file
-from relatorio_semanal import coletar_ocorrencias_semana, gerar_relatorio_pptx
-from datetime import datetime
-
-@app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
-def gerar_relatorio_semanal_route():
-    if request.method == "OPTIONS":
-        return ("", 204)
-    try:
-        body = request.get_json(force=True) or {}
-        cliente = str(body.get("cliente", "")).strip()
-        data_inicio = datetime.strptime(body["dataInicio"], "%Y-%m-%d")
-        data_fim = datetime.strptime(body["dataFim"], "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59
-        )
-        if not cliente:
-            return jsonify({"ok": False, "error": "cliente é obrigatório"}), 400
-
-        todos = carregar_planilha(get_sheet())
-        grupos = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
-        if not grupos:
-            return jsonify({"ok": False, "error": "Nenhuma ocorrência encontrada no período"}), 404
-
-        semana_label = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m/%Y')}"
-        buf = gerar_relatorio_pptx(cliente, cliente, semana_label, grupos)
-
-        nome_arquivo = f"Relatorio_{cliente}_{data_inicio.strftime('%Y%m%d')}.pptx".replace(" ", "_")
-        return send_file(
-            buf,
-            as_attachment=True,
-            download_name=nome_arquivo,
-            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        )
-    except Exception as e:
-        log.error(f"[Relatorio Semanal] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-"""
