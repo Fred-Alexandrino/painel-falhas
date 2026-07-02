@@ -24,7 +24,8 @@ from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_ocorrencias_semana, gerar_relatorio_pptx,
-                                coletar_chamados_abertos, listar_usinas_cliente)
+                                coletar_chamados_abertos, listar_usinas_cliente,
+                                coletar_zeladoria)
 
 # Push notifications (pywebpush)
 try:
@@ -1143,6 +1144,12 @@ def parse_bloco(bloco):
 def get_sheet():
     gc = get_gc()
     return gc.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+
+ZELADORIA_GID = 987654321
+
+def get_zeladoria_sheet():
+    gc = get_gc()
+    return gc.open_by_key(SHEET_ID).get_worksheet_by_id(ZELADORIA_GID)
 
 def carregar_planilha(ws):
     return ws.get_all_values()
@@ -2654,13 +2661,21 @@ def gerar_relatorio_semanal_route():
         grupos = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
         chamados = coletar_chamados_abertos(todos, cliente)
         usinas_cliente = listar_usinas_cliente(todos, cliente)
+
+        try:
+            zeladoria_valores = carregar_planilha(get_zeladoria_sheet())
+            zeladoria_usinas = coletar_zeladoria(zeladoria_valores, cliente)
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao ler aba de Zeladoria: {e}")
+            zeladoria_usinas = []
+
         if not grupos and not chamados:
             return jsonify({"ok": False, "error": "Nenhuma ocorrencia encontrada no periodo"}), 404
 
         usinas_label = ", ".join(usinas_cliente) if usinas_cliente else cliente
         semana_label = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m/%Y')}"
         buf = gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos,
-                                    chamados=chamados, usinas_cliente=usinas_cliente)
+                                    chamados=chamados, zeladoria_usinas=zeladoria_usinas)
 
         nome_arquivo = f"Relatorio_{cliente}_{data_inicio.strftime('%Y%m%d')}.pptx".replace(" ", "_")
         return send_file(
