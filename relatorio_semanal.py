@@ -37,34 +37,27 @@ COL_DATA_FECHAMENTO = 20  # coluna U (21ª, 1-based) = índice 20 (0-based)
 
 STATUS_CONCLUIDO = ["concluído", "concluido", "resolvido", "fechado", "resolved", "closed"]
 
-# Categorias "bonitas" para exibir no relatório (mapeia o texto cru de Equipamento -> rótulo do slide)
-ROTULO_CATEGORIA = {
-    "inversor": "INVERSORES",
-    "tracker": "TRACKERS / TCU",
-    "tcu": "TRACKERS / TCU",
-    "fusivel": "FUSÍVEIS",
-    "fusível": "FUSÍVEIS",
-    "transformador": "TRANSFORMADORES",
-    "switchgear": "SWITCHGEAR",
-    "string": "STRINGS / MÓDULOS",
-    "modulo": "STRINGS / MÓDULOS",
-    "módulo": "STRINGS / MÓDULOS",
-    "comunicacao": "COMUNICAÇÕES / SCADA / CCTV",
-    "comunicação": "COMUNICAÇÕES / SCADA / CCTV",
-    "scada": "COMUNICAÇÕES / SCADA / CCTV",
-    "cctv": "COMUNICAÇÕES / SCADA / CCTV",
-    "sensor": "SENSORES",
-    "emergencia": "EMERGÊNCIAS",
-    "emergência": "EMERGÊNCIAS",
-    "operacao": "OPERAÇÕES",
-    "operação": "OPERAÇÕES",
-    "termografia": "TERMOGRAFIA",
-    "restart": "RESTART / RELIGAMENTO",
-    "ronda": "RONDAS SEMANAIS",
-    "exaustor": "EXAUSTORES",
-    "vegetacao": "CONTROLE DE VEGETAÇÃO",
-    "vegetação": "CONTROLE DE VEGETAÇÃO",
-}
+# Categorias "bonitas" para exibir no relatório (padrões regex, avaliados em ordem —
+# o primeiro que bater define a categoria). Casa tanto nomes por extenso ("Inversor")
+# quanto códigos curtos usados em campo ("Inv-18", "NVR", "Chave Seccionadora Skid 1").
+PADROES_CATEGORIA = [
+    (r"\binv[\s\-]*\d+|inversor", "INVERSORES"),
+    (r"tracker|\btcu\b", "TRACKERS / TCU"),
+    (r"fusive|fusíve", "FUSÍVEIS"),
+    (r"transformador", "TRANSFORMADORES"),
+    (r"switchgear|chave seccionadora|disjuntor|religador", "SWITCHGEAR"),
+    (r"\bstring\b|modulo|módulo|otimizador", "STRINGS / MÓDULOS"),
+    (r"usina desligad|usina offline|desligamento|ufv desligad|usina parad", "DESLIGAMENTOS"),
+    (r"comunica|scada|cctv|\bnvr\b|camera|câmera|speed dome|igate", "COMUNICAÇÕES / SCADA / CCTV"),
+    (r"sensor|piranometro|piranômetro|solarimetric|estacao solarimetrica|estação solarimétrica", "SENSORES"),
+    (r"emergenc", "EMERGÊNCIAS"),
+    (r"operac|opera[çc][aã]o", "OPERAÇÕES"),
+    (r"termografia|termograf", "TERMOGRAFIA"),
+    (r"restart|religamento", "RESTART / RELIGAMENTO"),
+    (r"ronda", "RONDAS SEMANAIS"),
+    (r"exaustor", "EXAUSTORES"),
+    (r"vegeta", "CONTROLE DE VEGETAÇÃO"),
+]
 
 
 # ── Utilidades de texto/data ────────────────────────────────────────────────
@@ -77,8 +70,8 @@ def _norm(s):
 
 def _rotulo_categoria(equip_bruto):
     n = _norm(equip_bruto)
-    for chave, rotulo in ROTULO_CATEGORIA.items():
-        if _norm(chave) in n:
+    for padrao, rotulo in PADROES_CATEGORIA:
+        if re.search(padrao, n):
             return rotulo
     return (equip_bruto or "OUTRAS OCORRÊNCIAS").strip().upper()
 
@@ -294,6 +287,26 @@ def _find_shape(slide, contem_texto):
 
 # ── Montagem do PPTX final ──────────────────────────────────────────────────
 
+def agrupar_em_paginas(grupos, orcamento_chars=1400):
+    """
+    Agrupa categorias em páginas por orçamento de caracteres, para não desperdiçar
+    slide com pouco conteúdo nem lotar demais uma página. Retorna lista de páginas,
+    cada página = lista de tuplas (categoria, texto).
+    """
+    blocos = [(cat, gerar_texto_categoria(cat, dados)) for cat, dados in grupos.items()]
+    paginas, atual, atual_len = [], [], 0
+    for cat, texto in blocos:
+        tam = len(texto) + len(cat) + 10
+        if atual and (atual_len + tam > orcamento_chars):
+            paginas.append(atual)
+            atual, atual_len = [], 0
+        atual.append((cat, texto))
+        atual_len += tam
+    if atual:
+        paginas.append(atual)
+    return paginas
+
+
 def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos):
     """
     grupos: dict categoria -> {"concluidas": [...], "abertas": [...]}
@@ -309,25 +322,32 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos):
             shp_titulo, f"O&M – {cliente}\n{usinas_label}\n{semana_label}"
         )
 
-    # --- Slide 2: Ata da reunião (lista as categorias da semana) ----------
+    # --- Slide 2: Ata da reunião (somente os tópicos/categorias da semana) -
     ata = _duplicate_slide(prs, 1)
     shp_lista = _find_shape(ata, "Desligamentos")  # caixa de texto com a lista de tópicos
     if shp_lista:
-        linhas = [f"{cat.title()} – {usinas_label}" for cat in grupos.keys()]
-        _set_text_preservando_estilo(shp_lista, "\n".join(linhas))
+        _set_text_preservando_estilo(shp_lista, "\n".join(grupos.keys()))
 
-    # --- Um slide por categoria (clona o slide 2 = modelo "DESLIGAMENTOS") -
-    for categoria, dados in grupos.items():
+    # --- Uma página por grupo de categorias (empacotadas por orçamento) ----
+    for pagina in agrupar_em_paginas(grupos):
         novo = _duplicate_slide(prs, 2)
         _remover_fotos(novo)
 
         shp_categoria = _find_shape(novo, "DESLIGAMENTOS")
-        if shp_categoria:
-            _set_text_preservando_estilo(shp_categoria, categoria)
-
         shp_corpo = _find_shape(novo, "Foram registradas")
-        if shp_corpo:
-            _set_text_preservando_estilo(shp_corpo, gerar_texto_categoria(categoria, dados))
+
+        if len(pagina) == 1:
+            categoria, texto = pagina[0]
+            if shp_categoria:
+                _set_text_preservando_estilo(shp_categoria, categoria)
+            if shp_corpo:
+                _set_text_preservando_estilo(shp_corpo, texto)
+        else:
+            if shp_categoria:
+                _set_text_preservando_estilo(shp_categoria, "OCORRÊNCIAS DA SEMANA")
+            if shp_corpo:
+                blocos_txt = [f"{cat}\n{texto}" for cat, texto in pagina]
+                _set_text_preservando_estilo(shp_corpo, "\n\n".join(blocos_txt))
 
     # --- Reordena o deck: capa nova -> ata nova -> categorias -> contato --
     # sldIdLst atual: [0]capa-orig [1]ata-orig [2..5]conteudo-orig [6]contato-orig
