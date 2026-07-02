@@ -19,10 +19,11 @@ Suporta:
 import os, re, json, logging
 import requests
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
+from relatorio_semanal import coletar_ocorrencias_semana, gerar_relatorio_pptx
 
 # Push notifications (pywebpush)
 try:
@@ -2600,6 +2601,7 @@ def nova_ocorrencia_dashboard():
     acao       = body.get("acao", "").strip()
     status     = body.get("status", "Em Aberto").strip()
     historico  = body.get("historico", "").strip()
+    numero_os  = body.get("numeroOS", "").strip()
     editor     = body.get("editor", "dashboard").strip()
 
     if not equipamento or not falha:
@@ -2622,7 +2624,7 @@ def nova_ocorrencia_dashboard():
             "equip_impact": equipamento,
             "acao":         acao,
             "status":       status,
-            "os":           "",
+            "os":           numero_os,
             "historico":    historico or f"{datetime.now().strftime('%d/%m')} - Registro inicial via dashboard.",
         }
         gravar_nova_ocorrencia(ws, todos, dados)
@@ -2631,6 +2633,42 @@ def nova_ocorrencia_dashboard():
     except Exception as e:
         log.error(f"[nova-ocorrencia] Erro ao gravar: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
+def gerar_relatorio_semanal_route():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+        cliente = str(body.get("cliente", "")).strip()
+        data_inicio = datetime.strptime(body["dataInicio"], "%Y-%m-%d")
+        data_fim = datetime.strptime(body["dataFim"], "%Y-%m-%d").replace(
+            hour=23, minute=59, second=59
+        )
+        if not cliente:
+            return jsonify({"ok": False, "error": "cliente e obrigatorio"}), 400
+
+        ws = get_sheet()
+        todos = carregar_planilha(ws)
+        grupos = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
+        if not grupos:
+            return jsonify({"ok": False, "error": "Nenhuma ocorrencia encontrada no periodo"}), 404
+
+        usinas_label = ", ".join(sorted({r[2] for g in grupos.values() for r in (g["concluidas"] + g["abertas"])}))
+        semana_label = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m/%Y')}"
+        buf = gerar_relatorio_pptx(cliente, usinas_label or cliente, semana_label, grupos)
+
+        nome_arquivo = f"Relatorio_{cliente}_{data_inicio.strftime('%Y%m%d')}.pptx".replace(" ", "_")
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=nome_arquivo,
+            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+    except Exception as e:
+        log.error(f"[Relatorio Semanal] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 def gerar_os():
     """
