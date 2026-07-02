@@ -2660,7 +2660,6 @@ def gerar_relatorio_semanal_route():
         todos = carregar_planilha(ws)
         grupos = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
         chamados = coletar_chamados_abertos(todos, cliente)
-        usinas_cliente = listar_usinas_cliente(todos, cliente)
 
         try:
             zeladoria_valores = carregar_planilha(get_zeladoria_sheet())
@@ -2672,9 +2671,9 @@ def gerar_relatorio_semanal_route():
         if not grupos and not chamados:
             return jsonify({"ok": False, "error": "Nenhuma ocorrencia encontrada no periodo"}), 404
 
-        usinas_label = ", ".join(usinas_cliente) if usinas_cliente else cliente
-        semana_label = f"{data_inicio.strftime('%d/%m')} a {data_fim.strftime('%d/%m/%Y')}"
-        buf = gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos,
+        semana_num = data_fim.isocalendar()[1]
+        data_label = data_fim.strftime('%d/%m/%Y')
+        buf = gerar_relatorio_pptx(cliente, semana_num, data_label, grupos,
                                     chamados=chamados, zeladoria_usinas=zeladoria_usinas)
 
         nome_arquivo = f"Relatorio_{cliente}_{data_inicio.strftime('%Y%m%d')}.pptx".replace(" ", "_")
