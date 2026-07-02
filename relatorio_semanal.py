@@ -143,6 +143,41 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
 
 
+
+def listar_usinas_cliente(todos_valores, cliente):
+    """Lista todas as usinas do cliente (histórico completo, não só a semana)."""
+    cliente_norm = _norm(cliente)
+    usinas = []
+    vistos = set()
+    for row in todos_valores[1:]:
+        if len(row) <= COL_USINA:
+            continue
+        if cliente_norm not in _norm(row[COL_CLIENTE]):
+            continue
+        usina = row[COL_USINA].strip()
+        chave = _norm(usina)
+        if usina and chave not in vistos:
+            vistos.add(chave)
+            usinas.append(usina)
+    return sorted(usinas)
+
+
+def coletar_chamados_abertos(todos_valores, cliente):
+    """Ocorrências do cliente com Ticket Fabricante preenchido e ainda não concluídas."""
+    cliente_norm = _norm(cliente)
+    chamados = []
+    for row in todos_valores[1:]:
+        if len(row) <= COL_DATA_FECHAMENTO:
+            row = row + [""] * (COL_DATA_FECHAMENTO + 1 - len(row))
+        if cliente_norm not in _norm(row[COL_CLIENTE]):
+            continue
+        ticket = row[COL_TICKET].strip()
+        if not ticket or _is_concluido(row[COL_STATUS]):
+            continue
+        chamados.append(row)
+    return chamados
+
+
 # ── Geração da narrativa (offline, sem IA) ─────────────────────────────────
 
 def _frase_ocorrencia(row, concluida):
@@ -204,6 +239,38 @@ def gerar_texto_categoria(categoria, dados):
                 frases.append("• " + _frase_ocorrencia(r, concluida=False))
 
     return "\n".join(frases)
+
+
+
+def gerar_texto_chamados(chamados):
+    """Uma linha por chamado, no formato: Usina - Case #ticket -> resumo -> status."""
+    if not chamados:
+        return "Nenhum chamado em aberto nesta semana."
+    linhas = []
+    for row in chamados:
+        usina = row[COL_USINA].strip()
+        ticket = row[COL_TICKET].strip()
+        resumo = (row[COL_FALHA].strip() or row[COL_CAUSA].strip() or "Sem descrição detalhada")
+        status = row[COL_STATUS].strip() or "Em análise"
+        linhas.append(f"{usina} – {ticket} -> {resumo} -> {status}.")
+    return "\n".join(linhas)
+
+
+def gerar_texto_zeladoria(usinas):
+    """
+    Esqueleto por usina/frente (Supressão vegetal, Poda química, Limpeza dos módulos,
+    Controle de pragas). Status "A confirmar" até a Zeladoria ser persistida na planilha —
+    Fred completa manualmente no PowerPoint até lá.
+    """
+    if not usinas:
+        return "Nenhuma usina encontrada para este cliente."
+    linhas = []
+    for usina in usinas:
+        linhas.append(
+            f"{usina} – Supressão vegetal: A confirmar · Poda química: A confirmar · "
+            f"Limpeza dos módulos: A confirmar · Controle de pragas: A confirmar."
+        )
+    return "\n".join(linhas)
 
 
 # ── Clonagem de slides (mantém 100% do estilo do modelo Grid Co.) ──────────
@@ -307,9 +374,11 @@ def agrupar_em_paginas(grupos, orcamento_chars=1400):
     return paginas
 
 
-def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos):
+def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos, chamados=None, usinas_cliente=None):
     """
     grupos: dict categoria -> {"concluidas": [...], "abertas": [...]}
+    chamados: lista de linhas com Ticket Fabricante em aberto (opcional)
+    usinas_cliente: lista de nomes de usina do cliente, para a página de Zeladoria (opcional)
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
@@ -322,13 +391,18 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos):
             shp_titulo, f"O&M – {cliente}\n{usinas_label}\n{semana_label}"
         )
 
-    # --- Slide 2: Ata da reunião (somente os tópicos/categorias da semana) -
+    # --- Slide 2: Ata da reunião (tópicos/categorias da semana + extras) --
+    topicos = list(grupos.keys())
+    if chamados:
+        topicos.append("Chamados em aberto")
+    if usinas_cliente:
+        topicos.append("Zeladoria")
     ata = _duplicate_slide(prs, 1)
     shp_lista = _find_shape(ata, "Desligamentos")  # caixa de texto com a lista de tópicos
     if shp_lista:
-        _set_text_preservando_estilo(shp_lista, "\n".join(grupos.keys()))
+        _set_text_preservando_estilo(shp_lista, "\n".join(topicos))
 
-    # --- Uma página por grupo de categorias (empacotadas por orçamento) ----
+    # --- Uma página por grupo de categorias de ocorrências (empacotadas) ---
     for pagina in agrupar_em_paginas(grupos):
         novo = _duplicate_slide(prs, 2)
         _remover_fotos(novo)
@@ -349,19 +423,41 @@ def gerar_relatorio_pptx(cliente, usinas_label, semana_label, grupos):
                 blocos_txt = [f"{cat}\n{texto}" for cat, texto in pagina]
                 _set_text_preservando_estilo(shp_corpo, "\n\n".join(blocos_txt))
 
-    # --- Reordena o deck: capa nova -> ata nova -> categorias -> contato --
+    # --- Página: Chamados em aberto ----------------------------------------
+    if chamados:
+        pg_chamados = _duplicate_slide(prs, 2)
+        _remover_fotos(pg_chamados)
+        shp_cat = _find_shape(pg_chamados, "DESLIGAMENTOS")
+        shp_corpo = _find_shape(pg_chamados, "Foram registradas")
+        if shp_cat:
+            _set_text_preservando_estilo(shp_cat, "CHAMADOS EM ABERTO")
+        if shp_corpo:
+            _set_text_preservando_estilo(shp_corpo, gerar_texto_chamados(chamados))
+
+    # --- Página: Zeladoria --------------------------------------------------
+    if usinas_cliente:
+        pg_zeladoria = _duplicate_slide(prs, 2)
+        _remover_fotos(pg_zeladoria)
+        shp_cat = _find_shape(pg_zeladoria, "DESLIGAMENTOS")
+        shp_corpo = _find_shape(pg_zeladoria, "Foram registradas")
+        if shp_cat:
+            _set_text_preservando_estilo(shp_cat, "ZELADORIA")
+        if shp_corpo:
+            _set_text_preservando_estilo(shp_corpo, gerar_texto_zeladoria(usinas_cliente))
+
+    # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
     # sldIdLst atual: [0]capa-orig [1]ata-orig [2..5]conteudo-orig [6]contato-orig
-    #                 [7]capa-clone [8]ata-clone [9:]categorias-clone (nesta ordem de criação)
+    #                 [7]capa-clone [8]ata-clone [9:]páginas-clone (nesta ordem de criação)
     xml_slides = prs.slides._sldIdLst
     todos_els = list(xml_slides)
     contato_el = todos_els[6]
     capa_el = todos_els[7]
     ata_el = todos_els[8]
-    categorias_els = todos_els[9:]
+    conteudo_els = todos_els[9:]
 
     for e in todos_els:
         xml_slides.remove(e)
-    for e in [capa_el, ata_el] + categorias_els + [contato_el]:
+    for e in [capa_el, ata_el] + conteudo_els + [contato_el]:
         xml_slides.append(e)
 
     buf = BytesIO()
