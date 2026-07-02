@@ -1151,6 +1151,20 @@ def get_zeladoria_sheet():
     gc = get_gc()
     return gc.open_by_key(SHEET_ID).get_worksheet_by_id(ZELADORIA_GID)
 
+ATIVIDADES_SHEET_NAME = "Painel de Atividades"
+ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Descricao", "Responsavel", "Prazo",
+                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor"]
+
+def get_atividades_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        return ss.worksheet(ATIVIDADES_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=ATIVIDADES_SHEET_NAME, rows=1000, cols=len(ATIVIDADES_HEADERS))
+        ws.append_row(ATIVIDADES_HEADERS)
+        return ws
+
 def carregar_planilha(ws):
     return ws.get_all_values()
 
@@ -2641,6 +2655,129 @@ def nova_ocorrencia_dashboard():
     except Exception as e:
         log.error(f"[nova-ocorrencia] Erro ao gravar: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+def _is_concluido_atividade(status):
+    s = (status or "").lower()
+    return any(x in s for x in ["concluído", "concluido", "resolvido", "fechado"])
+
+
+def _proximo_id_atividade(todos):
+    ids = []
+    for row in todos[1:]:
+        if row and str(row[0]).strip().isdigit():
+            ids.append(int(str(row[0]).strip()))
+    return str(max(ids) + 1) if ids else "1"
+
+
+ATIV_HEADERS_JSON = ["id", "cliente", "usina", "descricao", "responsavel", "prazo",
+                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor"]
+
+ATIV_CAMPO_COL = {
+    "cliente": 2, "usina": 3, "descricao": 4, "responsavel": 5,
+    "prazo": 6, "prioridade": 7, "status": 8, "historico": 11,
+}
+
+
+@app.route("/atividades", methods=["GET"])
+def listar_atividades():
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        out = []
+        for row in todos[1:]:
+            if len(row) < len(ATIV_HEADERS_JSON):
+                row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+            if not row[0].strip():
+                continue
+            out.append(dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)])))
+        return jsonify({"ok": True, "atividades": out})
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao listar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/nova-atividade", methods=["POST", "OPTIONS"])
+def nova_atividade():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    cliente     = body.get("cliente", "").strip()
+    usina       = body.get("usina", "").strip()
+    descricao   = body.get("descricao", "").strip()
+    responsavel = body.get("responsavel", "").strip()
+    prazo       = body.get("prazo", "").strip()
+    prioridade  = body.get("prioridade", "Média").strip()
+    status      = body.get("status", "Em Aberto").strip()
+    editor      = body.get("editor", "dashboard").strip()
+
+    if not cliente or not descricao:
+        return jsonify({"ok": False, "error": "cliente e descricao são obrigatórios"}), 400
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        novo_id = _proximo_id_atividade(todos)
+        agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
+
+        ws.append_row([novo_id, cliente, usina, descricao, responsavel, prazo,
+                        prioridade, status, agora, "", historico_inicial, editor])
+        log.info(f"[nova-atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
+        return jsonify({"ok": True, "id": novo_id})
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao criar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/atualizar-campo-atividade", methods=["POST", "OPTIONS"])
+def atualizar_campo_atividade():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    atividade_id = str(body.get("id", "")).strip()
+    field  = body.get("field", "").strip()
+    value  = body.get("value", "")
+    append = bool(body.get("append", False))
+
+    if not atividade_id or field not in ATIV_CAMPO_COL:
+        return jsonify({"ok": False, "error": "id ou campo inválido"}), 400
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        linha_idx = None
+        for i, row in enumerate(todos[1:], start=2):
+            if row and str(row[0]).strip() == atividade_id:
+                linha_idx = i
+                break
+        if not linha_idx:
+            return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
+
+        col = ATIV_CAMPO_COL[field]
+        if field == "historico" and append:
+            linha_atual = todos[linha_idx - 1]
+            atual = linha_atual[10] if len(linha_atual) > 10 else ""
+            novo = f"{atual}\n{value}".strip() if atual else value
+            ws.update_cell(linha_idx, col, novo)
+        else:
+            ws.update_cell(linha_idx, col, value)
+
+        if field == "status" and _is_concluido_atividade(value):
+            ws.update_cell(linha_idx, 10, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))  # DataConclusao
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao atualizar campo: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
 def gerar_relatorio_semanal_route():
