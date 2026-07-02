@@ -1153,17 +1153,24 @@ def get_zeladoria_sheet():
 
 ATIVIDADES_SHEET_NAME = "Painel de Atividades"
 ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Descricao", "Responsavel", "Prazo",
-                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor"]
+                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor",
+                       "Equipamento"]
 
 def get_atividades_sheet():
     gc = get_gc()
     ss = gc.open_by_key(SHEET_ID)
     try:
-        return ss.worksheet(ATIVIDADES_SHEET_NAME)
+        ws = ss.worksheet(ATIVIDADES_SHEET_NAME)
     except gspread.WorksheetNotFound:
         ws = ss.add_worksheet(title=ATIVIDADES_SHEET_NAME, rows=1000, cols=len(ATIVIDADES_HEADERS))
         ws.append_row(ATIVIDADES_HEADERS)
         return ws
+    # migração incremental: garante que colunas novas (ex: Equipamento) existam no cabeçalho
+    header = ws.row_values(1)
+    if len(header) < len(ATIVIDADES_HEADERS):
+        for i in range(len(header), len(ATIVIDADES_HEADERS)):
+            ws.update_cell(1, i + 1, ATIVIDADES_HEADERS[i])
+    return ws
 
 def carregar_planilha(ws):
     return ws.get_all_values()
@@ -2670,11 +2677,12 @@ def _proximo_id_atividade(todos):
 
 
 ATIV_HEADERS_JSON = ["id", "cliente", "usina", "descricao", "responsavel", "prazo",
-                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor"]
+                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
+                      "equipamento"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "descricao": 4, "responsavel": 5,
-    "prazo": 6, "prioridade": 7, "status": 8, "historico": 11,
+    "prazo": 6, "prioridade": 7, "status": 8, "historico": 11, "equipamento": 13,
 }
 
 
@@ -2707,6 +2715,7 @@ def nova_atividade():
 
     cliente     = body.get("cliente", "").strip()
     usina       = body.get("usina", "").strip()
+    equipamento = body.get("equipamento", "").strip()
     descricao   = body.get("descricao", "").strip()
     responsavel = body.get("responsavel", "").strip()
     prazo       = body.get("prazo", "").strip()
@@ -2725,7 +2734,7 @@ def nova_atividade():
         historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
 
         ws.append_row([novo_id, cliente, usina, descricao, responsavel, prazo,
-                        prioridade, status, agora, "", historico_inicial, editor])
+                        prioridade, status, agora, "", historico_inicial, editor, equipamento])
         log.info(f"[nova-atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
         return jsonify({"ok": True, "id": novo_id})
     except Exception as e:
