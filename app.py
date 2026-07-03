@@ -2837,6 +2837,93 @@ def corrigir_prioridade_atividades():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/converter-atividade-em-ocorrencia", methods=["POST", "OPTIONS"])
+def converter_atividade_em_ocorrencia():
+    """
+    Converte uma Atividade em uma Ocorrência: cria uma nova linha no Painel de
+    Falhas com os dados da atividade (incluindo o histórico cronológico
+    transferido), e marca a atividade original como "Convertida em Ocorrência".
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    atividade_id = str(body.get("id", "")).strip()
+    editor = body.get("editor", "dashboard").strip()
+    if not atividade_id:
+        return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+
+    try:
+        ws_ativ = get_atividades_sheet()
+        todos_ativ = ws_ativ.get_all_values()
+        linha_idx = None
+        linha_atual = None
+        for i, row in enumerate(todos_ativ[1:], start=2):
+            if row and str(row[0]).strip() == atividade_id:
+                linha_idx = i
+                linha_atual = row
+                break
+        if not linha_idx:
+            return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
+
+        # linha_atual: [ID, Cliente, Usina, Equipamento, Descricao, Responsavel, Prazo,
+        #               Prioridade, Status, DataCriacao, DataConclusao, Historico, Editor]
+        cliente     = linha_atual[1] if len(linha_atual) > 1 else ""
+        usina       = linha_atual[2] if len(linha_atual) > 2 else ""
+        equipamento = linha_atual[3] if len(linha_atual) > 3 else ""
+        descricao   = linha_atual[4] if len(linha_atual) > 4 else ""
+        responsavel = linha_atual[5] if len(linha_atual) > 5 else ""
+        prazo       = linha_atual[6] if len(linha_atual) > 6 else ""
+        status_ativ = linha_atual[8] if len(linha_atual) > 8 else ""
+        historico_ativ = linha_atual[11] if len(linha_atual) > 11 else ""
+
+        if not equipamento:
+            equipamento = "Não informado"
+
+        nota_conversao = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
+                           f"Atividades (Atividade #{atividade_id}) por {editor}.")
+        historico_ocorrencia = nota_conversao
+        if historico_ativ:
+            historico_ocorrencia += "\n" + historico_ativ
+
+        status_ocorrencia = status_ativ if status_ativ and status_ativ.lower() not in (
+            "concluído", "concluido", "convertida em ocorrência") else "Em Aberto"
+
+        ws_falhas = get_sheet()
+        todos_falhas = carregar_planilha(ws_falhas)
+        novo_id_ocorrencia = proximo_id(todos_falhas)
+
+        dados = {
+            "cliente":      cliente,
+            "usina":        usina,
+            "equipamento":  equipamento,
+            "falha":        descricao,
+            "causa":        "",
+            "equip_impact": equipamento,
+            "acao":         f"Responsável original: {responsavel}." if responsavel else "",
+            "status":       status_ocorrencia,
+            "os":           "",
+            "historico":    historico_ocorrencia,
+        }
+        gravar_nova_ocorrencia(ws_falhas, todos_falhas, dados)
+
+        # Marca a atividade original como convertida e registra no histórico dela
+        ws_ativ.update_cell(linha_idx, 9, "Convertida em Ocorrência")  # coluna I = Status
+        entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida em ocorrência "
+                 f"#{novo_id_ocorrencia} por {editor}.")
+        novo_hist_ativ = f"{historico_ativ}\n{entry}".strip() if historico_ativ else entry
+        ws_ativ.update_cell(linha_idx, 12, novo_hist_ativ)  # coluna L = Historico
+
+        log.info(f"[converter-atividade] Atividade #{atividade_id} -> Ocorrência #{novo_id_ocorrencia}")
+        return jsonify({"ok": True, "novaOcorrenciaId": novo_id_ocorrencia})
+    except Exception as e:
+        log.error(f"[converter-atividade-em-ocorrencia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
 def gerar_relatorio_semanal_route():
     if request.method == "OPTIONS":
