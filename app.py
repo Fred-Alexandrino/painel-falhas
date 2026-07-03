@@ -2806,6 +2806,37 @@ def atualizar_campo_atividade():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/corrigir-prioridade-atividades", methods=["GET"])
+def corrigir_prioridade_atividades():
+    """
+    Rota de manutenção pontual: corrige linhas antigas do Painel de Atividades
+    cuja celula de Prioridade foi sobrescrita com um valor de Status (bug do
+    mapeamento de colunas anterior a correcao). So mexe em linhas onde o valor
+    atual de Prioridade nao e Alta/Media/Baixa - ou seja, so nas corrompidas.
+    """
+    VALORES_VALIDOS_PRIORIDADE = {"alta", "media", "média", "baixa"}
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        corrigidas = []
+        for i, row in enumerate(todos[1:], start=2):
+            if not row or not row[0].strip():
+                continue
+            prioridade_atual = row[7].strip() if len(row) > 7 else ""
+            if prioridade_atual.lower() not in VALORES_VALIDOS_PRIORIDADE:
+                ws.update_cell(i, 8, "Alta")  # coluna H = Prioridade
+                hist_atual = row[11] if len(row) > 11 else ""
+                entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Prioridade corrigida de "
+                         f"\"{prioridade_atual or '—'}\" para \"Alta\" (correcao de dado legado) por sistema.")
+                novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+                ws.update_cell(i, 12, novo_hist)  # coluna L = Historico
+                corrigidas.append({"linha": i, "id": row[0], "de": prioridade_atual, "para": "Alta"})
+        return jsonify({"ok": True, "corrigidas": corrigidas, "total": len(corrigidas)})
+    except Exception as e:
+        log.error(f"[corrigir-prioridade-atividades] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
 def gerar_relatorio_semanal_route():
     if request.method == "OPTIONS":
