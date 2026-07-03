@@ -2931,6 +2931,87 @@ def converter_atividade_em_ocorrencia():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/converter-ocorrencia-em-atividade", methods=["POST", "OPTIONS"])
+def converter_ocorrencia_em_atividade():
+    """
+    Converte uma Ocorrência em uma Atividade: cria uma nova linha no Painel de
+    Atividades com os dados da ocorrência (incluindo o histórico cronológico
+    transferido), e marca a ocorrência original como "Convertida em Atividade".
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    ocorrencia_id = str(body.get("id", "")).strip()
+    editor = body.get("editor", "dashboard").strip()
+    if not ocorrencia_id:
+        return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+
+    try:
+        ws_falhas = get_sheet()
+        todos_falhas = ws_falhas.get_all_values()
+        linha_idx = None
+        linha_atual = None
+        for i, row in enumerate(todos_falhas[1:], start=2):
+            if row and str(row[0]).strip() == ocorrencia_id:
+                linha_idx = i
+                linha_atual = row
+                break
+        if not linha_idx:
+            return jsonify({"ok": False, "error": "ocorrência não encontrada"}), 404
+
+        # linha_atual: [ID, Cliente, Usina, Equipamento, Falha, Causa, Impactados, Ação,
+        #               Status, Ticket, NumeroOS, Historico, ...]
+        cliente     = linha_atual[1]  if len(linha_atual) > 1  else ""
+        usina       = linha_atual[2]  if len(linha_atual) > 2  else ""
+        equipamento = linha_atual[3]  if len(linha_atual) > 3  else ""
+        falha       = linha_atual[4]  if len(linha_atual) > 4  else ""
+        causa       = linha_atual[5]  if len(linha_atual) > 5  else ""
+        acao        = linha_atual[7]  if len(linha_atual) > 7  else ""
+        status_ocorr= linha_atual[8]  if len(linha_atual) > 8  else ""
+        numero_os   = linha_atual[10] if len(linha_atual) > 10 else ""
+        historico_ocorr = linha_atual[11] if len(linha_atual) > 11 else ""
+
+        descricao = falha or "Sem descrição"
+        if causa:
+            descricao += f" — Causa: {causa}"
+
+        nota_conversao = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
+                           f"Falhas (Ocorrência #{ocorrencia_id}) por {editor}.")
+        historico_atividade = nota_conversao
+        if acao:
+            historico_atividade += f"\nAção registrada na ocorrência: {acao}"
+        if historico_ocorr:
+            historico_atividade += "\n" + historico_ocorr
+
+        status_atividade = status_ocorr if status_ocorr and status_ocorr.lower() not in (
+            "concluído", "concluido", "convertida em atividade") else "Em Aberto"
+
+        ws_ativ = get_atividades_sheet()
+        todos_ativ = ws_ativ.get_all_values()
+        novo_id_atividade = _proximo_id_atividade(todos_ativ)
+        agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+
+        ws_ativ.append_row([novo_id_atividade, cliente, usina, equipamento, descricao, "", "",
+                             "Média", status_atividade, agora, "", historico_atividade, editor, numero_os])
+
+        # Marca a ocorrência original como convertida
+        ws_falhas.update_cell(linha_idx, 9, "Convertida em Atividade")  # coluna I = Status
+        entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida em atividade "
+                 f"#{novo_id_atividade} por {editor}.")
+        novo_hist_ocorr = f"{historico_ocorr}\n{entry}".strip() if historico_ocorr else entry
+        ws_falhas.update_cell(linha_idx, 12, novo_hist_ocorr)  # coluna L = Historico
+
+        log.info(f"[converter-ocorrencia] Ocorrência #{ocorrencia_id} -> Atividade #{novo_id_atividade}")
+        return jsonify({"ok": True, "novaAtividadeId": novo_id_atividade})
+    except Exception as e:
+        log.error(f"[converter-ocorrencia-em-atividade] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
 def gerar_relatorio_semanal_route():
     if request.method == "OPTIONS":
