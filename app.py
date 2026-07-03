@@ -2983,15 +2983,22 @@ def gerar_texto_os_ia():
             f"{GEMINI_URL}?key={GEMINI_API_KEY}",
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 2048,
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
             },
             timeout=20,
         )
         resp.raise_for_status()
         data = resp.json()
-        texto = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        if not texto:
-            raise ValueError("Resposta vazia da API")
+        candidato = data["candidates"][0]
+        finish_reason = candidato.get("finishReason", "")
+        texto = candidato["content"]["parts"][0]["text"].strip()
+        if not texto or len(texto) < 40:
+            log.error(f"[gerar-texto-os-ia] Resposta curta/vazia (finishReason={finish_reason}): {texto!r}")
+            raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
         return jsonify({"ok": True, "texto": texto})
     except Exception as e:
         log.error(f"[gerar-texto-os-ia] Erro: {e}")
