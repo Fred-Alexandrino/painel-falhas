@@ -2938,24 +2938,73 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_M
 
 
 def _montar_prompt_os(d):
-    return f"""Você é um assistente técnico da Grid Co., empresa de O&M (operação e manutenção) de usinas de energia solar. Gere o texto de uma Ordem de Serviço (OS) de campo, em português do Brasil, tom técnico e profissional, seguindo EXATAMENTE este formato:
+    return f"""Aja como um Engenheiro e Especialista em Operação e Manutenção (O&M), com foco em Usinas Solares Fotovoltaicas, sistemas elétricos, mecânicos e atividades de facilities (limpeza, conservação, manutenções civis).
 
-Título:
-[título curto e específico da intervenção]
+Sua tarefa é redigir Ordens de Serviço (OS) baseadas na solicitação abaixo. Transforme a solicitação em um texto objetivo, profissional, técnico e estritamente padronizado.
 
+REGRAS DE FORMATAÇÃO (OBRIGATÓRIO):
+- Esqueça introduções, conclusões, saudações, tabelas, ou seções como "Objetivo", "Descrição", "Responsáveis" ou "Evidências".
+- O texto deve conter APENAS o "Título" e os "Comentários". Siga este modelo exato:
+
+Título: [Nome curto e direto da atividade]
 Comentários:
 
-[lista de passos técnicos objetivos, com marcador "*", de 4 a 7 itens]
+1. [Passo 1 do procedimento]
+2. [Passo 2 do procedimento]
+3. [Passo 3...]
 
-REGRAS OBRIGATÓRIAS:
-- Só peça autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
+REGRAS DE ESCRITA E VOCABULÁRIO:
+- O texto deve ser curto, claro e voltado para a execução operacional em campo ou inserção em sistema de OS.
+- Não invente informações ou equipamentos que não foram solicitados, mas garanta que o passo a passo faça sentido técnico.
+- Integre orientações de segurança (EPIs, desenergização, sinalização) diretamente nos passos da atividade.
+- Não repita a mesma ideia em mais de um item.
+- Para atividades de acompanhamento/fiscalização, inicie os passos com verbos como: Acompanhar, verificar, conferir, registrar, avaliar, validar.
+- Para atividades de execução direta, inicie os passos com verbos como: Realizar, executar, corrigir, ajustar, efetuar, acessar, inspecionar.
+
+REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
+- Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
 - Em qualquer outro caso, termine com um item dizendo que a atividade não envolve manobra elétrica e não é necessário acionar o COS.
-- Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo.
-- Seja específico ao equipamento, usina e situação informados — não genérico.
-- Não use markdown (sem **negrito**, sem #), apenas texto simples com marcadores "*".
-- Gere apenas o texto da OS, sem introdução, comentário ou explicação antes ou depois.
 
-Dados da ocorrência/atividade:
+EXEMPLOS DO PADRÃO ESPERADO:
+
+Exemplo 1 (Atividade de Execução/Facilities)
+Título: Limpeza de caixa d'água
+Comentários:
+
+1. Fechar o registro de entrada de água (boia) com antecedência e isolar a área de acesso.
+2. Esvaziar a caixa até que reste apenas cerca de um palmo de água no fundo.
+3. Esfregar as paredes e o fundo utilizando escovas macias e exclusivas para este fim, sem uso de produtos químicos não homologados.
+4. Esvaziar a água suja, realizar o enxágue das paredes, reabrir o registro de entrada e fechar a tampa de forma hermética.
+
+Exemplo 2 (Atividade de Diagnóstico/Elétrica)
+Título: Inversor com aparente limitação de potência
+Comentários:
+
+1. Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
+2. Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
+3. Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para garantir que a queda de potência não seja causada por falha nos módulos ou sujeira.
+
+Exemplo 3 (Atividade de Acompanhamento)
+Título: Acompanhamento de roçagem
+Comentários:
+
+1. Acompanhar a execução da roçagem na área designada, confirmando a delimitação do espaço.
+2. Verificar a sinalização e o uso correto de EPIs pela equipe terceira durante toda a atividade.
+3. Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
+4. Registrar o andamento com evidências fotográficas e anotar eventuais pendências para correção.
+
+Exemplo 4 (Atividade de Ajuste)
+Título: Reposicionamento de câmeras de CFTV
+Comentários:
+
+1. Verificar a posição atual de cada câmera e o campo de visão afetado.
+2. Realizar o reposicionamento físico conforme a necessidade operacional, ajustando inclinação e direcionamento.
+3. Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
+4. Registrar a atividade e as evidências de antes e depois da intervenção.
+
+Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Gere apenas o texto da OS — sem introdução, comentário ou explicação antes ou depois.
+
+Dados da solicitação:
 - Cliente: {d.get("cliente") or "não informado"}
 - Usina: {d.get("usina") or "não informado"}
 - Equipamento: {d.get("equipamento") or "não informado"}
