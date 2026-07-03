@@ -2931,6 +2931,73 @@ def converter_atividade_em_ocorrencia():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Geração de texto de OS via Gemini (gratuito), com fallback local ───────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
+
+def _montar_prompt_os(d):
+    return f"""Você é um assistente técnico da Grid Co., empresa de O&M (operação e manutenção) de usinas de energia solar. Gere o texto de uma Ordem de Serviço (OS) de campo, em português do Brasil, tom técnico e profissional, seguindo EXATAMENTE este formato:
+
+Título:
+[título curto e específico da intervenção]
+
+Comentários:
+
+[lista de passos técnicos objetivos, com marcador "*", de 4 a 7 itens]
+
+REGRAS OBRIGATÓRIAS:
+- Só peça autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
+- Em qualquer outro caso, termine com um item dizendo que a atividade não envolve manobra elétrica e não é necessário acionar o COS.
+- Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo.
+- Seja específico ao equipamento, usina e situação informados — não genérico.
+- Não use markdown (sem **negrito**, sem #), apenas texto simples com marcadores "*".
+- Gere apenas o texto da OS, sem introdução, comentário ou explicação antes ou depois.
+
+Dados da ocorrência/atividade:
+- Cliente: {d.get("cliente") or "não informado"}
+- Usina: {d.get("usina") or "não informado"}
+- Equipamento: {d.get("equipamento") or "não informado"}
+- Falha/Descrição: {d.get("falha") or "não informado"}
+- Causa: {d.get("causa") or "não informado"}
+- Ação já realizada: {d.get("acao") or "não informado"}
+- Histórico: {d.get("historico") or "não informado"}
+- Responsável: {d.get("responsavel") or "não informado"}"""
+
+
+@app.route("/gerar-texto-os-ia", methods=["POST", "OPTIONS"])
+def gerar_texto_os_ia():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "Body inválido"}), 400
+
+    prompt = _montar_prompt_os(body)
+    try:
+        resp = requests.post(
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        texto = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if not texto:
+            raise ValueError("Resposta vazia da API")
+        return jsonify({"ok": True, "texto": texto})
+    except Exception as e:
+        log.error(f"[gerar-texto-os-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/converter-ocorrencia-em-atividade", methods=["POST", "OPTIONS"])
 def converter_ocorrencia_em_atividade():
     """
