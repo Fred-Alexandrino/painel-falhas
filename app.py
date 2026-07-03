@@ -1165,9 +1165,11 @@ def get_atividades_sheet():
         ws = ss.add_worksheet(title=ATIVIDADES_SHEET_NAME, rows=1000, cols=len(ATIVIDADES_HEADERS))
         ws.append_row(ATIVIDADES_HEADERS)
         return ws
-    # migração incremental: garante que colunas novas (ex: Equipamento) existam no cabeçalho
+    # migração incremental: garante que colunas novas (ex: Equipamento, NumeroOS) existam
     header = ws.row_values(1)
     if len(header) < len(ATIVIDADES_HEADERS):
+        if ws.col_count < len(ATIVIDADES_HEADERS):
+            ws.add_cols(len(ATIVIDADES_HEADERS) - ws.col_count)  # expande a grade antes de escrever
         for i in range(len(header), len(ATIVIDADES_HEADERS)):
             ws.update_cell(1, i + 1, ATIVIDADES_HEADERS[i])
     return ws
