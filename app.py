@@ -1153,7 +1153,8 @@ def get_zeladoria_sheet():
 
 ATIVIDADES_SHEET_NAME = "Painel de Atividades"
 ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Equipamento", "Descricao", "Responsavel", "Prazo",
-                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor"]
+                       "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor",
+                       "NumeroOS"]
 
 def get_atividades_sheet():
     gc = get_gc()
@@ -2676,11 +2677,12 @@ def _proximo_id_atividade(todos):
 
 
 ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "responsavel", "prazo",
-                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor"]
+                      "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
+                      "numeroOS"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
-    "prazo": 7, "prioridade": 8, "status": 9, "historico": 12,
+    "prazo": 7, "prioridade": 8, "status": 9, "historico": 12, "numeroOS": 14,
 }
 
 
@@ -2719,6 +2721,7 @@ def nova_atividade():
     prazo       = body.get("prazo", "").strip()
     prioridade  = body.get("prioridade", "Média").strip()
     status      = body.get("status", "Em Aberto").strip()
+    numero_os   = body.get("numeroOS", "").strip()
     editor      = body.get("editor", "dashboard").strip()
 
     if not cliente or not descricao:
@@ -2732,7 +2735,7 @@ def nova_atividade():
         historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
 
         ws.append_row([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
-                        prioridade, status, agora, "", historico_inicial, editor])
+                        prioridade, status, agora, "", historico_inicial, editor, numero_os])
         log.info(f"[nova-atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
         return jsonify({"ok": True, "id": novo_id})
     except Exception as e:
@@ -2743,6 +2746,7 @@ def nova_atividade():
 ATIV_CAMPO_LABEL = {
     "cliente": "Cliente", "usina": "Usina", "equipamento": "Equipamento", "descricao": "Descrição",
     "responsavel": "Responsável", "prazo": "Prazo", "prioridade": "Prioridade", "status": "Status",
+    "numeroOS": "Nº OS",
 }
 ATIV_COL_HISTORICO = ATIV_CAMPO_COL["historico"]
 
@@ -2879,6 +2883,7 @@ def converter_atividade_em_ocorrencia():
         prazo       = linha_atual[6] if len(linha_atual) > 6 else ""
         status_ativ = linha_atual[8] if len(linha_atual) > 8 else ""
         historico_ativ = linha_atual[11] if len(linha_atual) > 11 else ""
+        numero_os_ativ = linha_atual[13] if len(linha_atual) > 13 else ""
 
         if not equipamento:
             equipamento = "Não informado"
@@ -2905,7 +2910,7 @@ def converter_atividade_em_ocorrencia():
             "equip_impact": equipamento,
             "acao":         f"Responsável original: {responsavel}." if responsavel else "",
             "status":       status_ocorrencia,
-            "os":           "",
+            "os":           numero_os_ativ,
             "historico":    historico_ocorrencia,
         }
         gravar_nova_ocorrencia(ws_falhas, todos_falhas, dados)
