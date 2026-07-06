@@ -1,0 +1,68 @@
+name: Nova Atividade (via Claude)
+
+on:
+  repository_dispatch:
+    types: [nova_atividade]
+
+jobs:
+  criar-atividade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar atividade no backend
+        id: criar
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          PAYLOAD=$(python3 -c "
+import json, os
+payload = {
+    'cliente':     os.environ.get('P_CLIENTE', ''),
+    'usina':       os.environ.get('P_USINA', ''),
+    'equipamento': os.environ.get('P_EQUIPAMENTO', ''),
+    'descricao':   os.environ.get('P_DESCRICAO', ''),
+    'responsavel': os.environ.get('P_RESPONSAVEL', ''),
+    'prazo':       os.environ.get('P_PRAZO', ''),
+    'prioridade':  os.environ.get('P_PRIORIDADE', 'Média'),
+    'numeroOS':    os.environ.get('P_NUMEROOS', ''),
+    'editor':      'claude-chat',
+}
+print(json.dumps(payload))
+")
+          echo "Payload: $PAYLOAD"
+          RESPONSE=$(curl -s -X POST "$BASE/nova-atividade" -H "Content-Type: application/json" -d "$PAYLOAD")
+          echo "Resposta: $RESPONSE"
+          ID=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+        env:
+          P_CLIENTE: ${{ github.event.client_payload.cliente }}
+          P_USINA: ${{ github.event.client_payload.usina }}
+          P_EQUIPAMENTO: ${{ github.event.client_payload.equipamento }}
+          P_DESCRICAO: ${{ github.event.client_payload.descricao }}
+          P_RESPONSAVEL: ${{ github.event.client_payload.responsavel }}
+          P_PRAZO: ${{ github.event.client_payload.prazo }}
+          P_PRIORIDADE: ${{ github.event.client_payload.prioridade }}
+          P_NUMEROOS: ${{ github.event.client_payload.numeroOS }}
+
+      - name: Complementar histórico (se enviado)
+        if: ${{ github.event.client_payload.historico_extra != '' && github.event.client_payload.historico_extra != null }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          ID="${{ steps.criar.outputs.id }}"
+          if [ -z "$ID" ]; then
+            echo "Sem ID retornado na criação - não é possível complementar histórico."
+            exit 0
+          fi
+          PAYLOAD=$(python3 -c "
+import json, os
+payload = {
+    'id': os.environ.get('ATIV_ID',''),
+    'field': 'historico',
+    'append': True,
+    'value': os.environ.get('P_HIST',''),
+    'editor': 'claude-chat',
+}
+print(json.dumps(payload))
+")
+          curl -s -X POST "$BASE/atualizar-campo-atividade" -H "Content-Type: application/json" -d "$PAYLOAD"
+        env:
+          ATIV_ID: ${{ steps.criar.outputs.id }}
+          P_HIST: ${{ github.event.client_payload.historico_extra }}
