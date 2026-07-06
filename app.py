@@ -52,7 +52,7 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 
 # ── Configuração VAPID para notificações push ────────────────────────────────
-VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "BPU55JogEEcV6GlCUONmzkVam8Tt9a0DuX3FYfn_ltgKc8p1fahQiE8v5RGECnMkSYEXMyUzOYBtslhUdiOJ6Jk")
+VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "BJyGD9Lno29xj3_a6i5MjSHoZhHwfev7bRJRCqjnyL-o1vo9Hbf2zmrNtoONHtA92F59LGLc52HNE7oUkKqs5Yk")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 VAPID_CLAIMS      = {"sub": "mailto:fred@gridco.com.br"}
