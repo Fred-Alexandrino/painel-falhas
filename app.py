@@ -2832,7 +2832,7 @@ def _extrair_campo_ativ(texto, nome_regex):
 
 def parse_atualizacao_atividade(texto):
     id_val = _extrair_campo_ativ(texto, "ID")
-    os_val = _extrair_campo_ativ(texto, r"N[ºo°]?\s*OS|N[uú]mero\s*OS")
+    os_val = _extrair_campo_ativ(texto, r"(?:N[ºo°]?\s*|N[uú]mero\s*(?:da\s*)?)?OS")
     return {
         "id_ou_os":    os_val or id_val,
         "status":      _extrair_campo_ativ(texto, "Status"),
@@ -2877,6 +2877,14 @@ def _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, field, value, ed
 def processar_atualizacao_atividade(texto, editor="tecnico-whatsapp"):
     dados = parse_atualizacao_atividade(texto)
     if not dados["id_ou_os"]:
+        try:
+            enviar_push(
+                titulo="⚠️ Atualização de OS sem Nº OS/ID",
+                corpo=f"Mensagem recebida de {editor}, mas não foi possível identificar o campo Nº OS ou ID. Confira o formato da mensagem.",
+                tipo="geral",
+            )
+        except Exception as e:
+            log.error(f"[Atividades WhatsApp] Falha ao enviar push de erro: {e}")
         return {"ok": False, "motivo": "sem ID ou Nº OS na mensagem"}
 
     ws = get_atividades_sheet()
