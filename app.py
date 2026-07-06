@@ -2278,7 +2278,7 @@ def carregar_push_subscriptions():
         log.error(f"[Push] Erro ao carregar subscriptions da planilha: {e}")
 
 def salvar_push_subscription(endpoint, sub):
-    """Persiste (ou atualiza) uma subscription na planilha."""
+    """Persiste (ou atualiza) uma subscription na planilha. Retorna True/False."""
     try:
         ws = get_push_sheet()
         cell = ws.find(endpoint, in_column=1)
@@ -2287,8 +2287,10 @@ def salvar_push_subscription(endpoint, sub):
             ws.update(f"A{cell.row}:C{cell.row}", [linha])
         else:
             ws.append_row(linha)
+        return True
     except Exception as e:
-        log.error(f"[Push] Erro ao salvar subscription na planilha: {e}")
+        log.error(f"[Push] Erro ao salvar subscription na planilha: {e}", exc_info=True)
+        return False
 
 def remover_push_subscription(endpoint):
     """Remove uma subscription da planilha (expirada ou desativada pelo usuário)."""
@@ -2372,7 +2374,15 @@ def push_subscribe():
         endpoint = sub["endpoint"]
         ja_existia = endpoint in _push_subscriptions
         _push_subscriptions[endpoint] = sub
-        salvar_push_subscription(endpoint, sub)
+
+        salvo = salvar_push_subscription(endpoint, sub)
+        if not salvo:
+            # Reverte o registro em memória — melhor reportar erro real do que
+            # fingir sucesso e perder essa subscription num futuro restart.
+            _push_subscriptions.pop(endpoint, None)
+            log.error(f"[Push] FALHA ao persistir subscription (endpoint não salvo na planilha): {endpoint[:60]}...")
+            return jsonify({"ok": False, "error": "Falha ao salvar a inscrição no servidor. Tente novamente em instantes."}), 500
+
         log.info(f"[Push] Subscription registrada ({'já existia' if ja_existia else 'nova'}): {endpoint[:60]}...")
         log.info(f"[Push] Total de dispositivos: {len(_push_subscriptions)}")
 
