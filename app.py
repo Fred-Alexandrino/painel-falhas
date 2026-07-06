@@ -551,7 +551,7 @@ _P = r"^[\s*·\-–]*"
 
 PADROES = {
     "usina": re.compile(
-        r"^(?:(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)[\s]*)?(?:DESVIO:[\s]*|UFV[\s]+DESVIO:[\s]*)?(?:UFV[\s]+)?Usina:?[\s]*([^\n\r*·:]{2,60}?)\s*$",
+        r"^(?:(?:🔴|🟡|🟢|🟠|✅|⏸️|🔧)[\s]*)?(?:DESVIO:[\s]*|UFV[\s]+DESVIO:[\s]*)?(?:UFV[\s]+)?Usina:?[\s]*([^\n\r*·:]{2,60}?)\s*(?:\*[^\n\r]*)?$",
         re.IGNORECASE | re.MULTILINE
     ),
     "problema": re.compile(_P + r"Probl[eo]ma[s]?(?:\s+do\s+\w+)?:[ \t]*([^\n\r]+)", re.IGNORECASE | re.MULTILINE),
@@ -2117,9 +2117,8 @@ def webhook():
                 log.info(f"🧹 [Rondas] Log limpo: {removidas} linha(s) com mais de 5 dias removidas")
         except Exception as e_clean:
             log.warning(f"[Rondas] Limpeza do log falhou (não crítico): {e_clean}")
-            return jsonify({"status": "ok", **resultado}), 200
 
-        return jsonify({"status": "ignored", "reason": "no valid content"}), 200
+        return jsonify({"status": "ok", **resultado}), 200
 
     except Exception as e:
         log.error(f"❌ Erro no webhook: {e}", exc_info=True)
