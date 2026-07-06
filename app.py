@@ -1828,12 +1828,14 @@ def gravar_nova_ocorrencia(ws, todos, dados):
                 titulo=f"⚡ USINA DESLIGADA — {usina_nome}",
                 corpo=f"{falha_txt or 'Usina sem geração'} · {cliente}",
                 tipo="desligamento",
+                url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?ocorrencia={novo_id}",
             )
         else:
             enviar_push(
                 titulo=f"🔴 Nova falha — {usina_nome}",
                 corpo=f"{equip_nome}: {falha_txt[:80] if falha_txt else 'Nova ocorrência registrada'} · {cliente}",
                 tipo="nova_ocorrencia",
+                url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?ocorrencia={novo_id}",
             )
     except Exception as e:
         log.error(f"[Push] Erro ao notificar nova ocorrência: {e}")
@@ -2459,12 +2461,20 @@ def notificar_edicao_planilha():
         valor_antigo = body.get("valorAntigo", "")
         valor_novo   = body.get("valorNovo", "")
         usuario      = body.get("usuario", "desconhecido")
+        id_registro  = str(body.get("idValor", "")).strip()
 
         titulo = f"✏️ Edição manual — {aba}"
         corpo = (f"Linha {linha} · {cabecalho}: "
                  f"\"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})")
 
-        n = enviar_push(titulo=titulo, corpo=corpo, tipo="edicao_manual")
+        url = "https://fred-alexandrino.github.io/PAINELDEFALHAS/"
+        if id_registro:
+            if aba == ATIVIDADES_SHEET_NAME:
+                url += f"?atividade={id_registro}"
+            elif aba == SHEET_NAME:
+                url += f"?ocorrencia={id_registro}"
+
+        n = enviar_push(titulo=titulo, corpo=corpo, tipo="edicao_manual", url=url)
         return jsonify({"ok": True, "enviados": n}), 200
     except Exception as e:
         log.error(f"[EdicaoPlanilha] Erro: {e}")
