@@ -2335,6 +2335,8 @@ def enviar_push(titulo, corpo, tipo="geral", url="https://fred-alexandrino.githu
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims=VAPID_CLAIMS,
+                headers={"Urgency": "high"},
+                ttl=86400,
             )
             enviados += 1
             log.info(f"[Push] Enviado para {endpoint[:40]}...")
@@ -2399,6 +2401,8 @@ def push_subscribe():
                     }),
                     vapid_private_key=VAPID_PRIVATE_KEY,
                     vapid_claims=VAPID_CLAIMS,
+                    headers={"Urgency": "high"},
+                    ttl=86400,
                 ) if PUSH_ENABLED and VAPID_PRIVATE_KEY else None
             except Exception as e:
                 log.warning(f"[Push] Erro na notificação de boas-vindas: {e}")
