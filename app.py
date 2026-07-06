@@ -2818,26 +2818,46 @@ def atualizar_campo_atividade():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-RE_ATUALIZACAO_ATIV = re.compile(r"ATUALIZA[CÇ][AÃ]O\s+(OS|ATIVIDADE)", re.IGNORECASE)
+RE_ATUALIZACAO_ATIV = re.compile(r"ATUALIZA[CÇ][AÃ]O\s+(?:DE\s+)?(OS|ATIVIDADE)", re.IGNORECASE)
 
 def eh_atualizacao_atividade(texto):
     return bool(RE_ATUALIZACAO_ATIV.search(texto))
 
 
 def _extrair_campo_ativ(texto, nome_regex):
-    padrao = rf"[·*]\s*(?:{nome_regex})\s*:\s*(.+)"
-    m = re.search(padrao, texto, re.IGNORECASE)
+    # Bullet (·, *, -, •) é opcional; separador aceita ":" ou "-"/"–"; âncora por linha
+    # evita capturar texto de outros campos.
+    padrao = rf"^\s*[·*\-•]?\s*(?:{nome_regex})\s*[:\-–]\s*(.+)$"
+    m = re.search(padrao, texto, re.IGNORECASE | re.MULTILINE)
     return m.group(1).strip() if m else ""
+
+
+_STATUS_ATIV_MAP = {
+    "concluido": "Concluído", "concluído": "Concluído", "concluida": "Concluído", "concluída": "Concluído",
+    "finalizado": "Concluído", "finalizada": "Concluído", "resolvido": "Concluído", "resolvida": "Concluído",
+    "feito": "Concluído", "ok": "Concluído",
+    "em andamento": "Em Andamento", "andamento": "Em Andamento", "em execucao": "Em Andamento",
+    "em execução": "Em Andamento", "executando": "Em Andamento",
+    "aguardando": "Aguardando", "pendente": "Aguardando",
+    "aguardando peca": "Aguardando", "aguardando peça": "Aguardando",
+}
+
+_OS_FIELD_REGEX = r"(?:N[ºo°]?\s*|N[uú]mero\s*(?:da\s*)?)?OS|Ordem\s*(?:de\s*)?Servi[cç]o"
+_DESCRICAO_FIELD_REGEX = r"Descri[cç][aã]o|Obs(?:erva[cç][aã]o)?|A[cç][aã]o(?:\s+Realizada)?|Servi[cç]o\s+Realizado"
+_RESPONSAVEL_FIELD_REGEX = r"Respons[aá]vel|T[eé]cnico"
+_STATUS_FIELD_REGEX = r"Status|Situa[cç][aã]o"
 
 
 def parse_atualizacao_atividade(texto):
     id_val = _extrair_campo_ativ(texto, "ID")
-    os_val = _extrair_campo_ativ(texto, r"(?:N[ºo°]?\s*|N[uú]mero\s*(?:da\s*)?)?OS")
+    os_val = _extrair_campo_ativ(texto, _OS_FIELD_REGEX)
+    status_bruto = _extrair_campo_ativ(texto, _STATUS_FIELD_REGEX)
+    status_norm = _STATUS_ATIV_MAP.get(status_bruto.strip().lower(), status_bruto.strip()) if status_bruto else ""
     return {
         "id_ou_os":    os_val or id_val,
-        "status":      _extrair_campo_ativ(texto, "Status"),
-        "descricao":   _extrair_campo_ativ(texto, r"Descri[cç][aã]o"),
-        "responsavel": _extrair_campo_ativ(texto, r"Respons[aá]vel"),
+        "status":      status_norm,
+        "descricao":   _extrair_campo_ativ(texto, _DESCRICAO_FIELD_REGEX),
+        "responsavel": _extrair_campo_ativ(texto, _RESPONSAVEL_FIELD_REGEX),
     }
 
 
@@ -2913,10 +2933,7 @@ def processar_atualizacao_atividade(texto, editor="tecnico-whatsapp"):
         todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
 
     if dados["status"]:
-        status_map = {"concluido": "Concluído", "concluído": "Concluído",
-                       "em andamento": "Em Andamento", "aguardando": "Aguardando"}
-        status_norm = status_map.get(dados["status"].strip().lower(), dados["status"].strip())
-        _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "status", status_norm, editor)
+        _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "status", dados["status"], editor)
 
     return {"ok": True, "id": linha_atual[0]}
 
