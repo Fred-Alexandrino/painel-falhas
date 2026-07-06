@@ -2088,6 +2088,13 @@ def webhook():
             if not any(g.strip() in remote_jid for g in GRUPOS_FILTRO):
                 return jsonify({"status": "ignored", "reason": "group not in filter"}), 200
 
+        if eh_atualizacao_atividade(texto):
+            grupo_nome = remote_jid.split("@")[0]
+            gravar_log_mensagem(remote_jid, grupo_nome, texto)
+            resultado_ativ = processar_atualizacao_atividade(texto, editor=f"tecnico:{grupo_nome}")
+            log.info(f"[Atividades WhatsApp] grupo={grupo_nome} resultado={resultado_ativ}")
+            return jsonify({"status": "ok", "tipo": "atividade", **resultado_ativ}), 200
+
         tem_usina  = bool(re.search(r"Usina:", texto, re.IGNORECASE))
         tem_emoji  = bool(re.search(r"🔴|🟡|🟢|🟠|✅|⏸️", texto))
         tem_bullet = eh_formato_cos_grid(texto)
@@ -2809,6 +2816,101 @@ def atualizar_campo_atividade():
     except Exception as e:
         log.error(f"[Atividades] Erro ao atualizar campo: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+RE_ATUALIZACAO_ATIV = re.compile(r"ATUALIZA[CÇ][AÃ]O\s+(OS|ATIVIDADE)", re.IGNORECASE)
+
+def eh_atualizacao_atividade(texto):
+    return bool(RE_ATUALIZACAO_ATIV.search(texto))
+
+
+def _extrair_campo_ativ(texto, nome_regex):
+    padrao = rf"[·*]\s*(?:{nome_regex})\s*:\s*(.+)"
+    m = re.search(padrao, texto, re.IGNORECASE)
+    return m.group(1).strip() if m else ""
+
+
+def parse_atualizacao_atividade(texto):
+    id_val = _extrair_campo_ativ(texto, "ID")
+    os_val = _extrair_campo_ativ(texto, r"N[ºo°]?\s*OS|N[uú]mero\s*OS")
+    return {
+        "id_ou_os":    os_val or id_val,
+        "status":      _extrair_campo_ativ(texto, "Status"),
+        "descricao":   _extrair_campo_ativ(texto, r"Descri[cç][aã]o"),
+        "responsavel": _extrair_campo_ativ(texto, r"Respons[aá]vel"),
+    }
+
+
+def buscar_atividade_por_id_ou_os(todos, id_ou_os):
+    alvo = str(id_ou_os).strip().lstrip("0") or "0"
+    for i, row in enumerate(todos[1:], start=2):
+        if not row or not row[0].strip():
+            continue
+        row_id = str(row[0]).strip().lstrip("0") or "0"
+        row_os = str(row[13]).strip().lstrip("0") if len(row) > 13 else ""
+        row_os = row_os or "0"
+        if (alvo != "0" and alvo == row_os) or alvo == row_id:
+            return i, row
+    return None
+
+
+def _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, field, value, editor, append=False):
+    col = ATIV_CAMPO_COL[field]
+    if field == "historico" and append:
+        atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
+        novo = f"{atual}\n{value}".strip() if atual else value
+        ws.update_cell(linha_idx, col, novo)
+        return
+    valor_antigo = linha_atual[col - 1] if len(linha_atual) >= col else ""
+    ws.update_cell(linha_idx, col, value)
+    if str(valor_antigo).strip() != str(value).strip():
+        label = ATIV_CAMPO_LABEL.get(field, field)
+        entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
+                 f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
+        hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
+        novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+        ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
+    if field == "status" and _is_concluido_atividade(value):
+        ws.update_cell(linha_idx, 11, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+
+
+def processar_atualizacao_atividade(texto, editor="tecnico-whatsapp"):
+    dados = parse_atualizacao_atividade(texto)
+    if not dados["id_ou_os"]:
+        return {"ok": False, "motivo": "sem ID ou Nº OS na mensagem"}
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    encontrada = buscar_atividade_por_id_ou_os(todos, dados["id_ou_os"])
+    if not encontrada:
+        try:
+            enviar_push(
+                titulo="⚠️ Atualização de OS não vinculada",
+                corpo=f"Técnico ({editor}) informou Nº OS/ID \"{dados['id_ou_os']}\" mas nenhuma atividade correspondente foi encontrada no painel.",
+                tipo="geral",
+            )
+        except Exception as e:
+            log.error(f"[Atividades WhatsApp] Falha ao enviar push de erro: {e}")
+        return {"ok": False, "motivo": f"atividade {dados['id_ou_os']} não encontrada"}
+
+    linha_idx, linha_atual = encontrada
+
+    if dados["responsavel"]:
+        _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "responsavel", dados["responsavel"], editor)
+        todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
+
+    if dados["descricao"]:
+        entry = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - {editor}: {dados['descricao']}"
+        _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "historico", entry, editor, append=True)
+        todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
+
+    if dados["status"]:
+        status_map = {"concluido": "Concluído", "concluído": "Concluído",
+                       "em andamento": "Em Andamento", "aguardando": "Aguardando"}
+        status_norm = status_map.get(dados["status"].strip().lower(), dados["status"].strip())
+        _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "status", status_norm, editor)
+
+    return {"ok": True, "id": linha_atual[0]}
 
 
 @app.route("/corrigir-prioridade-atividades", methods=["GET"])
