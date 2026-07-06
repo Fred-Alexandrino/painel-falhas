@@ -49,6 +49,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
 SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandrino")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+SHEET_EDIT_SECRET = os.environ.get("SHEET_EDIT_SECRET", "")
 GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 
 # ── Configuração VAPID para notificações push ────────────────────────────────
@@ -2435,6 +2436,39 @@ def push_test():
         tipo="geral",
     )
     return jsonify({"ok": True, "enviados": n}), 200
+
+
+@app.route("/notificar-edicao-planilha", methods=["POST"])
+def notificar_edicao_planilha():
+    """
+    Recebido do Apps Script (gatilho onEdit) sempre que alguém edita
+    manualmente qualquer célula da planilha pela interface do Google Sheets.
+    Edições feitas por script/API (bot WhatsApp, dashboard, gspread) NÃO
+    disparam o onEdit do Google — só edição humana direta na UI.
+    """
+    try:
+        if SHEET_EDIT_SECRET:
+            secret = request.headers.get("X-Sheet-Secret", "")
+            if secret != SHEET_EDIT_SECRET:
+                return jsonify({"error": "unauthorized"}), 401
+
+        body = request.get_json(force=True) or {}
+        aba          = body.get("aba", "planilha")
+        linha        = body.get("linha", "")
+        cabecalho    = body.get("cabecalho") or f"coluna {body.get('coluna', '?')}"
+        valor_antigo = body.get("valorAntigo", "")
+        valor_novo   = body.get("valorNovo", "")
+        usuario      = body.get("usuario", "desconhecido")
+
+        titulo = f"✏️ Edição manual — {aba}"
+        corpo = (f"Linha {linha} · {cabecalho}: "
+                 f"\"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})")
+
+        n = enviar_push(titulo=titulo, corpo=corpo, tipo="edicao_manual")
+        return jsonify({"ok": True, "enviados": n}), 200
+    except Exception as e:
+        log.error(f"[EdicaoPlanilha] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/rondas/grupos", methods=["POST"])
