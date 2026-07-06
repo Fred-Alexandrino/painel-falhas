@@ -2820,6 +2820,20 @@ def atualizar_campo_atividade():
 
 RE_ATUALIZACAO_ATIV = re.compile(r"ATUALIZA[CÇ][AÃ]O\s+(?:DE\s+)?(OS|ATIVIDADE)", re.IGNORECASE)
 
+def separar_blocos_atividade(texto):
+    """
+    Divide uma mensagem que contenha múltiplas atualizações de OS/atividade
+    em blocos individuais, um por ocorrência do título "ATUALIZACAO OS/ATIVIDADE".
+    Mesmo padrão de separar_blocos() usado nas ocorrências.
+    """
+    partes = re.split(
+        r"(?=(?:^|\n)\s*ATUALIZA[CÇ][AÃ]O\s+(?:DE\s+)?(?:OS|ATIVIDADE))",
+        texto, flags=re.MULTILINE | re.IGNORECASE
+    )
+    blocos = [p.strip() for p in partes if p.strip()]
+    return blocos if blocos else [texto]
+
+
 def eh_atualizacao_atividade(texto):
     return bool(RE_ATUALIZACAO_ATIV.search(texto))
 
@@ -2894,7 +2908,7 @@ def _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, field, value, ed
         ws.update_cell(linha_idx, 11, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
 
 
-def processar_atualizacao_atividade(texto, editor="tecnico-whatsapp"):
+def _processar_um_bloco_atividade(texto, editor="tecnico-whatsapp"):
     dados = parse_atualizacao_atividade(texto)
     if not dados["id_ou_os"]:
         try:
@@ -2936,6 +2950,16 @@ def processar_atualizacao_atividade(texto, editor="tecnico-whatsapp"):
         _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "status", dados["status"], editor)
 
     return {"ok": True, "id": linha_atual[0]}
+
+
+def processar_atualizacao_atividade(texto, editor="tecnico-whatsapp"):
+    blocos = separar_blocos_atividade(texto)
+    resultados = [_processar_um_bloco_atividade(bloco, editor) for bloco in blocos]
+    return {
+        "ok": any(r.get("ok") for r in resultados),
+        "total_blocos": len(resultados),
+        "resultados": resultados,
+    }
 
 
 @app.route("/corrigir-prioridade-atividades", methods=["GET"])
