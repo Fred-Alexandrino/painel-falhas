@@ -1,1 +1,2 @@
-{'cliente': '2C', 'dataConclusao': '', 'dataCriacao': '07/07/2026 12:51:05', 'descricao': '[Grid Co.] - MPM - Cabine de Medição', 'editor': 'fracttal-backfill', 'equipamento': 'SLG200-CABN1', 'historico': '07/07/2026 12:51 - Atividade criada por fracttal-backfill.\n07/07/2026 16:53 - Prazo alterado de "2026-07-03T18:39:16.440506+00:00" para "03/07/2026" por claude-chat.', 'id': '78', 'linkOS': '', 'numeroOS': '8532', 'observacoesOS': '', 'prazo': '03/07/2026', 'prioridade': 'Alta', 'responsavel': 'Daniel de Paula', 'status': 'Em Aberto', 'statusOS': 'Em Processo', 'usina': 'Sete Lagoas'}
+Total: 32
+Sem linkOS: 1 ['8532']
