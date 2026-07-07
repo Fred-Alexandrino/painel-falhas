@@ -2893,18 +2893,81 @@ _FRACTTAL_PRIORIDADE_MAP = {
     "LOW": "Baixa", "BAIXA": "Baixa",
 }
 
+# ── Cruzamento técnico responsável → usina(s) atendida(s) ─────────────────
+# Usado para VALIDAR o match feito pelo nome do ativo (cross-check) e,
+# quando o nome do ativo não bate com o catálogo, como fallback — mas só
+# quando o técnico atende uma única usina do catálogo (senão é ambíguo e
+# a OT vai para revisão manual em vez de arriscar um chute).
+TECNICO_USINAS = {
+    "rodolfo oliveira":  ["Boa Esperança do Sul I", "Boa Esperança do Sul II", "Ibaté I", "Ibaté II"],
+    "andrick gouveia":   ["Boa Esperança do Sul I", "Boa Esperança do Sul II", "Ibaté I", "Ibaté II"],
+    "equipe piracicaba": ["Elias Fausto"],
+    "deivity saugo":     ["Colíder I", "Colíder II"],
+    "deivity jhon cunha saugo": ["Colíder I", "Colíder II"],
+    "railson gomes":     ["Crateús"],
+    "valmir junior":     ["Nobres"],
+    "lucas lima":        ["Nobres"],
+    "gabriel oliveira":  ["Nova Xavantina I", "Nova Xavantina II"],
+    "eduardo souza":     ["Matão 1", "Matão II - Topázio"],
+    "aniel rocha":       ["Araputanga", "Poconé"],
+    "adriano moraes":    ["Araputanga", "Poconé"],
+    "claudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú"],
+    "cláudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú"],
+    "isake costa":       ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú"],
+    "daniel de paula":   ["Sete Lagoas"],
+}
+
+
+def _normalizar_tecnico(nome):
+    return _norm_usina(nome)  # mesma normalização (sem acento, minúsculo) já usada pra usina
+
 
 def _fracttal_mapear_ot(ot):
     """
     Converte um registro de OT da Fracttal para os campos do Painel de
     Atividades, reaproveitando o catálogo de usinas/clientes já existente
-    (canonizar_usina / inferir_cliente). Retorna None se a OT for de um
-    ativo fora do catálogo do Fred (outro supervisor/cliente).
+    (canonizar_usina / inferir_cliente), e faz o CRUZAMENTO com o técnico
+    responsável (TECNICO_USINAS) para validar/reforçar o resultado:
+
+      1. Nome do ativo bate com o catálogo E técnico é esperado nessa usina
+         → segue normal, sem alerta.
+      2. Nome do ativo bate, mas o técnico não é dos que atendem essa usina
+         → cria mesmo assim (nome do ativo é a fonte mais confiável), mas
+           grava um alerta no histórico pra você conferir.
+      3. Nome do ativo NÃO bate, mas o técnico atende só 1 usina do catálogo
+         → usa a usina do técnico como fallback, com alerta no histórico.
+      4. Nome do ativo não bate e o técnico atende mais de uma usina (ou é
+         desconhecido) → não dá pra decidir sozinho, vai para revisão manual
+         (retorna None com motivo, não cria nada).
     """
     texto_ativo = ot.get("items_log_description") or ot.get("parent_description") or ot.get("item_code") or ""
-    usina = canonizar_usina(texto_ativo)
-    if not usina:
-        return None
+    usina_por_ativo = canonizar_usina(texto_ativo)
+
+    tecnico_raw = (ot.get("personnel_description") or ot.get("responsible") or ot.get("created_by") or "").strip()
+    tecnico_norm = _normalizar_tecnico(tecnico_raw)
+    usinas_do_tecnico = TECNICO_USINAS.get(tecnico_norm, [])
+
+    usina = None
+    alerta = None
+
+    if usina_por_ativo:
+        usina = usina_por_ativo
+        if usinas_do_tecnico and usina not in usinas_do_tecnico:
+            alerta = (f"⚠️ Cruzamento: técnico \"{tecnico_raw}\" não está mapeado para {usina} "
+                      f"(usinas esperadas dele: {', '.join(usinas_do_tecnico)}). Confira se a usina está certa.")
+    elif len(usinas_do_tecnico) == 1:
+        usina = usinas_do_tecnico[0]
+        alerta = (f"⚠️ Usina inferida pelo técnico responsável (\"{tecnico_raw}\"), pois o ativo "
+                  f"\"{texto_ativo}\" não bateu com o catálogo. Confira se está correto.")
+    else:
+        if usinas_do_tecnico:
+            motivo = (f"Ativo \"{texto_ativo}\" não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
+                      f"uma usina ({', '.join(usinas_do_tecnico)}) — não dá pra decidir sozinho.")
+        elif tecnico_raw:
+            motivo = f"Ativo \"{texto_ativo}\" não reconhecido e técnico \"{tecnico_raw}\" não está no mapa de usinas."
+        else:
+            motivo = f"Ativo \"{texto_ativo}\" não reconhecido e OT sem técnico responsável informado."
+        return {"_revisao_manual": True, "motivo": motivo, "wo_folio": ot.get("wo_folio", "?")}
 
     cliente = inferir_cliente(usina)
     prioridade_raw = (ot.get("priorities_description") or "").strip().upper()
@@ -2915,12 +2978,13 @@ def _fracttal_mapear_ot(ot):
         "usina": usina,
         "equipamento": (ot.get("code") or texto_ativo or "Múltiplos equipamentos").strip(),
         "descricao": (ot.get("description") or "").strip() or f"OT {ot.get('wo_folio', '')} (Fracttal)",
-        "responsavel": (ot.get("personnel_description") or ot.get("created_by") or "").strip(),
+        "responsavel": tecnico_raw,
         "prazo": (ot.get("final_date") or ot.get("initial_date") or "").strip(),
         "prioridade": prioridade,
         "status": "Em Aberto",
         "numeroOS": (ot.get("wo_folio") or "").strip(),
         "editor": "fracttal-sync",
+        "_alerta": alerta,
     }
 
 
@@ -2951,26 +3015,32 @@ def sync_fracttal():
         log.error(f"[sync-fracttal] Erro ao ler Painel de Atividades: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
-    criadas, ignoradas, erros = [], [], []
+    criadas, revisao_manual, erros = [], [], []
 
     for ot in ots:
         mapeado = _fracttal_mapear_ot(ot)
         if not mapeado:
-            ignoradas.append(ot.get("wo_folio", "?"))
+            continue  # OT de outro cliente/supervisor, totalmente fora de escopo
+        if mapeado.get("_revisao_manual"):
+            revisao_manual.append({"wo_folio": mapeado["wo_folio"], "motivo": mapeado["motivo"]})
             continue
         if mapeado["numeroOS"] in os_existentes:
             continue  # já registrada — evita duplicata
 
+        alerta = mapeado.pop("_alerta", None)
         try:
             novo_id = _criar_atividade_interna(ws=ws, todos=todos, **mapeado)
-            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id})
+            if alerta:
+                _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
+                                                 "fracttal-sync", append=True)
+            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "alerta": alerta})
             os_existentes.add(mapeado["numeroOS"])
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
             erros.append(mapeado.get("numeroOS", "?"))
 
-    log.info(f"[sync-fracttal] criadas={len(criadas)} ignoradas={len(ignoradas)} erros={len(erros)}")
-    return jsonify({"ok": True, "criadas": criadas, "ignoradas_fora_do_catalogo": ignoradas, "erros": erros})
+    log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)}")
+    return jsonify({"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros})
 
 
 ATIV_CAMPO_LABEL = {
