@@ -2957,16 +2957,29 @@ _FRACTTAL_STATUS_OS_MAP = {
     "1": "Em Processo", "2": "Em Revisão", "3": "Finalizada", "4": "Cancelada",
 }
 
-# A Fracttal abre a OT num modal que NÃO muda a URL da página (confirmado
-# com o Fred — tentativas de deep-link com query params deram página em
-# branco). Por isso apontamos pra tela de OTs; o número da OS já fica
-# visível no card/drawer pra buscar manualmente lá.
+# A Fracttal tem o add-on "Share TOs" habilitado nesta conta, que gera uma
+# URL pública específica por OT via /work_orders_shared_url/{folio}
+# (confirmado com um teste real — ver histórico). Isso abre a OT direto,
+# sem precisar buscar manualmente na lista. Se a chamada falhar por
+# qualquer motivo, cai pro fallback da tela de OTs (fluxo antigo).
 FRACTTAL_WEB_BASE = "https://app.fracttal.com/tasks/wo"
 
 
 def _fracttal_montar_link(ot):
-    if not ot.get("wo_folio"):
+    folio = (ot.get("wo_folio") or "").strip()
+    if not folio:
         return ""
+    try:
+        token = _fracttal_get_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders_shared_url/{folio}",
+                             headers=headers, timeout=15)
+        resp.raise_for_status()
+        dados = (resp.json().get("data") or [])
+        if dados and dados[0].get("shared_wo_url"):
+            return dados[0]["shared_wo_url"]
+    except Exception as e:
+        log.error(f"[fracttal] Erro ao buscar shared_wo_url da OT {folio}: {e}")
     return FRACTTAL_WEB_BASE
 
 
@@ -3309,6 +3322,62 @@ def completar_fracttal_backfill():
 
     log.info(f"[completar-fracttal-backfill] atualizadas={len(atualizadas)} puladas={len(puladas)} erros={len(erros)}")
     return jsonify({"ok": True, "atualizadas": atualizadas, "puladas": puladas, "erros": erros,
+                     "processadas_nesta_chamada": processadas, "limit": limit})
+
+
+@app.route("/atualizar-links-fracttal", methods=["POST", "GET"])
+def atualizar_links_fracttal():
+    """
+    Reprocessa SÓ o campo linkOS de atividades vindas da Fracttal, usando
+    a URL pública por OT (add-on Share TOs). Ignora se já tem statusOS
+    preenchido (diferente do /completar-fracttal-backfill) — existe
+    justamente pra corrigir links antigos que ficaram com o fallback
+    genérico (tela de OTs) em vez do link direto.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    limit = int(request.args.get("limit", 8))
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    atualizadas, erros = [], []
+    processadas = 0
+
+    for i, row in enumerate(todos[1:], start=2):
+        if processadas >= limit:
+            break
+        if len(row) < 17:
+            row = row + [""] * (17 - len(row))
+        editor = row[12].strip()
+        numero_os = row[13].strip()
+        link_atual = row[16].strip()
+
+        if editor not in ("fracttal-backfill", "fracttal-sync") or not numero_os:
+            continue
+        if link_atual and link_atual != FRACTTAL_WEB_BASE:
+            continue  # já tem link direto, não mexe
+
+        processadas += 1
+        try:
+            link_novo = _fracttal_montar_link({"wo_folio": numero_os})
+            if link_novo and link_novo != link_atual:
+                ws.update_cell(i, 17, link_novo)
+                atualizadas.append({"linha": i, "numeroOS": numero_os, "link": link_novo})
+            time.sleep(1.2)
+        except Exception as e:
+            log.error(f"[atualizar-links-fracttal] Erro na OT {numero_os}: {e}")
+            erros.append({"numeroOS": numero_os, "erro": str(e)})
+
+    log.info(f"[atualizar-links-fracttal] atualizadas={len(atualizadas)} erros={len(erros)}")
+    return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros,
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
