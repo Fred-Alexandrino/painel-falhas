@@ -1,0 +1,47 @@
+name: Testar novos recursos
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rodar completar-campos-v3-fracttal em lotes
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          > backups/check-status-result.txt
+          for TENTATIVA in 1 2 3 4 5 6; do
+            echo "===== Lote $TENTATIVA =====" >> backups/check-status-result.txt
+            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/completar-campos-v3-fracttal?limit=6" -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            STATUS=$(echo "$RESPONSE" | tail -n 1)
+            echo "Status HTTP: $STATUS" >> backups/check-status-result.txt
+            echo "$BODY" >> backups/check-status-result.txt
+            echo "" >> backups/check-status-result.txt
+            if [ "$STATUS" -ge 400 ]; then
+              echo "Erro HTTP $STATUS, parando."
+              break
+            fi
+            QTD=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('processadas_nesta_chamada', 0))" 2>/dev/null || echo 0)
+            echo "Processadas neste lote: $QTD"
+            if [ "$QTD" -eq "0" ]; then
+              echo "Nada mais pra processar, encerrando."
+              break
+            fi
+            sleep 15
+          done
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Resultado teste v3 [skip ci]"
+          git push
