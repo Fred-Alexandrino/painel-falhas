@@ -1,0 +1,14 @@
+Backfill Fracttal iniciado em 2026-07-07T12:37:38Z
+since=2026-03-01T00:00:00-00:00 ot_status=1
+
+===== Pagina 1 (start=0) — HTTP 404 =====
+<!doctype html>
+<html lang=en>
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+
+===== RESUMO FINAL =====
+Total criadas: 0
+Total revisao_manual: 0
+Total erros: 0
