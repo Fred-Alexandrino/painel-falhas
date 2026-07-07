@@ -3652,6 +3652,7 @@ def atualizar_campo_atividade():
 
     try:
         ws = get_atividades_sheet()
+        _garantir_headers_atividades(ws)
         todos = ws.get_all_values()
         linha_idx = None
         linha_atual = None
