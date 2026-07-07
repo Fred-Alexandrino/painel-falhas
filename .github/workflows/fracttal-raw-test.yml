@@ -11,38 +11,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rodar completar-fracttal-backfill em lotes
+      - name: Checar quantas atividades faltam completar
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          > backups/fracttal-raw-sample.txt
-
-          for TENTATIVA in 1 2 3 4 5 6; do
-            echo "===== Lote $TENTATIVA =====" >> backups/fracttal-raw-sample.txt
-            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/completar-fracttal-backfill?limit=6" \
-              -H "X-Webhook-Secret: $WEBHOOK_SECRET")
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            STATUS=$(echo "$RESPONSE" | tail -n 1)
-            echo "Status HTTP: $STATUS" >> backups/fracttal-raw-sample.txt
-            echo "$BODY" >> backups/fracttal-raw-sample.txt
-            echo "" >> backups/fracttal-raw-sample.txt
-
-            if [ "$STATUS" -ge 400 ]; then
-              echo "Erro HTTP $STATUS, parando."
-              break
-            fi
-
-            QTD=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('atualizadas', [])) + len(d.get('erros', [])))" 2>/dev/null || echo 0)
-            echo "Processadas neste lote: $QTD"
-            if [ "$QTD" -eq "0" ]; then
-              echo "Nada mais pra processar, encerrando."
-              break
-            fi
-
-            sleep 20
-          done
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/ativs.json
+          python3 -c "
+import json
+d = json.load(open('/tmp/ativs.json'))
+ativs = d.get('atividades', [])
+fracttal = [a for a in ativs if a.get('editor') in ('fracttal-backfill','fracttal-sync')]
+sem_status = [a for a in fracttal if not a.get('statusOS')]
+print('Total atividades vindas da Fracttal:', len(fracttal))
+print('Sem statusOS preenchido:', len(sem_status))
+print()
+for a in fracttal:
+    print(a.get('numeroOS'), '|', a.get('statusOS') or '(vazio)', '|', a.get('prazo') or '(sem prazo)', '|', (a.get('observacoesOS') or '')[:40])
+" > backups/fracttal-raw-sample.txt
+          cat backups/fracttal-raw-sample.txt
 
       - name: Salvar resultado no repositório
         if: always()
