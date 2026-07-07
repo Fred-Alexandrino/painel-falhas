@@ -1,4 +1,24 @@
 ===== Lote 1 =====
 Status HTTP: 200
-{"atualizadas":[],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":0}
+{"atualizadas":[{"linha":30,"numeroOS":"8812","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":31,"numeroOS":"8955","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":32,"numeroOS":"8945","percentualOS":"100","statusGeralOS":"Conclu\u00edda"},{"linha":33,"numeroOS":"8913","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":34,"numeroOS":"8912","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":35,"numeroOS":"8867","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 2 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":36,"numeroOS":"8866","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":37,"numeroOS":"8865","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":38,"numeroOS":"8864","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":39,"numeroOS":"8861","percentualOS":"100","statusGeralOS":"Conclu\u00edda"},{"linha":40,"numeroOS":"8860","percentualOS":"100","statusGeralOS":"Conclu\u00edda"},{"linha":41,"numeroOS":"8855","percentualOS":"60","statusGeralOS":"Em Progresso"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 3 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":42,"numeroOS":"8914","percentualOS":"100","statusGeralOS":"Conclu\u00edda"},{"linha":43,"numeroOS":"8652","percentualOS":"100","statusGeralOS":"Conclu\u00edda"},{"linha":44,"numeroOS":"9012","percentualOS":"0","statusGeralOS":"Pausada"},{"linha":46,"numeroOS":"6379","percentualOS":"0","statusGeralOS":"Pausada"},{"linha":47,"numeroOS":"7084","percentualOS":"0","statusGeralOS":"Pausada"}],"erros":[{"erro":"404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854","numeroOS":"6622/7854"}],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 4 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":48,"numeroOS":"8508","percentualOS":"0","statusGeralOS":"Pausada"},{"linha":49,"numeroOS":"8626","percentualOS":"68","statusGeralOS":"Em Progresso"},{"linha":50,"numeroOS":"9035","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":51,"numeroOS":"9024","percentualOS":"100","statusGeralOS":"Conclu\u00edda"},{"linha":52,"numeroOS":"9023","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"}],"erros":[{"erro":"404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854","numeroOS":"6622/7854"}],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 5 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":53,"numeroOS":"8919","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":54,"numeroOS":"8918","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":55,"numeroOS":"8917","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":56,"numeroOS":"8916","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":57,"numeroOS":"8915","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"}],"erros":[{"erro":"404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854","numeroOS":"6622/7854"}],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 6 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":58,"numeroOS":"8910","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":59,"numeroOS":"8909","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":60,"numeroOS":"8908","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":61,"numeroOS":"8907","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"},{"linha":62,"numeroOS":"8906","percentualOS":"0","statusGeralOS":"N\u00e3o Iniciada"}],"erros":[{"erro":"404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854","numeroOS":"6622/7854"}],"limit":6,"ok":true,"processadas_nesta_chamada":6}
 
