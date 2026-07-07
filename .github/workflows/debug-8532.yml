@@ -10,21 +10,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Checar linkOS vazio
+      - name: Testar work_orders_shared_url
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
-          python3 -c "
-          import json
-          d = json.load(open('/tmp/a.json'))
-          fracttal = [a for a in d.get('atividades', []) if a.get('editor') in ('fracttal-backfill','fracttal-sync')]
-          sem_link = [a.get('numeroOS') for a in fracttal if not a.get('linkOS')]
-          print('Total:', len(fracttal))
-          print('Sem linkOS:', len(sem_link), sem_link)
-          " > backups/check-status-result.txt
+          curl -s "$BASE/fracttal-raw?endpoint=work_orders_shared_url/9035" -H "X-Webhook-Secret: $WEBHOOK_SECRET" > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
@@ -32,5 +24,5 @@ jobs:
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
           git add backups/check-status-result.txt
-          git diff --quiet --cached || git commit -m "Debug OS 8532 [skip ci]"
+          git diff --quiet --cached || git commit -m "Testar shared_url [skip ci]"
           git push
