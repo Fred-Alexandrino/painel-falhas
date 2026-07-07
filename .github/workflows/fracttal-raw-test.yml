@@ -11,22 +11,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Chamar /fracttal-raw
+      - name: Chamar /fracttal-raw (variações de teste)
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
-          RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE/fracttal-raw?date_from=2026-03-01" \
-            -H "X-Webhook-Secret: $WEBHOOK_SECRET")
-          BODY=$(echo "$RESPONSE" | head -n -1)
-          STATUS=$(echo "$RESPONSE" | tail -n 1)
           mkdir -p backups
-          {
-            echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "Status HTTP: $STATUS"
-            echo "Resposta:"
-            echo "$BODY"
-          } > backups/fracttal-raw-sample.txt
+          > backups/fracttal-raw-sample.txt
+
+          for QS in \
+            "date_from=2026-03-01&id_status_work_order=1&page=1" \
+            "date_from=2026-03-01&id_status_work_order=1&page=2" \
+            "date_from=2026-03-01&status=1&page=1" \
+          ; do
+            echo "===== TESTE: $QS =====" >> backups/fracttal-raw-sample.txt
+            RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE/fracttal-raw?$QS" \
+              -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            STATUS=$(echo "$RESPONSE" | tail -n 1)
+            echo "Status HTTP: $STATUS" >> backups/fracttal-raw-sample.txt
+            # trunca o corpo pra nao estourar o arquivo (só precisamos ver total/paginacao/estrutura)
+            echo "$BODY" | head -c 1500 >> backups/fracttal-raw-sample.txt
+            echo "" >> backups/fracttal-raw-sample.txt
+            echo "" >> backups/fracttal-raw-sample.txt
+          done
 
       - name: Salvar resultado no repositório
         run: |
