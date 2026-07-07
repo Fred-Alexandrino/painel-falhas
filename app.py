@@ -2744,12 +2744,46 @@ def _proximo_id_atividade(todos):
 
 ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "responsavel", "prazo",
                       "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
-                      "numeroOS"]
+                      "numeroOS", "statusOS", "observacoesOS", "linkOS"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
     "prazo": 7, "prioridade": 8, "status": 9, "historico": 12, "numeroOS": 14,
+    "statusOS": 15, "observacoesOS": 16, "linkOS": 17,
 }
+
+_ativ_headers_ensured = {"done": False}
+
+
+def _garantir_headers_atividades(ws):
+    """
+    Garante que o cabeçalho (linha 1) da aba Painel de Atividades tenha as
+    colunas novas (statusOS/observacoesOS/linkOS). Roda uma vez por processo
+    (cache em memória) — idempotente, então não tem problema rodar de novo
+    se o worker reiniciar.
+    """
+    if _ativ_headers_ensured["done"]:
+        return
+    try:
+        header = ws.row_values(1)
+        extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS"}
+        precisa = False
+        for col, nome in extras.items():
+            atual = header[col - 1] if len(header) >= col else ""
+            if atual.strip() != nome:
+                precisa = True
+                break
+        if precisa:
+            novo_header = header + [""] * max(0, 17 - len(header))
+            novo_header = novo_header[:17]
+            for col, nome in extras.items():
+                novo_header[col - 1] = nome
+            ws.update("A1:Q1", [novo_header])
+            log.info("[Atividades] Header estendido com statusOS/observacoesOS/linkOS")
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao garantir headers estendidos: {e}")
+    finally:
+        _ativ_headers_ensured["done"] = True
 
 
 @app.route("/atividades", methods=["GET"])
@@ -2772,11 +2806,13 @@ def listar_atividades():
 
 def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", responsavel="",
                               prazo="", prioridade="Média", status="Em Aberto", numeroOS="",
-                              editor="dashboard", ws=None, todos=None):
+                              editor="dashboard", statusOS="", observacoesOS="", linkOS="",
+                              ws=None, todos=None):
     """
     Cria uma linha na aba Painel de Atividades. Usada tanto pelo endpoint
     HTTP /nova-atividade quanto pelo sync automático do Fracttal
-    (/sync-fracttal), para evitar duplicar a lógica de escrita na planilha.
+    (/sync-fracttal, /backfill-fracttal), para evitar duplicar a lógica de
+    escrita na planilha.
 
     Se `ws`/`todos` forem passados (leitura já feita por quem chamou, ex.
     sync em lote), evita reler a planilha inteira a cada chamada.
@@ -2791,15 +2827,18 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     if todos is None:
         todos = ws.get_all_values()
 
+    _garantir_headers_atividades(ws)
+
     novo_id = _proximo_id_atividade(todos)
     agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
 
-    ws.append_row([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
-                    prioridade, status, agora, "", historico_inicial, editor, numeroOS])
+    linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
+             prioridade, status, agora, "", historico_inicial, editor, numeroOS,
+             statusOS, observacoesOS, linkOS]
+    ws.append_row(linha)
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
-    todos.append([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
-                  prioridade, status, agora, "", historico_inicial, editor, numeroOS])
+    todos.append(linha)
     log.info(f"[atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
     return novo_id
 
@@ -2825,6 +2864,9 @@ def nova_atividade():
             status=body.get("status", "Em Aberto").strip() or "Em Aberto",
             numeroOS=body.get("numeroOS", ""),
             editor=body.get("editor", "dashboard").strip() or "dashboard",
+            statusOS=body.get("statusOS", ""),
+            observacoesOS=body.get("observacoesOS", ""),
+            linkOS=body.get("linkOS", ""),
         )
         return jsonify({"ok": True, "id": novo_id})
     except ValueError as e:
@@ -2903,6 +2945,33 @@ _FRACTTAL_PRIORIDADE_MAP = {
     "MEDIUM": "Média", "MEDIA": "Média", "MÉDIA": "Média",
     "LOW": "Baixa", "BAIXA": "Baixa",
 }
+
+# 1: Processo, 2: Revisão, 3: Finalizada, 4: Cancelada (confirmado na doc oficial da Fracttal)
+_FRACTTAL_STATUS_OS_MAP = {
+    "1": "Em Processo", "2": "Em Revisão", "3": "Finalizada", "4": "Cancelada",
+}
+
+# TODO: confirmar o padrão real da URL de uma OT no Fracttal (SPA, rotas não
+# indexadas publicamente) — Fred vai colar um exemplo e ajustamos aqui.
+FRACTTAL_WEB_BASE = "https://one.fracttal.com"
+
+
+def _fracttal_montar_link(ot):
+    wo_id = ot.get("id_work_order")
+    if not wo_id:
+        return ""
+    return f"{FRACTTAL_WEB_BASE}/work-orders/{wo_id}"  # TODO: ajustar com URL real
+
+
+def _fracttal_formatar_data_br(iso_str):
+    """Extrai apenas AAAA-MM-DD do timestamp ISO da Fracttal e devolve dd/mm/aaaa."""
+    if not iso_str:
+        return ""
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", str(iso_str))
+    if not m:
+        return ""
+    ano, mes, dia = m.groups()
+    return f"{dia}/{mes}/{ano}"
 
 # ── Cruzamento técnico responsável → usina(s) atendida(s) ─────────────────
 # Usado para VALIDAR o match feito pelo nome do ativo (cross-check) e,
@@ -3008,17 +3077,26 @@ def _fracttal_mapear_ot(ot):
     prioridade_raw = (ot.get("priorities_description") or "").strip().upper()
     prioridade = _FRACTTAL_PRIORIDADE_MAP.get(prioridade_raw, "Média")
 
+    status_os_raw = str(ot.get("id_status_work_order", "")).strip()
+    status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
+
+    prazo_iso = ot.get("final_date") or ot.get("initial_date") or ot.get("cal_date_maintenance") or ot.get("date_maintenance") or ""
+    observacoes = (ot.get("task_note") or ot.get("note") or "").strip()
+
     return {
         "cliente": cliente,
         "usina": usina,
         "equipamento": (ot.get("code") or texto_ativo or "Múltiplos equipamentos").strip(),
         "descricao": (ot.get("description") or "").strip() or f"OT {ot.get('wo_folio', '')} (Fracttal)",
         "responsavel": tecnico_raw,
-        "prazo": (ot.get("final_date") or ot.get("initial_date") or "").strip(),
+        "prazo": _fracttal_formatar_data_br(prazo_iso),
         "prioridade": prioridade,
         "status": "Em Aberto",
         "numeroOS": (ot.get("wo_folio") or "").strip(),
         "editor": "fracttal-sync",
+        "statusOS": status_os,
+        "observacoesOS": observacoes,
+        "linkOS": _fracttal_montar_link(ot),
         "_alerta": alerta,
     }
 
