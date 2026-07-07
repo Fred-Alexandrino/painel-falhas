@@ -10,7 +10,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Consultar atividade 8532 apos correcao
+      - name: Checar linkOS vazio
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
@@ -20,9 +20,10 @@ jobs:
           python3 -c "
           import json
           d = json.load(open('/tmp/a.json'))
-          for a in d.get('atividades', []):
-              if a.get('numeroOS') == '8532':
-                  print(a)
+          fracttal = [a for a in d.get('atividades', []) if a.get('editor') in ('fracttal-backfill','fracttal-sync')]
+          sem_link = [a.get('numeroOS') for a in fracttal if not a.get('linkOS')]
+          print('Total:', len(fracttal))
+          print('Sem linkOS:', len(sem_link), sem_link)
           " > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
