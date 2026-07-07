@@ -2745,16 +2745,16 @@ def _proximo_id_atividade(todos):
 ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "responsavel", "prazo",
                       "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
                       "numeroOS", "statusOS", "observacoesOS", "linkOS", "statusTarefaOS", "etiquetasOS",
-                      "anotacoesPessoais"]
+                      "anotacoesPessoais", "percentualOS", "statusGeralOS", "detalhesEquipamentosOS"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
     "prazo": 7, "prioridade": 8, "status": 9, "historico": 12, "numeroOS": 14,
     "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
-    "anotacoesPessoais": 20,
+    "anotacoesPessoais": 20, "percentualOS": 21, "statusGeralOS": 22, "detalhesEquipamentosOS": 23,
 }
 
-ATIV_TOTAL_COLUNAS = 20
+ATIV_TOTAL_COLUNAS = 23
 
 _ativ_headers_ensured = {"done": False}
 
@@ -2763,8 +2763,7 @@ def _garantir_headers_atividades(ws):
     """
     Garante que a aba Painel de Atividades tenha colunas suficientes na
     grade (a grade do Sheets tem um limite físico de colunas, separado do
-    cabeçalho) e que o cabeçalho (linha 1) tenha as colunas novas
-    (statusOS/observacoesOS/linkOS/statusTarefaOS/etiquetasOS/anotacoesPessoais).
+    cabeçalho) e que o cabeçalho (linha 1) tenha as colunas novas.
 
     A expansão de colunas é tentada em TODA chamada (é uma checagem barata
     e idempotente — só chama a API se realmente precisar crescer), pra não
@@ -2784,7 +2783,8 @@ def _garantir_headers_atividades(ws):
     try:
         header = ws.row_values(1)
         extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS", 18: "statusTarefaOS",
-                  19: "etiquetasOS", 20: "anotacoesPessoais"}
+                  19: "etiquetasOS", 20: "anotacoesPessoais", 21: "percentualOS",
+                  22: "statusGeralOS", 23: "detalhesEquipamentosOS"}
         precisa = False
         for col, nome in extras.items():
             atual = header[col - 1] if len(header) >= col else ""
@@ -2797,7 +2797,7 @@ def _garantir_headers_atividades(ws):
             for col, nome in extras.items():
                 novo_header[col - 1] = nome
             ws.update(f"A1:{chr(64 + ATIV_TOTAL_COLUNAS)}1", [novo_header])
-            log.info("[Atividades] Header estendido com statusOS/observacoesOS/linkOS/statusTarefaOS/etiquetasOS/anotacoesPessoais")
+            log.info("[Atividades] Header estendido com todos os campos Fracttal")
         _ativ_headers_ensured["done"] = True
     except Exception as e:
         log.error(f"[Atividades] Erro ao garantir conteúdo do header estendido: {e}")
@@ -2825,6 +2825,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
                               prazo="", prioridade="Média", status="Em Aberto", numeroOS="",
                               editor="dashboard", statusOS="", observacoesOS="", linkOS="",
                               statusTarefaOS="", etiquetasOS="", anotacoesPessoais="",
+                              percentualOS="", statusGeralOS="", detalhesEquipamentosOS="",
                               ws=None, todos=None):
     """
     Cria uma linha na aba Painel de Atividades. Usada tanto pelo endpoint
@@ -2853,7 +2854,8 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
 
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
              prioridade, status, agora, "", historico_inicial, editor, numeroOS,
-             statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais]
+             statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais,
+             percentualOS, statusGeralOS, detalhesEquipamentosOS]
     ws.append_row(linha)
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
     todos.append(linha)
@@ -2888,6 +2890,9 @@ def nova_atividade():
             statusTarefaOS=body.get("statusTarefaOS", ""),
             etiquetasOS=body.get("etiquetasOS", ""),
             anotacoesPessoais=body.get("anotacoesPessoais", ""),
+            percentualOS=body.get("percentualOS", ""),
+            statusGeralOS=body.get("statusGeralOS", ""),
+            detalhesEquipamentosOS=body.get("detalhesEquipamentosOS", ""),
         )
         return jsonify({"ok": True, "id": novo_id})
     except ValueError as e:
@@ -3155,6 +3160,49 @@ def _fracttal_historico_detalhe(tasks):
     return "\n".join(linhas)
 
 
+def _fracttal_percentual_conclusao(tasks):
+    total = len(tasks)
+    if not total:
+        return 0
+    concluidas = sum(1 for t in tasks if (t.get("task_status") or "").strip().upper() == "DONE")
+    return round(100 * concluidas / total)
+
+
+def _fracttal_status_geral(tasks):
+    """
+    Status agregado da OS inteira em uma das 4 categorias que a Fracttal usa
+    na Vista Kanban: Não Iniciada, Em Progresso, Pausada, Concluída.
+    """
+    total = len(tasks)
+    if not total:
+        return ""
+    concluidas = sum(1 for t in tasks if (t.get("task_status") or "").strip().upper() == "DONE")
+    em_progresso = sum(1 for t in tasks if (t.get("task_status") or "").strip().upper() == "IN_PROGRESS")
+    pausadas = sum(1 for t in tasks if (t.get("task_status") or "").strip().upper() == "PAUSED")
+    if concluidas == total:
+        return "Concluída"
+    if em_progresso > 0 or concluidas > 0:
+        return "Em Progresso"
+    if pausadas > 0:
+        return "Pausada"
+    return "Não Iniciada"
+
+
+def _fracttal_detalhes_equipamentos(tasks):
+    """
+    Lista estruturada (JSON) de cada equipamento/tarefa da OS — usada pelo
+    drawer/card pra montar uma tabela organizada em vez de só um texto no
+    histórico. Cada item: {equipamento, status, prazo}.
+    """
+    itens = []
+    for t in tasks:
+        eq = (t.get("items_log_description") or t.get("code") or "?").split("{")[0].strip()
+        status = _fracttal_status_tarefa_label(t.get("task_status"))
+        prazo = _fracttal_formatar_data_br(t.get("final_date") or t.get("date_maintenance") or "")
+        itens.append({"equipamento": eq, "status": status, "prazo": prazo})
+    return json.dumps(itens, ensure_ascii=False)
+
+
 def _fracttal_mapear_grupo(tasks):
     """
     Converte um GRUPO de tarefas (todas da mesma OS, mesmo wo_folio) para
@@ -3242,6 +3290,9 @@ def _fracttal_mapear_grupo(tasks):
         "linkOS": _fracttal_montar_link(representante),
         "statusTarefaOS": _fracttal_status_tarefa_agregado(tasks),
         "etiquetasOS": _fracttal_etiquetas_agregadas(tasks),
+        "percentualOS": str(_fracttal_percentual_conclusao(tasks)),
+        "statusGeralOS": _fracttal_status_geral(tasks),
+        "detalhesEquipamentosOS": _fracttal_detalhes_equipamentos(tasks),
         "_alerta": alerta,
     }
 
@@ -3454,6 +3505,72 @@ def completar_fracttal_backfill():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
+@app.route("/completar-campos-v3-fracttal", methods=["POST", "GET"])
+def completar_campos_v3_fracttal():
+    """
+    Preenche percentualOS/statusGeralOS/detalhesEquipamentosOS em atividades
+    da Fracttal que já foram completadas pelas versões anteriores (já têm
+    statusTarefaOS) mas ainda não têm esses 3 campos mais novos.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    limit = int(request.args.get("limit", 6))
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    atualizadas, erros = [], []
+    processadas = 0
+
+    for i, row in enumerate(todos[1:], start=2):
+        if processadas >= limit:
+            break
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        editor = row[12].strip()
+        numero_os = row[13].strip()
+        percentual_atual = row[20].strip()
+
+        if editor not in ("fracttal-backfill", "fracttal-sync", "claude-chat") or not numero_os:
+            continue
+        if percentual_atual:
+            continue
+
+        processadas += 1
+        try:
+            resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+            resp.raise_for_status()
+            tasks = (resp.json().get("data") or [])
+            if not tasks:
+                continue
+
+            percentual = str(_fracttal_percentual_conclusao(tasks))
+            status_geral = _fracttal_status_geral(tasks)
+            detalhes = _fracttal_detalhes_equipamentos(tasks)
+            ws.update(f"U{i}:W{i}", [[percentual, status_geral, detalhes]])
+
+            atualizadas.append({"linha": i, "numeroOS": numero_os, "percentualOS": percentual,
+                                 "statusGeralOS": status_geral})
+            time.sleep(1.2)
+        except Exception as e:
+            log.error(f"[completar-campos-v3-fracttal] Erro na OT {numero_os}: {e}")
+            erros.append({"numeroOS": numero_os, "erro": str(e)})
+
+    log.info(f"[completar-campos-v3-fracttal] atualizadas={len(atualizadas)} erros={len(erros)}")
+    return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros,
+                     "processadas_nesta_chamada": processadas, "limit": limit})
+
+
 @app.route("/completar-campos-v2-fracttal", methods=["POST", "GET"])
 def completar_campos_v2_fracttal():
     """
@@ -3586,24 +3703,18 @@ def atualizar_links_fracttal():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
-@app.route("/sync-fracttal", methods=["POST", "GET"])
-def sync_fracttal():
+def _sync_fracttal_core(desde_horas=3, limite_checagem_status=12):
     """
-    Sincroniza OTs novas da Fracttal para o Painel de Atividades.
-    Disparado periodicamente por cron via GitHub Actions
-    (.github/workflows/sync-fracttal.yml). Protegido pelo mesmo
-    WEBHOOK_SECRET usado nos demais endpoints sensíveis.
+    Núcleo da sincronização: busca OTs recentes na Fracttal, cria atividades
+    novas e checa mudança de status em atividades já abertas. Usado tanto
+    pelo /sync-fracttal (cron protegido) quanto pelo /atualizar-os-agora
+    (botão público do dashboard).
     """
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-
     try:
-        ots = _fracttal_listar_ots_recentes(desde_horas=3)
+        ots = _fracttal_listar_ots_recentes(desde_horas=desde_horas)
     except Exception as e:
         log.error(f"[sync-fracttal] Erro ao consultar Fracttal: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 502
+        return {"ok": False, "error": str(e)}, 502
 
     try:
         ws = get_atividades_sheet()
@@ -3611,7 +3722,7 @@ def sync_fracttal():
         os_existentes = {row[13].strip() for row in todos[1:] if len(row) > 13 and row[13].strip()}
     except Exception as e:
         log.error(f"[sync-fracttal] Erro ao ler Painel de Atividades: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return {"ok": False, "error": str(e)}, 500
 
     criadas, revisao_manual, erros = [], [], []
     revisao_folios_vistos = set()
@@ -3654,10 +3765,9 @@ def sync_fracttal():
     # rodadas).
     mudancas_status = []
     try:
-        limite_checagem = 12
         checadas = 0
         for i, row in enumerate(todos[1:], start=2):
-            if checadas >= limite_checagem:
+            if checadas >= limite_checagem_status:
                 break
             if len(row) < ATIV_TOTAL_COLUNAS:
                 row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
@@ -3702,8 +3812,39 @@ def sync_fracttal():
 
     log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)} "
              f"mudancas_status={len(mudancas_status)}")
-    return jsonify({"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros,
-                     "mudancas_status": mudancas_status})
+    return {"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros,
+            "mudancas_status": mudancas_status}, 200
+
+
+@app.route("/sync-fracttal", methods=["POST", "GET"])
+def sync_fracttal():
+    """
+    Sincroniza OTs novas da Fracttal para o Painel de Atividades.
+    Disparado periodicamente por cron via GitHub Actions
+    (.github/workflows/sync-fracttal.yml). Protegido pelo mesmo
+    WEBHOOK_SECRET usado nos demais endpoints sensíveis.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body, status_code = _sync_fracttal_core(desde_horas=3)
+    return jsonify(body), status_code
+
+
+@app.route("/atualizar-os-agora", methods=["POST", "OPTIONS"])
+def atualizar_os_agora():
+    """
+    Endpoint PÚBLICO (sem secret) pro botão "Atualizar OS" do dashboard —
+    dispara uma busca forçada na Fracttal por OTs criadas/atualizadas nas
+    últimas 6h (janela maior que o cron automático, pra não perder nada
+    entre cliques) e cria o que for novo. Não expõe nada sensível, só
+    aciona a mesma lógica de sincronização sob demanda.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=15)
+    return jsonify(body), status_code
 
 
 ATIV_CAMPO_LABEL = {
@@ -4119,6 +4260,135 @@ Dados da solicitação:
 - Ação já realizada: {d.get("acao") or "não informado"}
 - Histórico: {d.get("historico") or "não informado"}
 - Responsável: {d.get("responsavel") or "não informado"}"""
+
+
+def _montar_prompt_reprogramacao(atividades, hoje_str):
+    linhas = []
+    for a in atividades:
+        linhas.append(
+            f"- id={a['id']} | OS={a.get('numeroOS') or '—'} | Cliente={a['cliente']} | Usina={a['usina']} | "
+            f"Equipamento={a.get('equipamento') or '—'} | Responsável/Equipe={a.get('responsavel') or 'não informado'} | "
+            f"Prioridade={a.get('prioridade') or 'Média'} | Prazo atual={a.get('prazo') or 'sem prazo definido'} | "
+            f"Status={a.get('status')}"
+        )
+    lista_atividades = "\n".join(linhas)
+
+    return f"""Aja como um Programador(a) de Manutenção Sênior de uma empresa de O&M de usinas solares fotovoltaicas. Você é especialista em otimizar rotas e agendas de equipes de campo, minimizando deslocamento e maximizando produtividade.
+
+CONTEXTO:
+Hoje é {hoje_str}. Abaixo está a lista de atividades/OS em aberto que precisam ser reprogramadas para datas futuras.
+
+REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
+- Cada "Responsável/Equipe" representa uma equipe de campo fisicamente alocada. Uma mesma equipe NUNCA pode ter atividades programadas em USINAS DIFERENTES no mesmo dia — o deslocamento entre usinas inviabiliza isso. Se a equipe tem atividades em mais de uma usina, agrupe-as em dias diferentes, dedicando um ou mais dias consecutivos inteiros a cada usina antes de mover a equipe pra próxima.
+- Atividades da MESMA equipe na MESMA usina podem (e devem, quando fizer sentido) ser agrupadas no mesmo dia ou em dias consecutivos, pra reduzir viagens.
+
+OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
+1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
+2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
+3. Distribua a carga de forma realista — não empilhe um número absurdo de atividades no mesmo dia para a mesma equipe (bom senso: no máximo 3-4 atividades por dia por equipe, a menos que sejam muito simples).
+4. Evite programar para sábados e domingos, a menos que a atividade já estivesse vencida há muito tempo e seja urgente.
+5. Comece a reprogramação a partir de amanhã, nunca em uma data já passada.
+
+ATIVIDADES A REPROGRAMAR:
+{lista_atividades}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO):
+Responda APENAS com um JSON válido (sem markdown, sem blocos de código com crase, sem texto antes ou depois), no formato:
+
+{{
+  "resumo": "1-2 frases explicando a lógica geral usada no agrupamento",
+  "reprogramacoes": [
+    {{
+      "id": "<id da atividade, exatamente como veio na lista>",
+      "numeroOS": "<número da OS, exatamente como veio na lista>",
+      "usina": "<usina>",
+      "responsavel": "<responsável/equipe>",
+      "dataAtual": "<prazo atual, ou 'sem prazo definido'>",
+      "dataSugerida": "<nova data sugerida, formato dd/mm/aaaa>",
+      "justificativa": "<motivo curto da escolha dessa data, mencionando o agrupamento por usina/equipe quando relevante>"
+    }}
+  ]
+}}
+
+Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida."""
+
+
+@app.route("/sugerir-reprogramacao", methods=["POST", "OPTIONS"])
+def sugerir_reprogramacao():
+    """
+    Analisa as atividades em aberto (vindas da Fracttal ou não) e usa o
+    Gemini pra sugerir uma reprogramação otimizada, respeitando que uma
+    mesma equipe não pode ser escalada em usinas diferentes no mesmo dia
+    (restrição de deslocamento). Usado pela aba "Reprogramações" do
+    Painel de Atividades.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        body = {}
+
+    ids_filtro = set(str(x) for x in body.get("ids", [])) if body.get("ids") else None
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    status_excluidos = {"concluído", "concluido", "cancelado", "convertida em ocorrência", "convertida em ocorrencia"}
+    atividades = []
+    for row in todos[1:]:
+        if len(row) < len(ATIV_HEADERS_JSON):
+            row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+        item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+        if not item.get("id"):
+            continue
+        if (item.get("status") or "").strip().lower() in status_excluidos:
+            continue
+        if ids_filtro is not None and item["id"] not in ids_filtro:
+            continue
+        atividades.append(item)
+
+    if not atividades:
+        return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada para reprogramar"}), 400
+    if len(atividades) > 80:
+        atividades = atividades[:80]  # limite de segurança pro tamanho do prompt
+
+    hoje_str = datetime.now().strftime('%d/%m/%Y (%A)')
+    prompt = _montar_prompt_reprogramacao(atividades, hoje_str)
+
+    try:
+        resp = requests.post(
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 8192,
+                    "responseMimeType": "application/json",
+                },
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        candidato = data["candidates"][0]
+        finish_reason = candidato.get("finishReason", "")
+        texto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
+        sugestao = json.loads(texto_limpo)
+        return jsonify({"ok": True, "sugestao": sugestao, "total_atividades": len(atividades)})
+    except json.JSONDecodeError as e:
+        log.error(f"[sugerir-reprogramacao] Resposta não é JSON válido: {e} | texto={texto[:500] if 'texto' in dir() else '?'}")
+        return jsonify({"ok": False, "error": "A IA retornou um formato inesperado. Tente novamente."}), 502
+    except Exception as e:
+        log.error(f"[sugerir-reprogramacao] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/gerar-texto-os-ia", methods=["POST", "OPTIONS"])
