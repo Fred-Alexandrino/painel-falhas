@@ -11,14 +11,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checar atividades existentes (grep 9035 / 8467)
+      - name: Rodar completar-fracttal-backfill
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/ativs.json
-          python3 -c "import json; d=json.load(open('/tmp/ativs.json')); [print(a) for a in d.get('atividades', []) if '9035' in a.get('numeroOS','') or '8467' in a.get('numeroOS','')]" > backups/fracttal-raw-sample.txt
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE/completar-fracttal-backfill" -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
+          {
+            echo "Status HTTP: $STATUS"
+            echo "$BODY"
+          } > backups/fracttal-raw-sample.txt
           cat backups/fracttal-raw-sample.txt
 
       - name: Salvar resultado no repositório
