@@ -10,13 +10,20 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Consultar OS 8532 raw
+      - name: Consultar atividade 8532 apos correcao
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/fracttal-raw?folio=8532" -H "X-Webhook-Secret: $WEBHOOK_SECRET" > backups/check-status-result.txt
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          for a in d.get('atividades', []):
+              if a.get('numeroOS') == '8532':
+                  print(a)
+          " > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
