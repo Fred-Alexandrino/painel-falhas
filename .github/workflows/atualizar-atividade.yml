@@ -1,0 +1,36 @@
+name: Atualizar Atividade (via Claude)
+
+on:
+  repository_dispatch:
+    types: [atualizar_atividade]
+
+jobs:
+  atualizar-atividade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Buscar ID pelo numeroOS e atualizar campo
+        env:
+          P_NUMEROOS: ${{ github.event.client_payload.numeroOS }}
+          P_FIELD: ${{ github.event.client_payload.field }}
+          P_VALUE: ${{ github.event.client_payload.value }}
+          P_APPEND: ${{ github.event.client_payload.append }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          LISTA=$(curl -s "$BASE/atividades")
+          ID=$(echo "$LISTA" | jq -r --arg os "$P_NUMEROOS" '.atividades[] | select(.numeroOS == $os) | .id' | head -n1)
+          if [ -z "$ID" ] || [ "$ID" = "null" ]; then
+            echo "Nenhuma atividade encontrada com numeroOS=$P_NUMEROOS"
+            exit 1
+          fi
+          echo "ID encontrado: $ID"
+          APPEND_BOOL="false"
+          if [ "$P_APPEND" = "true" ]; then APPEND_BOOL="true"; fi
+          PAYLOAD=$(jq -n --arg id "$ID" --arg field "$P_FIELD" --arg value "$P_VALUE" --argjson append $APPEND_BOOL '{id:$id,field:$field,value:$value,append:$append,editor:"claude-chat"}')
+          echo "Payload: $PAYLOAD"
+          RESPONSE=$(curl -s -X POST "$BASE/atualizar-campo-atividade" -H "Content-Type: application/json" -d "$PAYLOAD")
+          echo "Resposta: $RESPONSE"
+          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
+          if [ "$OK" != "true" ]; then
+            echo "Falha ao atualizar campo"
+            exit 1
+          fi
