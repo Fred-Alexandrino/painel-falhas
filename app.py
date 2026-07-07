@@ -2951,16 +2951,17 @@ _FRACTTAL_STATUS_OS_MAP = {
     "1": "Em Processo", "2": "Em Revisão", "3": "Finalizada", "4": "Cancelada",
 }
 
-# TODO: confirmar o padrão real da URL de uma OT no Fracttal (SPA, rotas não
-# indexadas publicamente) — Fred vai colar um exemplo e ajustamos aqui.
-FRACTTAL_WEB_BASE = "https://one.fracttal.com"
+# A Fracttal abre a OT num modal que NÃO muda a URL da página (confirmado
+# com o Fred — tentativas de deep-link com query params deram página em
+# branco). Por isso apontamos pra tela de OTs; o número da OS já fica
+# visível no card/drawer pra buscar manualmente lá.
+FRACTTAL_WEB_BASE = "https://app.fracttal.com/tasks/wo"
 
 
 def _fracttal_montar_link(ot):
-    wo_id = ot.get("id_work_order")
-    if not wo_id:
+    if not ot.get("wo_folio"):
         return ""
-    return f"{FRACTTAL_WEB_BASE}/work-orders/{wo_id}"  # TODO: ajustar com URL real
+    return FRACTTAL_WEB_BASE
 
 
 def _fracttal_formatar_data_br(iso_str):
