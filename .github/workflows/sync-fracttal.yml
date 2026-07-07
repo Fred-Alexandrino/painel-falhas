@@ -1,0 +1,25 @@
+name: Sync Fracttal -> Painel de Atividades
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'   # a cada 2 horas
+  workflow_dispatch: {}      # permite disparo manual pelo Fred, se precisar
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /sync-fracttal no backend
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE/sync-fracttal" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
+          echo "Status HTTP: $STATUS"
+          echo "Resposta: $BODY"
+          if [ "$STATUS" -ge 400 ]; then
+            echo "::warning::sync-fracttal retornou erro $STATUS"
+          fi
