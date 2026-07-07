@@ -1,1 +1,8 @@
-{"body":{"data":[{"created_by":"Juliana C\u00e2ndido","creation_date":"2026-07-06T17:47:24.43399+00:00","id_company":4987,"id_status_work_order":1,"personnel_description":"Adriano  Moraes","shared_wo_url":"https://printwo.fracttal.com/?4987:71f83b1b-7f17-4edb-925e-f7f1b7d8cec9","wo_folio":"9035"}],"message":"200","success":true,"total":1},"ok":true,"status_code":200,"url_chamada":"https://app.fracttal.com/api/work_orders_shared_url/9035"}
+===== Lote 1 =====
+Status HTTP: 404
+<!doctype html>
+<html lang=en>
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+
