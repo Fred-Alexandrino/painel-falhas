@@ -3016,16 +3016,20 @@ def sync_fracttal():
         return jsonify({"ok": False, "error": str(e)}), 500
 
     criadas, revisao_manual, erros = [], [], []
+    revisao_folios_vistos = set()
 
     for ot in ots:
         mapeado = _fracttal_mapear_ot(ot)
         if not mapeado:
             continue  # OT de outro cliente/supervisor, totalmente fora de escopo
         if mapeado.get("_revisao_manual"):
-            revisao_manual.append({"wo_folio": mapeado["wo_folio"], "motivo": mapeado["motivo"]})
+            folio = mapeado["wo_folio"]
+            if folio not in revisao_folios_vistos:
+                revisao_folios_vistos.add(folio)
+                revisao_manual.append({"wo_folio": folio, "motivo": mapeado["motivo"]})
             continue
         if mapeado["numeroOS"] in os_existentes:
-            continue  # já registrada — evita duplicata
+            continue  # já registrada — evita duplicata (mesma OT, outra linha de tarefa/componente)
 
         alerta = mapeado.pop("_alerta", None)
         try:
