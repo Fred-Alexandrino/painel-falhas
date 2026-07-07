@@ -8,7 +8,11 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Chamar /sync-fracttal no backend
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
@@ -20,6 +24,23 @@ jobs:
           STATUS=$(echo "$RESPONSE" | tail -n 1)
           echo "Status HTTP: $STATUS"
           echo "Resposta: $BODY"
+
+          mkdir -p backups
+          {
+            echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Status HTTP: $STATUS"
+            echo "Resposta:"
+            echo "$BODY"
+          } > backups/last-sync-fracttal.txt
+
           if [ "$STATUS" -ge 400 ]; then
             echo "::warning::sync-fracttal retornou erro $STATUS"
           fi
+
+      - name: Salvar resultado no repositório
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/last-sync-fracttal.txt
+          git diff --quiet --cached || git commit -m "Resultado do sync Fracttal [skip ci]"
+          git push
