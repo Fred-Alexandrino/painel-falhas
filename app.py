@@ -2757,14 +2757,20 @@ _ativ_headers_ensured = {"done": False}
 
 def _garantir_headers_atividades(ws):
     """
-    Garante que o cabeçalho (linha 1) da aba Painel de Atividades tenha as
-    colunas novas (statusOS/observacoesOS/linkOS). Roda uma vez por processo
-    (cache em memória) — idempotente, então não tem problema rodar de novo
-    se o worker reiniciar.
+    Garante que a aba Painel de Atividades tenha colunas suficientes na
+    grade (a grade do Sheets tem um limite físico de colunas, separado do
+    cabeçalho) e que o cabeçalho (linha 1) tenha as colunas novas
+    (statusOS/observacoesOS/linkOS). Roda uma vez por processo (cache em
+    memória) — idempotente, então não tem problema rodar de novo se o
+    worker reiniciar.
     """
     if _ativ_headers_ensured["done"]:
         return
     try:
+        if ws.col_count < 17:
+            ws.add_cols(17 - ws.col_count)
+            log.info(f"[Atividades] Grade expandida de {ws.col_count} para 17 colunas")
+
         header = ws.row_values(1)
         extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS"}
         precisa = False
@@ -3235,6 +3241,7 @@ def completar_fracttal_backfill():
     try:
         ws = get_atividades_sheet()
         todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
