@@ -10,23 +10,21 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Rodar completar-campos-v3-fracttal em lotes
+      - name: Checar quantas ainda faltam
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          > backups/check-status-result.txt
-          for TENTATIVA in 1 2 3 4 5 6 7 8; do
-            echo "===== Lote $TENTATIVA =====" >> backups/check-status-result.txt
-            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/completar-campos-v3-fracttal?limit=6" -H "X-Webhook-Secret: $WEBHOOK_SECRET")
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            STATUS=$(echo "$RESPONSE" | tail -n 1)
-            echo "Status HTTP: $STATUS" >> backups/check-status-result.txt
-            echo "$BODY" >> backups/check-status-result.txt
-            echo "" >> backups/check-status-result.txt
-            if [ "$STATUS" -ge 400 ]; then break; fi
-          done
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "import json
+d = json.load(open('/tmp/a.json'))
+fracttal = [a for a in d.get('atividades', []) if a.get('editor') in ('fracttal-backfill','fracttal-sync','claude-chat') and a.get('numeroOS')]
+sem = [a.get('numeroOS') for a in fracttal if not a.get('percentualOS')]
+print('Total Fracttal:', len(fracttal))
+print('Sem percentualOS:', len(sem), sem)
+" > backups/check-status-result.txt
+          cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
         run: |
