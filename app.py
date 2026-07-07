@@ -3123,8 +3123,14 @@ def fracttal_raw():
     try:
         token = _fracttal_get_token()
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-        params = {k: v for k, v in request.args.items() if k != "secret"}
-        resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders", headers=headers, params=params, timeout=30)
+        folio = request.args.get("folio", "").strip()
+        if folio:
+            url = f"{FRACTTAL_API_BASE}/work_orders/{folio}"
+            params = {}
+        else:
+            url = f"{FRACTTAL_API_BASE}/work_orders"
+            params = {k: v for k, v in request.args.items() if k != "secret"}
+        resp = requests.get(url, headers=headers, params=params, timeout=30)
         try:
             body = resp.json()
         except Exception:
