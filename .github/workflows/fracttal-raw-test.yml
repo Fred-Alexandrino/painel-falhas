@@ -11,28 +11,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Chamar /fracttal-raw (parametros corretos da doc oficial)
+      - name: Checar atividades existentes (grep 9035 / 8467)
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          > backups/fracttal-raw-sample.txt
-
-          for QS in \
-            "since=2026-03-01T00:00:00-00:00&ot_status=1&start=0&limit=5" \
-            "since=2026-03-01T00:00:00-00:00&ot_status=1&start=5&limit=5" \
-          ; do
-            echo "===== TESTE: $QS =====" >> backups/fracttal-raw-sample.txt
-            RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE/fracttal-raw?$QS" \
-              -H "X-Webhook-Secret: $WEBHOOK_SECRET")
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            STATUS=$(echo "$RESPONSE" | tail -n 1)
-            echo "Status HTTP: $STATUS" >> backups/fracttal-raw-sample.txt
-            echo "$BODY" >> backups/fracttal-raw-sample.txt
-            echo "" >> backups/fracttal-raw-sample.txt
-            echo "" >> backups/fracttal-raw-sample.txt
-          done
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+ativs = d.get('atividades', [])
+for a in ativs:
+    if '9035' in a.get('numeroOS','') or '8467' in a.get('numeroOS',''):
+        print(a)
+" > backups/fracttal-raw-sample.txt
+          cat backups/fracttal-raw-sample.txt
 
       - name: Salvar resultado no repositório
         run: |
