@@ -2865,26 +2865,37 @@ def _fracttal_get_token():
     return _fracttal_token_cache["access_token"]
 
 
-def _fracttal_listar_ots_recentes(desde_horas=3):
+def _fracttal_listar_pagina(since=None, until=None, ot_status=None, start=0, limit=100):
     """
-    Consulta OTs criadas nas últimas `desde_horas` horas na Fracttal.
+    Consulta uma página de work_orders na Fracttal usando os parâmetros
+    OFICIAIS confirmados na documentação (api.fracttal.com/reference):
+      since / until   — formato 'YYYY-MM-DDTHH:MM:SS-00:00', filtra por creation_date
+      ot_status       — 1: Processo, 2: Revisão, 3: Finalizada, 4: Cancelada
+      start / limit   — paginação (limit máximo 100, é o teto da própria Fracttal)
 
-    ATENÇÃO / TODO: os nomes exatos dos query_params de filtro de data e
-    status ainda não puderam ser confirmados (dependem de acesso real à
-    API/sandbox da Fracttal). Ajustar assim que as credenciais estiverem
-    disponíveis — usar a ferramenta "Probar la conexión a las APIs" da
-    própria Fracttal para validar o request antes de confiar no cron.
+    Retorna (lista_de_ots, total_geral).
     """
     token = _fracttal_get_token()
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-
-    data_limite = (datetime.utcnow() - timedelta(hours=desde_horas)).strftime("%Y-%m-%d")
-    params = {"date_from": data_limite}  # TODO: confirmar nome real do parâmetro
+    params = {"start": start, "limit": min(limit, 100)}
+    if since:
+        params["since"] = since
+    if until:
+        params["until"] = until
+    if ot_status:
+        params["ot_status"] = ot_status
 
     resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders", headers=headers, params=params, timeout=30)
     resp.raise_for_status()
     body = resp.json()
-    return body.get("data", []) if isinstance(body, dict) else (body or [])
+    return body.get("data", []) or [], body.get("total", 0)
+
+
+def _fracttal_listar_ots_recentes(desde_horas=3):
+    """Consulta OTs criadas/atualizadas nas últimas `desde_horas` horas (usado pelo cron de 2h em 2h)."""
+    since = (datetime.utcnow() - timedelta(hours=desde_horas)).strftime("%Y-%m-%dT%H:%M:%S-00:00")
+    ots, _total = _fracttal_listar_pagina(since=since, start=0, limit=100)
+    return ots
 
 
 _FRACTTAL_PRIORIDADE_MAP = {
@@ -2922,6 +2933,23 @@ def _normalizar_tecnico(nome):
     return _norm_usina(nome)  # mesma normalização (sem acento, minúsculo) já usada pra usina
 
 
+def _extrair_nome_usina_fracttal(texto):
+    """
+    A Fracttal nomeia o campo groups_1_description no formato
+    "Cliente - Nome da Usina - UF" (ex: "Thopen - Boa Esperança do Sul 1 - SP").
+    Extrai só a parte do meio (nome da usina) pra comparar com o catálogo,
+    removendo o prefixo de cliente e o sufixo de UF quando presentes.
+    """
+    if not texto:
+        return ""
+    partes = [p.strip() for p in texto.split(" - ") if p.strip()]
+    if len(partes) >= 3:
+        return " - ".join(partes[1:-1])
+    if len(partes) == 2:
+        return partes[1]
+    return texto
+
+
 def _fracttal_mapear_ot(ot):
     """
     Converte um registro de OT da Fracttal para os campos do Painel de
@@ -2939,9 +2967,16 @@ def _fracttal_mapear_ot(ot):
       4. Nome do ativo não bate e o técnico atende mais de uma usina (ou é
          desconhecido) → não dá pra decidir sozinho, vai para revisão manual
          (retorna None com motivo, não cria nada).
+
+    Tenta primeiro o campo groups_1_description (mais limpo, formato
+    "Cliente - Usina - UF"); se não vier ou não bater, cai pro nome do
+    ativo (items_log_description / parent_description / item_code).
     """
+    texto_grupo = _extrair_nome_usina_fracttal(ot.get("groups_1_description") or "")
     texto_ativo = ot.get("items_log_description") or ot.get("parent_description") or ot.get("item_code") or ""
-    usina_por_ativo = canonizar_usina(texto_ativo)
+
+    usina_por_ativo = canonizar_usina(texto_grupo) or canonizar_usina(texto_ativo)
+    texto_usado = texto_grupo or texto_ativo
 
     tecnico_raw = (ot.get("personnel_description") or ot.get("responsible") or ot.get("created_by") or "").strip()
     tecnico_norm = _normalizar_tecnico(tecnico_raw)
@@ -2957,16 +2992,16 @@ def _fracttal_mapear_ot(ot):
                       f"(usinas esperadas dele: {', '.join(usinas_do_tecnico)}). Confira se a usina está certa.")
     elif len(usinas_do_tecnico) == 1:
         usina = usinas_do_tecnico[0]
-        alerta = (f"⚠️ Usina inferida pelo técnico responsável (\"{tecnico_raw}\"), pois o ativo "
-                  f"\"{texto_ativo}\" não bateu com o catálogo. Confira se está correto.")
+        alerta = (f"⚠️ Usina inferida pelo técnico responsável (\"{tecnico_raw}\"), pois nem o grupo "
+                  f"(\"{texto_grupo}\") nem o ativo (\"{texto_ativo}\") bateram com o catálogo. Confira se está correto.")
     else:
         if usinas_do_tecnico:
-            motivo = (f"Ativo \"{texto_ativo}\" não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
+            motivo = (f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
                       f"uma usina ({', '.join(usinas_do_tecnico)}) — não dá pra decidir sozinho.")
         elif tecnico_raw:
-            motivo = f"Ativo \"{texto_ativo}\" não reconhecido e técnico \"{tecnico_raw}\" não está no mapa de usinas."
+            motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" não está no mapa de usinas."
         else:
-            motivo = f"Ativo \"{texto_ativo}\" não reconhecido e OT sem técnico responsável informado."
+            motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e OT sem técnico responsável informado."
         return {"_revisao_manual": True, "motivo": motivo, "wo_folio": ot.get("wo_folio", "?")}
 
     cliente = inferir_cliente(usina)
@@ -3012,6 +3047,93 @@ def fracttal_raw():
         return jsonify({"ok": True, "status_code": resp.status_code, "url_chamada": resp.url, "body": body})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/backfill-fracttal", methods=["POST", "GET"])
+def backfill_fracttal():
+    """
+    Backfill histórico de OTs da Fracttal pro Painel de Atividades.
+    Processa UMA PÁGINA por chamada (start/limit) — pensado pra ser chamado
+    repetidas vezes pelo workflow do GitHub Actions, avançando o `start`,
+    pra não estourar o timeout de 60s do Render numa carga grande.
+
+    Query params:
+      since      (default 2026-03-01T00:00:00-00:00)
+      until      (opcional)
+      ot_status  (default 1 = Em Processo)
+      start      (default 0)
+      limit      (default 100, teto de 100 — limite da própria Fracttal)
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    since = request.args.get("since", "2026-03-01T00:00:00-00:00")
+    until = request.args.get("until", "") or None
+    ot_status = request.args.get("ot_status", "1")
+    start = int(request.args.get("start", 0))
+    limit = min(int(request.args.get("limit", 100)), 100)
+
+    try:
+        ots, total = _fracttal_listar_pagina(since=since, until=until, ot_status=ot_status,
+                                              start=start, limit=limit)
+    except Exception as e:
+        log.error(f"[backfill-fracttal] Erro ao consultar Fracttal (start={start}): {e}")
+        return jsonify({"ok": False, "error": str(e), "start": start}), 502
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        os_existentes = {row[13].strip() for row in todos[1:] if len(row) > 13 and row[13].strip()}
+    except Exception as e:
+        log.error(f"[backfill-fracttal] Erro ao ler Painel de Atividades: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    criadas, revisao_manual, erros = [], [], []
+    revisao_folios_vistos = set()
+
+    for ot in ots:
+        mapeado = _fracttal_mapear_ot(ot)
+        if not mapeado:
+            continue
+        if mapeado.get("_revisao_manual"):
+            folio = mapeado["wo_folio"]
+            if folio not in revisao_folios_vistos:
+                revisao_folios_vistos.add(folio)
+                revisao_manual.append({"wo_folio": folio, "motivo": mapeado["motivo"]})
+            continue
+        if mapeado["numeroOS"] in os_existentes:
+            continue  # já registrada (nesta página ou em página anterior do mesmo backfill)
+
+        alerta = mapeado.pop("_alerta", None)
+        mapeado["editor"] = "fracttal-backfill"
+        try:
+            novo_id = _criar_atividade_interna(ws=ws, todos=todos, **mapeado)
+            if alerta:
+                _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
+                                                 "fracttal-backfill", append=True)
+            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id})
+            os_existentes.add(mapeado["numeroOS"])
+        except Exception as e:
+            log.error(f"[backfill-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
+            erros.append(mapeado.get("numeroOS", "?"))
+
+    proximo_start = start + limit
+    log.info(f"[backfill-fracttal] start={start} total_geral={total} criadas={len(criadas)} "
+             f"revisao_manual={len(revisao_manual)} erros={len(erros)}")
+    return jsonify({
+        "ok": True,
+        "total_geral": total,
+        "start": start,
+        "limit": limit,
+        "processados_nesta_pagina": len(ots),
+        "proximo_start": proximo_start,
+        "tem_mais": proximo_start < total,
+        "criadas": criadas,
+        "revisao_manual": revisao_manual,
+        "erros": erros,
+    })
 
 
 @app.route("/sync-fracttal", methods=["POST", "GET"])
