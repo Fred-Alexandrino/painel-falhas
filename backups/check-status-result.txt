@@ -1,0 +1,38 @@
+Total atividades vindas da Fracttal: 32
+Sem statusOS preenchido: 0
+
+9035 | Em Processo | 08/07/2026 | Vinculada a OS 8467
+
+Fabricante solicita
+9024 | Em Processo | 06/07/2026 | 
+9023 | Em Processo | 24/07/2026 | 
+8919 | Em Processo | 09/07/2026 | Verificar tensões e correntes CC por str
+8918 | Em Processo | 06/07/2026 | Verificar tensões e correntes CC por str
+8917 | Em Processo | 06/07/2026 | Verificar tensões e correntes CC por str
+8916 | Em Processo | 06/07/2026 | Verificar tensões e correntes CC por str
+8915 | Em Processo | 06/07/2026 | Verificar tensões e correntes CC por str
+8910 | Em Processo | 07/07/2026 | Verificar tensões e correntes CC por str
+8909 | Em Processo | 07/07/2026 | Verificar tensões e correntes CC por str
+8908 | Em Processo | 07/07/2026 | Verificar tensões e correntes CC por str
+8907 | Em Processo | 07/07/2026 | Verificar tensões e correntes CC por str
+8906 | Em Processo | 07/07/2026 | Verificar tensões e correntes CC por str
+8905 | Em Processo | 07/07/2026 | Verificar tensões e correntes CC por str
+8904 | Em Processo | 06/07/2026 | Verificar tensões e correntes CC por str
+8903 | Em Processo | 06/07/2026 | Verificar tensões e correntes CC por str
+8765 | Em Revisão | 07/07/2026 | 
+8685 | Em Processo | 06/07/2026 | SPDA
+Não tem fotos da medição de continu
+8665 | Em Processo | 07/07/2026 | 
+8664 | Em Processo | 14/07/2026 | Realizada as atividades e inspeções da p
+8663 | Em Revisão | 06/07/2026 | 
+8661 | Em Processo | 16/07/2026 | Só possuímos 1 qgbt
+8657 | Em Processo | 30/07/2026 | 
+8605 | Em Processo | 17/07/2026 | 
+8604 | Em Processo | 17/07/2026 | 
+8532 | Em Processo | 2026-07-03T18:39:16.440506+00:00 | 
+8483 | Em Processo | 25/06/2026 | 
+8025 | Em Processo | 19/06/2026 | Supervisor avisado
+7962 | Em Processo | 30/06/2026 | 
+7904 | Em Processo | 17/06/2026 | 
+7854 | Em Processo | 15/06/2026 | Acompanhar a abertura, inspeção e interv
+5504 | Em Processo | 15/04/2026 | Identificar o equipamento: modelo, númer
