@@ -2765,16 +2765,23 @@ def _garantir_headers_atividades(ws):
     grade (a grade do Sheets tem um limite físico de colunas, separado do
     cabeçalho) e que o cabeçalho (linha 1) tenha as colunas novas
     (statusOS/observacoesOS/linkOS/statusTarefaOS/etiquetasOS/anotacoesPessoais).
-    Roda uma vez por processo (cache em memória) — idempotente, então não
-    tem problema rodar de novo se o worker reiniciar.
+
+    A expansão de colunas é tentada em TODA chamada (é uma checagem barata
+    e idempotente — só chama a API se realmente precisar crescer), pra não
+    ficar travada pra sempre caso uma tentativa anterior tenha falhado
+    silenciosamente. Só o conteúdo do cabeçalho (linha 1) é cacheado por
+    processo, já que isso sim é mais caro de checar toda hora.
     """
+    try:
+        if ws.col_count < ATIV_TOTAL_COLUNAS:
+            ws.resize(cols=ATIV_TOTAL_COLUNAS)
+            log.info(f"[Atividades] Grade expandida para {ATIV_TOTAL_COLUNAS} colunas")
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao expandir colunas da grade: {e}")
+
     if _ativ_headers_ensured["done"]:
         return
     try:
-        if ws.col_count < ATIV_TOTAL_COLUNAS:
-            ws.add_cols(ATIV_TOTAL_COLUNAS - ws.col_count)
-            log.info(f"[Atividades] Grade expandida para {ATIV_TOTAL_COLUNAS} colunas")
-
         header = ws.row_values(1)
         extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS", 18: "statusTarefaOS",
                   19: "etiquetasOS", 20: "anotacoesPessoais"}
@@ -2791,10 +2798,9 @@ def _garantir_headers_atividades(ws):
                 novo_header[col - 1] = nome
             ws.update(f"A1:{chr(64 + ATIV_TOTAL_COLUNAS)}1", [novo_header])
             log.info("[Atividades] Header estendido com statusOS/observacoesOS/linkOS/statusTarefaOS/etiquetasOS/anotacoesPessoais")
-    except Exception as e:
-        log.error(f"[Atividades] Erro ao garantir headers estendidos: {e}")
-    finally:
         _ativ_headers_ensured["done"] = True
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao garantir conteúdo do header estendido: {e}")
 
 
 @app.route("/atividades", methods=["GET"])
