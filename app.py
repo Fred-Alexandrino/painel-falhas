@@ -3215,6 +3215,81 @@ def backfill_fracttal():
     })
 
 
+@app.route("/completar-fracttal-backfill", methods=["POST", "GET"])
+def completar_fracttal_backfill():
+    """
+    Complementa atividades já criadas (tipicamente pelo /backfill-fracttal
+    antes da introdução dos campos statusOS/observacoesOS/linkOS/prazo
+    corrigido) buscando cada OT individualmente na Fracttal por wo_folio
+    (GET /work_orders/{folio}) e preenchendo os campos que faltam.
+
+    Só mexe em linhas com editor == "fracttal-backfill" (ou "fracttal-sync")
+    E que ainda não têm statusOS preenchido — não sobrescreve nada que já
+    foi completado ou editado manualmente.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    atualizadas, erros, puladas = [], [], []
+
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < 17:
+            row = row + [""] * (17 - len(row))
+        editor = row[12].strip()
+        numero_os = row[13].strip()
+        status_os_atual = row[14].strip()
+
+        if editor not in ("fracttal-backfill", "fracttal-sync") or not numero_os or status_os_atual:
+            continue
+
+        try:
+            resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+            resp.raise_for_status()
+            body = resp.json()
+            dados = (body.get("data") or [])
+            if not dados:
+                puladas.append({"numeroOS": numero_os, "motivo": "OT não encontrada na Fracttal"})
+                continue
+            ot = dados[0]
+
+            status_os_raw = str(ot.get("id_status_work_order", "")).strip()
+            status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
+            observacoes = (ot.get("task_note") or ot.get("note") or "").strip()
+            link = _fracttal_montar_link(ot)
+            prazo_iso = (ot.get("final_date") or ot.get("initial_date") or
+                         ot.get("cal_date_maintenance") or ot.get("date_maintenance") or "")
+            prazo_novo = _fracttal_formatar_data_br(prazo_iso)
+
+            if status_os:
+                ws.update_cell(i, 15, status_os)
+            if observacoes:
+                ws.update_cell(i, 16, observacoes)
+            if link:
+                ws.update_cell(i, 17, link)
+            prazo_atual = row[6].strip()
+            if prazo_novo and prazo_novo != prazo_atual:
+                ws.update_cell(i, 7, prazo_novo)
+
+            atualizadas.append({"linha": i, "numeroOS": numero_os, "statusOS": status_os})
+        except Exception as e:
+            log.error(f"[completar-fracttal-backfill] Erro na OT {numero_os}: {e}")
+            erros.append({"numeroOS": numero_os, "erro": str(e)})
+
+    log.info(f"[completar-fracttal-backfill] atualizadas={len(atualizadas)} puladas={len(puladas)} erros={len(erros)}")
+    return jsonify({"ok": True, "atualizadas": atualizadas, "puladas": puladas, "erros": erros})
+
+
 @app.route("/sync-fracttal", methods=["POST", "GET"])
 def sync_fracttal():
     """
