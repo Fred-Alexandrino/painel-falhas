@@ -3454,6 +3454,82 @@ def completar_fracttal_backfill():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
+@app.route("/completar-campos-v2-fracttal", methods=["POST", "GET"])
+def completar_campos_v2_fracttal():
+    """
+    Reprocessa atividades da Fracttal que já têm statusOS preenchido (então
+    o /completar-fracttal-backfill as ignora) mas ainda não têm os campos
+    mais novos: statusTarefaOS, etiquetasOS, e a correção de "Múltiplos
+    equipamentos" quando a OS tem mais de uma tarefa. Existe só pra
+    completar o que ficou faltando em atividades criadas antes desses
+    campos existirem.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    limit = int(request.args.get("limit", 6))
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    atualizadas, erros = [], []
+    processadas = 0
+
+    for i, row in enumerate(todos[1:], start=2):
+        if processadas >= limit:
+            break
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        editor = row[12].strip()
+        numero_os = row[13].strip()
+        status_os_atual = row[14].strip()
+        status_tarefa_atual = row[17].strip()
+
+        if editor not in ("fracttal-backfill", "fracttal-sync", "claude-chat") or not numero_os:
+            continue
+        if not status_os_atual or status_tarefa_atual:
+            continue  # ou ainda não foi completado pelo v1, ou já tem os campos novos
+
+        processadas += 1
+        try:
+            resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+            resp.raise_for_status()
+            tasks = (resp.json().get("data") or [])
+            if not tasks:
+                continue
+
+            status_tarefa = _fracttal_status_tarefa_agregado(tasks)
+            etiquetas = _fracttal_etiquetas_agregadas(tasks)
+            ws.update(f"R{i}:S{i}", [[status_tarefa, etiquetas]])
+
+            if len(tasks) > 1 and row[3].strip() != "Múltiplos equipamentos":
+                ws.update_cell(i, 4, "Múltiplos equipamentos")
+                detalhe = _fracttal_historico_detalhe(tasks)
+                if detalhe:
+                    hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+                    ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{detalhe}".strip() if hist_atual else detalhe)
+
+            atualizadas.append({"linha": i, "numeroOS": numero_os, "itens": len(tasks),
+                                 "statusTarefaOS": status_tarefa})
+            time.sleep(1.2)
+        except Exception as e:
+            log.error(f"[completar-campos-v2-fracttal] Erro na OT {numero_os}: {e}")
+            erros.append({"numeroOS": numero_os, "erro": str(e)})
+
+    log.info(f"[completar-campos-v2-fracttal] atualizadas={len(atualizadas)} erros={len(erros)}")
+    return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros,
+                     "processadas_nesta_chamada": processadas, "limit": limit})
+
+
 @app.route("/atualizar-links-fracttal", methods=["POST", "GET"])
 def atualizar_links_fracttal():
     """
