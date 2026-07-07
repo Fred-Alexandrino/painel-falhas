@@ -1,0 +1,37 @@
+name: Fracttal Raw Diagnostic (temporario)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  raw:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chamar /fracttal-raw
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE/fracttal-raw?date_from=2026-03-01" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
+          mkdir -p backups
+          {
+            echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Status HTTP: $STATUS"
+            echo "Resposta:"
+            echo "$BODY"
+          } > backups/fracttal-raw-sample.txt
+
+      - name: Salvar resultado no repositório
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/fracttal-raw-sample.txt
+          git diff --quiet --cached || git commit -m "Amostra raw da Fracttal [skip ci]"
+          git push
