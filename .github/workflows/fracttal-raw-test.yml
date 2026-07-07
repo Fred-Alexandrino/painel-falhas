@@ -11,25 +11,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rodar completar-fracttal-backfill
+      - name: Chamar /completar-fracttal-backfill
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE/completar-fracttal-backfill" -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+          RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 120 -X POST "$BASE/completar-fracttal-backfill" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET")
           BODY=$(echo "$RESPONSE" | head -n -1)
           STATUS=$(echo "$RESPONSE" | tail -n 1)
           {
             echo "Status HTTP: $STATUS"
+            echo "Resposta:"
             echo "$BODY"
           } > backups/fracttal-raw-sample.txt
           cat backups/fracttal-raw-sample.txt
 
       - name: Salvar resultado no repositório
+        if: always()
         run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
           git add backups/fracttal-raw-sample.txt
-          git diff --quiet --cached || git commit -m "Amostra raw da Fracttal [skip ci]"
+          git diff --quiet --cached || git commit -m "Resultado completar-fracttal-backfill [skip ci]"
           git push
