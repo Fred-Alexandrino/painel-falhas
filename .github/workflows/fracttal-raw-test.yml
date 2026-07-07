@@ -17,15 +17,8 @@ jobs:
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
-            | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-ativs = d.get('atividades', [])
-for a in ativs:
-    if '9035' in a.get('numeroOS','') or '8467' in a.get('numeroOS',''):
-        print(a)
-" > backups/fracttal-raw-sample.txt
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/ativs.json
+          python3 -c "import json; d=json.load(open('/tmp/ativs.json')); [print(a) for a in d.get('atividades', []) if '9035' in a.get('numeroOS','') or '8467' in a.get('numeroOS','')]" > backups/fracttal-raw-sample.txt
           cat backups/fracttal-raw-sample.txt
 
       - name: Salvar resultado no repositório
