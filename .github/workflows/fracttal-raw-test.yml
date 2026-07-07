@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Chamar /fracttal-raw (variações de teste)
+      - name: Chamar /fracttal-raw (parametros corretos da doc oficial)
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
@@ -20,9 +20,8 @@ jobs:
           > backups/fracttal-raw-sample.txt
 
           for QS in \
-            "date_from=2026-03-01&id_status_work_order=1&page=1" \
-            "date_from=2026-03-01&id_status_work_order=1&page=2" \
-            "date_from=2026-03-01&status=1&page=1" \
+            "since=2026-03-01T00:00:00-00:00&ot_status=1&start=0&limit=5" \
+            "since=2026-03-01T00:00:00-00:00&ot_status=1&start=5&limit=5" \
           ; do
             echo "===== TESTE: $QS =====" >> backups/fracttal-raw-sample.txt
             RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE/fracttal-raw?$QS" \
@@ -30,8 +29,7 @@ jobs:
             BODY=$(echo "$RESPONSE" | head -n -1)
             STATUS=$(echo "$RESPONSE" | tail -n 1)
             echo "Status HTTP: $STATUS" >> backups/fracttal-raw-sample.txt
-            # trunca o corpo pra nao estourar o arquivo (só precisamos ver total/paginacao/estrutura)
-            echo "$BODY" | head -c 1500 >> backups/fracttal-raw-sample.txt
+            echo "$BODY" >> backups/fracttal-raw-sample.txt
             echo "" >> backups/fracttal-raw-sample.txt
             echo "" >> backups/fracttal-raw-sample.txt
           done
