@@ -2988,6 +2988,32 @@ def _fracttal_mapear_ot(ot):
     }
 
 
+@app.route("/fracttal-raw", methods=["GET"])
+def fracttal_raw():
+    """
+    Endpoint de DIAGNÓSTICO — repassa query params direto pro /work_orders
+    da Fracttal e devolve a resposta crua (sem mapear). Usado só pra
+    confirmar nomes de parâmetros (status, paginação) antes de rodar
+    sincronizações em lote. Protegido pelo mesmo WEBHOOK_SECRET.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        token = _fracttal_get_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        params = {k: v for k, v in request.args.items() if k != "secret"}
+        resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders", headers=headers, params=params, timeout=30)
+        try:
+            body = resp.json()
+        except Exception:
+            body = resp.text[:3000]
+        return jsonify({"ok": True, "status_code": resp.status_code, "url_chamada": resp.url, "body": body})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/sync-fracttal", methods=["POST", "GET"])
 def sync_fracttal():
     """
