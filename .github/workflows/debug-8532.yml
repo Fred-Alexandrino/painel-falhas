@@ -10,13 +10,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Consultar OS 8626 raw
+      - name: Checar OS 8626 no painel
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/fracttal-raw?folio=8626" -H "X-Webhook-Secret: $WEBHOOK_SECRET" > backups/check-status-result.txt
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          achou = False
+          for a in d.get('atividades', []):
+              if a.get('numeroOS') == '8626':
+                  achou = True
+                  print(a)
+          if not achou:
+              print('OS 8626 NAO existe no painel ainda')
+          " > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
