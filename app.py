@@ -2744,13 +2744,17 @@ def _proximo_id_atividade(todos):
 
 ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "responsavel", "prazo",
                       "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
-                      "numeroOS", "statusOS", "observacoesOS", "linkOS"]
+                      "numeroOS", "statusOS", "observacoesOS", "linkOS", "statusTarefaOS", "etiquetasOS",
+                      "anotacoesPessoais"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
     "prazo": 7, "prioridade": 8, "status": 9, "historico": 12, "numeroOS": 14,
-    "statusOS": 15, "observacoesOS": 16, "linkOS": 17,
+    "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
+    "anotacoesPessoais": 20,
 }
+
+ATIV_TOTAL_COLUNAS = 20
 
 _ativ_headers_ensured = {"done": False}
 
@@ -2760,19 +2764,20 @@ def _garantir_headers_atividades(ws):
     Garante que a aba Painel de Atividades tenha colunas suficientes na
     grade (a grade do Sheets tem um limite físico de colunas, separado do
     cabeçalho) e que o cabeçalho (linha 1) tenha as colunas novas
-    (statusOS/observacoesOS/linkOS). Roda uma vez por processo (cache em
-    memória) — idempotente, então não tem problema rodar de novo se o
-    worker reiniciar.
+    (statusOS/observacoesOS/linkOS/statusTarefaOS/etiquetasOS/anotacoesPessoais).
+    Roda uma vez por processo (cache em memória) — idempotente, então não
+    tem problema rodar de novo se o worker reiniciar.
     """
     if _ativ_headers_ensured["done"]:
         return
     try:
-        if ws.col_count < 17:
-            ws.add_cols(17 - ws.col_count)
-            log.info(f"[Atividades] Grade expandida de {ws.col_count} para 17 colunas")
+        if ws.col_count < ATIV_TOTAL_COLUNAS:
+            ws.add_cols(ATIV_TOTAL_COLUNAS - ws.col_count)
+            log.info(f"[Atividades] Grade expandida para {ATIV_TOTAL_COLUNAS} colunas")
 
         header = ws.row_values(1)
-        extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS"}
+        extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS", 18: "statusTarefaOS",
+                  19: "etiquetasOS", 20: "anotacoesPessoais"}
         precisa = False
         for col, nome in extras.items():
             atual = header[col - 1] if len(header) >= col else ""
@@ -2780,12 +2785,12 @@ def _garantir_headers_atividades(ws):
                 precisa = True
                 break
         if precisa:
-            novo_header = header + [""] * max(0, 17 - len(header))
-            novo_header = novo_header[:17]
+            novo_header = header + [""] * max(0, ATIV_TOTAL_COLUNAS - len(header))
+            novo_header = novo_header[:ATIV_TOTAL_COLUNAS]
             for col, nome in extras.items():
                 novo_header[col - 1] = nome
-            ws.update("A1:Q1", [novo_header])
-            log.info("[Atividades] Header estendido com statusOS/observacoesOS/linkOS")
+            ws.update(f"A1:{chr(64 + ATIV_TOTAL_COLUNAS)}1", [novo_header])
+            log.info("[Atividades] Header estendido com statusOS/observacoesOS/linkOS/statusTarefaOS/etiquetasOS/anotacoesPessoais")
     except Exception as e:
         log.error(f"[Atividades] Erro ao garantir headers estendidos: {e}")
     finally:
@@ -2813,6 +2818,7 @@ def listar_atividades():
 def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", responsavel="",
                               prazo="", prioridade="Média", status="Em Aberto", numeroOS="",
                               editor="dashboard", statusOS="", observacoesOS="", linkOS="",
+                              statusTarefaOS="", etiquetasOS="", anotacoesPessoais="",
                               ws=None, todos=None):
     """
     Cria uma linha na aba Painel de Atividades. Usada tanto pelo endpoint
@@ -2841,7 +2847,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
 
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
              prioridade, status, agora, "", historico_inicial, editor, numeroOS,
-             statusOS, observacoesOS, linkOS]
+             statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais]
     ws.append_row(linha)
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
     todos.append(linha)
@@ -2873,6 +2879,9 @@ def nova_atividade():
             statusOS=body.get("statusOS", ""),
             observacoesOS=body.get("observacoesOS", ""),
             linkOS=body.get("linkOS", ""),
+            statusTarefaOS=body.get("statusTarefaOS", ""),
+            etiquetasOS=body.get("etiquetasOS", ""),
+            anotacoesPessoais=body.get("anotacoesPessoais", ""),
         )
         return jsonify({"ok": True, "id": novo_id})
     except ValueError as e:
@@ -3039,12 +3048,117 @@ def _extrair_nome_usina_fracttal(texto):
     return texto
 
 
-def _fracttal_mapear_ot(ot):
+_STATUS_TAREFA_MAP = {
+    "NO_STARTED": "Não Iniciada",
+    "IN_PROGRESS": "Em Progresso",
+    "PAUSED": "Pausada",
+    "DONE": "Concluída",
+}
+
+
+def _fracttal_status_tarefa_label(task_status_raw):
+    return _STATUS_TAREFA_MAP.get((task_status_raw or "").strip().upper(), (task_status_raw or "").strip())
+
+
+def _fracttal_agrupar_por_wo(ots):
+    """Agrupa uma lista de linhas (uma por tarefa) da Fracttal pelo wo_folio (a mesma OS)."""
+    grupos, ordem = {}, []
+    for ot in ots:
+        folio = (ot.get("wo_folio") or "").strip()
+        if not folio:
+            continue
+        if folio not in grupos:
+            grupos[folio] = []
+            ordem.append(folio)
+        grupos[folio].append(ot)
+    return [(folio, grupos[folio]) for folio in ordem]
+
+
+def _fracttal_descricao_agregada(tasks):
+    descs = [(t.get("description") or "").strip() for t in tasks if (t.get("description") or "").strip()]
+    if not descs:
+        return ""
+    if len(tasks) == 1:
+        return descs[0]
+    m = re.match(r"^(\[[^\]]*\]\s*-\s*[^-]+)\s*-", descs[0])
+    if m:
+        return f"{m.group(1).strip()} - Múltiplas atividades ({len(tasks)} itens)"
+    return f"{descs[0]} (+{len(tasks) - 1} outras atividades)"
+
+
+def _fracttal_prazo_agregado(tasks):
+    """Prazo mais próximo entre todas as tarefas da OS (a que vence primeiro)."""
+    datas = []
+    for t in tasks:
+        bruta = t.get("final_date") or t.get("date_maintenance") or t.get("cal_date_maintenance") or t.get("initial_date")
+        if bruta:
+            datas.append(str(bruta))
+    if not datas:
+        return ""
+    datas.sort()
+    return _fracttal_formatar_data_br(datas[0])
+
+
+def _fracttal_status_tarefa_agregado(tasks):
+    contagem = {}
+    for t in tasks:
+        label = _fracttal_status_tarefa_label(t.get("task_status"))
+        if label:
+            contagem[label] = contagem.get(label, 0) + 1
+    if not contagem:
+        return ""
+    if len(tasks) == 1:
+        return next(iter(contagem))
+    return " | ".join(f"{qtd} {label}" for label, qtd in contagem.items())
+
+
+def _fracttal_etiquetas_agregadas(tasks):
+    vistas, nomes = set(), []
+    for t in tasks:
+        for lbl in (t.get("labels") or []):
+            desc = (lbl.get("description") or "").strip()
+            if desc and desc not in vistas:
+                vistas.add(desc)
+                nomes.append(desc)
+    return ", ".join(nomes)
+
+
+def _fracttal_observacoes_agregadas(tasks):
+    vistas, notas = set(), []
+    for t in tasks:
+        nota = (t.get("task_note") or t.get("note") or "").strip()
+        if nota and nota not in vistas:
+            vistas.add(nota)
+            notas.append(nota)
+    return "\n---\n".join(notas)
+
+
+def _fracttal_historico_detalhe(tasks):
+    """Detalhamento por equipamento — só gerado quando a OS tem mais de uma tarefa."""
+    if len(tasks) <= 1:
+        return ""
+    linhas = [f"⚙️ OS com {len(tasks)} itens/equipamentos — detalhamento:"]
+    for t in tasks:
+        eq = (t.get("items_log_description") or t.get("code") or "?").split("{")[0].strip()
+        status = _fracttal_status_tarefa_label(t.get("task_status"))
+        prazo = _fracttal_formatar_data_br(t.get("final_date") or t.get("date_maintenance") or "")
+        linha = f"• {eq} — {status}"
+        if prazo:
+            linha += f" (prazo {prazo})"
+        linhas.append(linha)
+    return "\n".join(linhas)
+
+
+def _fracttal_mapear_grupo(tasks):
     """
-    Converte um registro de OT da Fracttal para os campos do Painel de
-    Atividades, reaproveitando o catálogo de usinas/clientes já existente
-    (canonizar_usina / inferir_cliente), e faz o CRUZAMENTO com o técnico
-    responsável (TECNICO_USINAS) para validar/reforçar o resultado:
+    Converte um GRUPO de tarefas (todas da mesma OS, mesmo wo_folio) para
+    os campos do Painel de Atividades — uma OS vira UMA atividade, mesmo
+    quando tem várias tarefas/equipamentos (ex: preventivas mensais/anuais
+    com dezenas de itens). Detalhamento por equipamento vai pro Histórico.
+
+    O cruzamento usina x técnico responsável usa a primeira tarefa como
+    representante (grupo/usina e técnico geralmente são os mesmos pra
+    todas as tarefas de uma mesma OS).
 
       1. Nome do ativo bate com o catálogo E técnico é esperado nessa usina
          → segue normal, sem alerta.
@@ -3056,18 +3170,15 @@ def _fracttal_mapear_ot(ot):
       4. Nome do ativo não bate e o técnico atende mais de uma usina (ou é
          desconhecido) → não dá pra decidir sozinho, vai para revisão manual
          (retorna None com motivo, não cria nada).
-
-    Tenta primeiro o campo groups_1_description (mais limpo, formato
-    "Cliente - Usina - UF"); se não vier ou não bater, cai pro nome do
-    ativo (items_log_description / parent_description / item_code).
     """
-    texto_grupo = _extrair_nome_usina_fracttal(ot.get("groups_1_description") or "")
-    texto_ativo = ot.get("items_log_description") or ot.get("parent_description") or ot.get("item_code") or ""
+    representante = tasks[0]
+    texto_grupo = _extrair_nome_usina_fracttal(representante.get("groups_1_description") or "")
+    texto_ativo = representante.get("items_log_description") or representante.get("parent_description") or representante.get("item_code") or ""
 
     usina_por_ativo = canonizar_usina(texto_grupo) or canonizar_usina(texto_ativo)
     texto_usado = texto_grupo or texto_ativo
 
-    tecnico_raw = (ot.get("personnel_description") or ot.get("responsible") or ot.get("created_by") or "").strip()
+    tecnico_raw = (representante.get("personnel_description") or representante.get("responsible") or representante.get("created_by") or "").strip()
     tecnico_norm = _normalizar_tecnico(tecnico_raw)
     usinas_do_tecnico = TECNICO_USINAS.get(tecnico_norm, [])
 
@@ -3091,32 +3202,40 @@ def _fracttal_mapear_ot(ot):
             motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" não está no mapa de usinas."
         else:
             motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e OT sem técnico responsável informado."
-        return {"_revisao_manual": True, "motivo": motivo, "wo_folio": ot.get("wo_folio", "?")}
+        return {"_revisao_manual": True, "motivo": motivo, "wo_folio": representante.get("wo_folio", "?")}
 
     cliente = inferir_cliente(usina)
-    prioridade_raw = (ot.get("priorities_description") or "").strip().upper()
+    prioridade_raw = (representante.get("priorities_description") or "").strip().upper()
     prioridade = _FRACTTAL_PRIORIDADE_MAP.get(prioridade_raw, "Média")
 
-    status_os_raw = str(ot.get("id_status_work_order", "")).strip()
+    status_os_raw = str(representante.get("id_status_work_order", "")).strip()
     status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
 
-    prazo_iso = ot.get("final_date") or ot.get("initial_date") or ot.get("cal_date_maintenance") or ot.get("date_maintenance") or ""
-    observacoes = (ot.get("task_note") or ot.get("note") or "").strip()
+    multiplos = len(tasks) > 1
+    equipamento = "Múltiplos equipamentos" if multiplos else (representante.get("code") or texto_ativo or "Múltiplos equipamentos").strip()
+
+    detalhe_hist = _fracttal_historico_detalhe(tasks)
+    if alerta and detalhe_hist:
+        alerta = f"{alerta}\n{detalhe_hist}"
+    elif detalhe_hist:
+        alerta = detalhe_hist
 
     return {
         "cliente": cliente,
         "usina": usina,
-        "equipamento": (ot.get("code") or texto_ativo or "Múltiplos equipamentos").strip(),
-        "descricao": (ot.get("description") or "").strip() or f"OT {ot.get('wo_folio', '')} (Fracttal)",
+        "equipamento": equipamento,
+        "descricao": _fracttal_descricao_agregada(tasks) or f"OT {representante.get('wo_folio', '')} (Fracttal)",
         "responsavel": tecnico_raw,
-        "prazo": _fracttal_formatar_data_br(prazo_iso),
+        "prazo": _fracttal_prazo_agregado(tasks),
         "prioridade": prioridade,
         "status": "Em Aberto",
-        "numeroOS": (ot.get("wo_folio") or "").strip(),
+        "numeroOS": (representante.get("wo_folio") or "").strip(),
         "editor": "fracttal-sync",
         "statusOS": status_os,
-        "observacoesOS": observacoes,
-        "linkOS": _fracttal_montar_link(ot),
+        "observacoesOS": _fracttal_observacoes_agregadas(tasks),
+        "linkOS": _fracttal_montar_link(representante),
+        "statusTarefaOS": _fracttal_status_tarefa_agregado(tasks),
+        "etiquetasOS": _fracttal_etiquetas_agregadas(tasks),
         "_alerta": alerta,
     }
 
@@ -3201,18 +3320,17 @@ def backfill_fracttal():
     criadas, revisao_manual, erros = [], [], []
     revisao_folios_vistos = set()
 
-    for ot in ots:
-        mapeado = _fracttal_mapear_ot(ot)
+    for folio, tasks in _fracttal_agrupar_por_wo(ots):
+        if folio in os_existentes:
+            continue  # já registrada (nesta página ou em página anterior do mesmo backfill)
+        mapeado = _fracttal_mapear_grupo(tasks)
         if not mapeado:
             continue
         if mapeado.get("_revisao_manual"):
-            folio = mapeado["wo_folio"]
             if folio not in revisao_folios_vistos:
                 revisao_folios_vistos.add(folio)
                 revisao_manual.append({"wo_folio": folio, "motivo": mapeado["motivo"]})
             continue
-        if mapeado["numeroOS"] in os_existentes:
-            continue  # já registrada (nesta página ou em página anterior do mesmo backfill)
 
         alerta = mapeado.pop("_alerta", None)
         mapeado["editor"] = "fracttal-backfill"
@@ -3221,7 +3339,7 @@ def backfill_fracttal():
             if alerta:
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-backfill", append=True)
-            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id})
+            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks)})
             os_existentes.add(mapeado["numeroOS"])
         except Exception as e:
             log.error(f"[backfill-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
@@ -3279,8 +3397,8 @@ def completar_fracttal_backfill():
     for i, row in enumerate(todos[1:], start=2):
         if processadas >= limit:
             break
-        if len(row) < 17:
-            row = row + [""] * (17 - len(row))
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
         editor = row[12].strip()
         numero_os = row[13].strip()
         status_os_atual = row[14].strip()
@@ -3293,28 +3411,33 @@ def completar_fracttal_backfill():
             resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
             resp.raise_for_status()
             body = resp.json()
-            dados = (body.get("data") or [])
-            if not dados:
+            tasks = (body.get("data") or [])
+            if not tasks:
                 puladas.append({"numeroOS": numero_os, "motivo": "OT não encontrada na Fracttal"})
                 continue
-            ot = dados[0]
 
-            status_os_raw = str(ot.get("id_status_work_order", "")).strip()
+            representante = tasks[0]
+            status_os_raw = str(representante.get("id_status_work_order", "")).strip()
             status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
-            observacoes = (ot.get("task_note") or ot.get("note") or "").strip()
-            link = _fracttal_montar_link(ot)
-            prazo_iso = (ot.get("final_date") or ot.get("initial_date") or
-                         ot.get("cal_date_maintenance") or ot.get("date_maintenance") or "")
-            prazo_novo = _fracttal_formatar_data_br(prazo_iso)
+            observacoes = _fracttal_observacoes_agregadas(tasks)
+            link = _fracttal_montar_link(representante)
+            prazo_novo = _fracttal_prazo_agregado(tasks)
+            status_tarefa = _fracttal_status_tarefa_agregado(tasks)
+            etiquetas = _fracttal_etiquetas_agregadas(tasks)
 
-            # escreve os 3 campos novos numa única chamada (evita estourar cota de escrita)
-            if status_os or observacoes or link:
-                ws.update(f"O{i}:Q{i}", [[status_os, observacoes, link]])
+            # escreve os campos novos numa única chamada (evita estourar cota de escrita)
+            ws.update(f"O{i}:S{i}", [[status_os, observacoes, link, status_tarefa, etiquetas]])
             prazo_atual = row[6].strip()
             if prazo_novo and prazo_novo != prazo_atual:
                 ws.update_cell(i, 7, prazo_novo)
+            if len(tasks) > 1 and row[3].strip() != "Múltiplos equipamentos":
+                ws.update_cell(i, 4, "Múltiplos equipamentos")
+                detalhe = _fracttal_historico_detalhe(tasks)
+                if detalhe:
+                    hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+                    ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{detalhe}".strip() if hist_atual else detalhe)
 
-            atualizadas.append({"linha": i, "numeroOS": numero_os, "statusOS": status_os})
+            atualizadas.append({"linha": i, "numeroOS": numero_os, "statusOS": status_os, "itens": len(tasks)})
             time.sleep(1.2)  # respeita a cota de escrita por minuto do Google Sheets
         except Exception as e:
             log.error(f"[completar-fracttal-backfill] Erro na OT {numero_os}: {e}")
@@ -3411,18 +3534,17 @@ def sync_fracttal():
     criadas, revisao_manual, erros = [], [], []
     revisao_folios_vistos = set()
 
-    for ot in ots:
-        mapeado = _fracttal_mapear_ot(ot)
+    for folio, tasks in _fracttal_agrupar_por_wo(ots):
+        if folio in os_existentes:
+            continue  # já registrada — evita duplicata (mesma OT, outra linha de tarefa/componente)
+        mapeado = _fracttal_mapear_grupo(tasks)
         if not mapeado:
             continue  # OT de outro cliente/supervisor, totalmente fora de escopo
         if mapeado.get("_revisao_manual"):
-            folio = mapeado["wo_folio"]
             if folio not in revisao_folios_vistos:
                 revisao_folios_vistos.add(folio)
                 revisao_manual.append({"wo_folio": folio, "motivo": mapeado["motivo"]})
             continue
-        if mapeado["numeroOS"] in os_existentes:
-            continue  # já registrada — evita duplicata (mesma OT, outra linha de tarefa/componente)
 
         alerta = mapeado.pop("_alerta", None)
         try:
@@ -3430,14 +3552,76 @@ def sync_fracttal():
             if alerta:
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-sync", append=True)
-            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "alerta": alerta})
+            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta})
             os_existentes.add(mapeado["numeroOS"])
+            try:
+                enviar_push(
+                    titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']}",
+                    corpo=f"{mapeado['usina']} ({mapeado['cliente']}): {mapeado['descricao'][:120]}",
+                    tipo="fracttal_nova_os",
+                )
+            except Exception as e:
+                log.error(f"[sync-fracttal] Falha ao enviar push de nova OS {mapeado['numeroOS']}: {e}")
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
             erros.append(mapeado.get("numeroOS", "?"))
 
-    log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)}")
-    return jsonify({"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros})
+    # ── Segunda passada: checa mudança de status em OSs já criadas e ainda
+    # em aberto (limite pequeno por execução pra não estourar o tempo do
+    # cron de 2h em 2h — com o tempo, todas passam por aqui em algumas
+    # rodadas).
+    mudancas_status = []
+    try:
+        limite_checagem = 12
+        checadas = 0
+        for i, row in enumerate(todos[1:], start=2):
+            if checadas >= limite_checagem:
+                break
+            if len(row) < ATIV_TOTAL_COLUNAS:
+                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            editor_linha = row[12].strip()
+            numero_os = row[13].strip()
+            status_os_atual = row[14].strip()
+            if editor_linha not in ("fracttal-backfill", "fracttal-sync") or not numero_os:
+                continue
+            if status_os_atual in ("Finalizada", "Cancelada"):
+                continue  # já encerrada, não precisa mais checar
+            checadas += 1
+            try:
+                token = _fracttal_get_token()
+                headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+                resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=15)
+                resp.raise_for_status()
+                dados = (resp.json().get("data") or [])
+                if not dados:
+                    continue
+                status_novo_raw = str(dados[0].get("id_status_work_order", "")).strip()
+                status_novo = _FRACTTAL_STATUS_OS_MAP.get(status_novo_raw, "")
+                if status_novo and status_novo != status_os_atual:
+                    ws.update_cell(i, ATIV_CAMPO_COL["statusOS"], status_novo)
+                    entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) alterado "
+                             f"de \"{status_os_atual or '—'}\" para \"{status_novo}\" por fracttal-sync.")
+                    hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+                    ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
+                    mudancas_status.append({"numeroOS": numero_os, "de": status_os_atual, "para": status_novo})
+                    try:
+                        enviar_push(
+                            titulo=f"🔄 OS {numero_os} mudou de status",
+                            corpo=f"\"{status_os_atual or '—'}\" → \"{status_novo}\"",
+                            tipo="fracttal_status",
+                        )
+                    except Exception as e:
+                        log.error(f"[sync-fracttal] Falha ao enviar push de mudança de status {numero_os}: {e}")
+                time.sleep(1.0)
+            except Exception as e:
+                log.error(f"[sync-fracttal] Erro ao checar status da OS {numero_os}: {e}")
+    except Exception as e:
+        log.error(f"[sync-fracttal] Erro na checagem de mudanças de status: {e}")
+
+    log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)} "
+             f"mudancas_status={len(mudancas_status)}")
+    return jsonify({"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros,
+                     "mudancas_status": mudancas_status})
 
 
 ATIV_CAMPO_LABEL = {
