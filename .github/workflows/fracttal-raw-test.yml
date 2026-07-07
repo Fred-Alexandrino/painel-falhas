@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Chamar /completar-fracttal-backfill em lotes
+      - name: Rodar completar-fracttal-backfill em lotes
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
@@ -21,7 +21,7 @@ jobs:
 
           for TENTATIVA in 1 2 3 4 5 6; do
             echo "===== Lote $TENTATIVA =====" >> backups/fracttal-raw-sample.txt
-            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/completar-fracttal-backfill?limit=8" \
+            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/completar-fracttal-backfill?limit=6" \
               -H "X-Webhook-Secret: $WEBHOOK_SECRET")
             BODY=$(echo "$RESPONSE" | head -n -1)
             STATUS=$(echo "$RESPONSE" | tail -n 1)
@@ -29,13 +29,19 @@ jobs:
             echo "$BODY" >> backups/fracttal-raw-sample.txt
             echo "" >> backups/fracttal-raw-sample.txt
 
-            PROCESSADAS=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('processadas_nesta_chamada', 0))" 2>/dev/null || echo 0)
-            echo "Processadas neste lote: $PROCESSADAS"
-            if [ "$PROCESSADAS" -eq "0" ]; then
+            if [ "$STATUS" -ge 400 ]; then
+              echo "Erro HTTP $STATUS, parando."
+              break
+            fi
+
+            QTD=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('atualizadas', [])) + len(d.get('erros', [])))" 2>/dev/null || echo 0)
+            echo "Processadas neste lote: $QTD"
+            if [ "$QTD" -eq "0" ]; then
               echo "Nada mais pra processar, encerrando."
               break
             fi
-            sleep 15
+
+            sleep 20
           done
 
       - name: Salvar resultado no repositório
