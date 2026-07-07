@@ -17,13 +17,14 @@ jobs:
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
           curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
-          python3 -c "import json
-d = json.load(open('/tmp/a.json'))
-fracttal = [a for a in d.get('atividades', []) if a.get('editor') in ('fracttal-backfill','fracttal-sync','claude-chat') and a.get('numeroOS')]
-sem = [a.get('numeroOS') for a in fracttal if not a.get('percentualOS')]
-print('Total Fracttal:', len(fracttal))
-print('Sem percentualOS:', len(sem), sem)
-" > backups/check-status-result.txt
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          fracttal = [a for a in d.get('atividades', []) if a.get('editor') in ('fracttal-backfill','fracttal-sync','claude-chat') and a.get('numeroOS')]
+          sem = [a.get('numeroOS') for a in fracttal if not a.get('percentualOS')]
+          print('Total Fracttal:', len(fracttal))
+          print('Sem percentualOS:', len(sem), sem)
+          " > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
@@ -31,5 +32,5 @@ print('Sem percentualOS:', len(sem), sem)
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
           git add backups/check-status-result.txt
-          git diff --quiet --cached || git commit -m "Backfill v3 [skip ci]"
+          git diff --quiet --cached || git commit -m "Checagem final [skip ci]"
           git push
