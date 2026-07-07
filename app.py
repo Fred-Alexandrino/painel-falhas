@@ -16,9 +16,9 @@ Suporta:
 - Formato Cos Grid com bullets (·) sem emojis
 """
 
-import os, re, json, logging
+import os, re, json, logging, time
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import gspread
@@ -2770,6 +2770,40 @@ def listar_atividades():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", responsavel="",
+                              prazo="", prioridade="Média", status="Em Aberto", numeroOS="",
+                              editor="dashboard", ws=None, todos=None):
+    """
+    Cria uma linha na aba Painel de Atividades. Usada tanto pelo endpoint
+    HTTP /nova-atividade quanto pelo sync automático do Fracttal
+    (/sync-fracttal), para evitar duplicar a lógica de escrita na planilha.
+
+    Se `ws`/`todos` forem passados (leitura já feita por quem chamou, ex.
+    sync em lote), evita reler a planilha inteira a cada chamada.
+    """
+    cliente = (cliente or "").strip()
+    descricao = (descricao or "").strip()
+    if not cliente or not descricao:
+        raise ValueError("cliente e descricao são obrigatórios")
+
+    if ws is None:
+        ws = get_atividades_sheet()
+    if todos is None:
+        todos = ws.get_all_values()
+
+    novo_id = _proximo_id_atividade(todos)
+    agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
+
+    ws.append_row([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
+                    prioridade, status, agora, "", historico_inicial, editor, numeroOS])
+    # mantém `todos` coerente para quem estiver criando várias atividades em sequência
+    todos.append([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
+                  prioridade, status, agora, "", historico_inicial, editor, numeroOS])
+    log.info(f"[atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
+    return novo_id
+
+
 @app.route("/nova-atividade", methods=["POST", "OPTIONS"])
 def nova_atividade():
     if request.method == "OPTIONS":
@@ -2779,34 +2813,164 @@ def nova_atividade():
     except Exception:
         return jsonify({"ok": False, "error": "Body inválido"}), 400
 
-    cliente     = body.get("cliente", "").strip()
-    usina       = body.get("usina", "").strip()
-    equipamento = body.get("equipamento", "").strip()
-    descricao   = body.get("descricao", "").strip()
-    responsavel = body.get("responsavel", "").strip()
-    prazo       = body.get("prazo", "").strip()
-    prioridade  = body.get("prioridade", "Média").strip()
-    status      = body.get("status", "Em Aberto").strip()
-    numero_os   = body.get("numeroOS", "").strip()
-    editor      = body.get("editor", "dashboard").strip()
+    try:
+        novo_id = _criar_atividade_interna(
+            cliente=body.get("cliente", ""),
+            usina=body.get("usina", ""),
+            equipamento=body.get("equipamento", ""),
+            descricao=body.get("descricao", ""),
+            responsavel=body.get("responsavel", ""),
+            prazo=body.get("prazo", ""),
+            prioridade=body.get("prioridade", "Média").strip() or "Média",
+            status=body.get("status", "Em Aberto").strip() or "Em Aberto",
+            numeroOS=body.get("numeroOS", ""),
+            editor=body.get("editor", "dashboard").strip() or "dashboard",
+        )
+        return jsonify({"ok": True, "id": novo_id})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        log.error(f"[Atividades] Erro ao criar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
-    if not cliente or not descricao:
-        return jsonify({"ok": False, "error": "cliente e descricao são obrigatórios"}), 400
+
+# ── Integração Fracttal (sync automático de OTs → Painel de Atividades) ───
+FRACTTAL_CLIENT_KEY    = os.environ.get("FRACTTAL_CLIENT_KEY", "")
+FRACTTAL_CLIENT_SECRET = os.environ.get("FRACTTAL_CLIENT_SECRET", "")
+FRACTTAL_TOKEN_URL     = "https://one.fracttal.com/oauth/token"
+FRACTTAL_API_BASE      = "https://app.fracttal.com/api"
+
+_fracttal_token_cache = {"access_token": None, "expires_at": 0}
+
+
+def _fracttal_get_token():
+    """Obtém (com cache em memória) um access_token OAuth2 client_credentials da Fracttal."""
+    agora = time.time()
+    if _fracttal_token_cache["access_token"] and _fracttal_token_cache["expires_at"] > agora + 60:
+        return _fracttal_token_cache["access_token"]
+
+    if not FRACTTAL_CLIENT_KEY or not FRACTTAL_CLIENT_SECRET:
+        raise RuntimeError("FRACTTAL_CLIENT_KEY / FRACTTAL_CLIENT_SECRET não configurados no Render")
+
+    resp = requests.post(
+        FRACTTAL_TOKEN_URL,
+        auth=(FRACTTAL_CLIENT_KEY, FRACTTAL_CLIENT_SECRET),
+        data={"grant_type": "client_credentials"},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    _fracttal_token_cache["access_token"] = data["access_token"]
+    _fracttal_token_cache["expires_at"] = agora + int(data.get("expires_in", 7200))
+    return _fracttal_token_cache["access_token"]
+
+
+def _fracttal_listar_ots_recentes(desde_horas=3):
+    """
+    Consulta OTs criadas nas últimas `desde_horas` horas na Fracttal.
+
+    ATENÇÃO / TODO: os nomes exatos dos query_params de filtro de data e
+    status ainda não puderam ser confirmados (dependem de acesso real à
+    API/sandbox da Fracttal). Ajustar assim que as credenciais estiverem
+    disponíveis — usar a ferramenta "Probar la conexión a las APIs" da
+    própria Fracttal para validar o request antes de confiar no cron.
+    """
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    data_limite = (datetime.utcnow() - timedelta(hours=desde_horas)).strftime("%Y-%m-%d")
+    params = {"date_from": data_limite}  # TODO: confirmar nome real do parâmetro
+
+    resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders", headers=headers, params=params, timeout=30)
+    resp.raise_for_status()
+    body = resp.json()
+    return body.get("data", []) if isinstance(body, dict) else (body or [])
+
+
+_FRACTTAL_PRIORIDADE_MAP = {
+    "HIGH": "Alta", "ALTA": "Alta",
+    "MEDIUM": "Média", "MEDIA": "Média", "MÉDIA": "Média",
+    "LOW": "Baixa", "BAIXA": "Baixa",
+}
+
+
+def _fracttal_mapear_ot(ot):
+    """
+    Converte um registro de OT da Fracttal para os campos do Painel de
+    Atividades, reaproveitando o catálogo de usinas/clientes já existente
+    (canonizar_usina / inferir_cliente). Retorna None se a OT for de um
+    ativo fora do catálogo do Fred (outro supervisor/cliente).
+    """
+    texto_ativo = ot.get("items_log_description") or ot.get("parent_description") or ot.get("item_code") or ""
+    usina = canonizar_usina(texto_ativo)
+    if not usina:
+        return None
+
+    cliente = inferir_cliente(usina)
+    prioridade_raw = (ot.get("priorities_description") or "").strip().upper()
+    prioridade = _FRACTTAL_PRIORIDADE_MAP.get(prioridade_raw, "Média")
+
+    return {
+        "cliente": cliente,
+        "usina": usina,
+        "equipamento": (ot.get("code") or texto_ativo or "Múltiplos equipamentos").strip(),
+        "descricao": (ot.get("description") or "").strip() or f"OT {ot.get('wo_folio', '')} (Fracttal)",
+        "responsavel": (ot.get("personnel_description") or ot.get("created_by") or "").strip(),
+        "prazo": (ot.get("final_date") or ot.get("initial_date") or "").strip(),
+        "prioridade": prioridade,
+        "status": "Em Aberto",
+        "numeroOS": (ot.get("wo_folio") or "").strip(),
+        "editor": "fracttal-sync",
+    }
+
+
+@app.route("/sync-fracttal", methods=["POST", "GET"])
+def sync_fracttal():
+    """
+    Sincroniza OTs novas da Fracttal para o Painel de Atividades.
+    Disparado periodicamente por cron via GitHub Actions
+    (.github/workflows/sync-fracttal.yml). Protegido pelo mesmo
+    WEBHOOK_SECRET usado nos demais endpoints sensíveis.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    try:
+        ots = _fracttal_listar_ots_recentes(desde_horas=3)
+    except Exception as e:
+        log.error(f"[sync-fracttal] Erro ao consultar Fracttal: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 502
 
     try:
         ws = get_atividades_sheet()
         todos = ws.get_all_values()
-        novo_id = _proximo_id_atividade(todos)
-        agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
-
-        ws.append_row([novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
-                        prioridade, status, agora, "", historico_inicial, editor, numero_os])
-        log.info(f"[nova-atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
-        return jsonify({"ok": True, "id": novo_id})
+        os_existentes = {row[13].strip() for row in todos[1:] if len(row) > 13 and row[13].strip()}
     except Exception as e:
-        log.error(f"[Atividades] Erro ao criar: {e}")
+        log.error(f"[sync-fracttal] Erro ao ler Painel de Atividades: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+    criadas, ignoradas, erros = [], [], []
+
+    for ot in ots:
+        mapeado = _fracttal_mapear_ot(ot)
+        if not mapeado:
+            ignoradas.append(ot.get("wo_folio", "?"))
+            continue
+        if mapeado["numeroOS"] in os_existentes:
+            continue  # já registrada — evita duplicata
+
+        try:
+            novo_id = _criar_atividade_interna(ws=ws, todos=todos, **mapeado)
+            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id})
+            os_existentes.add(mapeado["numeroOS"])
+        except Exception as e:
+            log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
+            erros.append(mapeado.get("numeroOS", "?"))
+
+    log.info(f"[sync-fracttal] criadas={len(criadas)} ignoradas={len(ignoradas)} erros={len(erros)}")
+    return jsonify({"ok": True, "criadas": criadas, "ignoradas_fora_do_catalogo": ignoradas, "erros": erros})
 
 
 ATIV_CAMPO_LABEL = {
