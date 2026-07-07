@@ -1,8 +1,24 @@
 ===== Lote 1 =====
-Status HTTP: 404
-<!doctype html>
-<html lang=en>
-<title>404 Not Found</title>
-<h1>Not Found</h1>
-<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+Status HTTP: 200
+{"atualizadas":[{"linha":50,"link":"https://printwo.fracttal.com/?4987:71f83b1b-7f17-4edb-925e-f7f1b7d8cec9","numeroOS":"9035"},{"linha":51,"link":"https://printwo.fracttal.com/?4987:c33a6d04-65cc-40e2-813b-fbf1ef1bd2ee","numeroOS":"9024"},{"linha":52,"link":"https://printwo.fracttal.com/?4987:cea777a5-c678-49ad-9942-0ef07e342c0e","numeroOS":"9023"},{"linha":53,"link":"https://printwo.fracttal.com/?4987:26d0da76-61b2-48af-a1ce-0b1ef4edfa35","numeroOS":"8919"},{"linha":54,"link":"https://printwo.fracttal.com/?4987:130bc06a-6147-4694-ae17-56c638e0971a","numeroOS":"8918"},{"linha":55,"link":"https://printwo.fracttal.com/?4987:015672b2-a993-4a19-9f90-ed2073d6a7de","numeroOS":"8917"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 2 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":56,"link":"https://printwo.fracttal.com/?4987:93cd2ff6-29ea-4259-8fb5-16d6ef5169b8","numeroOS":"8916"},{"linha":57,"link":"https://printwo.fracttal.com/?4987:0859ad4d-c77a-41d4-91df-81e27beeb4f1","numeroOS":"8915"},{"linha":58,"link":"https://printwo.fracttal.com/?4987:05efb7b1-4a74-4420-99a9-1171bf74f275","numeroOS":"8910"},{"linha":59,"link":"https://printwo.fracttal.com/?4987:1c1a03ce-02ce-49d5-8a52-406b4d931f81","numeroOS":"8909"},{"linha":60,"link":"https://printwo.fracttal.com/?4987:c84c75c9-3310-4994-87e0-9e9804524e8d","numeroOS":"8908"},{"linha":61,"link":"https://printwo.fracttal.com/?4987:0987be1d-dffe-489b-a96b-16fe0b6ba4f2","numeroOS":"8907"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 3 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":62,"link":"https://printwo.fracttal.com/?4987:dd9babfa-1754-4e40-a344-24ab4901574b","numeroOS":"8906"},{"linha":63,"link":"https://printwo.fracttal.com/?4987:a7f1d91e-2b89-428f-836c-291c2e4a4ef6","numeroOS":"8905"},{"linha":64,"link":"https://printwo.fracttal.com/?4987:01e3a4e5-6e7a-4103-8b08-f3222f05a843","numeroOS":"8904"},{"linha":65,"link":"https://printwo.fracttal.com/?4987:3b73e2cd-2738-4f4a-bc0e-8f93751d6f8c","numeroOS":"8903"},{"linha":66,"link":"https://printwo.fracttal.com/?4987:03a4fe6d-5ba2-4ede-8c46-41189b125526","numeroOS":"8765"},{"linha":67,"link":"https://printwo.fracttal.com/?4987:c9d50d71-bad6-4e34-a263-e0545b02b56f","numeroOS":"8685"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 4 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":68,"link":"https://printwo.fracttal.com/?4987:beaadd63-ade8-43a3-9fda-b51098904110","numeroOS":"8665"},{"linha":69,"link":"https://printwo.fracttal.com/?4987:d1779c57-b8f2-4c3c-80e6-ca866267308a","numeroOS":"8664"},{"linha":70,"link":"https://printwo.fracttal.com/?4987:1eef140f-ba0e-434f-aaac-36063baa0207","numeroOS":"8663"},{"linha":71,"link":"https://printwo.fracttal.com/?4987:9e937b93-84ec-4844-b4da-d1c32c09bef7","numeroOS":"8661"},{"linha":72,"link":"https://printwo.fracttal.com/?4987:4e227a1d-9426-459e-b4d7-ad97603dfa31","numeroOS":"8657"},{"linha":73,"link":"https://printwo.fracttal.com/?4987:d9162ed6-5995-4e09-aee3-52bbe6c05580","numeroOS":"8605"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 5 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":74,"link":"https://printwo.fracttal.com/?4987:688b8a16-50c7-4bae-a49d-4554655353cc","numeroOS":"8604"},{"linha":75,"link":"https://printwo.fracttal.com/?4987:d2fc4b5f-aabe-468c-859b-36117e0acab7","numeroOS":"8532"},{"linha":76,"link":"https://printwo.fracttal.com/?4987:b2a0c3e0-98c4-4db6-bc88-9caacee30de6","numeroOS":"8483"},{"linha":77,"link":"https://printwo.fracttal.com/?4987:2a9d44e7-38a1-4b20-8160-66cf6c647f59","numeroOS":"8025"},{"linha":78,"link":"https://printwo.fracttal.com/?4987:041c6210-f1d5-430b-b7df-c7d76d579ee0","numeroOS":"7962"},{"linha":79,"link":"https://printwo.fracttal.com/?4987:36306b40-d361-4197-af8a-d4f9bba848d6","numeroOS":"7904"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":6}
+
+===== Lote 6 =====
+Status HTTP: 200
+{"atualizadas":[{"linha":80,"link":"https://printwo.fracttal.com/?4987:477c196b-8605-4724-9dbd-b41760c2f235","numeroOS":"7854"},{"linha":81,"link":"https://printwo.fracttal.com/?4987:15eda08c-402a-442d-bf75-d86d0254be58","numeroOS":"5504"}],"erros":[],"limit":6,"ok":true,"processadas_nesta_chamada":2}
 
