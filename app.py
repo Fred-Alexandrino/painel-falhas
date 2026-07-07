@@ -3238,6 +3238,8 @@ def completar_fracttal_backfill():
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
 
+    limit = int(request.args.get("limit", 8))
+
     try:
         ws = get_atividades_sheet()
         todos = ws.get_all_values()
@@ -3249,8 +3251,11 @@ def completar_fracttal_backfill():
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
     atualizadas, erros, puladas = [], [], []
+    processadas = 0
 
     for i, row in enumerate(todos[1:], start=2):
+        if processadas >= limit:
+            break
         if len(row) < 17:
             row = row + [""] * (17 - len(row))
         editor = row[12].strip()
@@ -3260,6 +3265,7 @@ def completar_fracttal_backfill():
         if editor not in ("fracttal-backfill", "fracttal-sync") or not numero_os or status_os_atual:
             continue
 
+        processadas += 1
         try:
             resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
             resp.raise_for_status()
@@ -3278,23 +3284,22 @@ def completar_fracttal_backfill():
                          ot.get("cal_date_maintenance") or ot.get("date_maintenance") or "")
             prazo_novo = _fracttal_formatar_data_br(prazo_iso)
 
-            if status_os:
-                ws.update_cell(i, 15, status_os)
-            if observacoes:
-                ws.update_cell(i, 16, observacoes)
-            if link:
-                ws.update_cell(i, 17, link)
+            # escreve os 3 campos novos numa única chamada (evita estourar cota de escrita)
+            if status_os or observacoes or link:
+                ws.update(f"O{i}:Q{i}", [[status_os, observacoes, link]])
             prazo_atual = row[6].strip()
             if prazo_novo and prazo_novo != prazo_atual:
                 ws.update_cell(i, 7, prazo_novo)
 
             atualizadas.append({"linha": i, "numeroOS": numero_os, "statusOS": status_os})
+            time.sleep(1.2)  # respeita a cota de escrita por minuto do Google Sheets
         except Exception as e:
             log.error(f"[completar-fracttal-backfill] Erro na OT {numero_os}: {e}")
             erros.append({"numeroOS": numero_os, "erro": str(e)})
 
     log.info(f"[completar-fracttal-backfill] atualizadas={len(atualizadas)} puladas={len(puladas)} erros={len(erros)}")
-    return jsonify({"ok": True, "atualizadas": atualizadas, "puladas": puladas, "erros": erros})
+    return jsonify({"ok": True, "atualizadas": atualizadas, "puladas": puladas, "erros": erros,
+                     "processadas_nesta_chamada": processadas, "limit": limit})
 
 
 @app.route("/sync-fracttal", methods=["POST", "GET"])
