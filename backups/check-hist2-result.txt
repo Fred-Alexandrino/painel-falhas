@@ -1,16 +1,20 @@
 numeroOS: 9035
 historico:
-07/07/2026 09:50 - Atividade criada por fracttal-backfill.
-08/07/2026 13:34 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
+07/07/2026 06:50 - Atividade criada por fracttal-backfill.
+08/07/2026 10:34 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
 08/07/2026 18:09 - anotacoesPessoais alterado de "—" para "[teste fuso horario apos deploy]" por claude-chat.
 08/07/2026 18:10 - anotacoesPessoais alterado de "[teste fuso horario apos deploy]" para "—" por claude-chat.
 ---
 numeroOS: 9173
 historico:
 08/07/2026 18:55 - Atividade criada por fracttal-sync.
+08/07/2026 19:00 - historico alterado de "08/07/2026 18:55 - Atividade criada por fracttal-sync." para "08/07/2026 15:55 - Atividade criada por fracttal-sync." por claude-chat.
 ---
 numeroOS: 9154
 historico:
 08/07/2026 18:55 - Atividade criada por fracttal-sync.
-08/07/2026 17:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
+08/07/2026 14:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
+08/07/2026 19:00 - historico alterado de "08/07/2026 18:55 - Atividade criada por fracttal-sync.
+08/07/2026 14:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída)." para "08/07/2026 15:55 - Atividade criada por fracttal-sync.
+08/07/2026 17:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída)." por claude-chat.
 ---
