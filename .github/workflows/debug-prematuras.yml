@@ -1,0 +1,39 @@
+name: Debug conclusoes prematuras
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Achar atividades marcadas Concluido sem ser Finalizada
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          prematuras = []
+          for a in d.get('atividades', []):
+              if a.get('status') == 'Concluído' and a.get('statusOS') and a.get('statusOS') != 'Finalizada' and a.get('numeroOS'):
+                  prematuras.append((a.get('numeroOS'), a.get('statusOS'), a.get('percentualOS')))
+          print('Total prematuras:', len(prematuras))
+          for p in prematuras:
+              print(p)
+          " > backups/check-status-result.txt
+          cat backups/check-status-result.txt
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Debug conclusoes prematuras [skip ci]"
+          git push
