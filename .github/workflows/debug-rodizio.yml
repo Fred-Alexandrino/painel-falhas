@@ -10,7 +10,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Chamar atualizar-os-agora e ver resposta completa
+      - name: Chamar atualizar-os-agora apos o fix
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
