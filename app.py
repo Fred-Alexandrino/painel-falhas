@@ -3703,7 +3703,7 @@ def atualizar_links_fracttal():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
-def _sync_fracttal_core(desde_horas=3, limite_checagem_status=12):
+def _sync_fracttal_core(desde_horas=3, limite_checagem_status=18):
     """
     Núcleo da sincronização: busca OTs recentes na Fracttal, cria atividades
     novas e checa mudança de status em atividades já abertas. Usado tanto
@@ -3759,10 +3759,12 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=12):
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
             erros.append(mapeado.get("numeroOS", "?"))
 
-    # ── Segunda passada: checa mudança de status em OSs já criadas e ainda
-    # em aberto (limite pequeno por execução pra não estourar o tempo do
-    # cron de 2h em 2h — com o tempo, todas passam por aqui em algumas
-    # rodadas).
+    # ── Segunda passada: reconsulta a OS completa (todas as tarefas) em OSs
+    # já criadas e ainda em aberto, e atualiza TODOS os campos derivados
+    # (statusOS, percentualOS, statusGeralOS, statusTarefaOS,
+    # detalhesEquipamentosOS) — não só o status bruto da OT. Limite pequeno
+    # por execução pra não estourar o tempo do cron de 2h em 2h — com o
+    # tempo, todas passam por aqui em algumas rodadas.
     mudancas_status = []
     try:
         checadas = 0
@@ -3773,33 +3775,59 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=12):
                 row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
             editor_linha = row[12].strip()
             numero_os = row[13].strip()
+            status_interno_atual = row[8].strip()
             status_os_atual = row[14].strip()
+            percentual_atual = row[20].strip()
+            status_geral_atual = row[21].strip()
             if editor_linha not in ("fracttal-backfill", "fracttal-sync") or not numero_os:
                 continue
-            if status_os_atual in ("Finalizada", "Cancelada"):
-                continue  # já encerrada, não precisa mais checar
+            if status_os_atual in ("Finalizada", "Cancelada") or percentual_atual == "100":
+                continue  # já encerrada/concluída, não precisa mais checar
             checadas += 1
             try:
                 token = _fracttal_get_token()
                 headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
                 resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=15)
                 resp.raise_for_status()
-                dados = (resp.json().get("data") or [])
-                if not dados:
+                tasks = (resp.json().get("data") or [])
+                if not tasks:
                     continue
-                status_novo_raw = str(dados[0].get("id_status_work_order", "")).strip()
+
+                status_novo_raw = str(tasks[0].get("id_status_work_order", "")).strip()
                 status_novo = _FRACTTAL_STATUS_OS_MAP.get(status_novo_raw, "")
+                percentual_novo = str(_fracttal_percentual_conclusao(tasks))
+                status_geral_novo = _fracttal_status_geral(tasks)
+                status_tarefa_novo = _fracttal_status_tarefa_agregado(tasks)
+                detalhes_novo = _fracttal_detalhes_equipamentos(tasks)
+
+                mudou = False
                 if status_novo and status_novo != status_os_atual:
                     ws.update_cell(i, ATIV_CAMPO_COL["statusOS"], status_novo)
-                    entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) alterado "
-                             f"de \"{status_os_atual or '—'}\" para \"{status_novo}\" por fracttal-sync.")
+                    mudou = True
+                if (percentual_novo != percentual_atual) or (status_geral_novo != status_geral_atual):
+                    ws.update_cell(i, ATIV_CAMPO_COL["statusTarefaOS"], status_tarefa_novo)
+                    ws.update(f"U{i}:W{i}", [[percentual_novo, status_geral_novo, detalhes_novo]])
+                    mudou = True
+
+                if mudou:
+                    entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
+                             f"\"{status_os_atual or '—'}\" → \"{status_novo or status_os_atual or '—'}\", "
+                             f"{percentual_atual or '0'}% → {percentual_novo}% ({status_geral_novo}).")
                     hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
                     ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
-                    mudancas_status.append({"numeroOS": numero_os, "de": status_os_atual, "para": status_novo})
+                    mudancas_status.append({"numeroOS": numero_os, "statusOS": status_novo,
+                                             "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo})
+
+                    # se a OS foi 100% concluída na Fracttal, sincroniza o status
+                    # interno também (evita ficar "Em Aberto" pra sempre com a
+                    # OS já finalizada de verdade)
+                    if percentual_novo == "100" and status_interno_atual not in ("Concluído", "Cancelado"):
+                        ws.update_cell(i, ATIV_CAMPO_COL["status"], "Concluído")
+
                     try:
                         enviar_push(
-                            titulo=f"🔄 OS {numero_os} mudou de status",
-                            corpo=f"\"{status_os_atual or '—'}\" → \"{status_novo}\"",
+                            titulo=f"🔄 OS {numero_os} atualizada",
+                            corpo=f"{status_geral_novo} — {percentual_novo}% concluído",
                             tipo="fracttal_status",
                         )
                     except Exception as e:
@@ -3843,7 +3871,7 @@ def atualizar_os_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=15)
+    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=25)
     return jsonify(body), status_code
 
 
