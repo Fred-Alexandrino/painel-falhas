@@ -1,0 +1,28 @@
+name: Fix OS 9124
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar dados atuais da OS 9124
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/fracttal-raw?folio=9124" -H "X-Webhook-Secret: $WEBHOOK_SECRET" > backups/check-status-result.txt
+          cat backups/check-status-result.txt
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Debug OS 9124 [skip ci]"
+          git push
