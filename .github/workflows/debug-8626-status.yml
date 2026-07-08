@@ -1,0 +1,39 @@
+name: Debug OS 8626 status
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar OS 8626 no painel e na Fracttal
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          echo "===== PAINEL =====" > backups/check-status-result.txt
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          for a in d.get('atividades', []):
+              if a.get('numeroOS') == '8626':
+                  print(a)
+          " >> backups/check-status-result.txt
+          echo "" >> backups/check-status-result.txt
+          echo "===== FRACTTAL RAW =====" >> backups/check-status-result.txt
+          curl -s "$BASE/fracttal-raw?folio=8626" -H "X-Webhook-Secret: $WEBHOOK_SECRET" >> backups/check-status-result.txt
+          cat backups/check-status-result.txt
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Debug OS 8626 status [skip ci]"
+          git push
