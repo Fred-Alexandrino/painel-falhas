@@ -4085,6 +4085,8 @@ def corrigir_fuso_retroativo():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     aplicar = request.args.get("apply", "false").lower() == "true"
+    forcar_raw = request.args.get("forcar", "").strip()
+    forcar_set = {x.strip() for x in forcar_raw.split(",") if x.strip()} if forcar_raw else set()
 
     try:
         ws = get_atividades_sheet()
@@ -4103,11 +4105,15 @@ def corrigir_fuso_retroativo():
         id_atividade = row[0].strip()
         updates = {}
         ambiguos_linha = []
+        forcar_linha = bool(forcar_set) and (numero_os in forcar_set or id_atividade in forcar_set)
 
         def _checar(campo_nome, valor, fmt, col):
             if not valor:
                 return
             estado, novo = _classificar_ts_fuso(valor, fmt)
+            if estado == "ambiguo" and forcar_linha:
+                dt_forcado = datetime.strptime(valor, fmt)
+                estado, novo = "antigo", (dt_forcado - timedelta(hours=3)).strftime(fmt)
             if estado == "antigo":
                 updates[col] = novo
             elif estado == "ambiguo":
@@ -4129,6 +4135,9 @@ def corrigir_fuso_retroativo():
                     ts_str = f"{data_str} {hora_str}{seg}"
                     fmt = '%d/%m/%Y %H:%M:%S' if seg else '%d/%m/%Y %H:%M'
                     estado, novo_ts = _classificar_ts_fuso(ts_str, fmt)
+                    if estado == "ambiguo" and forcar_linha:
+                        dt_forcado = datetime.strptime(ts_str, fmt)
+                        estado, novo_ts = "antigo", (dt_forcado - timedelta(hours=3)).strftime(fmt)
                     if estado == "antigo":
                         linha_h = novo_ts + linha_h[len(ts_str):]
                         hist_mudou = True
