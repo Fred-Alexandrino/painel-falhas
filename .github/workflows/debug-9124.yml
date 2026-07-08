@@ -17,12 +17,13 @@ jobs:
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
           curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
-          python3 -c "import json
-d = json.load(open('/tmp/a.json'))
-for a in d.get('atividades', []):
-    if a.get('numeroOS') == '9124':
-        print(a)
-" > backups/check-status-result.txt
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          for a in d.get('atividades', []):
+              if a.get('numeroOS') == '9124':
+                  print(a)
+          " > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
@@ -30,5 +31,5 @@ for a in d.get('atividades', []):
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
           git add backups/check-status-result.txt
-          git diff --quiet --cached || git commit -m "Debug OS 9124 [skip ci]"
+          git diff --quiet --cached || git commit -m "Checagem final 9124 [skip ci]"
           git push
