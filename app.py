@@ -3514,6 +3514,50 @@ def completar_fracttal_backfill():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
+@app.route("/normalizar-usinas-clientes", methods=["POST", "GET"])
+def normalizar_usinas_clientes():
+    """
+    Varre TODAS as atividades (independente de origem/editor) e corrige
+    usina/cliente pra forma canônica do catálogo sempre que divergirem —
+    resolve nomenclaturas duplicadas (ex: "Sete Lagoas 2" vs "Sete Lagoas")
+    que escaparam da canonização por terem sido criadas manualmente antes
+    da integração Fracttal existir.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    corrigidas = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        usina_atual = row[2].strip()
+        cliente_atual = row[1].strip()
+        if not usina_atual or usina_atual in ("Geral", "Administrativo"):
+            continue
+
+        canonica = canonizar_usina(usina_atual)
+        if not canonica:
+            continue  # não reconhecida — não mexe (pode ser usina legítima fora do catálogo atual)
+
+        cliente_correto = inferir_cliente(canonica) or cliente_atual
+        if canonica != usina_atual or cliente_correto != cliente_atual:
+            ws.update(f"B{i}:C{i}", [[cliente_correto, canonica]])
+            corrigidas.append({"linha": i, "usina_antes": usina_atual, "usina_depois": canonica,
+                                "cliente_antes": cliente_atual, "cliente_depois": cliente_correto})
+            time.sleep(0.8)
+
+    log.info(f"[normalizar-usinas-clientes] corrigidas={len(corrigidas)}")
+    return jsonify({"ok": True, "corrigidas": corrigidas})
+
+
 @app.route("/completar-campos-v3-fracttal", methods=["POST", "GET"])
 def completar_campos_v3_fracttal():
     """
@@ -3788,8 +3832,8 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=18):
             status_os_atual = row[14].strip()
             percentual_atual = row[20].strip()
             status_geral_atual = row[21].strip()
-            if editor_linha not in ("fracttal-backfill", "fracttal-sync") or not numero_os:
-                continue
+            if not numero_os:
+                continue  # só monitora quem está de fato vinculado a uma OS da Fracttal
             if status_os_atual in ("Finalizada", "Cancelada"):
                 continue  # só para de checar quando a Fracttal encerra de vez (não basta 100% de tarefas — ainda pode estar "Em Revisão")
             checadas += 1
