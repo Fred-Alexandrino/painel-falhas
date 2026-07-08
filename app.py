@@ -4013,6 +4013,132 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
             "candidatas_totais": len(candidatas), "erros_checagem": erros_checagem}, 200
 
 
+
+# ── Correção retroativa de fuso horário (uso único) ─────────────────────
+# Antes do deploy que introduziu agora_br(), todo timestamp gravado no
+# Painel de Atividades usava datetime.now() puro do servidor (UTC), mas era
+# exibido como se já fosse horário de Brasília (GMT-3) — ficando 3h
+# adiantado. Este endpoint corrige retroativamente as colunas afetadas
+# (dataCriacao, dataConclusao, historico, ultimaVerificacaoOS) só nas
+# entradas anteriores ao corte (momento em que o deploy corrigido entrou
+# no ar). Entradas iguais/depois do corte já estão corretas e são
+# ignoradas. Protegido por WEBHOOK_SECRET; sempre roda em modo simulação
+# (dry_run=true) por padrão — precisa de ?apply=true explícito pra gravar.
+_HOJE_DEPLOY = datetime(2026, 7, 8).date()
+# O deploy da correção foi ao ar por volta de 21:05-21:09 UTC (= 18:05-18:09
+# em Brasília, mesmo instante real). Uma entrada ANTIGA (com bug) grava o
+# relógio UTC bruto como se fosse local — então seu valor literal só pode
+# ir até, no máximo, o instante em que o código antigo parou de rodar
+# (~21:15 UTC). Uma entrada NOVA (já corrigida) grava o horário real de
+# Brasília — então seu valor literal só pode começar a partir do instante
+# em que o deploy entrou no ar (~18:05 BR). Como os dois usam o mesmo
+# "relógio de parede" pra escrever a célula, a faixa [18:05, 21:15] no dia
+# do deploy é onde as duas interpretações se sobrepõem e não dá pra
+# decidir com segurança só pelo valor — por isso fica de fora da correção
+# automática e é sinalizada pra revisão manual.
+_JANELA_INICIO = datetime(2026, 7, 8, 18, 5, 0).time()
+_JANELA_FIM = datetime(2026, 7, 8, 21, 15, 0).time()
+
+_HIST_LINHA_RE = re.compile(r'^(\d{2}/\d{2}/\d{4}) (\d{2}:\d{2})(:\d{2})? - ')
+
+
+def _classificar_ts_fuso(ts_str, fmt):
+    """Classifica um timestamp gravado antes da correção de fuso horário.
+
+    Retorna ('antigo', novo_valor) | ('ambiguo', ts_str) | ('atual', ts_str) | ('invalido', ts_str)
+    """
+    try:
+        dt = datetime.strptime(ts_str, fmt)
+    except Exception:
+        return "invalido", ts_str
+
+    if dt.date() < _HOJE_DEPLOY:
+        return "antigo", (dt - timedelta(hours=3)).strftime(fmt)
+
+    if dt.date() == _HOJE_DEPLOY:
+        if dt.time() < _JANELA_INICIO:
+            return "antigo", (dt - timedelta(hours=3)).strftime(fmt)
+        if dt.time() <= _JANELA_FIM:
+            return "ambiguo", ts_str
+        return "atual", ts_str
+
+    return "atual", ts_str
+
+
+@app.route("/corrigir-fuso-retroativo", methods=["POST", "GET"])
+def corrigir_fuso_retroativo():
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    aplicar = request.args.get("apply", "false").lower() == "true"
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    alteracoes = []
+    ambiguos = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[13].strip()
+        id_atividade = row[0].strip()
+        updates = {}
+        ambiguos_linha = []
+
+        def _checar(campo_nome, valor, fmt, col):
+            if not valor:
+                return
+            estado, novo = _classificar_ts_fuso(valor, fmt)
+            if estado == "antigo":
+                updates[col] = novo
+            elif estado == "ambiguo":
+                ambiguos_linha.append({"campo": campo_nome, "valor": valor})
+
+        _checar("dataCriacao", row[9].strip(), '%d/%m/%Y %H:%M:%S', 10)
+        _checar("dataConclusao", row[10].strip(), '%d/%m/%Y %H:%M:%S', 11)
+        _checar("ultimaVerificacaoOS", row[23].strip(), '%Y-%m-%dT%H:%M:%S', 24)
+
+        # historico (col 12) — multilinha, cada linha pode começar com timestamp
+        hist = row[11]
+        if hist:
+            linhas_novas = []
+            hist_mudou = False
+            for linha_h in hist.split("\n"):
+                m = _HIST_LINHA_RE.match(linha_h)
+                if m:
+                    data_str, hora_str, seg = m.group(1), m.group(2), m.group(3) or ""
+                    ts_str = f"{data_str} {hora_str}{seg}"
+                    fmt = '%d/%m/%Y %H:%M:%S' if seg else '%d/%m/%Y %H:%M'
+                    estado, novo_ts = _classificar_ts_fuso(ts_str, fmt)
+                    if estado == "antigo":
+                        linha_h = novo_ts + linha_h[len(ts_str):]
+                        hist_mudou = True
+                    elif estado == "ambiguo":
+                        ambiguos_linha.append({"campo": "historico", "valor": ts_str, "linha_texto": linha_h[:80]})
+                linhas_novas.append(linha_h)
+            if hist_mudou:
+                updates[12] = "\n".join(linhas_novas)
+
+        if updates:
+            alteracoes.append({"linha": i, "id": id_atividade, "numeroOS": numero_os,
+                                "colunas_alteradas": list(updates.keys())})
+            if aplicar:
+                for col, novo_val in updates.items():
+                    ws.update_cell(i, col, novo_val)
+                time.sleep(0.4)
+        if ambiguos_linha:
+            ambiguos.append({"linha": i, "id": id_atividade, "numeroOS": numero_os, "campos": ambiguos_linha})
+
+    return jsonify({"ok": True, "aplicado": aplicar, "linhas_afetadas": len(alteracoes),
+                     "detalhes": alteracoes, "ambiguos": ambiguos}), 200
+
+
 @app.route("/sync-fracttal", methods=["POST", "GET"])
 def sync_fracttal():
     """
