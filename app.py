@@ -16,7 +16,7 @@ Suporta:
 - Formato Cos Grid com bullets (·) sem emojis
 """
 
-import os, re, json, logging, time
+import os, re, json, logging, time, random
 import requests
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_file
@@ -3903,6 +3903,7 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
             ultima_verificacao = row[23].strip()  # vazio = nunca verificada, prioridade máxima
             candidatas.append((ultima_verificacao, i, row))
 
+        random.shuffle(candidatas)  # desempate aleatório entre "nunca verificadas" (senão sempre as mesmas primeiras da planilha ganham a cota)
         candidatas.sort(key=lambda t: t[0])  # "" (nunca) vem antes de qualquer timestamp
         selecionadas = candidatas[:limite_checagem_status]
 
