@@ -1,0 +1,39 @@
+name: Debug rodizio e OS 9104-9107
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checar estado atual
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          print('total atividades:', len(ativs))
+          for a in ativs:
+              if a.get('numeroOS') in ('9104','9105','9106','9107'):
+                  print(a.get('numeroOS'), '| statusOS=', a.get('statusOS'), '| pct=', a.get('percentualOS'), '| ultimaVerificacaoOS=', a.get('ultimaVerificacaoOS'))
+          com_verificacao = [a for a in ativs if a.get('ultimaVerificacaoOS')]
+          print('atividades com ultimaVerificacaoOS preenchida:', len(com_verificacao))
+          " > backups/check-status-result.txt
+          cat backups/check-status-result.txt
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Debug rodizio [skip ci]"
+          git push
