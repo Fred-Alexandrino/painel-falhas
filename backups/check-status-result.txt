@@ -1,2 +1,8 @@
-Total prematuras: 1
-('9124', 'Em Revisão', '100')
+===== PAINEL =====
+7962 |status= Em Aberto |statusOS= Em Processo |pct= 100
+7904 |status= Em Aberto |statusOS= Em Processo |pct= 100
+
+===== FRACTTAL 7962 =====
+id_status_work_order: 1
+===== FRACTTAL 7904 =====
+id_status_work_order: 1
