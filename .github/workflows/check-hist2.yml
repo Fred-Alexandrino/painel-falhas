@@ -1,0 +1,37 @@
+name: Check Historico 9173 9154
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ver historico
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/atividades" -o /tmp/ativs.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/ativs.json'))
+          ativs = d.get('atividades', [])
+          for a in ativs:
+              if a.get('numeroOS') in ('9173','9154','9035'):
+                  print('numeroOS:', a.get('numeroOS'))
+                  print('historico:')
+                  print(a.get('historico'))
+                  print('---')
+          " > backups/check-hist2-result.txt
+          cat backups/check-hist2-result.txt
+      - name: Salvar
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-hist2-result.txt
+          git diff --quiet --cached || git commit -m "Debug historico 9173/9154/9035 [skip ci]"
+          git push
