@@ -1,8 +1,20 @@
 ===== Lote 1 =====
-Status HTTP: 404
-<!doctype html>
-<html lang=en>
-<title>404 Not Found</title>
-<h1>Not Found</h1>
-<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+Status HTTP: 200
+{"corrigidas":[{"descricao":"[Grid Co.] - MPA","linha":26,"numeroOS":"8626"},{"descricao":"SPDA - Inconforme","linha":44,"numeroOS":"8685"},{"descricao":"[Grid Co.] - MPM","linha":45,"numeroOS":"8665"},{"descricao":"[Grid Co.] - MPM","linha":46,"numeroOS":"8664"},{"descricao":"[Grid Co.] - MPM","linha":47,"numeroOS":"8663"},{"descricao":"[Grid Co.] - MPM","linha":48,"numeroOS":"8661"},{"descricao":"[Grid Co.] - MPA","linha":49,"numeroOS":"8657"},{"descricao":"[Grid Co.] - MPM","linha":50,"numeroOS":"8605"}],"erros":[],"limit":8,"ok":true,"processadas_nesta_chamada":8}
+
+===== Lote 2 =====
+Status HTTP: 200
+{"corrigidas":[{"descricao":"[Grid Co.] - MPM","linha":51,"numeroOS":"8604"},{"descricao":"[Grid Co.] - MPM","linha":52,"numeroOS":"8532"},{"descricao":"[Grid Co.] - MPM","linha":53,"numeroOS":"8483"},{"descricao":"Handover \u2013 CABINE DE MEDI\u00c7\u00c3O","linha":55,"numeroOS":"7962"},{"descricao":"Handover \u2013 Ar Condicionado","linha":56,"numeroOS":"7904"}],"erros":[],"limit":8,"ok":true,"processadas_nesta_chamada":5}
+
+===== Lote 3 =====
+Status HTTP: 200
+{"corrigidas":[],"erros":[],"limit":8,"ok":true,"processadas_nesta_chamada":0}
+
+===== Lote 4 =====
+Status HTTP: 200
+{"corrigidas":[],"erros":[],"limit":8,"ok":true,"processadas_nesta_chamada":0}
+
+===== Lote 5 =====
+Status HTTP: 200
+{"corrigidas":[],"erros":[],"limit":8,"ok":true,"processadas_nesta_chamada":0}
 
