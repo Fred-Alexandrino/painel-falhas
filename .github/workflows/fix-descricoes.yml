@@ -1,0 +1,37 @@
+name: Corrigir descricoes multiplas
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rodar correcao em lotes
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          > backups/check-status-result.txt
+          for TENTATIVA in 1 2 3 4 5; do
+            echo "===== Lote $TENTATIVA =====" >> backups/check-status-result.txt
+            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/corrigir-descricoes-multiplas?limit=8" -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            STATUS=$(echo "$RESPONSE" | tail -n 1)
+            echo "Status HTTP: $STATUS" >> backups/check-status-result.txt
+            echo "$BODY" >> backups/check-status-result.txt
+            echo "" >> backups/check-status-result.txt
+            if [ "$STATUS" -ge 400 ]; then break; fi
+          done
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Correcao descricoes multiplas [skip ci]"
+          git push
