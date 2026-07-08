@@ -2745,16 +2745,18 @@ def _proximo_id_atividade(todos):
 ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "responsavel", "prazo",
                       "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
                       "numeroOS", "statusOS", "observacoesOS", "linkOS", "statusTarefaOS", "etiquetasOS",
-                      "anotacoesPessoais", "percentualOS", "statusGeralOS", "detalhesEquipamentosOS"]
+                      "anotacoesPessoais", "percentualOS", "statusGeralOS", "detalhesEquipamentosOS",
+                      "ultimaVerificacaoOS"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
     "prazo": 7, "prioridade": 8, "status": 9, "historico": 12, "numeroOS": 14,
     "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
     "anotacoesPessoais": 20, "percentualOS": 21, "statusGeralOS": 22, "detalhesEquipamentosOS": 23,
+    "ultimaVerificacaoOS": 24,
 }
 
-ATIV_TOTAL_COLUNAS = 23
+ATIV_TOTAL_COLUNAS = 24
 
 _ativ_headers_ensured = {"done": False}
 
@@ -2784,7 +2786,7 @@ def _garantir_headers_atividades(ws):
         header = ws.row_values(1)
         extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS", 18: "statusTarefaOS",
                   19: "etiquetasOS", 20: "anotacoesPessoais", 21: "percentualOS",
-                  22: "statusGeralOS", 23: "detalhesEquipamentosOS"}
+                  22: "statusGeralOS", 23: "detalhesEquipamentosOS", 24: "ultimaVerificacaoOS"}
         precisa = False
         for col, nome in extras.items():
             atual = header[col - 1] if len(header) >= col else ""
@@ -2855,7 +2857,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
              prioridade, status, agora, "", historico_inicial, editor, numeroOS,
              statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais,
-             percentualOS, statusGeralOS, detalhesEquipamentosOS]
+             percentualOS, statusGeralOS, detalhesEquipamentosOS, ""]
     ws.append_row(linha)
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
     todos.append(linha)
@@ -3818,7 +3820,7 @@ def atualizar_links_fracttal():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
-def _sync_fracttal_core(desde_horas=3, limite_checagem_status=18):
+def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
     """
     Núcleo da sincronização: busca OTs recentes na Fracttal, cria atividades
     novas e checa mudança de status em atividades já abertas. Usado tanto
@@ -3877,35 +3879,50 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=18):
     # ── Segunda passada: reconsulta a OS completa (todas as tarefas) em OSs
     # já criadas e ainda em aberto, e atualiza TODOS os campos derivados
     # (statusOS, percentualOS, statusGeralOS, statusTarefaOS,
-    # detalhesEquipamentosOS) — não só o status bruto da OT. Limite pequeno
-    # por execução pra não estourar o tempo do cron de 2h em 2h — com o
-    # tempo, todas passam por aqui em algumas rodadas.
+    # detalhesEquipamentosOS) — não só o status bruto da OT.
+    #
+    # RODÍZIO JUSTO: em vez de sempre iterar da linha 2 pra baixo (o que
+    # faz as OSs mais antigas sempre consumirem a cota e as mais recentes
+    # nunca serem alcançadas quando há mais candidatas que o limite),
+    # ordena as candidatas por "ultimaVerificacaoOS" (nunca verificadas
+    # primeiro, depois as verificadas há mais tempo) e pega só as N
+    # primeiras. Assim, ao longo de várias rodadas, TODAS as OSs acabam
+    # sendo cobertas, e as recém-criadas são priorizadas na primeira vez.
     mudancas_status = []
     try:
-        checadas = 0
+        candidatas = []
         for i, row in enumerate(todos[1:], start=2):
-            if checadas >= limite_checagem_status:
-                break
             if len(row) < ATIV_TOTAL_COLUNAS:
                 row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            numero_os = row[13].strip()
+            status_os_atual = row[14].strip()
+            if not numero_os:
+                continue  # só monitora quem está de fato vinculado a uma OS da Fracttal
+            if status_os_atual in ("Finalizada", "Cancelada"):
+                continue  # só para de checar quando a Fracttal encerra de vez
+            ultima_verificacao = row[23].strip()  # vazio = nunca verificada, prioridade máxima
+            candidatas.append((ultima_verificacao, i, row))
+
+        candidatas.sort(key=lambda t: t[0])  # "" (nunca) vem antes de qualquer timestamp
+        selecionadas = candidatas[:limite_checagem_status]
+
+        for _, i, row in selecionadas:
             editor_linha = row[12].strip()
             numero_os = row[13].strip()
             status_interno_atual = row[8].strip()
             status_os_atual = row[14].strip()
             percentual_atual = row[20].strip()
             status_geral_atual = row[21].strip()
-            if not numero_os:
-                continue  # só monitora quem está de fato vinculado a uma OS da Fracttal
-            if status_os_atual in ("Finalizada", "Cancelada"):
-                continue  # só para de checar quando a Fracttal encerra de vez (não basta 100% de tarefas — ainda pode estar "Em Revisão")
-            checadas += 1
+            agora_iso = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             try:
                 token = _fracttal_get_token()
                 headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
                 resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=15)
                 resp.raise_for_status()
                 tasks = (resp.json().get("data") or [])
+                ws.update_cell(i, ATIV_CAMPO_COL["ultimaVerificacaoOS"], agora_iso)
                 if not tasks:
+                    time.sleep(0.6)
                     continue
 
                 status_novo_raw = str(tasks[0].get("id_status_work_order", "")).strip()
@@ -3960,7 +3977,7 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=18):
                         )
                     except Exception as e:
                         log.error(f"[sync-fracttal] Falha ao enviar push de mudança de status {numero_os}: {e}")
-                time.sleep(1.0)
+                time.sleep(0.6)
             except Exception as e:
                 log.error(f"[sync-fracttal] Erro ao checar status da OS {numero_os}: {e}")
     except Exception as e:
@@ -3999,7 +4016,7 @@ def atualizar_os_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=25)
+    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=35)
     return jsonify(body), status_code
 
 
