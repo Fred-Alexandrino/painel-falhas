@@ -19,6 +19,7 @@ Suporta:
 import os, re, json, logging, time, random
 import requests
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import gspread
@@ -37,6 +38,21 @@ except ImportError:
     log_push.warning("pywebpush não instalado — notificações push desabilitadas")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+# ── Fuso horário ─────────────────────────────────────────────────────────
+# O Render roda o servidor em UTC (sem TZ configurada). datetime.now() puro
+# retorna UTC, mas todo timestamp gravado no histórico/planilha é lido por
+# humanos no Brasil (GMT-3). Sem essa conversão, todo horário registrado no
+# sistema aparece 3h à frente do horário real de Brasília. Use agora_br()
+# em vez de datetime.now() em qualquer lugar que grave/exiba horário local.
+_TZ_BR = ZoneInfo("America/Sao_Paulo")
+
+
+def agora_br():
+    """Retorna o datetime atual já convertido para o horário de Brasília (GMT-3)."""
+    return datetime.now(_TZ_BR)
+
+
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -102,7 +118,7 @@ def gravar_log_mensagem(grupo_id, grupo_nome, texto):
     """
     try:
         ws_log = get_log_sheet()
-        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        ts = agora_br().strftime("%d/%m/%Y %H:%M:%S")
         ws_log.append_row([ts, grupo_id, grupo_nome, texto, ""])
         log.info(f"📝 [Log] Mensagem gravada: {grupo_id}")
     except Exception as e:
@@ -129,7 +145,7 @@ def ler_log_mensagens(horas=6):
         if len(rows) < 2:
             return []
 
-        desde = datetime.now().timestamp() - (horas * 3600)
+        desde = agora_br().timestamp() - (horas * 3600)
         mensagens = []
 
         for row in rows[1:]:  # pula cabeçalho
@@ -182,7 +198,7 @@ def ler_log_historico(horas=24):
         if len(rows) < 2:
             return []
 
-        desde = datetime.now().timestamp() - (horas * 3600)
+        desde = agora_br().timestamp() - (horas * 3600)
         mensagens = []
         for row in rows[1:]:
             if len(row) < 4: continue
@@ -222,7 +238,7 @@ def limpar_log_antigo():
         if len(rows) < 2:
             return 0
 
-        limite = datetime.now().timestamp() - (5 * 24 * 3600)
+        limite = agora_br().timestamp() - (5 * 24 * 3600)
         linhas_deletar = []
 
         for i, row in enumerate(rows[1:], start=2):  # pula cabeçalho
@@ -598,7 +614,7 @@ def vazio(v):
 
 def gravar_data_se_vazia(ws, num_linha, coluna_idx, row, label=""):
     """
-    Grava a data/hora atual (datetime.now()) na coluna informada, SOMENTE se a
+    Grava a data/hora atual (agora_br()) na coluna informada, SOMENTE se a
     célula ainda estiver vazia. Nunca sobrescreve um valor já existente —
     seja ele gravado pelo robô antes, seja uma correção manual feita por Fred
     direto na planilha.
@@ -610,7 +626,7 @@ def gravar_data_se_vazia(ws, num_linha, coluna_idx, row, label=""):
     if not vazio(valor_atual):
         return False  # já preenchido (robô ou manual) — não mexe
 
-    agora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    agora = agora_br().strftime("%d/%m/%Y %H:%M:%S")
     ws.update_cell(num_linha, coluna_idx + 1, agora)
     log.info(f"   → {label} gravada automaticamente: linha {num_linha} = {agora}")
     return True
@@ -632,7 +648,7 @@ def anexar_mensagem_original(ws, num_linha, coluna_idx, row, texto_bruto):
     atual = (row[coluna_idx] if len(row) > coluna_idx else "").strip()
     if texto_limpo in atual:
         return  # mensagem idêntica já registrada — não duplica
-    agora = datetime.now().strftime("%d/%m %H:%M")
+    agora = agora_br().strftime("%d/%m %H:%M")
     entrada = f"{agora} - {texto_limpo}"
     novo = (atual + "\n\n" + entrada).strip() if atual else entrada
     ws.update_cell(num_linha, coluna_idx + 1, novo)
@@ -917,7 +933,7 @@ def parse_bloco_cos_grid(bloco):
     fim_preenchido = not vazio(fim_txt) and fim_txt.strip() not in ("", "-", "--")
     normalizar = normalizar_usina or fim_preenchido or eh_normalizacao(bloco)
 
-    hoje     = datetime.now().strftime("%d/%m")
+    hoje     = agora_br().strftime("%d/%m")
     data_ini = extrair_data_fmt(inicio_txt, hoje)
     hist     = [f"{data_ini} - Registro inicial"]
     if not vazio(acao_txt):
@@ -1110,7 +1126,7 @@ def parse_bloco(bloco):
     status_emoji = detectar_status_emoji(bloco)
     normalizar   = (status_emoji == "normalizado")
 
-    hoje       = datetime.now().strftime("%d/%m")
+    hoje       = agora_br().strftime("%d/%m")
     hist       = []
     data_inicio = extrair_data_fmt(c["inicio"], hoje)
     if normalizar:
@@ -1331,7 +1347,7 @@ def buscar_por_fingerprint(todos, usina, equipamento, falha, os_num=""):
         if eh_concluido:
             # Verifica se foi concluída recentemente (≤ 7 dias) pelo histórico
             hist_txt = row[11] if len(row) > 11 else ""
-            hoje = datetime.now()
+            hoje = agora_br()
             datas = re.findall(r"(\d{1,2})/(\d{1,2})(?:/(\d{4}))?", hist_txt)
             reabrir = False
             for d_match in datas:
@@ -1604,7 +1620,7 @@ def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
       na NORMALIZAÇÃO (normalizar_ocorrencia → Concluído).
     - Histórico e Ação: sempre acrescenta (nunca substitui).
     """
-    hoje = datetime.now().strftime("%d/%m")
+    hoje = agora_br().strftime("%d/%m")
 
     # Ação — acrescenta (não sobrescreve)
     acao_nova = (dados.get("acao_texto") or "").strip()
@@ -1712,7 +1728,7 @@ def atualizar_ocorrencia(ws, num_linha, row, dados, origem="qualquer"):
 
 def normalizar_ocorrencia(ws, num_linha, row, dados):
     """Fecha uma ocorrência: status → Concluído + entrada no histórico."""
-    hoje = datetime.now().strftime("%d/%m")
+    hoje = agora_br().strftime("%d/%m")
     ws.update_cell(num_linha, 9, "Concluído")
 
     if not vazio(dados.get("os", "")):
@@ -1757,7 +1773,7 @@ def primeira_linha_vazia(todos):
 def gravar_nova_ocorrencia(ws, todos, dados):
     novo_id       = proximo_id(todos)
     proxima_linha = primeira_linha_vazia(todos)
-    agora_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
 
     # Tenta extrair o número do chamado/ticket do fabricante já na abertura
     texto_para_ticket = " ".join(filter(None, [
@@ -1805,7 +1821,7 @@ def gravar_nova_ocorrencia(ws, todos, dados):
     try:
         msg_bruta = dados.get("mensagem_bruta", "")
         if not vazio(msg_bruta):
-            ws.update_cell(proxima_linha, 22, f"{datetime.now().strftime('%d/%m %H:%M')} - {msg_bruta.strip()}")
+            ws.update_cell(proxima_linha, 22, f"{agora_br().strftime('%d/%m %H:%M')} - {msg_bruta.strip()}")
     except Exception as e:
         log.error(f"[Mensagens] Erro ao gravar mensagem original na abertura: {e}")
 
@@ -2282,7 +2298,7 @@ def salvar_push_subscription(endpoint, sub):
     try:
         ws = get_push_sheet()
         cell = ws.find(endpoint, in_column=1)
-        linha = [endpoint, json.dumps(sub), datetime.now().strftime("%d/%m/%Y %H:%M:%S")]
+        linha = [endpoint, json.dumps(sub), agora_br().strftime("%d/%m/%Y %H:%M:%S")]
         if cell:
             ws.update(f"A{cell.row}:C{cell.row}", [linha])
         else:
@@ -2548,7 +2564,7 @@ def health():
     return jsonify({
         "status":     "ok",
         "version":    APP_VERSION,
-        "timestamp":  datetime.now().isoformat(),
+        "timestamp":  agora_br().isoformat(),
         "wpp_server": WPP_SERVER_URL or "não configurado",
     }), 200
 
@@ -2659,7 +2675,7 @@ def atualizar_campo():
         if field == "historico" and append:
             # Acrescenta ao histórico existente sem sobrescrever
             hist_atual = (rows[num_linha - 1][11] if len(rows[num_linha - 1]) > 11 else "").strip()
-            hoje = datetime.now().strftime("%d/%m")
+            hoje = agora_br().strftime("%d/%m")
             nova_entrada = f"{hoje} - {value}"
             # Deduplicação: não adiciona se já existir
             if nova_entrada in hist_atual or value in hist_atual.split("\n")[-1]:
@@ -2720,7 +2736,7 @@ def nova_ocorrencia_dashboard():
             "acao":         acao,
             "status":       status,
             "os":           numero_os,
-            "historico":    historico or f"{datetime.now().strftime('%d/%m')} - Registro inicial via dashboard.",
+            "historico":    historico or f"{agora_br().strftime('%d/%m')} - Registro inicial via dashboard.",
         }
         gravar_nova_ocorrencia(ws, todos, dados)
         log.info(f"[nova-ocorrencia] {usina} — {equipamento} | editor={editor}")
@@ -2851,8 +2867,8 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     _garantir_headers_atividades(ws)
 
     novo_id = _proximo_id_atividade(todos)
-    agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    historico_inicial = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
+    agora = agora_br().strftime('%d/%m/%Y %H:%M:%S')
+    historico_inicial = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
 
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
              prioridade, status, agora, "", historico_inicial, editor, numeroOS,
@@ -3918,7 +3934,7 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
             status_os_atual = row[14].strip()
             percentual_atual = row[20].strip()
             status_geral_atual = row[21].strip()
-            agora_iso = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            agora_iso = agora_br().strftime("%Y-%m-%dT%H:%M:%S")
             try:
                 token = _fracttal_get_token()
                 headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -3947,7 +3963,7 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
                     mudou = True
 
                 if mudou:
-                    entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
+                    entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
                              f"\"{status_os_atual or '—'}\" → \"{status_novo or status_os_atual or '—'}\", "
                              f"{percentual_atual or '0'}% → {percentual_novo}% ({status_geral_novo}).")
                     hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
@@ -3969,7 +3985,7 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
                     # "Em Processo" (reprovada na verificação) — reabre.
                     elif not concluida_de_fato and status_interno_atual == "Concluído":
                         ws.update_cell(i, ATIV_CAMPO_COL["status"], "Em Aberto")
-                        reabertura = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
+                        reabertura = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
                                       f"estava marcada como concluída, mas a Fracttal mostra status \"{status_efetivo or '—'}\" "
                                       f"(voltou pra Em Processo — provavelmente reprovada na verificação).")
                         ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}\n{reabertura}".strip())
@@ -4081,14 +4097,14 @@ def atualizar_campo_atividade():
             # Registra automaticamente a alteração no histórico cronológico
             if str(valor_antigo).strip() != str(value).strip():
                 label = ATIV_CAMPO_LABEL.get(field, field)
-                entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
+                entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
                          f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
                 hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
                 novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
                 ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
 
             if field == "status" and _is_concluido_atividade(value):
-                ws.update_cell(linha_idx, 11, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))  # DataConclusao
+                ws.update_cell(linha_idx, 11, agora_br().strftime('%d/%m/%Y %H:%M:%S'))  # DataConclusao
 
         return jsonify({"ok": True})
     except Exception as e:
@@ -4177,13 +4193,13 @@ def _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, field, value, ed
     ws.update_cell(linha_idx, col, value)
     if str(valor_antigo).strip() != str(value).strip():
         label = ATIV_CAMPO_LABEL.get(field, field)
-        entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
+        entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
                  f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
         hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
         novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
         ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
     if field == "status" and _is_concluido_atividade(value):
-        ws.update_cell(linha_idx, 11, datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+        ws.update_cell(linha_idx, 11, agora_br().strftime('%d/%m/%Y %H:%M:%S'))
 
 
 def _processar_um_bloco_atividade(texto, editor="tecnico-whatsapp"):
@@ -4220,7 +4236,7 @@ def _processar_um_bloco_atividade(texto, editor="tecnico-whatsapp"):
         todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
 
     if dados["descricao"]:
-        entry = f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - {editor}: {dados['descricao']}"
+        entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {editor}: {dados['descricao']}"
         _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "historico", entry, editor, append=True)
         todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
 
@@ -4260,7 +4276,7 @@ def corrigir_prioridade_atividades():
             if prioridade_atual.lower() not in VALORES_VALIDOS_PRIORIDADE:
                 ws.update_cell(i, 8, "Alta")  # coluna H = Prioridade
                 hist_atual = row[11] if len(row) > 11 else ""
-                entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Prioridade corrigida de "
+                entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Prioridade corrigida de "
                          f"\"{prioridade_atual or '—'}\" para \"Alta\" (correcao de dado legado) por sistema.")
                 novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
                 ws.update_cell(i, 12, novo_hist)  # coluna L = Historico
@@ -4318,7 +4334,7 @@ def converter_atividade_em_ocorrencia():
         if not equipamento:
             equipamento = "Não informado"
 
-        nota_conversao = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
+        nota_conversao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
                            f"Atividades (Atividade #{atividade_id}) por {editor}.")
         historico_ocorrencia = nota_conversao
         if historico_ativ:
@@ -4347,7 +4363,7 @@ def converter_atividade_em_ocorrencia():
 
         # Marca a atividade original como convertida e registra no histórico dela
         ws_ativ.update_cell(linha_idx, 9, "Convertida em Ocorrência")  # coluna I = Status
-        entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida em ocorrência "
+        entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida em ocorrência "
                  f"#{novo_id_ocorrencia} por {editor}.")
         novo_hist_ativ = f"{historico_ativ}\n{entry}".strip() if historico_ativ else entry
         ws_ativ.update_cell(linha_idx, 12, novo_hist_ativ)  # coluna L = Historico
@@ -4540,7 +4556,7 @@ def sugerir_reprogramacao():
     if len(atividades) > 80:
         atividades = atividades[:80]  # limite de segurança pro tamanho do prompt
 
-    hoje_str = datetime.now().strftime('%d/%m/%Y (%A)')
+    hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
     prompt = _montar_prompt_reprogramacao(atividades, hoje_str)
 
     try:
@@ -4659,7 +4675,7 @@ def converter_ocorrencia_em_atividade():
         if causa:
             descricao += f" — Causa: {causa}"
 
-        nota_conversao = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
+        nota_conversao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
                            f"Falhas (Ocorrência #{ocorrencia_id}) por {editor}.")
         historico_atividade = nota_conversao
         if acao:
@@ -4673,14 +4689,14 @@ def converter_ocorrencia_em_atividade():
         ws_ativ = get_atividades_sheet()
         todos_ativ = ws_ativ.get_all_values()
         novo_id_atividade = _proximo_id_atividade(todos_ativ)
-        agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        agora = agora_br().strftime('%d/%m/%Y %H:%M:%S')
 
         ws_ativ.append_row([novo_id_atividade, cliente, usina, equipamento, descricao, "", "",
                              "Média", status_atividade, agora, "", historico_atividade, editor, numero_os])
 
         # Marca a ocorrência original como convertida
         ws_falhas.update_cell(linha_idx, 9, "Convertida em Atividade")  # coluna I = Status
-        entry = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Convertida em atividade "
+        entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida em atividade "
                  f"#{novo_id_atividade} por {editor}.")
         novo_hist_ocorr = f"{historico_ocorr}\n{entry}".strip() if historico_ocorr else entry
         ws_falhas.update_cell(linha_idx, 12, novo_hist_ocorr)  # coluna L = Historico
