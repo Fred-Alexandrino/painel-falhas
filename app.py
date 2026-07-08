@@ -4095,6 +4095,7 @@ def corrigir_fuso_retroativo():
 
     alteracoes = []
     ambiguos = []
+    batch_updates = []
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
@@ -4142,10 +4143,19 @@ def corrigir_fuso_retroativo():
                                 "colunas_alteradas": list(updates.keys())})
             if aplicar:
                 for col, novo_val in updates.items():
-                    ws.update_cell(i, col, novo_val)
-                time.sleep(0.4)
+                    batch_updates.append({
+                        "range": gspread.utils.rowcol_to_a1(i, col),
+                        "values": [[novo_val]],
+                    })
         if ambiguos_linha:
             ambiguos.append({"linha": i, "id": id_atividade, "numeroOS": numero_os, "campos": ambiguos_linha})
+
+    if aplicar and batch_updates:
+        # grava tudo em poucas chamadas (lotes de 200 células) em vez de uma
+        # chamada por célula — evita estourar o timeout do Gunicorn (60s)
+        TAMANHO_LOTE = 200
+        for k in range(0, len(batch_updates), TAMANHO_LOTE):
+            ws.batch_update(batch_updates[k:k + TAMANHO_LOTE], value_input_option="RAW")
 
     return jsonify({"ok": True, "aplicado": aplicar, "linhas_afetadas": len(alteracoes),
                      "detalhes": alteracoes, "ambiguos": ambiguos}), 200
