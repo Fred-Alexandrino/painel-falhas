@@ -1,8 +1,6 @@
-===== PAINEL =====
-7962 |status= Em Aberto |statusOS= Em Processo |pct= 100
-7904 |status= Em Aberto |statusOS= Em Processo |pct= 100
+===== OS 8945 =====
+{'anotacoesPessoais': '', 'cliente': '2C Energia', 'dataConclusao': '', 'dataCriacao': '06/07/2026 19:53:44', 'descricao': 'Coletar dados de geração por dia a partir do dia 15/06 por inversor', 'detalhesEquipamentosOS': '[{"equipamento": "Inversor 1.9 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.8 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.7 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.6 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.5 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.4 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.3 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.2 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.10 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}, {"equipamento": "Inversor 1.1 Huawei SUN2000-250KTL-H1", "status": "Concluída", "prazo": "07/07/2026"}]', 'editor': 'claude-chat', 'equipamento': 'Múltiplos equipamentos (10 inversores)', 'etiquetasOS': '', 'historico': '06/07/2026 19:53 - Atividade criada por claude-chat.\nEquipamentos envolvidos (10): Inversor 1.1 a 1.10 Huawei SUN2000-250KTL-H1 (SLG200-INVR1.1 a INVR1.10). Todos com Data Programada 06/07/2026, Duração 00:10, Tipo Corretiva, Criticidade Alta.\n06/07/2026 19:57 - Status alterado de "Em Aberto" para "Análise Engenharia" por fredalexandrino.\n06/07/2026 19:58 - Status alterado de "Análise Engenharia" para "Análise de Performance" por fredalexandrino.\n06/07/2026 20:07 - Prioridade alterado de "Alta" para "Baixa" por fredalexandrino.', 'id': '31', 'linkOS': '', 'numeroOS': '8945', 'observacoesOS': '', 'percentualOS': '100', 'prazo': '06/07/2026', 'prioridade': 'Baixa', 'responsavel': 'Daniel de Paula', 'status': 'Análise de Performance', 'statusGeralOS': 'Concluída', 'statusOS': '', 'statusTarefaOS': '', 'usina': 'Sete Lagoas 2'}
 
-===== FRACTTAL 7962 =====
-id_status_work_order: 1
-===== FRACTTAL 7904 =====
-id_status_work_order: 1
+===== USINAS COM SETE LAGOAS =====
+'Sete Lagoas'
+'Sete Lagoas 2'
