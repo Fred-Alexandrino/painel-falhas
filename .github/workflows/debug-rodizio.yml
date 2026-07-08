@@ -10,18 +10,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Checar 9107 na Fracttal
+      - name: Chamar atualizar-os-agora de novo
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/fracttal-raw?folio=9107" -H "X-Webhook-Secret: $WEBHOOK_SECRET" | python3 -c "
-          import json,sys
-          d = json.load(sys.stdin)
-          t = d['body']['data'][0]
-          print('id_status_work_order:', t.get('id_status_work_order'))
-          print('completed_percentage:', t.get('completed_percentage'))
+          curl -s -X POST --max-time 100 "$BASE/atualizar-os-agora" -o /tmp/r1.json
+          sleep 5
+          curl -s -X POST --max-time 100 "$BASE/atualizar-os-agora" -o /tmp/r2.json
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          for a in d.get('atividades', []):
+              if a.get('numeroOS') == '9107':
+                  print(a.get('numeroOS'), '| status=', a.get('status'), '| statusOS=', a.get('statusOS'), '| pct=', a.get('percentualOS'))
           " > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
