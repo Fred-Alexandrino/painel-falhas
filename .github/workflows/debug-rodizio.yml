@@ -10,24 +10,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Checar estado atual
+      - name: Chamar atualizar-os-agora e ver resposta completa
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           BASE="https://whatsapp-painel-falhas.onrender.com"
           mkdir -p backups
-          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
-          python3 -c "
-          import json
-          d = json.load(open('/tmp/a.json'))
-          ativs = d.get('atividades', [])
-          print('total atividades:', len(ativs))
-          for a in ativs:
-              if a.get('numeroOS') in ('9104','9105','9106','9107'):
-                  print(a.get('numeroOS'), '| statusOS=', a.get('statusOS'), '| pct=', a.get('percentualOS'), '| ultimaVerificacaoOS=', a.get('ultimaVerificacaoOS'))
-          com_verificacao = [a for a in ativs if a.get('ultimaVerificacaoOS')]
-          print('atividades com ultimaVerificacaoOS preenchida:', len(com_verificacao))
-          " > backups/check-status-result.txt
+          curl -s -w "\n%{http_code}" --max-time 100 -X POST "$BASE/atualizar-os-agora" > backups/check-status-result.txt
           cat backups/check-status-result.txt
       - name: Salvar resultado
         if: always()
