@@ -4045,6 +4045,12 @@ _HIST_LINHA_RE = re.compile(r'^(\d{2}/\d{2}/\d{4}) (\d{2}:\d{2})(:\d{2})? - ')
 def _classificar_ts_fuso(ts_str, fmt):
     """Classifica um timestamp gravado antes da correção de fuso horário.
 
+    Regra extra: uma entrada NOVA (corrigida) nunca pode ter horário no
+    futuro em relação a "agora" (horário real de Brasília no momento da
+    checagem) — se tiver, só pode ser uma entrada ANTIGA (valor bruto de
+    UTC, que naturalmente "parece" mais tarde). Isso desambiguiza a maior
+    parte da janela conforme o tempo passa.
+
     Retorna ('antigo', novo_valor) | ('ambiguo', ts_str) | ('atual', ts_str) | ('invalido', ts_str)
     """
     try:
@@ -4057,6 +4063,12 @@ def _classificar_ts_fuso(ts_str, fmt):
 
     if dt.date() == _HOJE_DEPLOY:
         if dt.time() < _JANELA_INICIO:
+            return "antigo", (dt - timedelta(hours=3)).strftime(fmt)
+        agora_time = agora_br().time()
+        if dt.time() > agora_time:
+            # horário "no futuro" em relação a agora só é possível se for
+            # valor bruto de UTC (entrada antiga) — uma entrada nova jamais
+            # gravaria um horário à frente do relógio real de Brasília.
             return "antigo", (dt - timedelta(hours=3)).strftime(fmt)
         if dt.time() <= _JANELA_FIM:
             return "ambiguo", ts_str
