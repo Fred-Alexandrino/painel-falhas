@@ -3827,20 +3827,22 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=18):
                     mudancas_status.append({"numeroOS": numero_os, "statusOS": status_novo,
                                              "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo})
 
-                    # a OS chegou a 100% das tarefas (normalmente indo pra "Em
-                    # Revisão") — trata como concluída no dashboard, mas
-                    # CONTINUA sendo monitorada (não paramos por causa do
-                    # "continue" acima, que só olha statusOS).
-                    if percentual_novo == "100" and status_interno_atual not in ("Concluído", "Cancelado"):
+                    # só considera a OS realmente encerrada quando o status
+                    # OFICIAL dela (não o percentual de tarefas) chega em
+                    # "Finalizada" — 100% das tarefas sozinho não basta: a OS
+                    # pode estar aguardando envio pra verificação, ou ter
+                    # voltado de lá por reprovação, e nesses casos continua
+                    # em "Em Processo"/"Em Revisão" de verdade.
+                    status_efetivo = status_novo or status_os_atual
+                    if status_efetivo == "Finalizada" and status_interno_atual not in ("Concluído", "Cancelado"):
                         ws.update_cell(i, ATIV_CAMPO_COL["status"], "Concluído")
-                    # regressão: a verificação reprovou e a OS voltou a ter
-                    # tarefas pendentes depois de já ter sido marcada como
-                    # concluída no dashboard — reabre automaticamente.
-                    elif percentual_novo != "100" and status_interno_atual == "Concluído":
+                    # regressão: estava Finalizada (ou tratada como tal) e
+                    # voltou pra um status anterior — reabre automaticamente.
+                    elif status_efetivo != "Finalizada" and status_interno_atual == "Concluído":
                         ws.update_cell(i, ATIV_CAMPO_COL["status"], "Em Aberto")
                         reabertura = (f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
-                                      f"estava marcada como concluída, mas a Fracttal mostra {percentual_novo}% "
-                                      f"(provavelmente reprovada na verificação).")
+                                      f"estava marcada como concluída, mas a Fracttal mostra status \"{status_efetivo or '—'}\" "
+                                      f"(não está mais Finalizada — provavelmente reprovada na verificação).")
                         ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}\n{reabertura}".strip())
 
                     try:
