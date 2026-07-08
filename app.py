@@ -3164,8 +3164,17 @@ def _fracttal_percentual_conclusao(tasks):
     total = len(tasks)
     if not total:
         return 0
-    concluidas = sum(1 for t in tasks if (t.get("task_status") or "").strip().upper() == "DONE")
-    return round(100 * concluidas / total)
+    valores = []
+    for t in tasks:
+        cp = t.get("completed_percentage")
+        if cp is not None:
+            try:
+                valores.append(float(cp))
+                continue
+            except (TypeError, ValueError):
+                pass
+        valores.append(100.0 if (t.get("task_status") or "").strip().upper() == "DONE" else 0.0)
+    return round(sum(valores) / total)
 
 
 def _fracttal_status_geral(tasks):
