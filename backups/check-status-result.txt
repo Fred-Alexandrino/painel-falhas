@@ -1,18 +1,2 @@
-'Adriano  Moraes' -> 1
-'Bruno Vinícius Pupo' -> 4
-'COS' -> 1
-'Claudio Ferreira' -> 1
-'Cláudio  Ferreira' -> 2
-'Cláudio Ferreira' -> 1
-'Daniel de Paula' -> 3
-'Deivity Jhon Cunha Saugo' -> 18
-'Deivity Saugo' -> 9
-'Eduardo Souza' -> 2
-'Felipe Lima' -> 1
-'Gabriel Oliveira' -> 26
-'Railson Gomes' -> 20
-'Rodolfo  Oliveira' -> 4
-'Rodolfo Oliveira' -> 5
-'Roger Lélis' -> 1
-'Valmir  Júnior' -> 3
-'Valmir Junior' -> 1
+Total prematuras: 1
+('9124', 'Em Revisão', '100')
