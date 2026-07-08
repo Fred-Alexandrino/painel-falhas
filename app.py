@@ -3093,8 +3093,8 @@ def _fracttal_descricao_agregada(tasks):
         return descs[0]
     m = re.match(r"^(\[[^\]]*\]\s*-\s*[^-]+)\s*-", descs[0])
     if m:
-        return f"{m.group(1).strip()} - Múltiplas atividades ({len(tasks)} itens)"
-    return f"{descs[0]} (+{len(tasks) - 1} outras atividades)"
+        return m.group(1).strip()
+    return descs[0]
 
 
 def _fracttal_prazo_agregado(tasks):
@@ -3275,7 +3275,7 @@ def _fracttal_mapear_grupo(tasks):
     status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
 
     multiplos = len(tasks) > 1
-    equipamento = "Múltiplos equipamentos" if multiplos else (representante.get("code") or texto_ativo or "Múltiplos equipamentos").strip()
+    equipamento = "Múltiplas atividades" if multiplos else (representante.get("code") or texto_ativo or "Múltiplas atividades").strip()
 
     detalhe_hist = _fracttal_historico_detalhe(tasks)
     if alerta and detalhe_hist:
@@ -3496,8 +3496,8 @@ def completar_fracttal_backfill():
             prazo_atual = row[6].strip()
             if prazo_novo and prazo_novo != prazo_atual:
                 ws.update_cell(i, 7, prazo_novo)
-            if len(tasks) > 1 and row[3].strip() != "Múltiplos equipamentos":
-                ws.update_cell(i, 4, "Múltiplos equipamentos")
+            if len(tasks) > 1 and row[3].strip() != "Múltiplas atividades":
+                ws.update_cell(i, 4, "Múltiplas atividades")
                 detalhe = _fracttal_historico_detalhe(tasks)
                 if detalhe:
                     hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
@@ -3511,6 +3511,68 @@ def completar_fracttal_backfill():
 
     log.info(f"[completar-fracttal-backfill] atualizadas={len(atualizadas)} puladas={len(puladas)} erros={len(erros)}")
     return jsonify({"ok": True, "atualizadas": atualizadas, "puladas": puladas, "erros": erros,
+                     "processadas_nesta_chamada": processadas, "limit": limit})
+
+
+@app.route("/corrigir-descricoes-multiplas", methods=["POST", "GET"])
+def corrigir_descricoes_multiplas():
+    """
+    Corrige atividades multi-tarefa antigas (criadas antes da mudança de
+    texto "Múltiplos equipamentos" -> "Múltiplas atividades" e do corte da
+    descrição pro prefixo só): reconsulta a OS na Fracttal e reescreve
+    equipamento + descrição no padrão atual.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    limit = int(request.args.get("limit", 8))
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    corrigidas, erros = [], []
+    processadas = 0
+
+    for i, row in enumerate(todos[1:], start=2):
+        if processadas >= limit:
+            break
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        equipamento_atual = row[3].strip()
+        descricao_atual = row[4].strip()
+        numero_os = row[13].strip()
+
+        precisa = (equipamento_atual == "Múltiplos equipamentos") or (
+            equipamento_atual == "Múltiplas atividades" and re.search(r"Múltiplas atividades \(\d+ itens\)", descricao_atual)
+        )
+        if not precisa or not numero_os:
+            continue
+
+        processadas += 1
+        try:
+            resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+            resp.raise_for_status()
+            tasks = (resp.json().get("data") or [])
+            if not tasks:
+                continue
+            nova_descricao = _fracttal_descricao_agregada(tasks)
+            ws.update(f"D{i}:E{i}", [["Múltiplas atividades", nova_descricao]])
+            corrigidas.append({"linha": i, "numeroOS": numero_os, "descricao": nova_descricao})
+            time.sleep(1.0)
+        except Exception as e:
+            log.error(f"[corrigir-descricoes-multiplas] Erro na OT {numero_os}: {e}")
+            erros.append({"numeroOS": numero_os, "erro": str(e)})
+
+    log.info(f"[corrigir-descricoes-multiplas] corrigidas={len(corrigidas)} erros={len(erros)}")
+    return jsonify({"ok": True, "corrigidas": corrigidas, "erros": erros,
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
@@ -3681,8 +3743,8 @@ def completar_campos_v2_fracttal():
             etiquetas = _fracttal_etiquetas_agregadas(tasks)
             ws.update(f"R{i}:S{i}", [[status_tarefa, etiquetas]])
 
-            if len(tasks) > 1 and row[3].strip() != "Múltiplos equipamentos":
-                ws.update_cell(i, 4, "Múltiplos equipamentos")
+            if len(tasks) > 1 and row[3].strip() != "Múltiplas atividades":
+                ws.update_cell(i, 4, "Múltiplas atividades")
                 detalhe = _fracttal_historico_detalhe(tasks)
                 if detalhe:
                     hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
