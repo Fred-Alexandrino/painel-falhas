@@ -1,0 +1,43 @@
+name: Dry Run Correcao Fuso
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rodar dry-run da correcao de fuso
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/corrigir-fuso-retroativo?apply=false" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/dryrun-fuso-result.json
+          python3 -c "
+          import json
+          d = json.load(open('backups/dryrun-fuso-result.json'))
+          print('ok:', d.get('ok'))
+          print('aplicado:', d.get('aplicado'))
+          print('linhas_afetadas (vao ser corrigidas):', d.get('linhas_afetadas'))
+          print('linhas ambiguas (revisao manual):', len(d.get('ambiguos', [])))
+          print()
+          print('--- primeiras 15 linhas afetadas ---')
+          for a in d.get('detalhes', [])[:15]:
+              print(a)
+          print()
+          print('--- linhas ambiguas (todas) ---')
+          for a in d.get('ambiguos', []):
+              print(a)
+          "
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/dryrun-fuso-result.json
+          git diff --quiet --cached || git commit -m "Dry-run correcao fuso [skip ci]"
+          git push
