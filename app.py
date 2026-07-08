@@ -3836,6 +3836,7 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
     try:
         ws = get_atividades_sheet()
         todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
         os_existentes = {row[13].strip() for row in todos[1:] if len(row) > 13 and row[13].strip()}
     except Exception as e:
         log.error(f"[sync-fracttal] Erro ao ler Painel de Atividades: {e}")
@@ -3889,6 +3890,9 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
     # primeiras. Assim, ao longo de várias rodadas, TODAS as OSs acabam
     # sendo cobertas, e as recém-criadas são priorizadas na primeira vez.
     mudancas_status = []
+    erros_checagem = []
+    candidatas = []
+    selecionadas = []
     try:
         candidatas = []
         for i, row in enumerate(todos[1:], start=2):
@@ -3981,13 +3985,16 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
                 time.sleep(0.6)
             except Exception as e:
                 log.error(f"[sync-fracttal] Erro ao checar status da OS {numero_os}: {e}")
+                erros_checagem.append({"numeroOS": numero_os, "erro": str(e)})
     except Exception as e:
         log.error(f"[sync-fracttal] Erro na checagem de mudanças de status: {e}")
+        erros_checagem.append({"erro_geral": str(e)})
 
     log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)} "
-             f"mudancas_status={len(mudancas_status)}")
+             f"mudancas_status={len(mudancas_status)} checadas={len(selecionadas)} erros_checagem={len(erros_checagem)}")
     return {"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros,
-            "mudancas_status": mudancas_status}, 200
+            "mudancas_status": mudancas_status, "checadas_nesta_rodada": len(selecionadas),
+            "candidatas_totais": len(candidatas), "erros_checagem": erros_checagem}, 200
 
 
 @app.route("/sync-fracttal", methods=["POST", "GET"])
