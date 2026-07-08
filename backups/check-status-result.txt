@@ -1,4 +1,2 @@
-9107 | status= Em Aberto | statusOS= Em Processo | pct= 0 | ultimaVerificacaoOS= 
-9106 | status= Concluído | statusOS= Em Revisão | pct= 100 | ultimaVerificacaoOS= 2026-07-08 20:52:48
-9105 | status= Concluído | statusOS= Em Revisão | pct= 100 | ultimaVerificacaoOS= 2026-07-08 20:54:34
-9104 | status= Concluído | statusOS= Em Revisão | pct= 100 | ultimaVerificacaoOS= 2026-07-08 20:53:20
+id_status_work_order: 2
+completed_percentage: 100
