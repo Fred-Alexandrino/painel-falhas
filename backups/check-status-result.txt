@@ -1,4 +1,6 @@
-9107 | status= Em Aberto | statusOS= Em Processo | pct= 0 | ultimaVerif= 
-9106 | status= Em Aberto | statusOS= Em Processo | pct= 0 | ultimaVerif= 
-9105 | status= Em Aberto | statusOS= Em Processo | pct= 0 | ultimaVerif= 
-9104 | status= Em Aberto | statusOS= Em Processo | pct= 0 | ultimaVerif= 
+total atividades: 85
+9107 | statusOS= Em Processo | pct= 0 | ultimaVerificacaoOS= 
+9106 | statusOS= Em Processo | pct= 0 | ultimaVerificacaoOS= 
+9105 | statusOS= Em Processo | pct= 0 | ultimaVerificacaoOS= 
+9104 | statusOS= Em Processo | pct= 0 | ultimaVerificacaoOS= 
+atividades com ultimaVerificacaoOS preenchida: 0
