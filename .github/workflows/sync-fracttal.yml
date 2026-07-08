@@ -2,7 +2,7 @@ name: Sync Fracttal -> Painel de Atividades
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # a cada 2 horas
+    - cron: '*/30 * * * *'   # a cada 30 minutos
   workflow_dispatch: {}      # permite disparo manual pelo Fred, se precisar
 
 jobs:
