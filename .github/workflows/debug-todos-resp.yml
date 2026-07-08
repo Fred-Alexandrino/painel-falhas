@@ -1,0 +1,39 @@
+name: Debug todos os responsaveis
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Listar todos os responsaveis unicos
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          nomes = {}
+          for a in d.get('atividades', []):
+              r = a.get('responsavel','')
+              if r.strip():
+                  nomes[r] = nomes.get(r, 0) + 1
+          for n in sorted(nomes.keys()):
+              print(repr(n), '->', nomes[n])
+          " > backups/check-status-result.txt
+          cat backups/check-status-result.txt
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-status-result.txt
+          git diff --quiet --cached || git commit -m "Debug todos responsaveis [skip ci]"
+          git push
