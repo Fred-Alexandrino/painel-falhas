@@ -1,0 +1,5 @@
+numeroOS: 9035
+historico:
+07/07/2026 12:50 - Atividade criada por fracttal-backfill.
+08/07/2026 16:34 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
+08/07/2026 18:09 - anotacoesPessoais alterado de "—" para "[teste fuso horario apos deploy]" por claude-chat.
