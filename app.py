@@ -3103,17 +3103,44 @@ def _fracttal_agrupar_por_wo(ots):
     return [(folio, grupos[folio]) for folio in ordem]
 
 
-def _fracttal_eh_preventiva_mensal(tasks, texto_grupo_ativo=""):
+_PREVENTIVA_PERIODICIDADE_MAP = {
+    "semestral": ("PREVENTIVA SEMESTRAL", "Múltiplos equipamentos (Preventiva Semestral)"),
+    "anual": ("PREVENTIVA ANUAL", "Múltiplos equipamentos (Preventiva Anual)"),
+    "mensal": ("PREVENTIVA MENSAL", "Múltiplos equipamentos (Preventiva Mensal)"),
+}
+
+
+def _fracttal_detectar_preventiva(tasks, texto_grupo_ativo=""):
     """Detecta se uma OS com múltiplas tarefas é uma manutenção preventiva
-    mensal (MPM) — usa o padrão de nomenclatura "PREVENTIVA MENSAL" /
-    "Múltiplos equipamentos (Preventiva Mensal)" nesses casos, em vez de
-    listar cada tarefa individualmente. Detecção por palavra-chave nas
-    descrições das tarefas (não há campo estruturado confiável na Fracttal
-    pra periodicidade em todos os casos)."""
+    periódica (MPM/MPS/MPA) — usa nomenclatura padronizada ("PREVENTIVA
+    MENSAL/SEMESTRAL/ANUAL" e "Múltiplos equipamentos (Preventiva X)") em
+    vez de listar cada tarefa individualmente. Detecção por palavra-chave
+    nas descrições das tarefas (não há campo estruturado confiável na
+    Fracttal pra periodicidade em todos os casos). "Semestral"/"anual" são
+    checados antes de "mensal" pra evitar falso-positivo (ex.: um texto
+    que cite os dois por algum motivo).
+
+    Retorna (titulo, equipamento) ou (None, None) se não for preventiva
+    periódica reconhecida.
+    """
     textos = [(t.get("description") or "") for t in tasks]
     textos.append(texto_grupo_ativo or "")
     junto = " ".join(textos).lower()
-    return "preventiv" in junto and "mensal" in junto
+    if "preventiv" not in junto:
+        return None, None
+    if "semestral" in junto:
+        return _PREVENTIVA_PERIODICIDADE_MAP["semestral"]
+    if "anual" in junto:
+        return _PREVENTIVA_PERIODICIDADE_MAP["anual"]
+    if "mensal" in junto:
+        return _PREVENTIVA_PERIODICIDADE_MAP["mensal"]
+    return None, None
+
+
+def _fracttal_eh_preventiva_mensal(tasks, texto_grupo_ativo=""):
+    """Mantido por compatibilidade: só a variante mensal."""
+    titulo, _ = _fracttal_detectar_preventiva(tasks, texto_grupo_ativo)
+    return titulo == "PREVENTIVA MENSAL"
 
 
 def _fracttal_descricao_agregada(tasks):
@@ -3306,9 +3333,9 @@ def _fracttal_mapear_grupo(tasks):
     status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
 
     multiplos = len(tasks) > 1
-    eh_preventiva_mensal = multiplos and _fracttal_eh_preventiva_mensal(tasks, texto_usado)
-    if eh_preventiva_mensal:
-        equipamento = "Múltiplos equipamentos (Preventiva Mensal)"
+    _titulo_prev, _equip_prev = _fracttal_detectar_preventiva(tasks, texto_usado) if multiplos else (None, None)
+    if _equip_prev:
+        equipamento = _equip_prev
     else:
         equipamento = "Múltiplas atividades" if multiplos else (representante.get("code") or texto_ativo or "Múltiplas atividades").strip()
 
@@ -3322,7 +3349,7 @@ def _fracttal_mapear_grupo(tasks):
         "cliente": cliente,
         "usina": usina,
         "equipamento": equipamento,
-        "descricao": ("PREVENTIVA MENSAL" if eh_preventiva_mensal
+        "descricao": (_titulo_prev if _titulo_prev
                        else (_fracttal_descricao_agregada(tasks) or f"OT {representante.get('wo_folio', '')} (Fracttal)")),
         "responsavel": tecnico_raw,
         "prazo": _fracttal_prazo_agregado(tasks),
@@ -3533,8 +3560,8 @@ def completar_fracttal_backfill():
             if prazo_novo and prazo_novo != prazo_atual:
                 ws.update_cell(i, 7, prazo_novo)
             if len(tasks) > 1:
-                _equip_esperado = ("Múltiplos equipamentos (Preventiva Mensal)"
-                                    if _fracttal_eh_preventiva_mensal(tasks) else "Múltiplas atividades")
+                _, _equip_prev_check = _fracttal_detectar_preventiva(tasks)
+                _equip_esperado = _equip_prev_check or "Múltiplas atividades"
             else:
                 _equip_esperado = None
             if _equip_esperado and row[3].strip() != _equip_esperado:
@@ -3785,8 +3812,8 @@ def completar_campos_v2_fracttal():
             ws.update(f"R{i}:S{i}", [[status_tarefa, etiquetas]])
 
             if len(tasks) > 1:
-                _equip_esperado = ("Múltiplos equipamentos (Preventiva Mensal)"
-                                    if _fracttal_eh_preventiva_mensal(tasks) else "Múltiplas atividades")
+                _, _equip_prev_check = _fracttal_detectar_preventiva(tasks)
+                _equip_esperado = _equip_prev_check or "Múltiplas atividades"
             else:
                 _equip_esperado = None
             if _equip_esperado and row[3].strip() != _equip_esperado:
