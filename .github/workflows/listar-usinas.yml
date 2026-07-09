@@ -1,0 +1,28 @@
+name: Listar Usinas
+on:
+  workflow_dispatch: {}
+jobs:
+  listar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/ativs.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/ativs.json'))
+          usinas = sorted(set(a.get('usina','').strip() for a in d.get('atividades', []) if a.get('usina','').strip()))
+          for u in usinas:
+              print(repr(u))
+          " > backups/usinas-list.txt
+          cat backups/usinas-list.txt
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/usinas-list.txt
+          git diff --quiet --cached || git commit -m "listar usinas [skip ci]"
+          git push
