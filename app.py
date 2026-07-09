@@ -4268,16 +4268,38 @@ def _gravar_trava(chave, valor):
 
 @app.route("/config-set-lote", methods=["POST"])
 def config_set_lote():
-    """Grava múltiplos pares chave/valor na aba _Sistema de uma vez.
-    Body: {"pares": {"chave1": "valor1", "chave2": "valor2", ...}}"""
+    """Grava múltiplos pares chave/valor na aba _Sistema de uma vez, numa
+    única leitura + uma única escrita em lote (evita estourar a cota da
+    API do Google Sheets, que é o que acontecia gravando um por um)."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     dados = request.get_json(force=True, silent=True) or {}
     pares = dados.get("pares", {})
+    if not pares:
+        return jsonify({"ok": True, "gravados": []}), 200
+
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    linha_existente = {row[0].strip(): i for i, row in enumerate(valores[1:], start=2) if row}
+
+    batch_updates = []
+    novas_linhas = []
     for chave, valor in pares.items():
-        _gravar_trava(chave, valor)
+        if chave in linha_existente:
+            batch_updates.append({
+                "range": gspread.utils.rowcol_to_a1(linha_existente[chave], 2),
+                "values": [[valor]],
+            })
+        else:
+            novas_linhas.append([chave, valor])
+
+    if batch_updates:
+        ws_cfg.batch_update(batch_updates, value_input_option="RAW")
+    if novas_linhas:
+        ws_cfg.append_rows(novas_linhas, value_input_option="RAW")
+
     return jsonify({"ok": True, "gravados": list(pares.keys())}), 200
 
 
