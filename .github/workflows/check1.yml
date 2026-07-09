@@ -1,0 +1,22 @@
+name: Check Pre Disparo
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://wppconnect-painel.onrender.com/status" -o backups/wpp-status.json
+          curl -s "https://whatsapp-painel-falhas.onrender.com/config-ler" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/config-atual2.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/wpp-status.json backups/config-atual2.json
+          git diff --quiet --cached || git commit -m "check pre disparo [skip ci]"
+          git push
