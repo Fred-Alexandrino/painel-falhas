@@ -1,0 +1,3 @@
+8945 | usina: 'Sete Lagoas' | status: 'Análise de Performance' | statusOS: 'Em Revisão' | dataConclusao: ''
+8532 | usina: 'Sete Lagoas' | status: 'Em Aberto' | statusOS: 'Em Revisão' | dataConclusao: ''
+9079 | usina: 'Sete Lagoas' | status: 'Em Aberto' | statusOS: 'Em Revisão' | dataConclusao: ''
