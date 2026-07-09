@@ -3115,10 +3115,11 @@ def _fracttal_detectar_preventiva(tasks, texto_grupo_ativo=""):
     periódica (MPM/MPS/MPA) — usa nomenclatura padronizada ("PREVENTIVA
     MENSAL/SEMESTRAL/ANUAL" e "Múltiplos equipamentos (Preventiva X)") em
     vez de listar cada tarefa individualmente. Detecção por palavra-chave
-    nas descrições das tarefas (não há campo estruturado confiável na
-    Fracttal pra periodicidade em todos os casos). "Semestral"/"anual" são
-    checados antes de "mensal" pra evitar falso-positivo (ex.: um texto
-    que cite os dois por algum motivo).
+    OU pela sigla (MPM/MPS/MPA) nas descrições das tarefas — a Fracttal às
+    vezes usa só a sigla (ex.: "[Grid Co.] - MPA") sem escrever "preventiva
+    anual" por extenso. "Semestral"/"anual" são checados antes de "mensal"
+    pra evitar falso-positivo (ex.: um texto que cite os dois por algum
+    motivo).
 
     Retorna (titulo, equipamento) ou (None, None) se não for preventiva
     periódica reconhecida.
@@ -3126,6 +3127,14 @@ def _fracttal_detectar_preventiva(tasks, texto_grupo_ativo=""):
     textos = [(t.get("description") or "") for t in tasks]
     textos.append(texto_grupo_ativo or "")
     junto = " ".join(textos).lower()
+
+    if re.search(r"\bmps\b", junto):
+        return _PREVENTIVA_PERIODICIDADE_MAP["semestral"]
+    if re.search(r"\bmpa\b", junto):
+        return _PREVENTIVA_PERIODICIDADE_MAP["anual"]
+    if re.search(r"\bmpm\b", junto):
+        return _PREVENTIVA_PERIODICIDADE_MAP["mensal"]
+
     if "preventiv" not in junto:
         return None, None
     if "semestral" in junto:
