@@ -1,0 +1,17 @@
+name: Comunicados Diarios OS Abertas
+
+on:
+  schedule:
+    - cron: '0 10 * * *'   # 10:00 UTC = 07:00 Brasília (GMT-3)
+  workflow_dispatch: {}
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar comunicados diarios
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/enviar-comunicados-diarios" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET"
