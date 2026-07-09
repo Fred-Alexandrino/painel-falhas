@@ -4422,6 +4422,12 @@ def enviar_comunicados_diarios():
         status = row[8].strip()
         if _is_concluido_atividade(status):
             continue
+        status_os = row[14].strip()
+        if status_os == "Em Revisão":
+            # já foi enviada pra verificação na Fracttal — o técnico já fez
+            # a parte dele, não faz sentido cobrar de novo no comunicado.
+            # Continua rastreada/ativa no sistema até virar "Finalizada".
+            continue
         usina = row[2].strip()
         if not usina:
             continue
