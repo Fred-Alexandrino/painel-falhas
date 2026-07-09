@@ -1,0 +1,3 @@
+HTTP status:
+200
+{"status":"ok","timestamp":"2026-07-09T06:40:33.853290-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wppconnect-painel.onrender.com"}
