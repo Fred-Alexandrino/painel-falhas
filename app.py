@@ -4267,6 +4267,41 @@ def _gravar_trava(chave, valor):
     ws_cfg.append_row([chave, valor])
 
 
+@app.route("/corrigir-estado-revisao", methods=["POST", "GET"])
+def corrigir_estado_revisao():
+    """Correção retroativa de uso único: reabre atividades marcadas como
+    'Concluído' internamente cujo statusOS na Fracttal ainda é 'Em Revisão'
+    (não 'Finalizada'). Bug anterior tratava Em Revisão como conclusão."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    aplicar = request.args.get("apply", "false").lower() == "true"
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    corrigidas = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[13].strip()
+        status_interno = row[8].strip()
+        status_os = row[14].strip()
+        if numero_os and status_interno == "Concluído" and status_os == "Em Revisão":
+            corrigidas.append({"linha": i, "numeroOS": numero_os})
+            if aplicar:
+                ws.update_cell(i, ATIV_CAMPO_COL["status"], "Em Aberto")
+                entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ Correção retroativa: OS reaberta — "
+                         f"estava marcada como concluída, mas o estado na Fracttal é \"Em Revisão\", "
+                         f"não \"Finalizada\" (bug de interpretação de estado corrigido).")
+                hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+                ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
+                time.sleep(0.3)
+
+    return jsonify({"ok": True, "aplicado": aplicar, "total": len(corrigidas), "corrigidas": corrigidas}), 200
+
+
 @app.route("/config-ler", methods=["GET"])
 def config_ler():
     if WEBHOOK_SECRET:
