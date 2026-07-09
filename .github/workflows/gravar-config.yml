@@ -1,0 +1,27 @@
+name: Gravar Config Grupos
+on:
+  workflow_dispatch: {}
+jobs:
+  gravar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gravar
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/config-set-lote" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -H "Content-Type: application/json" \
+            --data @pares.json -o backups/gravar-config-result.json
+          cat backups/gravar-config-result.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/gravar-config-result.json
+          git diff --quiet --cached || git commit -m "gravar config grupos [skip ci]"
+          git push
