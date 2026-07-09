@@ -1,0 +1,9 @@
+id: 31 | numeroOS: 8945 | status: Análise de Performance | equipamento: Múltiplos equipamentos (10 inversores)
+  historico: 06/07/2026 13:53 - Atividade criada por claude-chat. | Equipamentos envolvidos (10): Inversor 1.1 a 1.10 Huawei SUN2000-250KTL-H1 (SLG200-INVR1.1 a INVR1.10). Todos com Data Programada 06/07/2026, Duração 00:10, Tipo Corretiva, Criticidade Alta. | 06/07/2026 13:57 - Status alterado de "Em Aberto" para "
+
+id: 78 | numeroOS: 8532 | status: Concluído | equipamento: Múltiplas atividades
+  historico: 07/07/2026 09:51 - Atividade criada por fracttal-backfill. | 07/07/2026 13:53 - Prazo alterado de "2026-07-03T18:39:16.440506+00:00" para "03/07/2026" por claude-chat. | 07/07/2026 13:56 - linkOS alterado de "—" para "https://app.fracttal.com/tasks/wo" por claude-chat. | ⚙️ OS com 13 itens/equipamentos — 
+
+id: 106 | numeroOS: 9079 | status: Em Aberto | equipamento: SLG200-ESTM1
+  historico: 07/07/2026 16:17 - Atividade criada por fracttal-sync.
+
