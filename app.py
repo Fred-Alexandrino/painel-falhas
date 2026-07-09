@@ -4266,6 +4266,114 @@ def _gravar_trava(chave, valor):
     ws_cfg.append_row([chave, valor])
 
 
+# ── Comunicados diários automáticos (WhatsApp) ──────────────────────────
+# Mapeamento usina → grupo do WhatsApp fica na aba "_Sistema", chaves no
+# formato "grupo_usina:<Nome da Usina>" = "<id>@g.us". Fred edita essa
+# aba diretamente na planilha pra adicionar/trocar grupos, sem precisar de
+# um novo deploy. Usinas sem grupo configurado são simplesmente ignoradas
+# (não dá erro, só não recebem comunicado).
+
+def _mapa_grupo_usina():
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    mapa = {}
+    for row in valores[1:]:
+        if row and row[0].strip().startswith("grupo_usina:"):
+            usina = row[0].strip()[len("grupo_usina:"):].strip()
+            grupo_id = row[1].strip() if len(row) > 1 else ""
+            if usina and grupo_id:
+                mapa[usina] = grupo_id
+    return mapa
+
+
+def _montar_texto_comunicado_usina(usina, atividades):
+    def dias_atraso(prazo):
+        m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo or "")
+        if not m:
+            return None
+        d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return (agora_br().date() - datetime(y, mth, d).date()).days
+
+    atividades = sorted(atividades, key=lambda a: dias_atraso(a.get("prazo", "")) or -999, reverse=True)
+    hoje_str = agora_br().strftime("%d/%m/%Y")
+    txt = f"📋 *Atividades em aberto — {usina}*\n📅 {hoje_str}\n\n"
+    txt += f"Existem *{len(atividades)} atividade{'s' if len(atividades) != 1 else ''}* pendente{'s' if len(atividades) != 1 else ''}:\n\n"
+    for i, a in enumerate(atividades, start=1):
+        dias = dias_atraso(a.get("prazo", ""))
+        atrasada = dias is not None and dias > 0
+        numero_os = a.get("numeroOS", "")
+        txt += f"{i}. {'🔴' if atrasada else '🟢'} {'OS ' + numero_os + ' — ' if numero_os else ''}{a.get('equipamento', '')}\n"
+        txt += f"   {a.get('descricao', '')}\n"
+        if a.get("prazo"):
+            txt += f"   📅 Prazo: {a['prazo']}" + (f" (atrasada há {dias} dia{'s' if dias > 1 else ''})" if atrasada else "") + "\n"
+        txt += "\n"
+    txt += "Por favor, atualizem o andamento dessas atividades o quanto antes. Qualquer dificuldade, me avisem."
+    return txt
+
+
+@app.route("/enviar-comunicados-diarios", methods=["POST", "GET"])
+def enviar_comunicados_diarios():
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    if not WPP_SERVER_URL:
+        return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 400
+
+    mapa_grupos = _mapa_grupo_usina()
+    if not mapa_grupos:
+        return jsonify({"ok": False, "error": ("Nenhum grupo configurado. Adicione linhas na aba "
+                        "_Sistema no formato \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    por_usina = {}
+    for row in todos[1:]:
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        if not row[0].strip():
+            continue
+        status = row[8].strip()
+        if _is_concluido_atividade(status):
+            continue
+        usina = row[2].strip()
+        if not usina:
+            continue
+        d = {
+            "usina": usina,
+            "equipamento": row[3].strip(),
+            "descricao": row[4].strip(),
+            "prazo": row[6].strip(),
+            "numeroOS": row[13].strip(),
+        }
+        por_usina.setdefault(usina, []).append(d)
+
+    enviados, pulados, erros = [], [], []
+    for usina, grupo_id in mapa_grupos.items():
+        atividades = por_usina.get(usina, [])
+        if not atividades:
+            pulados.append({"usina": usina, "motivo": "sem atividades em aberto"})
+            continue
+        texto = _montar_texto_comunicado_usina(usina, atividades)
+        try:
+            r = requests.post(
+                f"{WPP_SERVER_URL}/api/enviar-mensagem",
+                json={"grupoId": grupo_id, "texto": texto},
+                headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+                timeout=20,
+            )
+            if r.ok and r.json().get("ok"):
+                enviados.append({"usina": usina, "grupo": grupo_id, "atividades": len(atividades)})
+            else:
+                erros.append({"usina": usina, "erro": r.text[:200]})
+        except Exception as e:
+            erros.append({"usina": usina, "erro": str(e)})
+
+    log.info(f"[ComunicadosDiarios] enviados={len(enviados)} pulados={len(pulados)} erros={len(erros)}")
+    return jsonify({"ok": True, "enviados": enviados, "pulados": pulados, "erros": erros}), 200
+
+
 # ── Reversão de excesso (recuperação de uso único) ──────────────────────
 # O endpoint acima foi rodado 3x por engano em 2026-07-08 antes de ter uma
 # trava, e cada rodada redescontou -3h de linhas que já estavam corretas
