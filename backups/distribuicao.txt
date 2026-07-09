@@ -1,0 +1,18 @@
+total com verificacao: 82
+=== 15 mais ANTIGAS ===
+9124 2026-07-08 20:58:32 Finalizada
+9023 2026-07-09 07:58:09 Em Processo
+9118 2026-07-09 07:58:10 Em Processo
+9149 2026-07-09 07:58:11 Em Processo
+9173 2026-07-09 07:58:12 Em Processo
+8765 2026-07-09 07:58:13 Em Revisão
+9114 2026-07-09 07:58:14 Em Processo
+7904 2026-07-09 07:58:15 Em Processo
+8866 2026-07-09 07:58:16 Em Processo
+8604 2026-07-09 07:58:17 Em Processo
+9204 2026-07-09 08:13:34 Em Processo
+9205 2026-07-09 08:13:36 Em Processo
+9105 2026-07-09 08:13:37 Em Revisão
+9024 2026-07-09 08:13:38 Em Revisão
+8665 2026-07-09 08:13:39 Em Revisão
+sem verificacao nenhuma: 5
