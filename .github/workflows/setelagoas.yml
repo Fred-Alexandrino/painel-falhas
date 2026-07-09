@@ -1,0 +1,29 @@
+name: Check Sete Lagoas
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = [a for a in d.get('atividades', []) if a.get('usina','').strip() == 'Sete Lagoas']
+          for a in ativs:
+              print('id:', a.get('id'), '| numeroOS:', a.get('numeroOS'), '| status:', a.get('status'), '| equipamento:', a.get('equipamento'))
+              print('  historico:', a.get('historico','')[:300].replace(chr(10),' | '))
+              print()
+          " > backups/sete-lagoas.txt
+          cat backups/sete-lagoas.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/sete-lagoas.txt
+          git diff --quiet --cached || git commit -m "check sete lagoas [skip ci]"
+          git push
