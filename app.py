@@ -4077,6 +4077,48 @@ def _classificar_ts_fuso(ts_str, fmt):
     return "atual", ts_str
 
 
+@app.route("/fix-pontual-9173-9154", methods=["POST", "GET"])
+def fix_pontual_9173_9154():
+    """Endpoint de uso único: reescreve o historico limpo e correto das OSs
+    9173 e 9154, que ficaram com uma linha de log duplicada/suja por causa
+    de uma tentativa de correção manual que esbarrou num bug pré-existente
+    do endpoint /atualizar-campo-atividade (ele reloga a alteração usando
+    dados em cache antigos ao invés de sobrescrever de forma limpa)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    correcoes = {
+        "9173": "08/07/2026 15:55 - Atividade criada por fracttal-sync.",
+        "9154": ("08/07/2026 15:55 - Atividade criada por fracttal-sync.\n"
+                 "08/07/2026 17:53 - Status na OS (Fracttal) atualizado: "
+                 "\"Em Processo\" → \"Em Revisão\", 0% → 100% (Concluída)."),
+    }
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    batch_updates = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < 14:
+            continue
+        numero_os = row[13].strip()
+        if numero_os in correcoes:
+            batch_updates.append({
+                "range": gspread.utils.rowcol_to_a1(i, 10),
+                "values": [["08/07/2026 15:55:00"]],
+            })
+            batch_updates.append({
+                "range": gspread.utils.rowcol_to_a1(i, 12),
+                "values": [[correcoes[numero_os]]],
+            })
+
+    if batch_updates:
+        ws.batch_update(batch_updates, value_input_option="RAW")
+
+    return jsonify({"ok": True, "celulas_corrigidas": len(batch_updates)}), 200
+
+
 @app.route("/corrigir-fuso-retroativo", methods=["POST", "GET"])
 def corrigir_fuso_retroativo():
     if WEBHOOK_SECRET:
