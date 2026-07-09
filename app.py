@@ -4266,6 +4266,21 @@ def _gravar_trava(chave, valor):
     ws_cfg.append_row([chave, valor])
 
 
+@app.route("/config-set-lote", methods=["POST"])
+def config_set_lote():
+    """Grava múltiplos pares chave/valor na aba _Sistema de uma vez.
+    Body: {"pares": {"chave1": "valor1", "chave2": "valor2", ...}}"""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dados = request.get_json(force=True, silent=True) or {}
+    pares = dados.get("pares", {})
+    for chave, valor in pares.items():
+        _gravar_trava(chave, valor)
+    return jsonify({"ok": True, "gravados": list(pares.keys())}), 200
+
+
 # ── Comunicados diários automáticos (WhatsApp) ──────────────────────────
 # Mapeamento usina → grupo do WhatsApp fica na aba "_Sistema", chaves no
 # formato "grupo_usina:<Nome da Usina>" = "<id>@g.us". Fred edita essa
