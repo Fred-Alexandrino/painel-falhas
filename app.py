@@ -4398,6 +4398,8 @@ def enviar_comunicados_diarios():
         }
         por_usina.setdefault(usina, []).append(d)
 
+    dry_run = request.args.get("dry_run", "false").lower() == "true"
+
     enviados, pulados, erros = [], [], []
     for usina, grupo_id in mapa_grupos.items():
         atividades = por_usina.get(usina, [])
@@ -4405,6 +4407,11 @@ def enviar_comunicados_diarios():
             pulados.append({"usina": usina, "motivo": "sem atividades em aberto"})
             continue
         texto = _montar_texto_comunicado_usina(usina, atividades)
+
+        if dry_run:
+            enviados.append({"usina": usina, "grupo": grupo_id, "atividades": len(atividades), "texto": texto})
+            continue
+
         try:
             r = requests.post(
                 f"{WPP_SERVER_URL}/api/enviar-mensagem",
@@ -4419,8 +4426,8 @@ def enviar_comunicados_diarios():
         except Exception as e:
             erros.append({"usina": usina, "erro": str(e)})
 
-    log.info(f"[ComunicadosDiarios] enviados={len(enviados)} pulados={len(pulados)} erros={len(erros)}")
-    return jsonify({"ok": True, "enviados": enviados, "pulados": pulados, "erros": erros}), 200
+    log.info(f"[ComunicadosDiarios] dry_run={dry_run} enviados={len(enviados)} pulados={len(pulados)} erros={len(erros)}")
+    return jsonify({"ok": True, "dry_run": dry_run, "enviados": enviados, "pulados": pulados, "erros": erros}), 200
 
 
 # ── Reversão de excesso (recuperação de uso único) ──────────────────────
