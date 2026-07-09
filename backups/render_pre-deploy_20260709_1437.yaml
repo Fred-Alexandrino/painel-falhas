@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: whatsapp-painel-falhas
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 60
+    envVars:
+      - key: SHEET_ID
+        value: 1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs
+      - key: SHEET_NAME
+        value: "Acompanhamento de Falhas - O&M V2"
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false   # você cola o JSON no painel do Render
+      - key: WEBHOOK_SECRET
+        sync: false   # senha para proteger o webhook (opcional)
+      - key: GRUPOS_IDS
+        sync: false   # IDs dos grupos separados por vírgula (opcional)
