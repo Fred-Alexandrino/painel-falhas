@@ -1,0 +1,32 @@
+name: Diagnostico Distribuicao
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/ativ.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/ativ.json'))
+          ativs = d.get('atividades', [])
+          com_verif = [a for a in ativs if a.get('ultimaVerificacaoOS')]
+          com_verif.sort(key=lambda a: a.get('ultimaVerificacaoOS',''))
+          print('total com verificacao:', len(com_verif))
+          print('=== 15 mais ANTIGAS ===')
+          for a in com_verif[:15]:
+              print(a.get('numeroOS'), a.get('ultimaVerificacaoOS'), a.get('statusOS'))
+          sem_verif = [a for a in ativs if not a.get('ultimaVerificacaoOS')]
+          print('sem verificacao nenhuma:', len(sem_verif))
+          " > backups/distribuicao.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/distribuicao.txt
+          git diff --quiet --cached || git commit -m "distribuicao [skip ci]"
+          git push
