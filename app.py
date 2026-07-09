@@ -3103,6 +3103,19 @@ def _fracttal_agrupar_por_wo(ots):
     return [(folio, grupos[folio]) for folio in ordem]
 
 
+def _fracttal_eh_preventiva_mensal(tasks, texto_grupo_ativo=""):
+    """Detecta se uma OS com múltiplas tarefas é uma manutenção preventiva
+    mensal (MPM) — usa o padrão de nomenclatura "PREVENTIVA MENSAL" /
+    "Múltiplos equipamentos (Preventiva Mensal)" nesses casos, em vez de
+    listar cada tarefa individualmente. Detecção por palavra-chave nas
+    descrições das tarefas (não há campo estruturado confiável na Fracttal
+    pra periodicidade em todos os casos)."""
+    textos = [(t.get("description") or "") for t in tasks]
+    textos.append(texto_grupo_ativo or "")
+    junto = " ".join(textos).lower()
+    return "preventiv" in junto and "mensal" in junto
+
+
 def _fracttal_descricao_agregada(tasks):
     descs = [(t.get("description") or "").strip() for t in tasks if (t.get("description") or "").strip()]
     if not descs:
@@ -3293,7 +3306,11 @@ def _fracttal_mapear_grupo(tasks):
     status_os = _FRACTTAL_STATUS_OS_MAP.get(status_os_raw, "")
 
     multiplos = len(tasks) > 1
-    equipamento = "Múltiplas atividades" if multiplos else (representante.get("code") or texto_ativo or "Múltiplas atividades").strip()
+    eh_preventiva_mensal = multiplos and _fracttal_eh_preventiva_mensal(tasks, texto_usado)
+    if eh_preventiva_mensal:
+        equipamento = "Múltiplos equipamentos (Preventiva Mensal)"
+    else:
+        equipamento = "Múltiplas atividades" if multiplos else (representante.get("code") or texto_ativo or "Múltiplas atividades").strip()
 
     detalhe_hist = _fracttal_historico_detalhe(tasks)
     if alerta and detalhe_hist:
@@ -3305,7 +3322,8 @@ def _fracttal_mapear_grupo(tasks):
         "cliente": cliente,
         "usina": usina,
         "equipamento": equipamento,
-        "descricao": _fracttal_descricao_agregada(tasks) or f"OT {representante.get('wo_folio', '')} (Fracttal)",
+        "descricao": ("PREVENTIVA MENSAL" if eh_preventiva_mensal
+                       else (_fracttal_descricao_agregada(tasks) or f"OT {representante.get('wo_folio', '')} (Fracttal)")),
         "responsavel": tecnico_raw,
         "prazo": _fracttal_prazo_agregado(tasks),
         "prioridade": prioridade,
@@ -3514,8 +3532,13 @@ def completar_fracttal_backfill():
             prazo_atual = row[6].strip()
             if prazo_novo and prazo_novo != prazo_atual:
                 ws.update_cell(i, 7, prazo_novo)
-            if len(tasks) > 1 and row[3].strip() != "Múltiplas atividades":
-                ws.update_cell(i, 4, "Múltiplas atividades")
+            if len(tasks) > 1:
+                _equip_esperado = ("Múltiplos equipamentos (Preventiva Mensal)"
+                                    if _fracttal_eh_preventiva_mensal(tasks) else "Múltiplas atividades")
+            else:
+                _equip_esperado = None
+            if _equip_esperado and row[3].strip() != _equip_esperado:
+                ws.update_cell(i, 4, _equip_esperado)
                 detalhe = _fracttal_historico_detalhe(tasks)
                 if detalhe:
                     hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
@@ -3761,8 +3784,13 @@ def completar_campos_v2_fracttal():
             etiquetas = _fracttal_etiquetas_agregadas(tasks)
             ws.update(f"R{i}:S{i}", [[status_tarefa, etiquetas]])
 
-            if len(tasks) > 1 and row[3].strip() != "Múltiplas atividades":
-                ws.update_cell(i, 4, "Múltiplas atividades")
+            if len(tasks) > 1:
+                _equip_esperado = ("Múltiplos equipamentos (Preventiva Mensal)"
+                                    if _fracttal_eh_preventiva_mensal(tasks) else "Múltiplas atividades")
+            else:
+                _equip_esperado = None
+            if _equip_esperado and row[3].strip() != _equip_esperado:
+                ws.update_cell(i, 4, _equip_esperado)
                 detalhe = _fracttal_historico_detalhe(tasks)
                 if detalhe:
                     hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
