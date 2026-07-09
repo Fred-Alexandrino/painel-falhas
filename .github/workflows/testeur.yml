@@ -1,0 +1,28 @@
+name: Teste API Key UptimeRobot
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
+            --data-urlencode "api_key=$UPTIMEROBOT_API_KEY" \
+            --data-urlencode "format=json" \
+            -o backups/ur-teste.json
+          curl -s -X POST "https://api.uptimerobot.com/v2/getAccountDetails" \
+            --data-urlencode "api_key=$UPTIMEROBOT_API_KEY" \
+            --data-urlencode "format=json" \
+            -o backups/ur-conta.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/ur-teste.json backups/ur-conta.json
+          git diff --quiet --cached || git commit -m "teste api key ur [skip ci]"
+          git push
