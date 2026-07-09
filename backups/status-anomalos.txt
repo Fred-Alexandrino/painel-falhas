@@ -1,0 +1,5 @@
+'Em Andamento' |  | Crateús | 
+'OS Solicitada' | 8866 | Colíder II | Em Processo
+'OS Solicitada' |  | Nova Xavantina I | 
+'Análise de Performance' | 8945 | Sete Lagoas | Em Revisão
+'OS Solicitada' | 8860 | Colíder I | Em Processo
