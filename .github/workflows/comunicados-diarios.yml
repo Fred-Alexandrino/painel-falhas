@@ -2,7 +2,7 @@ name: Comunicados Diarios OS Abertas
 
 on:
   schedule:
-    - cron: '0 10 * * *'   # 10:00 UTC = 07:00 Brasília (GMT-3)
+    - cron: '0 10 * * 1-5'   # 10:00 UTC = 07:00 Brasilia, seg a sex (dias uteis)
   workflow_dispatch: {}
 
 jobs:
