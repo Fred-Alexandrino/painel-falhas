@@ -1,0 +1,10 @@
+name: Health Check 2
+on:
+  workflow_dispatch: {}
+jobs:
+  h:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -s -o /dev/null -w "HTTP:%{http_code}\n" "https://whatsapp-painel-falhas.onrender.com/health"
+          curl -s "https://whatsapp-painel-falhas.onrender.com/health" | head -c 300
