@@ -1,0 +1,28 @@
+name: Check 8657
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          for a in ativs:
+              if a.get('numeroOS') in ('8657','8861','9098'):
+                  print(json.dumps(a, ensure_ascii=False, indent=2))
+                  print('---')
+          " > backups/check8657.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check8657.txt
+          git diff --quiet --cached || git commit -m "check 8657 [skip ci]"
+          git push
