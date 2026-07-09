@@ -4266,6 +4266,18 @@ def _gravar_trava(chave, valor):
     ws_cfg.append_row([chave, valor])
 
 
+@app.route("/config-ler", methods=["GET"])
+def config_ler():
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    pares = {row[0]: (row[1] if len(row) > 1 else "") for row in valores[1:] if row and row[0].strip()}
+    return jsonify({"ok": True, "pares": pares}), 200
+
+
 @app.route("/config-set-lote", methods=["POST"])
 def config_set_lote():
     """Grava múltiplos pares chave/valor na aba _Sistema de uma vez, numa
