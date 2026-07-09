@@ -4077,6 +4077,16 @@ def _classificar_ts_fuso(ts_str, fmt):
     return "atual", ts_str
 
 
+@app.route("/travar-fuso-retroativo", methods=["POST", "GET"])
+def travar_fuso_retroativo():
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    _gravar_trava("fuso_retroativo_concluido", "true")
+    return jsonify({"ok": True, "trava": "ativada"}), 200
+
+
 @app.route("/fix-pontual-9173-9154", methods=["POST", "GET"])
 def fix_pontual_9173_9154():
     """Endpoint de uso único: reescreve o historico limpo e correto das OSs
