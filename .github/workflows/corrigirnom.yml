@@ -1,0 +1,26 @@
+name: Corrigir Nomenclatura Preventiva
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'true para aplicar, false para simular'
+        required: true
+        default: 'false'
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/corrigir-nomenclatura-preventiva?apply=${{ github.event.inputs.apply }}" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/corrigir-nomenclatura-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/corrigir-nomenclatura-result.json
+          git diff --quiet --cached || git commit -m "corrigir nomenclatura [skip ci]"
+          git push
