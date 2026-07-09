@@ -1,0 +1,40 @@
+name: Reverter Excesso Fuso
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'true para aplicar de verdade, false para simular'
+        required: true
+        default: 'false'
+
+jobs:
+  reverter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reverter excesso de fuso
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/reverter-excesso-fuso?apply=${{ github.event.inputs.apply }}" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/reverter-fuso-result.json
+          python3 -c "
+          import json
+          d = json.load(open('backups/reverter-fuso-result.json'))
+          print('ok:', d.get('ok'))
+          print('aplicado:', d.get('aplicado'))
+          print('linhas_afetadas:', d.get('linhas_afetadas'))
+          print('excluidas:', d.get('excluidas'))
+          "
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/reverter-fuso-result.json
+          git diff --quiet --cached || git commit -m "Reverter excesso fuso [skip ci]"
+          git push
