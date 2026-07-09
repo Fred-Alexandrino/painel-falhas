@@ -4331,6 +4331,54 @@ def _gravar_trava(chave, valor):
     ws_cfg.append_row([chave, valor])
 
 
+@app.route("/corrigir-nomenclatura-preventiva", methods=["POST", "GET"])
+def corrigir_nomenclatura_preventiva():
+    """Correção retroativa de uso único: atividades multi-tarefa criadas
+    antes da padronização MPM/MPS/MPA ainda têm o texto bruto da Fracttal
+    como descrição (ex.: "[Grid Co.] - MPM") em vez de "PREVENTIVA MENSAL"
+    / "Múltiplos equipamentos (Preventiva Mensal)". Esse endpoint varre e
+    corrige as já existentes; daqui pra frente isso já é automático."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    aplicar = request.args.get("apply", "false").lower() == "true"
+
+    _MULTI_EQUIP_MARCADORES = ("Múltiplas atividades", "Múltiplos equipamentos")
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    corrigidas = []
+    batch_updates = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[13].strip()
+        equipamento_atual = row[3].strip()
+        descricao_atual = row[4].strip()
+        if not numero_os or not equipamento_atual.startswith(_MULTI_EQUIP_MARCADORES):
+            continue
+        titulo, equip_novo = _fracttal_detectar_preventiva([{"description": descricao_atual}])
+        if not titulo:
+            continue
+        if descricao_atual == titulo and equipamento_atual == equip_novo:
+            continue  # já está correto
+        corrigidas.append({"linha": i, "numeroOS": numero_os,
+                            "de": {"descricao": descricao_atual, "equipamento": equipamento_atual},
+                            "para": {"descricao": titulo, "equipamento": equip_novo}})
+        if aplicar:
+            batch_updates.append({"range": gspread.utils.rowcol_to_a1(i, 4), "values": [[equip_novo]]})
+            batch_updates.append({"range": gspread.utils.rowcol_to_a1(i, 5), "values": [[titulo]]})
+
+    if aplicar and batch_updates:
+        TAMANHO_LOTE = 200
+        for k in range(0, len(batch_updates), TAMANHO_LOTE):
+            ws.batch_update(batch_updates[k:k + TAMANHO_LOTE], value_input_option="RAW")
+
+    return jsonify({"ok": True, "aplicado": aplicar, "total": len(corrigidas), "corrigidas": corrigidas}), 200
+
+
 @app.route("/corrigir-estado-revisao", methods=["POST", "GET"])
 def corrigir_estado_revisao():
     """Correção retroativa de uso único: reabre atividades marcadas como
