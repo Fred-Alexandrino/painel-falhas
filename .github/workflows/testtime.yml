@@ -1,0 +1,22 @@
+name: Test Tempo Atualizar
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          START=$(date +%s%N)
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/atualizar-os-agora" -o backups/test-atualizar-result.json -w "HTTP_CODE:%{http_code}\nTEMPO_TOTAL:%{time_total}s\n" >> backups/test-atualizar-result.json
+          END=$(date +%s%N)
+          echo "duracao_ms: $(( (END-START)/1000000 ))" >> backups/test-atualizar-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/test-atualizar-result.json
+          git diff --quiet --cached || git commit -m "test tempo atualizar [skip ci]"
+          git push
