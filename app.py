@@ -4598,7 +4598,7 @@ def atualizar_os_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=35)
+    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=20)
     return jsonify(body), status_code
 
 
