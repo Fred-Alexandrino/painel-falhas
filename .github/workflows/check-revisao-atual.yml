@@ -1,0 +1,21 @@
+name: Check Correcao Estado Revisao
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/corrigir-estado-revisao?apply=false&secret=$WEBHOOK_SECRET" -o backups/check-revisao.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-revisao.json
+          git diff --quiet --cached || git commit -m "check revisao [skip ci]"
+          git push
