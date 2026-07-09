@@ -1,0 +1,27 @@
+name: Check 9079 Real
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          for a in ativs:
+              if a.get('numeroOS') in ('9079','8532','8945'):
+                  print(a.get('numeroOS'), '| usina:', repr(a.get('usina')), '| status:', repr(a.get('status')), '| statusOS:', repr(a.get('statusOS')), '| dataConclusao:', repr(a.get('dataConclusao')))
+          " > backups/check9079.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check9079.txt
+          git diff --quiet --cached || git commit -m "check 9079 [skip ci]"
+          git push
