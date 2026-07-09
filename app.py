@@ -4087,6 +4087,19 @@ def corrigir_fuso_retroativo():
     aplicar = request.args.get("apply", "false").lower() == "true"
     forcar_raw = request.args.get("forcar", "").strip()
     forcar_set = {x.strip() for x in forcar_raw.split(",") if x.strip()} if forcar_raw else set()
+    ignorar_trava = request.args.get("ignorar_trava", "false").lower() == "true"
+
+    if aplicar and not ignorar_trava:
+        try:
+            if _ler_trava("fuso_retroativo_concluido") == "true":
+                return jsonify({
+                    "ok": False,
+                    "error": ("Correção retroativa já foi concluída em 2026-07-08 e está travada "
+                              "pra evitar redescontar horas já corrigidas. Use ?ignorar_trava=true "
+                              "só se tiver certeza absoluta do que está fazendo.")
+                }), 409
+        except Exception:
+            pass  # se a aba de config falhar por algum motivo, não bloqueia a leitura normal (dry-run)
 
     try:
         ws = get_atividades_sheet()
@@ -4168,6 +4181,136 @@ def corrigir_fuso_retroativo():
 
     return jsonify({"ok": True, "aplicado": aplicar, "linhas_afetadas": len(alteracoes),
                      "detalhes": alteracoes, "ambiguos": ambiguos}), 200
+
+
+def _get_config_sheet():
+    """Aba minúscula usada só pra guardar flags de controle (ex.: travas de
+    operações de uso único). Cria a aba se ainda não existir."""
+    sh = get_atividades_sheet().spreadsheet
+    try:
+        return sh.worksheet("_Sistema")
+    except gspread.exceptions.WorksheetNotFound:
+        ws_cfg = sh.add_worksheet(title="_Sistema", rows=20, cols=4)
+        ws_cfg.update("A1", [["chave", "valor"]])
+        return ws_cfg
+
+
+def _ler_trava(chave):
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    for row in valores[1:]:
+        if row and row[0].strip() == chave:
+            return row[1].strip() if len(row) > 1 else ""
+    return ""
+
+
+def _gravar_trava(chave, valor):
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    for i, row in enumerate(valores[1:], start=2):
+        if row and row[0].strip() == chave:
+            ws_cfg.update_cell(i, 2, valor)
+            return
+    ws_cfg.append_row([chave, valor])
+
+
+# ── Reversão de excesso (recuperação de uso único) ──────────────────────
+# O endpoint acima foi rodado 3x por engano em 2026-07-08 antes de ter uma
+# trava, e cada rodada redescontou -3h de linhas que já estavam corretas
+# (bug de idempotência: a classificação não sabia diferenciar "ainda não
+# corrigido" de "já corrigido"). Este endpoint soma de volta +6h nas linhas
+# afetadas (2 descontos extras) pra restaurar o valor correto de um único
+# desconto. As OSs em _EXCLUIR_REVERSAO tiveram um histórico de correção
+# diferente (parcial/manual) e são tratadas à parte, não por aqui.
+_EXCLUIR_REVERSAO = {"9173", "9154"}
+
+
+@app.route("/reverter-excesso-fuso", methods=["POST", "GET"])
+def reverter_excesso_fuso():
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    aplicar = request.args.get("apply", "false").lower() == "true"
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        _garantir_headers_atividades(ws)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    def _precisa_reverter(ts_str, fmt):
+        try:
+            dt = datetime.strptime(ts_str, fmt)
+        except Exception:
+            return None
+        if dt.date() < _HOJE_DEPLOY:
+            return (dt + timedelta(hours=6)).strftime(fmt)
+        if dt.date() == _HOJE_DEPLOY and dt.time() < _JANELA_INICIO:
+            return (dt + timedelta(hours=6)).strftime(fmt)
+        return None
+
+    alteracoes = []
+    batch_updates = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[13].strip()
+        id_atividade = row[0].strip()
+        if numero_os in _EXCLUIR_REVERSAO:
+            continue
+        updates = {}
+
+        for campo_col, fmt in ((9, '%d/%m/%Y %H:%M:%S'), (10, '%d/%m/%Y %H:%M:%S')):
+            val = row[campo_col].strip()
+            if val:
+                novo = _precisa_reverter(val, fmt)
+                if novo:
+                    updates[campo_col + 1] = novo
+
+        hist = row[11]
+        if hist:
+            linhas_novas = []
+            hist_mudou = False
+            for linha_h in hist.split("\n"):
+                m = _HIST_LINHA_RE.match(linha_h)
+                if m:
+                    data_str, hora_str, seg = m.group(1), m.group(2), m.group(3) or ""
+                    ts_str = f"{data_str} {hora_str}{seg}"
+                    fmt = '%d/%m/%Y %H:%M:%S' if seg else '%d/%m/%Y %H:%M'
+                    novo_ts = _precisa_reverter(ts_str, fmt)
+                    if novo_ts:
+                        linha_h = novo_ts + linha_h[len(ts_str):]
+                        hist_mudou = True
+                linhas_novas.append(linha_h)
+            if hist_mudou:
+                updates[12] = "\n".join(linhas_novas)
+
+        val = row[23].strip()
+        if val:
+            novo = _precisa_reverter(val, '%Y-%m-%dT%H:%M:%S')
+            if novo:
+                updates[24] = novo
+
+        if updates:
+            alteracoes.append({"linha": i, "id": id_atividade, "numeroOS": numero_os,
+                                "colunas_alteradas": list(updates.keys())})
+            if aplicar:
+                for col, novo_val in updates.items():
+                    batch_updates.append({
+                        "range": gspread.utils.rowcol_to_a1(i, col),
+                        "values": [[novo_val]],
+                    })
+
+    if aplicar and batch_updates:
+        TAMANHO_LOTE = 200
+        for k in range(0, len(batch_updates), TAMANHO_LOTE):
+            ws.batch_update(batch_updates[k:k + TAMANHO_LOTE], value_input_option="RAW")
+
+    return jsonify({"ok": True, "aplicado": aplicar, "linhas_afetadas": len(alteracoes),
+                     "detalhes": alteracoes, "excluidas": list(_EXCLUIR_REVERSAO)}), 200
 
 
 @app.route("/sync-fracttal", methods=["POST", "GET"])
