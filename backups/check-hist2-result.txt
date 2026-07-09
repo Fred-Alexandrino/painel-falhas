@@ -7,14 +7,10 @@ historico:
 ---
 numeroOS: 9173
 historico:
-08/07/2026 18:55 - Atividade criada por fracttal-sync.
-08/07/2026 19:00 - historico alterado de "08/07/2026 18:55 - Atividade criada por fracttal-sync." para "08/07/2026 15:55 - Atividade criada por fracttal-sync." por claude-chat.
+08/07/2026 15:55 - Atividade criada por fracttal-sync.
 ---
 numeroOS: 9154
 historico:
-08/07/2026 18:55 - Atividade criada por fracttal-sync.
-08/07/2026 11:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
-08/07/2026 19:00 - historico alterado de "08/07/2026 18:55 - Atividade criada por fracttal-sync.
-08/07/2026 11:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída)." para "08/07/2026 15:55 - Atividade criada por fracttal-sync.
-08/07/2026 14:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída)." por claude-chat.
+08/07/2026 15:55 - Atividade criada por fracttal-sync.
+08/07/2026 17:53 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
 ---
