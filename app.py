@@ -4451,20 +4451,55 @@ def _montar_texto_comunicado_usina(usina, atividades):
     return txt
 
 
+@app.route("/verificar-e-enviar-comunicados", methods=["POST", "GET"])
+def verificar_e_enviar_comunicados():
+    """Ponto de entrada seguro pra ser chamado com frequência (ex.: a cada
+    5 min via UptimeRobot) — só dispara o envio de verdade se:
+      1. for dia útil (seg-sex) e estiver dentro da janela 07:00-07:09 (BRT)
+      2. ainda não tiver sido enviado hoje (trava em _Sistema)
+    Isso substitui o cron do GitHub Actions como gatilho principal, porque
+    ele atrasa de forma imprevisível (chegou a disparar 7h30 depois do
+    horário configurado). Fora da janela ou já enviado hoje, retorna sem
+    fazer nada (barato, seguro de chamar repetidamente)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    agora = agora_br()
+    hoje_str = agora.strftime("%Y-%m-%d")
+
+    if agora.weekday() >= 5:  # sábado=5, domingo=6
+        return jsonify({"ok": True, "disparado": False, "motivo": "fim de semana"}), 200
+    if not (agora.hour == 7 and agora.minute < 10):
+        return jsonify({"ok": True, "disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}), 200
+
+    ja_enviado = _ler_trava("comunicados_enviados_em")
+    if ja_enviado == hoje_str:
+        return jsonify({"ok": True, "disparado": False, "motivo": "já enviado hoje"}), 200
+
+    _gravar_trava("comunicados_enviados_em", hoje_str)
+    resultado = _enviar_comunicados_diarios_core()
+    return jsonify({"ok": True, "disparado": True, "resultado": resultado}), 200
+
+
 @app.route("/enviar-comunicados-diarios", methods=["POST", "GET"])
 def enviar_comunicados_diarios():
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
+    return jsonify(_enviar_comunicados_diarios_core()), 200
 
+
+def _enviar_comunicados_diarios_core():
     if not WPP_SERVER_URL:
-        return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 400
+        return {"ok": False, "error": "WPP_SERVER_URL não configurado"}
 
     mapa_grupos = _mapa_grupo_usina()
     if not mapa_grupos:
-        return jsonify({"ok": False, "error": ("Nenhum grupo configurado. Adicione linhas na aba "
-                        "_Sistema no formato \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
+        return {"ok": False, "error": ("Nenhum grupo configurado. Adicione linhas na aba "
+                "_Sistema no formato \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}
 
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
@@ -4524,7 +4559,7 @@ def enviar_comunicados_diarios():
             erros.append({"usina": usina, "erro": str(e)})
 
     log.info(f"[ComunicadosDiarios] dry_run={dry_run} enviados={len(enviados)} pulados={len(pulados)} erros={len(erros)}")
-    return jsonify({"ok": True, "dry_run": dry_run, "enviados": enviados, "pulados": pulados, "erros": erros}), 200
+    return {"ok": True, "dry_run": dry_run, "enviados": enviados, "pulados": pulados, "erros": erros}
 
 
 # ── Reversão de excesso (recuperação de uso único) ──────────────────────
