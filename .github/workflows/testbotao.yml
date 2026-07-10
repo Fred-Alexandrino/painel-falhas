@@ -1,0 +1,23 @@
+name: Test Botao Disparar
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/disparar-comunicado-cluster" \
+            -H "Content-Type: application/json" \
+            -d '{"cluster":"CLUSTER_TESTE_INEXISTENTE_XYZ","texto":"teste"}' \
+            -o backups/test-botao-result.json
+          cat backups/test-botao-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/test-botao-result.json
+          git diff --quiet --cached || git commit -m "test botao [skip ci]"
+          git push
