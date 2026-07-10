@@ -1,0 +1,38 @@
+name: Test Reprog Grande
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          abertas = [a for a in ativs if (a.get('status','') or '').lower() not in ('concluído','concluido','cancelado')]
+          ids = [a['id'] for a in abertas]
+          print('total ids:', len(ids))
+          json.dump({'ids': ids}, open('/tmp/payload.json','w'))
+          "
+          START=$(date +%s)
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/sugerir-reprogramacao" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/payload.json \
+            -o backups/test-reprog-result.json \
+            -w "HTTP_CODE:%{http_code}\nTEMPO:%{time_total}s\n" --max-time 170
+          END=$(date +%s)
+          echo "duracao_real_segundos: $((END-START))" >> backups/test-reprog-result.json
+          echo "=== conteudo (primeiros 1000 chars) ===" >> backups/test-reprog-result.json
+          head -c 1000 backups/test-reprog-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/test-reprog-result.json
+          git diff --quiet --cached || git commit -m "test reprog grande [skip ci]"
+          git push
