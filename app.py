@@ -5165,6 +5165,22 @@ Dados da solicitação:
 - Responsável: {d.get("responsavel") or "não informado"}"""
 
 
+def _corrigir_fins_de_semana(sugestao):
+    """Garantia extra além do prompt: se a IA, mesmo assim, sugerir uma
+    data em sábado ou domingo, empurra pra segunda-feira seguinte. Roda
+    depois da resposta da IA, direto no dict (in-place)."""
+    for item in sugestao.get("reprogramacoes", []):
+        data_str = (item.get("dataSugerida") or "").strip()
+        m = re.match(r"(\d{2})/(\d{2})/(\d{4})", data_str)
+        if not m:
+            continue
+        dt = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        dias_ate_segunda = {5: 2, 6: 1}.get(dt.weekday())  # 5=sábado, 6=domingo
+        if dias_ate_segunda:
+            dt_corrigida = dt + timedelta(days=dias_ate_segunda)
+            item["dataSugerida"] = dt_corrigida.strftime("%d/%m/%Y")
+
+
 def _montar_prompt_reprogramacao(atividades, hoje_str):
     linhas = []
     for a in atividades:
@@ -5189,7 +5205,7 @@ OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
 2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
 3. SEJA CONSERVADOR NA QUANTIDADE POR DIA — isso é crítico. Grande parte dessas atividades já está atrasada justamente porque a agenda anterior foi otimista demais e não sobrou tempo real de execução, deslocamento dentro da própria usina, imprevistos e deslocamento até o próximo compromisso. Distribua no máximo 1 atividade por turno (manhã OU tarde) por equipe — ou seja, no máximo 2 atividades por dia por equipe — a menos que sejam claramente rápidas/simples (ex.: inspeção visual, verificação de temperatura), caso em que até 2 por turno é aceitável. Nunca mais que isso.
-4. Evite programar para sábados e domingos, a menos que a atividade já estivesse vencida há muito tempo e seja urgente.
+4. REGRA RÍGIDA, SEM NENHUMA EXCEÇÃO: só programe atividades de SEGUNDA A SEXTA-FEIRA. NUNCA, em hipótese alguma, sugira uma data que caia em sábado ou domingo — nem mesmo para atividades muito atrasadas ou urgentes. Antes de definir cada "dataSugerida", verifique o dia da semana correspondente e confirme que é um dia útil (segunda a sexta).
 5. Comece a reprogramação a partir de amanhã, nunca em uma data já passada.
 6. Para cada atividade, defina também um TURNO (manhã ou tarde) dentro do dia sugerido, respeitando o limite de 1-2 atividades por turno do critério 3.
 
@@ -5206,16 +5222,17 @@ Responda APENAS com um JSON válido (sem markdown, sem blocos de código com cra
       "id": "<id da atividade, exatamente como veio na lista>",
       "numeroOS": "<número da OS, exatamente como veio na lista>",
       "usina": "<usina>",
+      "equipamento": "<equipamento/atividade, exatamente como veio na lista>",
       "responsavel": "<responsável/equipe>",
       "dataAtual": "<prazo atual, ou 'sem prazo definido'>",
-      "dataSugerida": "<nova data sugerida, formato dd/mm/aaaa>",
+      "dataSugerida": "<nova data sugerida, formato dd/mm/aaaa, OBRIGATORIAMENTE um dia de segunda a sexta-feira>",
       "turno": "<'manhã' ou 'tarde'>",
       "justificativa": "<motivo curto da escolha dessa data/turno, mencionando o agrupamento por usina/equipe quando relevante>"
     }}
   ]
 }}
 
-Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida e um turno."""
+Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida (sempre dia útil) e um turno."""
 
 
 @app.route("/sugerir-reprogramacao", methods=["POST", "OPTIONS"])
@@ -5262,12 +5279,13 @@ def sugerir_reprogramacao():
     if not atividades:
         return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada para reprogramar"}), 400
     total_original = len(atividades)
-    truncado = total_original > 25
+    truncado = total_original > 60
     if truncado:
-        # Limite rígido de segurança: o proxy da própria Render (não o
-        # gunicorn) corta a conexão em ~55-60s independente de qualquer
-        # timeout configurado no código — confirmado via teste real (57s
-        # com 50+ atividades = 502 do Render). 25 fica com boa margem.
+        # Limite de segurança pro tempo de resposta da IA + tamanho do
+        # prompt/resposta. A causa real do 502 anterior era o modelo
+        # gastando tempo em "thinking" estendido (thinkingConfig ausente);
+        # com isso desativado, o processamento ficou rápido o bastante
+        # (~13s pra 25 atividades) pra suportar um teto bem maior.
         # Prioriza as mais urgentes: Alta prioridade primeiro, depois por
         # prazo mais próximo/vencido.
         def _chave_urgencia(item):
@@ -5276,7 +5294,7 @@ def sugerir_reprogramacao():
             m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo_str)
             prazo_ts = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp() if m else float("inf")
             return (prioridade_peso, prazo_ts)
-        atividades = sorted(atividades, key=_chave_urgencia)[:25]
+        atividades = sorted(atividades, key=_chave_urgencia)[:60]
 
     hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
     prompt = _montar_prompt_reprogramacao(atividades, hoje_str)
@@ -5302,6 +5320,7 @@ def sugerir_reprogramacao():
         texto = candidato["content"]["parts"][0]["text"].strip()
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
         sugestao = json.loads(texto_limpo)
+        _corrigir_fins_de_semana(sugestao)
         return jsonify({"ok": True, "sugestao": sugestao, "total_atividades": len(atividades),
                          "total_original": total_original, "truncado": truncado})
     except json.JSONDecodeError as e:
