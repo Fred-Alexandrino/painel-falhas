@@ -1,0 +1,25 @@
+{
+  "pares": {
+    "cluster_usina:Araputanga": "SP Sul 01",
+    "cluster_usina:Boa Esperança do Sul I": "SP Centro 01",
+    "cluster_usina:Boa Esperança do Sul II": "SP Centro 01",
+    "cluster_usina:Sítio Bonfim": "CE Leste 01",
+    "cluster_usina:Colíder I": "MT Norte 01",
+    "cluster_usina:Colíder II": "MT Norte 01",
+    "cluster_usina:Crateús": "CE Oeste 02",
+    "cluster_usina:Elias Fausto": "SP Leste 07",
+    "cluster_usina:Guajirú": "CE Leste 01",
+    "cluster_usina:Ibaté I": "SP Centro 01",
+    "cluster_usina:Ibaté II": "SP Centro 01",
+    "cluster_usina:Matão I": "SP Centro 02",
+    "cluster_usina:ABC Morada Nova": "CE Leste 01",
+    "cluster_usina:Nobres": "MT Sul 03",
+    "cluster_usina:Nova Xavantina I": "MT Leste 01",
+    "cluster_usina:Nova Xavantina II": "MT Leste 01",
+    "cluster_usina:Poconé": "MT Sul 02",
+    "cluster_usina:Sete Lagoas": "MG Centro 01",
+    "cluster_usina:Sol do Norte I": "CE Leste 01",
+    "cluster_usina:Sol do Norte II": "CE Leste 01",
+    "cluster_usina:Matão II - Topázio": "SP Centro 02"
+  }
+}
