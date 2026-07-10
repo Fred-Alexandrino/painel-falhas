@@ -533,17 +533,45 @@ def _extrair_formato_base(shape):
     return (font.name, font.size, font.italic, cor_rgb)
 
 
+def _extrair_ppr_bullet(shape):
+    """
+    Extrai o XML de formatação de parágrafo (<a:pPr>, que carrega a definição
+    do bullet/marcador ">" do modelo) do 1º parágrafo da shape, ANTES de
+    qualquer tf.clear(). Sem isso, só a 1ª linha herdava o bullet do modelo —
+    as linhas adicionadas via add_paragraph() vinham sem marcador nenhum.
+    """
+    tf = shape.text_frame
+    p_origem = tf.paragraphs[0]._p
+    pPr = p_origem.find(qn("a:pPr"))
+    return copy.deepcopy(pPr) if pPr is not None else None
+
+
+def _aplicar_ppr_bullet(paragrafo, ppr_modelo):
+    """Aplica (substituindo) o <a:pPr> de ppr_modelo num parágrafo já criado."""
+    if ppr_modelo is None:
+        return
+    p_destino = paragrafo._p
+    pPr_atual = p_destino.find(qn("a:pPr"))
+    novo = copy.deepcopy(ppr_modelo)
+    if pPr_atual is not None:
+        p_destino.remove(pPr_atual)
+    p_destino.insert(0, novo)
+
+
 def _set_text_preservando_estilo(shape, novo_texto):
-    """Substitui o texto de um text box mantendo a formatação (incl. negrito) do 1º run."""
+    """Substitui o texto de um text box mantendo a formatação (incl. negrito) do 1º run
+    E o marcador de bullet (">") do modelo em TODAS as linhas, não só na 1ª."""
     tf = shape.text_frame
     primeiro_par = tf.paragraphs[0]
     bold_original = primeiro_par.runs[0].font.bold if primeiro_par.runs else None
     fmt = _extrair_formato_base(shape)
+    ppr_bullet = _extrair_ppr_bullet(shape)
 
     tf.clear()
     linhas = novo_texto.split("\n")
     for i, linha in enumerate(linhas):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        _aplicar_ppr_bullet(p, ppr_bullet)
         run = p.add_run()
         run.text = linha
         if fmt:
@@ -571,6 +599,7 @@ def _set_paragrafos_com_estilo(shape, paragrafos):
       - {"runs": [{"texto": str, "bold": bool}, ...]}      -> parágrafo com runs mistos
     """
     fmt = _extrair_formato_base(shape)
+    ppr_bullet = _extrair_ppr_bullet(shape)
     tf = shape.text_frame
     tf.clear()
 
@@ -579,6 +608,7 @@ def _set_paragrafos_com_estilo(shape, paragrafos):
 
     for i, p in enumerate(paragrafos):
         par = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        _aplicar_ppr_bullet(par, ppr_bullet)
         runs_def = p.get("runs") or [{"texto": p.get("texto", ""), "bold": p.get("bold", False)}]
         for r in runs_def:
             run = par.add_run()
@@ -627,49 +657,76 @@ def _find_shape(slide, contem_texto):
 
 # ── Montagem do PPTX final ──────────────────────────────────────────────────
 
-def _tamanho_paragrafos(paragrafos):
-    total = 0
-    for p in paragrafos:
-        if "runs" in p:
-            total += sum(len(r.get("texto", "")) for r in p["runs"])
-        else:
-            total += len(p.get("texto", ""))
-    return total
-
-
-def agrupar_em_paginas(grupos, orcamento_chars=1400, ordem=None):
+def _extrair_orcamento_linhas(shape, fmt):
     """
-    Agrupa categorias em páginas por orçamento de caracteres. Retorna lista de
-    páginas, cada página = lista de tuplas (categoria, paragrafos).
+    Estima quantas linhas cabem na caixa do modelo e quantos caracteres cabem
+    por linha, a partir da altura/largura reais da shape (EMU) e do tamanho
+    de fonte do template — substitui o orçamento por "número de caracteres",
+    que não refletia a quebra de linha real e deixava o conteúdo estourar
+    a página em categorias com texto mais longo.
+    """
+    altura_pt = shape.height / 12700
+    largura_pt = shape.width / 12700
+    tamanho_fonte_pt = fmt[1].pt if fmt and fmt[1] else 18
+    altura_linha_pt = tamanho_fonte_pt * 1.35  # inclui folga de espaçamento entre parágrafos
+    largura_media_char_pt = tamanho_fonte_pt * 0.52  # estimativa conservadora (fonte não é monoespaçada)
+    max_linhas = max(1, int(altura_pt // altura_linha_pt))
+    chars_por_linha = max(15, int(largura_pt // largura_media_char_pt))
+    max_linhas = max(1, int(max_linhas * 0.8))  # margem de segurança de 20%
+    return max_linhas, chars_por_linha
+
+
+def _texto_paragrafo(paragrafo):
+    if "runs" in paragrafo:
+        return "".join(r.get("texto", "") for r in paragrafo["runs"])
+    return paragrafo.get("texto", "")
+
+
+def _linhas_ocupadas(paragrafo, chars_por_linha):
+    texto = _texto_paragrafo(paragrafo)
+    if not texto:
+        return 1
+    return max(1, -(-len(texto) // chars_por_linha))  # divisão com arredondamento pra cima
+
+
+def _linhas_totais(paragrafos, chars_por_linha):
+    return sum(_linhas_ocupadas(p, chars_por_linha) for p in paragrafos)
+
+
+def agrupar_em_paginas(grupos, max_linhas, chars_por_linha, ordem=None):
+    """
+    Agrupa categorias em páginas por orçamento de LINHAS (estimadas a partir
+    da caixa real do modelo). Retorna lista de páginas, cada página = lista
+    de tuplas (categoria, paragrafos).
     `ordem`, se fornecida, define a sequência das categorias (categorias fora
     dela vão para o final, em ordem alfabética).
     """
     chaves = _ordenar_categorias(grupos.keys()) if ordem is None else ordem
     blocos = [(cat, gerar_paragrafos_categoria(cat, grupos[cat])) for cat in chaves if cat in grupos]
-    paginas, atual, atual_len = [], [], 0
+    paginas, atual, atual_linhas = [], [], 0
     for cat, paragrafos in blocos:
-        tam = _tamanho_paragrafos(paragrafos) + len(cat) + 10
-        if atual and (atual_len + tam > orcamento_chars):
+        linhas_bloco = 1 + _linhas_totais(paragrafos, chars_por_linha)  # +1 = cabeçalho da categoria
+        if atual and (atual_linhas + linhas_bloco > max_linhas):
             paginas.append(atual)
-            atual, atual_len = [], 0
+            atual, atual_linhas = [], 0
         atual.append((cat, paragrafos))
-        atual_len += tam
+        atual_linhas += linhas_bloco
     if atual:
         paginas.append(atual)
     return paginas
 
 
-def agrupar_desligamentos_em_paginas(dados, orcamento_chars=1400):
-    """Pagina os parágrafos (com runs) de Desligamentos por orçamento de caracteres."""
+def agrupar_desligamentos_em_paginas(dados, max_linhas, chars_por_linha):
+    """Pagina os parágrafos (com runs) de Desligamentos por orçamento de linhas."""
     paragrafos = gerar_paragrafos_desligamentos(dados)
-    paginas, atual, atual_len = [], [], 0
+    paginas, atual, atual_linhas = [], [], 0
     for p in paragrafos:
-        tam = _tamanho_paragrafos([p])
-        if atual and (atual_len + tam > orcamento_chars):
+        linhas = _linhas_ocupadas(p, chars_por_linha)
+        if atual and (atual_linhas + linhas > max_linhas):
             paginas.append(atual)
-            atual, atual_len = [], 0
+            atual, atual_linhas = [], 0
         atual.append(p)
-        atual_len += tam
+        atual_linhas += linhas
     if atual:
         paginas.append(atual)
     return paginas or [[]]
@@ -751,6 +808,15 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     """
     prs = Presentation(TEMPLATE_PATH)
 
+    # Orçamento de paginação calculado UMA VEZ a partir das dimensões reais
+    # do placeholder de corpo do modelo (slide 2), pra nunca estourar a página.
+    _corpo_modelo = _find_shape(prs.slides[2], "Foram registradas")
+    if _corpo_modelo is not None:
+        _fmt_corpo_modelo = _extrair_formato_base(_corpo_modelo)
+        max_linhas, chars_por_linha = _extrair_orcamento_linhas(_corpo_modelo, _fmt_corpo_modelo)
+    else:
+        max_linhas, chars_por_linha = 18, 70  # fallback conservador
+
     grupos = dict(grupos)  # não alterar o dict do chamador
     dados_comunicacoes = grupos.pop(CAT_COMUNICACOES, None)
     dados_desligamentos = grupos.pop(CAT_DESLIGAMENTOS, None)
@@ -782,14 +848,14 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     # --- Página(s): Comunicações / SCADA / CCTV — sempre primeiro, própria(s)
     #     página(s), separada de Inversores/Strings/demais equipamentos -------
     if dados_comunicacoes:
-        for pagina in agrupar_em_paginas({CAT_COMUNICACOES: dados_comunicacoes}):
+        for pagina in agrupar_em_paginas({CAT_COMUNICACOES: dados_comunicacoes}, max_linhas, chars_por_linha):
             cat, paragrafos = pagina[0]
             _renderizar_pagina_categoria(prs, cat, paragrafos)
 
     # --- Página(s): "Ocorrências da Semana" — Inversores, Strings/Módulos e
     #     demais equipamentos, já com Painel de Falhas + Painel de Atividades
-    #     combinados por categoria (empacotadas por orçamento de caracteres) --
-    for pagina in agrupar_em_paginas(outras_categorias):
+    #     combinados por categoria (empacotadas por orçamento de linhas) -----
+    for pagina in agrupar_em_paginas(outras_categorias, max_linhas, chars_por_linha):
         if len(pagina) == 1:
             categoria, paragrafos = pagina[0]
             _renderizar_pagina_categoria(prs, categoria, paragrafos)
@@ -802,7 +868,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
 
     # --- Página(s): Desligamentos — com data/hora real de abertura/conclusão
     if dados_desligamentos:
-        paginas_deslig = agrupar_desligamentos_em_paginas(dados_desligamentos)
+        paginas_deslig = agrupar_desligamentos_em_paginas(dados_desligamentos, max_linhas, chars_por_linha)
         for i, pagina in enumerate(paginas_deslig):
             titulo = CAT_DESLIGAMENTOS if i == 0 else f"{CAT_DESLIGAMENTOS} (cont.)"
             _renderizar_pagina_categoria(prs, titulo, pagina)
