@@ -1,0 +1,20 @@
+name: Check Health Now
+on:
+  workflow_dispatch: {}
+jobs:
+  h:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -w "\nHTTP:%{http_code}\n" "https://whatsapp-painel-falhas.onrender.com/health" -o backups/health-now.txt
+          curl -s -w "\nHTTP:%{http_code}\n" "https://whatsapp-painel-falhas.onrender.com/health" >> backups/health-now.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/health-now.txt
+          git diff --quiet --cached || git commit -m "health now [skip ci]"
+          git push
