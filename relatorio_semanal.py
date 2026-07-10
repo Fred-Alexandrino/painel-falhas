@@ -3,11 +3,12 @@
 relatorio_semanal.py
 ─────────────────────────────────────────────────────────────────────────
 Geração automática do "Relatório Semanal" (.pptx) no modelo Grid Co.,
-a partir das ocorrências já registradas na planilha do Painel de Falhas.
+a partir das ocorrências (Painel de Falhas) E das OSs/atividades (Painel
+de Atividades) já registradas nas planilhas.
 
 Não usa nenhuma API de IA — o texto é montado por regras determinísticas
-em cima dos campos: Equipamento, Falha e Status (resumido, sem despejar
-o histórico bruto de ações).
+em cima dos campos de cada fonte (resumido, sem despejar o histórico
+bruto de ações).
 """
 
 import os
@@ -24,14 +25,28 @@ from pptx.oxml.ns import qn
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "modelo_relatorio_semanal.pptx")
 
-# Índices das colunas da planilha principal (0-based, iguais ao app.py / CAMPO_COL)
+# Índices das colunas da planilha principal — Painel de Falhas (0-based,
+# iguais ao app.py / CAMPO_COL)
 COL_ID, COL_CLIENTE, COL_USINA, COL_EQUIP = 0, 1, 2, 3
 COL_FALHA, COL_CAUSA, COL_IMPACTADOS, COL_ACAO = 4, 5, 6, 7
 COL_STATUS, COL_TICKET, COL_OS, COL_HISTORICO = 8, 9, 10, 11
 COL_DATA_ABERTURA = 12
 COL_DATA_FECHAMENTO = 20  # coluna U (21ª, 1-based) = índice 20 (0-based)
 
+# Índices das colunas da aba Painel de Atividades (0-based, iguais ao
+# ATIV_CAMPO_COL do app.py, que é 1-based -> aqui -1)
+ATIV_COL_ID, ATIV_COL_CLIENTE, ATIV_COL_USINA, ATIV_COL_EQUIP = 0, 1, 2, 3
+ATIV_COL_DESCRICAO, ATIV_COL_RESPONSAVEL, ATIV_COL_PRAZO, ATIV_COL_PRIORIDADE = 4, 5, 6, 7
+ATIV_COL_STATUS, ATIV_COL_DATA_CRIACAO, ATIV_COL_DATA_CONCLUSAO, ATIV_COL_HISTORICO = 8, 9, 10, 11
+ATIV_COL_EDITOR, ATIV_COL_NUMEROOS, ATIV_COL_STATUSOS = 12, 13, 14
+
 STATUS_CONCLUIDO = ["concluído", "concluido", "resolvido", "fechado", "resolved", "closed"]
+
+# Uma atividade/OS só é considerada concluída quando o statusOS chega em
+# "Em Revisão" ou "Finalizada" — nunca pelo percentual de tarefas (ver
+# regra registrada em memória: 100% das tarefas em "Em Processo" ainda é
+# aguardando submissão, não conclusão).
+STATUS_OS_CONCLUIDO = ["em revisão", "em revisao", "finalizada"]
 
 CAT_COMUNICACOES = "COMUNICAÇÕES / SCADA / CCTV"
 CAT_DESLIGAMENTOS = "DESLIGAMENTOS"
@@ -67,6 +82,13 @@ PADROES_CATEGORIA = [
 # ordem alfabética.
 ORDEM_CATEGORIAS_GERAIS = [rotulo for _, rotulo in PADROES_CATEGORIA
                            if rotulo not in (CAT_COMUNICACOES, CAT_DESLIGAMENTOS)]
+
+# Zeladoria: colunas fixas da tabela do relatório
+ZELADORIA_COLUNAS = ["Usina", "Roçagem", "Poda Química", "Limpeza dos Módulos"]
+# Mapeia cada coluna da tabela para o "nome" de grupo usado em coletar_zeladoria()
+ZELADORIA_MAPA_COLUNAS = [("Roçagem", "Roçada"), ("Poda Química", "Poda Química"),
+                          ("Limpeza dos Módulos", "Lavagem dos Módulos")]
+ZELADORIA_MAX_USINAS_POR_PAGINA = 8  # evita estourar a tabela pra fora do slide
 
 
 # ── Utilidades de texto/data ────────────────────────────────────────────────
@@ -108,6 +130,10 @@ def _is_concluido(status):
     return any(x in s for x in STATUS_CONCLUIDO)
 
 
+def _atividade_concluida(status_os):
+    return (status_os or "").strip().lower() in STATUS_OS_CONCLUIDO
+
+
 def _ticket_valido(ticket):
     """Só considera 'chamado real' se houver um número/identificador de verdade."""
     t = (ticket or "").strip().lower()
@@ -124,15 +150,22 @@ def _ordenar_categorias(chaves):
     return sorted(chaves, key=chave_ordenacao)
 
 
-# ── Coleta e agrupamento dos dados ──────────────────────────────────────────
+# ── Coleta e agrupamento — Painel de Falhas (ocorrências) ──────────────────
+#
+# Toda ocorrência/atividade, seja qual for a origem, é normalizada para o
+# mesmo formato de dict antes de entrar em "grupos":
+#   {"usina", "equipamento", "falha", "status", "dt_abertura",
+#    "dt_fechamento", "concluida", "origem"}
+# Isso permite juntar Painel de Falhas + Painel de Atividades num único
+# relatório sem duplicar as funções de geração de texto/slide.
 
 def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
     """
-    todos_valores: retorno de ws.get_all_values() (linha 0 = cabeçalho)
+    todos_valores: retorno de ws.get_all_values() do Painel de Falhas (linha 0 = cabeçalho)
     cliente: nome do cliente (comparação por 'contains', case-insensitive)
     data_inicio / data_fim: datetime (00:00 do dia inicial até 23:59 do dia final)
 
-    Retorna dict: {"categoria": {"concluidas": [linha,...], "abertas": [linha,...]}, ...}
+    Retorna dict: {"categoria": {"concluidas": [dict,...], "abertas": [dict,...]}, ...}
     """
     cliente_norm = _norm(cliente)
     grupos = {}
@@ -156,14 +189,95 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
             continue
 
         categoria = _rotulo_categoria(row[COL_EQUIP])
+        d = {
+            "usina": row[COL_USINA].strip() or "Usina não informada",
+            "equipamento": row[COL_EQUIP].strip() or "Equipamento não informado",
+            "falha": row[COL_FALHA].strip() or "Falha não especificada",
+            "status": row[COL_STATUS].strip() or "Em aberto",
+            "dt_abertura": dt_abertura,
+            "dt_fechamento": dt_fecham,
+            "concluida": concluida,
+            "origem": "falha",
+        }
         grupos.setdefault(categoria, {"concluidas": [], "abertas": []})
 
         if fechou_na_semana:
-            grupos[categoria]["concluidas"].append(row)
+            grupos[categoria]["concluidas"].append(d)
         elif em_aberto_backlog:
-            grupos[categoria]["abertas"].append(row)
+            grupos[categoria]["abertas"].append(d)
 
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
+
+
+# ── Coleta e agrupamento — Painel de Atividades (OSs) ───────────────────────
+
+def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
+    """
+    todos_valores: retorno de ws.get_all_values() do Painel de Atividades
+    (linha 0 = cabeçalho). Mesma lógica de janela/backlog de
+    coletar_ocorrencias_semana, mas a data de abertura é a Data de Criação
+    da OS/atividade e a de fechamento é a Data de Conclusão; e "concluída"
+    é definido pelo statusOS (Em Revisão / Finalizada) — nunca por
+    percentual de tarefas.
+
+    Retorna dict no mesmo formato de coletar_ocorrencias_semana, pronto
+    para ser mesclado com mesclar_grupos().
+    """
+    cliente_norm = _norm(cliente)
+    grupos = {}
+    min_cols = ATIV_COL_STATUSOS + 1
+
+    for row in todos_valores[1:]:
+        if len(row) <= min_cols:
+            row = row + [""] * (min_cols + 1 - len(row))
+
+        if cliente_norm not in _norm(row[ATIV_COL_CLIENTE]):
+            continue
+
+        dt_abertura = _parse_data(row[ATIV_COL_DATA_CRIACAO])
+        dt_fecham = _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
+        concluida = _atividade_concluida(row[ATIV_COL_STATUSOS])
+
+        fechou_na_semana = dt_fecham and data_inicio <= dt_fecham <= data_fim
+        abriu_na_semana = dt_abertura and data_inicio <= dt_abertura <= data_fim
+        em_aberto_backlog = not concluida
+
+        if not (fechou_na_semana or abriu_na_semana or em_aberto_backlog):
+            continue
+
+        categoria = _rotulo_categoria(row[ATIV_COL_EQUIP])
+        status_display = row[ATIV_COL_STATUSOS].strip() or row[ATIV_COL_STATUS].strip() or "Em aberto"
+        d = {
+            "usina": row[ATIV_COL_USINA].strip() or "Usina não informada",
+            "equipamento": row[ATIV_COL_EQUIP].strip() or "Equipamento não informado",
+            "falha": row[ATIV_COL_DESCRICAO].strip() or "Sem descrição",
+            "status": status_display,
+            "dt_abertura": dt_abertura,
+            "dt_fechamento": dt_fecham,
+            "concluida": concluida,
+            "origem": "atividade",
+        }
+        grupos.setdefault(categoria, {"concluidas": [], "abertas": []})
+
+        if fechou_na_semana:
+            grupos[categoria]["concluidas"].append(d)
+        elif em_aberto_backlog:
+            grupos[categoria]["abertas"].append(d)
+
+    return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
+
+
+def mesclar_grupos(*grupos_varios):
+    """Mescla dois ou mais dicts no formato de coletar_ocorrencias_semana
+    (ex.: Painel de Falhas + Painel de Atividades) em um único dict de
+    categorias, somando as listas de concluídas/abertas de cada fonte."""
+    resultado = {}
+    for grupos in grupos_varios:
+        for cat, dados in (grupos or {}).items():
+            alvo = resultado.setdefault(cat, {"concluidas": [], "abertas": []})
+            alvo["concluidas"].extend(dados.get("concluidas", []))
+            alvo["abertas"].extend(dados.get("abertas", []))
+    return resultado
 
 
 def listar_usinas_cliente(todos_valores, cliente):
@@ -185,7 +299,8 @@ def listar_usinas_cliente(todos_valores, cliente):
 
 
 def coletar_chamados_abertos(todos_valores, cliente):
-    """Ocorrências do cliente com número de chamado/ticket fabricante válido e ainda não concluídas."""
+    """Ocorrências do cliente (Painel de Falhas) com número de chamado/ticket
+    fabricante válido e ainda não concluídas."""
     cliente_norm = _norm(cliente)
     chamados = []
     for row in todos_valores[1:]:
@@ -202,53 +317,52 @@ def coletar_chamados_abertos(todos_valores, cliente):
 
 # ── Geração de conteúdo (offline, sem IA) — parágrafos com negrito por usina ─
 
-def _linha_ocorrencia(row):
+def _linha_ocorrencia(d):
     """Linha resumida: Equipamento – Falha. Status: X. (sem despejar causa/ação/histórico)"""
-    equip = row[COL_EQUIP].strip() or "Equipamento não informado"
-    falha = row[COL_FALHA].strip() or "Falha não especificada"
+    equip = d["equipamento"]
+    falha = d["falha"]
     if len(falha) > 180:
         falha = falha[:177].rstrip() + "..."
-    status = row[COL_STATUS].strip() or "Em aberto"
+    status = d["status"]
     return f"{equip} – {falha}. Status: {status}."
 
 
 def gerar_paragrafos_categoria(categoria, dados):
     """
-    Agrupa as ocorrências de uma categoria por usina (nome da usina em negrito,
-    seguido de um bullet resumido por ocorrência).
+    Agrupa as ocorrências/atividades de uma categoria por usina (nome da
+    usina em negrito, seguido de um bullet resumido por ocorrência).
     Retorna lista de dicts: {"texto": str, "bold": bool}
     """
     todas = list(dados["concluidas"]) + list(dados["abertas"])
     por_usina = {}
-    for row in todas:
-        usina = row[COL_USINA].strip() or "Usina não informada"
-        por_usina.setdefault(usina, []).append(row)
+    for d in todas:
+        por_usina.setdefault(d["usina"], []).append(d)
 
     paragrafos = []
     for usina in sorted(por_usina.keys()):
         paragrafos.append({"texto": usina, "bold": True})
-        for row in por_usina[usina]:
-            paragrafos.append({"texto": "• " + _linha_ocorrencia(row), "bold": False})
+        for d in por_usina[usina]:
+            paragrafos.append({"texto": "• " + _linha_ocorrencia(d), "bold": False})
     return paragrafos
 
 
 # ── Desligamentos: sempre com data/hora real (aberto via WhatsApp já traz a
 # hora do desligamento; ao normalizar, a hora de conclusão) ─────────────────
 
-def _linha_desligamento_runs(row):
+def _linha_desligamento_runs(d):
     """
     Runs (mistura de negrito/normal na mesma linha) para uma ocorrência de
     desligamento, incluindo data/hora real de abertura e, se concluída, de
     conclusão. Só cai no aviso em negrito se a data realmente estiver
-    ausente na planilha (caso excepcional — normalmente já vem preenchida
-    pela automação do WhatsApp).
+    ausente na origem (caso excepcional — normalmente já vem preenchida
+    pela automação do WhatsApp, ou pela Data de Criação/Conclusão da OS).
     """
-    equip = row[COL_EQUIP].strip() or "Usina desligada"
-    falha = row[COL_FALHA].strip() or "Usina desligada"
-    status = row[COL_STATUS].strip() or "Em aberto"
-    concluida = _is_concluido(status)
-    dt_abertura = _parse_data(row[COL_DATA_ABERTURA])
-    dt_fecham = _parse_data(row[COL_DATA_FECHAMENTO])
+    equip = d["equipamento"]
+    falha = d["falha"]
+    status = d["status"]
+    concluida = d["concluida"]
+    dt_abertura = d["dt_abertura"]
+    dt_fecham = d["dt_fechamento"]
 
     runs = [{"texto": f"• {equip} – {falha}. Status: {status}. ", "bold": False}]
 
@@ -270,22 +384,23 @@ def gerar_paragrafos_desligamentos(dados):
     """Igual a gerar_paragrafos_categoria, mas com data/hora real por ocorrência."""
     todas = list(dados["concluidas"]) + list(dados["abertas"])
     por_usina = {}
-    for row in todas:
-        usina = row[COL_USINA].strip() or "Usina não informada"
-        por_usina.setdefault(usina, []).append(row)
+    for d in todas:
+        por_usina.setdefault(d["usina"], []).append(d)
 
     paragrafos = []
     for usina in sorted(por_usina.keys()):
         paragrafos.append({"runs": [{"texto": usina, "bold": True}]})
-        for row in por_usina[usina]:
-            paragrafos.append({"runs": _linha_desligamento_runs(row)})
+        for d in por_usina[usina]:
+            paragrafos.append({"runs": _linha_desligamento_runs(d)})
     return paragrafos
 
 
 # ── Chamados em aberto: uma linha por chamado, usina em negrito inline ─────
 
 def gerar_paragrafos_chamados(chamados):
-    """Uma linha por chamado válido: '- Usina – Case #ticket -> resumo -> status.'"""
+    """Uma linha por chamado válido: '- Usina – Case #ticket -> resumo -> status.'
+    (chamados vêm sempre do Painel de Falhas — Painel de Atividades não tem
+    número de chamado/ticket de fabricante, só número de OS interno)."""
     if not chamados:
         return [{"texto": "Nenhum chamado em aberto nesta semana.", "bold": False}]
 
@@ -347,48 +462,21 @@ def coletar_zeladoria(zeladoria_valores, cliente):
     return resultado
 
 
-def gerar_paragrafos_zeladoria(zeladoria_usinas):
-    """Uma usina em negrito, seguida de um bullet por frente (Roçada, Poda, Lavagem, Pragas)."""
+def _status_zeladoria_para_tabela(item, nome_grupo):
+    """Texto de uma célula da tabela de Zeladoria (só o status, conforme
+    pedido — sem despejar a última data dentro da célula para não poluir)."""
+    grupo = next((g for g in item["grupos"] if g["nome"] == nome_grupo), None)
+    if not grupo:
+        return "Sem informação"
+    return grupo["status"] or "Sem informação"
+
+
+def paginar_zeladoria(zeladoria_usinas, max_por_pagina=ZELADORIA_MAX_USINAS_POR_PAGINA):
+    """Divide as usinas da Zeladoria em páginas de tabela, pra nunca estourar
+    o slide (era o problema antigo: texto cortado com muitas usinas)."""
     if not zeladoria_usinas:
-        return [{"texto": "Nenhuma usina encontrada na aba de Zeladoria para este cliente.", "bold": False}]
-
-    paragrafos = []
-    for item in zeladoria_usinas:
-        paragrafos.append({"texto": item["usina"], "bold": True})
-        for g in item["grupos"]:
-            status = g["status"] or "Sem informação"
-            if g["ultima_data"] and status.lower() not in ("sem informação", "sem info"):
-                linha = f"• {g['nome']}: {status} (última {g['ultima_data']})"
-            else:
-                linha = f"• {g['nome']}: {status}"
-            paragrafos.append({"texto": linha, "bold": False})
-    return paragrafos
-
-
-def _tamanho_zeladoria_usina(item):
-    return len(item["usina"]) + sum(
-        len(g["nome"]) + len(g["status"]) + len(g["ultima_data"]) + 20 for g in item["grupos"]
-    )
-
-
-def agrupar_zeladoria_em_paginas(zeladoria_usinas, orcamento_chars=550):
-    """
-    Divide as usinas da Zeladoria em várias páginas por orçamento de
-    caracteres, para nunca estourar o slide (o texto não cabia em uma
-    página quando havia muitas usinas de um mesmo cliente).
-    Retorna lista de páginas, cada página = lista de itens de zeladoria_usinas.
-    """
-    paginas, atual, atual_len = [], [], 0
-    for item in zeladoria_usinas:
-        tam = _tamanho_zeladoria_usina(item)
-        if atual and (atual_len + tam > orcamento_chars):
-            paginas.append(atual)
-            atual, atual_len = [], 0
-        atual.append(item)
-        atual_len += tam
-    if atual:
-        paginas.append(atual)
-    return paginas or [[]]
+        return [[]]
+    return [zeladoria_usinas[i:i + max_por_pagina] for i in range(0, len(zeladoria_usinas), max_por_pagina)]
 
 
 # ── Clonagem de slides (mantém 100% do estilo do modelo Grid Co.) ──────────
@@ -498,6 +586,22 @@ def _set_paragrafos_com_estilo(shape, paragrafos):
             run.font.bold = bool(r.get("bold", False))
 
 
+def _formatar_celula_tabela(celula, fmt, negrito):
+    """Aplica a fonte/tamanho extraídos do template (fmt) numa célula de tabela."""
+    celula.text_frame.word_wrap = True
+    for p in celula.text_frame.paragraphs:
+        p.alignment = p.alignment  # no-op, mantém padrão do template de tabela
+        if not p.runs:
+            p.add_run()
+        for r in p.runs:
+            if fmt:
+                if fmt[0]:
+                    r.font.name = fmt[0]
+                if fmt[1]:
+                    r.font.size = fmt[1]
+            r.font.bold = negrito
+
+
 def _remover_fotos(slide):
     """Remove os placeholders de foto (o gerador não tem fotos de campo)."""
     for shp in list(slide.shapes):
@@ -563,7 +667,7 @@ def agrupar_desligamentos_em_paginas(dados, orcamento_chars=1400):
 
 
 def _renderizar_pagina_categoria(prs, titulo, corpo_paragrafos):
-    """Cria um slide de conteúdo (clonado do modelo) com título + corpo."""
+    """Cria um slide de conteúdo (clonado do modelo) com título + corpo em texto."""
     novo = _duplicate_slide(prs, 2)
     _remover_fotos(novo)
     shp_categoria = _find_shape(novo, "DESLIGAMENTOS")
@@ -575,13 +679,64 @@ def _renderizar_pagina_categoria(prs, titulo, corpo_paragrafos):
     return novo
 
 
+def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
+    """
+    Cria um slide de Zeladoria com uma TABELA real (Usina | Roçagem | Poda
+    Química | Limpeza dos Módulos), no lugar da antiga lista de bullets —
+    o texto corrido não cabia numa única página quando havia muitas usinas.
+    """
+    novo = _duplicate_slide(prs, 2)
+    _remover_fotos(novo)
+    shp_categoria = _find_shape(novo, "DESLIGAMENTOS")
+    shp_corpo = _find_shape(novo, "Foram registradas")
+    if shp_categoria:
+        _set_text_preservando_estilo(shp_categoria, titulo)
+
+    if shp_corpo:
+        fmt = _extrair_formato_base(shp_corpo)
+        left, top, width, height = shp_corpo.left, shp_corpo.top, shp_corpo.width, shp_corpo.height
+        shp_corpo._element.getparent().remove(shp_corpo._element)
+    else:
+        fmt = None
+        left = top = width = height = None
+
+    if left is None:
+        # fallback conservador, caso o placeholder de corpo não seja encontrado
+        from pptx.util import Emu
+        left, top, width, height = Emu(700000), Emu(1500000), Emu(11500000), Emu(5500000)
+
+    linhas = len(pagina_usinas) + 1  # +1 cabeçalho
+    colunas = len(ZELADORIA_COLUNAS)
+    graphic_frame = novo.shapes.add_table(linhas, colunas, left, top, width, height)
+    tabela = graphic_frame.table
+
+    for j, titulo_col in enumerate(ZELADORIA_COLUNAS):
+        cel = tabela.cell(0, j)
+        cel.text = titulo_col
+        _formatar_celula_tabela(cel, fmt, negrito=True)
+
+    for i, item in enumerate(pagina_usinas, start=1):
+        cel_usina = tabela.cell(i, 0)
+        cel_usina.text = item["usina"]
+        _formatar_celula_tabela(cel_usina, fmt, negrito=True)
+        for j, (_, nome_grupo) in enumerate(ZELADORIA_MAPA_COLUNAS, start=1):
+            cel = tabela.cell(i, j)
+            cel.text = _status_zeladoria_para_tabela(item, nome_grupo)
+            _formatar_celula_tabela(cel, fmt, negrito=False)
+
+    return novo
+
+
 def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None, zeladoria_usinas=None):
     """
-    grupos: dict categoria -> {"concluidas": [...], "abertas": [...]}
+    grupos: dict categoria -> {"concluidas": [dict,...], "abertas": [dict,...]}
+            (normalmente o resultado de mesclar_grupos(coletar_ocorrencias_semana(...),
+             coletar_atividades_semana(...)) — ocorrências do Painel de Falhas E
+             OSs do Painel de Atividades, já combinadas por categoria).
     semana_num: número da semana do ano (baseado na data final do período)
     data_label: data final formatada (dd/mm/aaaa) — mantido por compatibilidade
                 de assinatura, não é mais exibido na capa (padrão Grid Co.).
-    chamados: lista de linhas com chamado/ticket válido em aberto (opcional)
+    chamados: lista de linhas (Painel de Falhas) com chamado/ticket válido em aberto (opcional)
     zeladoria_usinas: retorno de coletar_zeladoria() (opcional)
     Retorna BytesIO() pronto para download.
     """
@@ -590,7 +745,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     grupos = dict(grupos)  # não alterar o dict do chamador
     dados_comunicacoes = grupos.pop(CAT_COMUNICACOES, None)
     dados_desligamentos = grupos.pop(CAT_DESLIGAMENTOS, None)
-    outras_categorias = grupos  # tudo que sobrou: Strings/Módulos, Inversores, etc.
+    outras_categorias = grupos  # Inversores, Strings/Módulos, etc. — ocorrências E OSs
 
     # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
     capa = _duplicate_slide(prs, 0)
@@ -616,13 +771,15 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
         _set_text_preservando_estilo(shp_lista, "\n".join(topicos))
 
     # --- Página(s): Comunicações / SCADA / CCTV — sempre primeiro, própria(s)
-    #     página(s), conforme ordem definida na Ata ---------------------------
+    #     página(s), separada de Inversores/Strings/demais equipamentos -------
     if dados_comunicacoes:
         for pagina in agrupar_em_paginas({CAT_COMUNICACOES: dados_comunicacoes}):
             cat, paragrafos = pagina[0]
             _renderizar_pagina_categoria(prs, cat, paragrafos)
 
-    # --- Página(s): demais categorias de ocorrências (empacotadas) ----------
+    # --- Página(s): "Ocorrências da Semana" — Inversores, Strings/Módulos e
+    #     demais equipamentos, já com Painel de Falhas + Painel de Atividades
+    #     combinados por categoria (empacotadas por orçamento de caracteres) --
     for pagina in agrupar_em_paginas(outras_categorias):
         if len(pagina) == 1:
             categoria, paragrafos = pagina[0]
@@ -645,12 +802,12 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     if chamados:
         _renderizar_pagina_categoria(prs, "CHAMADOS EM ABERTO", gerar_paragrafos_chamados(chamados))
 
-    # --- Página(s): Zeladoria — paginada para nunca estourar o slide -------
+    # --- Página(s): Zeladoria — tabela real (Usina | Roçagem | Poda Química |
+    #     Limpeza dos Módulos), paginada para nunca estourar o slide ---------
     if zeladoria_usinas:
-        paginas_zel = agrupar_zeladoria_em_paginas(zeladoria_usinas)
-        for i, pagina in enumerate(paginas_zel):
+        for i, pagina in enumerate(paginar_zeladoria(zeladoria_usinas)):
             titulo = "ZELADORIA" if i == 0 else "ZELADORIA (cont.)"
-            _renderizar_pagina_categoria(prs, titulo, gerar_paragrafos_zeladoria(pagina))
+            _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina)
 
     # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
     xml_slides = prs.slides._sldIdLst
