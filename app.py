@@ -2828,11 +2828,12 @@ def disparar_comunicado_cluster():
     cluster específico pro grupo de WhatsApp correspondente. O grupo é
     derivado das usinas do cluster (reaproveita o mapeamento grupo_usina
     já existente — normalmente todas as usinas de um mesmo cluster caem
-    no mesmo grupo, já que representam a mesma equipe de campo)."""
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    no mesmo grupo, já que representam a mesma equipe de campo).
+
+    Sem exigência de WEBHOOK_SECRET aqui de propósito: é chamado direto do
+    navegador pelo botão no dashboard (não tem como o frontend guardar o
+    secret com segurança), então a única proteção é o próprio login no
+    painel (role manager)."""
     if not WPP_SERVER_URL:
         return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 400
 
@@ -5329,7 +5330,7 @@ OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
 3. SEJA CONSERVADOR NA QUANTIDADE POR DIA — isso é crítico. Grande parte dessas atividades já está atrasada justamente porque a agenda anterior foi otimista demais e não sobrou tempo real de execução, deslocamento dentro da própria usina, imprevistos e deslocamento até o próximo compromisso. Distribua no máximo 1 atividade por turno (manhã OU tarde) por equipe — ou seja, no máximo 2 atividades por dia por equipe — a menos que sejam claramente rápidas/simples (ex.: inspeção visual, verificação de temperatura), caso em que até 2 por turno é aceitável. Nunca mais que isso.
 4. REGRA RÍGIDA, SEM NENHUMA EXCEÇÃO: só programe atividades de SEGUNDA A SEXTA-FEIRA. NUNCA, em hipótese alguma, sugira uma data que caia em sábado ou domingo — nem mesmo para atividades muito atrasadas ou urgentes. Antes de definir cada "dataSugerida", verifique o dia da semana correspondente e confirme que é um dia útil (segunda a sexta).
-5. Comece a reprogramação a partir de amanhã, nunca em uma data já passada.
+5. Comece a reprogramação a partir de amanhã (ou da próxima segunda-feira, se amanhã cair em fim de semana), NUNCA em uma data já passada. Preencha os dias úteis mais próximos primeiro, na ordem — não pule um dia útil disponível pra frente sem necessidade (ex.: se amanhã é segunda-feira e uma equipe está livre nesse dia, use segunda-feira antes de terça). Só avance pra um dia mais distante quando os turnos dos dias mais próximos já estiverem no limite do critério 3.
 6. Para cada atividade, defina também um TURNO (manhã ou tarde) dentro do dia sugerido, respeitando o limite de 1-2 atividades por turno do critério 3.
 
 ATIVIDADES A REPROGRAMAR:
