@@ -2864,6 +2864,40 @@ def disparar_comunicado_cluster():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/resolver-duplicata-8866", methods=["POST"])
+def resolver_duplicata_8866():
+    """Uso único: resolve a duplicidade da OS 8866 (atividades #24 e #35
+    apontando pra mesma OS). Mantém #24 (vinculada pelo fluxo oficial
+    Solicitar OS), cancela #35 (criada manualmente à parte), preservando
+    o histórico das duas com uma nota cruzada explicando o motivo."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    agora = agora_br().strftime('%d/%m/%Y %H:%M')
+    resultado = {}
+    for row_idx, row in enumerate(todos[1:], start=2):
+        if not row or not row[0].strip():
+            continue
+        id_ativ = row[0].strip()
+        if id_ativ == "24":
+            nota = f"{agora} - Atividade #35 (duplicata manual da mesma OS) foi cancelada e mesclada aqui."
+            hist_atual = row[11] if len(row) > 11 else ""
+            ws.update_cell(row_idx, 12, f"{hist_atual}\n{nota}".strip())
+            resultado["24"] = "nota adicionada"
+        elif id_ativ == "35":
+            nota = f"{agora} - Cancelada: duplicata da atividade #24 pra mesma OS (8866). Mantida #24, vinculada pelo fluxo oficial Solicitar OS."
+            hist_atual = row[11] if len(row) > 11 else ""
+            ws.update_cell(row_idx, 12, f"{hist_atual}\n{nota}".strip())
+            ws.update_cell(row_idx, 9, "Cancelado")
+            resultado["35"] = "cancelada"
+
+    return jsonify({"ok": True, "resultado": resultado}), 200
+
+
 @app.route("/atividades", methods=["GET"])
 def listar_atividades():
     try:
