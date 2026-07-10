@@ -2827,13 +2827,16 @@ def listar_atividades():
     try:
         ws = get_atividades_sheet()
         todos = ws.get_all_values()
+        mapa_cluster = _mapa_cluster_usina()
         out = []
         for row in todos[1:]:
             if len(row) < len(ATIV_HEADERS_JSON):
                 row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
             if not row[0].strip():
                 continue
-            out.append(dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)])))
+            item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+            item["cluster"] = mapa_cluster.get(item.get("usina", "").strip(), "")
+            out.append(item)
         return jsonify({"ok": True, "atividades": out})
     except Exception as e:
         log.error(f"[Atividades] Erro ao listar: {e}")
@@ -4484,6 +4487,21 @@ def _mapa_grupo_usina():
     return mapa
 
 
+def _mapa_cluster_usina():
+    """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
+    01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'."""
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    mapa = {}
+    for row in valores[1:]:
+        if row and row[0].strip().startswith("cluster_usina:"):
+            usina = row[0].strip()[len("cluster_usina:"):].strip()
+            cluster = row[1].strip() if len(row) > 1 else ""
+            if usina and cluster:
+                mapa[usina] = cluster
+    return mapa
+
+
 def _montar_texto_comunicado_usina(usina, atividades):
     def dias_atraso(prazo):
         m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo or "")
@@ -5321,6 +5339,9 @@ def sugerir_reprogramacao():
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
         sugestao = json.loads(texto_limpo)
         _corrigir_fins_de_semana(sugestao)
+        mapa_cluster = _mapa_cluster_usina()
+        for item in sugestao.get("reprogramacoes", []):
+            item["cluster"] = mapa_cluster.get((item.get("usina") or "").strip(), "")
         return jsonify({"ok": True, "sugestao": sugestao, "total_atividades": len(atividades),
                          "total_original": total_original, "truncado": truncado})
     except json.JSONDecodeError as e:
