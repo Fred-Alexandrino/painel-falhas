@@ -5188,9 +5188,10 @@ REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
 OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
 2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
-3. Distribua a carga de forma realista — não empilhe um número absurdo de atividades no mesmo dia para a mesma equipe (bom senso: no máximo 3-4 atividades por dia por equipe, a menos que sejam muito simples).
+3. SEJA CONSERVADOR NA QUANTIDADE POR DIA — isso é crítico. Grande parte dessas atividades já está atrasada justamente porque a agenda anterior foi otimista demais e não sobrou tempo real de execução, deslocamento dentro da própria usina, imprevistos e deslocamento até o próximo compromisso. Distribua no máximo 1 atividade por turno (manhã OU tarde) por equipe — ou seja, no máximo 2 atividades por dia por equipe — a menos que sejam claramente rápidas/simples (ex.: inspeção visual, verificação de temperatura), caso em que até 2 por turno é aceitável. Nunca mais que isso.
 4. Evite programar para sábados e domingos, a menos que a atividade já estivesse vencida há muito tempo e seja urgente.
 5. Comece a reprogramação a partir de amanhã, nunca em uma data já passada.
+6. Para cada atividade, defina também um TURNO (manhã ou tarde) dentro do dia sugerido, respeitando o limite de 1-2 atividades por turno do critério 3.
 
 ATIVIDADES A REPROGRAMAR:
 {lista_atividades}
@@ -5208,12 +5209,13 @@ Responda APENAS com um JSON válido (sem markdown, sem blocos de código com cra
       "responsavel": "<responsável/equipe>",
       "dataAtual": "<prazo atual, ou 'sem prazo definido'>",
       "dataSugerida": "<nova data sugerida, formato dd/mm/aaaa>",
-      "justificativa": "<motivo curto da escolha dessa data, mencionando o agrupamento por usina/equipe quando relevante>"
+      "turno": "<'manhã' ou 'tarde'>",
+      "justificativa": "<motivo curto da escolha dessa data/turno, mencionando o agrupamento por usina/equipe quando relevante>"
     }}
   ]
 }}
 
-Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida."""
+Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida e um turno."""
 
 
 @app.route("/sugerir-reprogramacao", methods=["POST", "OPTIONS"])
