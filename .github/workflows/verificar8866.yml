@@ -1,0 +1,28 @@
+name: Verificar 8866 Final
+on:
+  workflow_dispatch: {}
+jobs:
+  v:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          for a in ativs:
+              if a.get('id') in ('24','35'):
+                  print(a.get('id'), '|', a.get('status'), '|', a.get('numeroOS'), '|', a.get('historico')[-200:])
+                  print('---')
+          " > backups/verif8866.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/verif8866.txt
+          git diff --quiet --cached || git commit -m "verif 8866 [skip ci]"
+          git push
