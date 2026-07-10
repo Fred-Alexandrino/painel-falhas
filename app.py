@@ -24,7 +24,8 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
-from relatorio_semanal import (coletar_ocorrencias_semana, gerar_relatorio_pptx,
+from relatorio_semanal import (coletar_ocorrencias_semana, coletar_atividades_semana,
+                                mesclar_grupos, gerar_relatorio_pptx,
                                 coletar_chamados_abertos, listar_usinas_cliente,
                                 coletar_zeladoria)
 
@@ -5429,8 +5430,18 @@ def gerar_relatorio_semanal_route():
 
         ws = get_sheet()
         todos = carregar_planilha(ws)
-        grupos = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
+        grupos_falhas = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
         chamados = coletar_chamados_abertos(todos, cliente)
+
+        try:
+            ws_atividades = get_atividades_sheet()
+            todos_atividades = carregar_planilha(ws_atividades)
+            grupos_atividades = coletar_atividades_semana(todos_atividades, cliente, data_inicio, data_fim)
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao ler Painel de Atividades: {e}")
+            grupos_atividades = {}
+
+        grupos = mesclar_grupos(grupos_falhas, grupos_atividades)
 
         try:
             zeladoria_valores = carregar_planilha(get_zeladoria_sheet())
