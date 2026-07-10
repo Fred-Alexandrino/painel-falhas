@@ -58,14 +58,16 @@ CAT_DESLIGAMENTOS = "DESLIGAMENTOS"
 # (exceto Comunicações e Desligamentos, que sempre recebem página própria — ver
 # gerar_relatorio_pptx).
 PADROES_CATEGORIA = [
-    (r"\binv[\s\-]*\d+|inversor", "INVERSORES"),
+    (r"\binv[\s\-]*r?\.?\d+|inversor", "INVERSORES"),
     (r"tracker|\btcu\b", "TRACKERS / TCU"),
     (r"fusive|fusíve", "FUSÍVEIS"),
     (r"transformador", "TRANSFORMADORES"),
     (r"switchgear|chave seccionadora|disjuntor|religador", "SWITCHGEAR"),
+    (r"\bskid", "SKIDS"),
+    (r"preventiv", "MANUTENÇÃO PREVENTIVA"),
     (r"\bstring\b|modulo|módulo|otimizador", "STRINGS / MÓDULOS"),
     (r"usina desligad|usina offline|desligamento|ufv desligad|usina parad", CAT_DESLIGAMENTOS),
-    (r"comunica|scada|cctv|\bnvr\b|camera|câmera|speed dome|igate", CAT_COMUNICACOES),
+    (r"comunica|scada|cctv|cftv|\bnvr\b|camera|câmera|speed dome|igate", CAT_COMUNICACOES),
     (r"sensor|piranometro|piranômetro|solarimetric|estacao solarimetrica|estação solarimétrica", "SENSORES"),
     (r"emergenc", "EMERGÊNCIAS"),
     (r"operac|opera[çc][aã]o", "OPERAÇÕES"),
@@ -76,12 +78,19 @@ PADROES_CATEGORIA = [
     (r"vegeta", "CONTROLE DE VEGETAÇÃO"),
 ]
 
+# Rótulo genérico pra tudo que não bate em nenhum padrão acima (formulários,
+# spare parts, reclamações de concessionária, códigos Fracttal sem nenhuma
+# palavra reconhecível etc.) — nunca usa o texto bruto do equipamento como
+# categoria própria, pra não fragmentar o relatório em uma mini-seção por
+# código.
+CAT_OUTRAS = "OUTRAS OCORRÊNCIAS"
+
 # Ordem de exibição das categorias "genéricas" (tudo que não é Comunicações
 # nem Desligamentos, que são tratadas à parte). Categorias fora desta lista
 # (rótulos livres vindos direto do campo Equipamento) vão para o final, em
 # ordem alfabética.
 ORDEM_CATEGORIAS_GERAIS = [rotulo for _, rotulo in PADROES_CATEGORIA
-                           if rotulo not in (CAT_COMUNICACOES, CAT_DESLIGAMENTOS)]
+                           if rotulo not in (CAT_COMUNICACOES, CAT_DESLIGAMENTOS)] + [CAT_OUTRAS]
 
 # Zeladoria: colunas fixas da tabela do relatório
 ZELADORIA_COLUNAS = ["Usina", "Roçagem", "Poda Química", "Limpeza dos Módulos"]
@@ -104,7 +113,7 @@ def _rotulo_categoria(equip_bruto):
     for padrao, rotulo in PADROES_CATEGORIA:
         if re.search(padrao, n):
             return rotulo
-    return (equip_bruto or "OUTRAS OCORRÊNCIAS").strip().upper()
+    return CAT_OUTRAS
 
 
 def _parse_data(txt):
