@@ -1,0 +1,47 @@
+name: Test Reprog Final
+on:
+  workflow_dispatch:
+    inputs:
+      qtd:
+        required: true
+        default: '25'
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          abertas = [a for a in ativs if (a.get('status','') or '').lower() not in ('concluído','concluido','cancelado')]
+          ids = [a['id'] for a in abertas][:${{ github.event.inputs.qtd }}]
+          json.dump({'ids': ids}, open('/tmp/payload.json','w'))
+          "
+          START=$(date +%s)
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/sugerir-reprogramacao" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/payload.json \
+            -o backups/test-reprog3-result.json \
+            --max-time 170
+          END=$(date +%s)
+          echo "" >> backups/test-reprog3-result.json
+          echo "duracao_segundos: $((END-START))" >> backups/test-reprog3-result.json
+          python3 -c "
+          import json
+          try:
+              d = json.load(open('backups/test-reprog3-result.json').readlines()[0].strip() and open('backups/test-reprog3-result.json'))
+          except Exception as e:
+              print('erro ao ler:', e)
+          "
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/test-reprog3-result.json
+          git diff --quiet --cached || git commit -m "test reprog final [skip ci]"
+          git push
