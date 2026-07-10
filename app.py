@@ -5261,8 +5261,22 @@ def sugerir_reprogramacao():
 
     if not atividades:
         return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada para reprogramar"}), 400
-    if len(atividades) > 50:
-        atividades = atividades[:50]  # limite de segurança pro tamanho do prompt e tempo de resposta
+    total_original = len(atividades)
+    truncado = total_original > 25
+    if truncado:
+        # Limite rígido de segurança: o proxy da própria Render (não o
+        # gunicorn) corta a conexão em ~55-60s independente de qualquer
+        # timeout configurado no código — confirmado via teste real (57s
+        # com 50+ atividades = 502 do Render). 25 fica com boa margem.
+        # Prioriza as mais urgentes: Alta prioridade primeiro, depois por
+        # prazo mais próximo/vencido.
+        def _chave_urgencia(item):
+            prioridade_peso = {"alta": 0, "média": 1, "media": 1, "baixa": 2}.get((item.get("prioridade") or "").strip().lower(), 1)
+            prazo_str = (item.get("prazo") or "").strip()
+            m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo_str)
+            prazo_ts = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp() if m else float("inf")
+            return (prioridade_peso, prazo_ts)
+        atividades = sorted(atividades, key=_chave_urgencia)[:25]
 
     hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
     prompt = _montar_prompt_reprogramacao(atividades, hoje_str)
@@ -5287,7 +5301,8 @@ def sugerir_reprogramacao():
         texto = candidato["content"]["parts"][0]["text"].strip()
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
         sugestao = json.loads(texto_limpo)
-        return jsonify({"ok": True, "sugestao": sugestao, "total_atividades": len(atividades)})
+        return jsonify({"ok": True, "sugestao": sugestao, "total_atividades": len(atividades),
+                         "total_original": total_original, "truncado": truncado})
     except json.JSONDecodeError as e:
         log.error(f"[sugerir-reprogramacao] Resposta não é JSON válido: {e} | texto={texto[:500] if 'texto' in dir() else '?'}")
         return jsonify({"ok": False, "error": "A IA retornou um formato inesperado. Tente novamente."}), 502
