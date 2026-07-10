@@ -1,0 +1,20 @@
+name: Check Data Servidor
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/health" -o backups/data-servidor.json
+          cat backups/data-servidor.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/data-servidor.json
+          git diff --quiet --cached || git commit -m "check data [skip ci]"
+          git push
