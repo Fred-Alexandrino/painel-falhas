@@ -2868,6 +2868,17 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     if todos is None:
         todos = ws.get_all_values()
 
+    numeroOS = (numeroOS or "").strip()
+    if numeroOS:
+        for row in todos[1:]:
+            if len(row) < 14:
+                continue
+            numero_os_existente = row[13].strip()
+            status_existente = row[8].strip()
+            if numero_os_existente == numeroOS and not _is_concluido_atividade(status_existente):
+                raise ValueError(f"Já existe uma atividade em aberto (id {row[0]}) pra essa OS ({numeroOS}). "
+                                  f"Abra e edite a atividade existente em vez de criar uma nova.")
+
     _garantir_headers_atividades(ws)
 
     novo_id = _proximo_id_atividade(todos)
@@ -4528,6 +4539,32 @@ def _montar_texto_comunicado_usina(usina, atividades):
 
 
 @app.route("/verificar-e-enviar-comunicados", methods=["POST", "GET"])
+def _verificar_e_disparar_comunicados_se_necessario():
+    """Lógica compartilhada: só dispara o envio de verdade se for dia útil,
+    estiver na janela 07:00-07:09 (BRT) e ainda não tiver sido enviado
+    hoje. Retorna um dict com o resultado (nunca levanta exceção pro
+    chamador, pra nunca quebrar quem estiver piggybackando nela)."""
+    try:
+        agora = agora_br()
+        hoje_str = agora.strftime("%Y-%m-%d")
+
+        if agora.weekday() >= 5:  # sábado=5, domingo=6
+            return {"disparado": False, "motivo": "fim de semana"}
+        if not (agora.hour == 7 and agora.minute < 10):
+            return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
+
+        ja_enviado = _ler_trava("comunicados_enviados_em")
+        if ja_enviado == hoje_str:
+            return {"disparado": False, "motivo": "já enviado hoje"}
+
+        _gravar_trava("comunicados_enviados_em", hoje_str)
+        resultado = _enviar_comunicados_diarios_core()
+        return {"disparado": True, "resultado": resultado}
+    except Exception as e:
+        log.error(f"[ComunicadosDiarios] Erro na verificação/disparo: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
 def verificar_e_enviar_comunicados():
     """Ponto de entrada seguro pra ser chamado com frequência (ex.: a cada
     5 min via UptimeRobot) — só dispara o envio de verdade se:
@@ -4542,21 +4579,8 @@ def verificar_e_enviar_comunicados():
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
 
-    agora = agora_br()
-    hoje_str = agora.strftime("%Y-%m-%d")
-
-    if agora.weekday() >= 5:  # sábado=5, domingo=6
-        return jsonify({"ok": True, "disparado": False, "motivo": "fim de semana"}), 200
-    if not (agora.hour == 7 and agora.minute < 10):
-        return jsonify({"ok": True, "disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}), 200
-
-    ja_enviado = _ler_trava("comunicados_enviados_em")
-    if ja_enviado == hoje_str:
-        return jsonify({"ok": True, "disparado": False, "motivo": "já enviado hoje"}), 200
-
-    _gravar_trava("comunicados_enviados_em", hoje_str)
-    resultado = _enviar_comunicados_diarios_core()
-    return jsonify({"ok": True, "disparado": True, "resultado": resultado}), 200
+    r = _verificar_e_disparar_comunicados_se_necessario()
+    return jsonify({"ok": True, **r}), 200
 
 
 @app.route("/enviar-comunicados-diarios", methods=["POST", "GET"])
@@ -4750,6 +4774,11 @@ def sync_fracttal():
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     body, status_code = _sync_fracttal_core(desde_horas=3)
+    # piggyback: como este endpoint já é chamado de forma confiável a cada
+    # 5 min via UptimeRobot, aproveita pra checar/disparar os comunicados
+    # das 7h também — o cron dedicado do GitHub Actions sozinho atrasa de
+    # forma imprevisível e já deixou de disparar no horário certo.
+    body["comunicados_check"] = _verificar_e_disparar_comunicados_se_necessario()
     return jsonify(body), status_code
 
 
@@ -5324,7 +5353,7 @@ def sugerir_reprogramacao():
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": 8192,
+                    "maxOutputTokens": 24576,
                     "responseMimeType": "application/json",
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
@@ -5335,6 +5364,10 @@ def sugerir_reprogramacao():
         data = resp.json()
         candidato = data["candidates"][0]
         finish_reason = candidato.get("finishReason", "")
+        if finish_reason == "MAX_TOKENS":
+            log.error(f"[sugerir-reprogramacao] Resposta cortada por limite de tokens ({len(atividades)} atividades)")
+            return jsonify({"ok": False, "error": ("A resposta da IA foi cortada por ser grande demais. "
+                            "Tente com menos atividades de uma vez (filtre por cliente/usina).")}), 502
         texto = candidato["content"]["parts"][0]["text"].strip()
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
         sugestao = json.loads(texto_limpo)
