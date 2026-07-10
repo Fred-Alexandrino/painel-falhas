@@ -5276,7 +5276,7 @@ def sugerir_reprogramacao():
                     "responseMimeType": "application/json",
                 },
             },
-            timeout=45,
+            timeout=60,
         )
         resp.raise_for_status()
         data = resp.json()
