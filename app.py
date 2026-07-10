@@ -2822,6 +2822,48 @@ def _garantir_headers_atividades(ws):
         log.error(f"[Atividades] Erro ao garantir conteúdo do header estendido: {e}")
 
 
+@app.route("/disparar-comunicado-cluster", methods=["POST"])
+def disparar_comunicado_cluster():
+    """Dispara manualmente (via botão no dashboard) o comunicado de um
+    cluster específico pro grupo de WhatsApp correspondente. O grupo é
+    derivado das usinas do cluster (reaproveita o mapeamento grupo_usina
+    já existente — normalmente todas as usinas de um mesmo cluster caem
+    no mesmo grupo, já que representam a mesma equipe de campo)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    if not WPP_SERVER_URL:
+        return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 400
+
+    dados = request.get_json(force=True, silent=True) or {}
+    cluster = (dados.get("cluster") or "").strip()
+    texto = (dados.get("texto") or "").strip()
+    if not cluster or not texto:
+        return jsonify({"ok": False, "error": "cluster e texto são obrigatórios"}), 400
+
+    mapa_cluster_usina = _mapa_cluster_usina()
+    mapa_grupo_usina = _mapa_grupo_usina()
+    usinas_do_cluster = [u for u, c in mapa_cluster_usina.items() if c == cluster]
+    grupo_id = next((mapa_grupo_usina[u] for u in usinas_do_cluster if u in mapa_grupo_usina), None)
+    if not grupo_id:
+        return jsonify({"ok": False, "error": (f"Nenhum grupo de WhatsApp configurado pras usinas do cluster "
+                        f"\"{cluster}\". Configure em _Sistema: \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
+
+    try:
+        r = requests.post(
+            f"{WPP_SERVER_URL}/api/enviar-mensagem",
+            json={"grupoId": grupo_id, "texto": texto},
+            headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+            timeout=20,
+        )
+        if r.ok and r.json().get("ok"):
+            return jsonify({"ok": True, "grupo": grupo_id}), 200
+        return jsonify({"ok": False, "error": r.text[:300]}), 502
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/atividades", methods=["GET"])
 def listar_atividades():
     try:
