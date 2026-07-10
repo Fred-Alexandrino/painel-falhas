@@ -5288,7 +5288,7 @@ def sugerir_reprogramacao():
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": 16384,
+                    "maxOutputTokens": 8192,
                     "responseMimeType": "application/json",
                 },
             },
