@@ -5305,7 +5305,23 @@ def _corrigir_fins_de_semana(sugestao):
             item["dataSugerida"] = dt_corrigida.strftime("%d/%m/%Y")
 
 
-def _montar_prompt_reprogramacao(atividades, hoje_str):
+def _proximos_dias_uteis(a_partir_de, quantidade=12):
+    """Retorna uma lista de (data_str, nome_dia_semana) dos próximos N dias
+    úteis (seg-sex) a partir do dia seguinte a `a_partir_de`. Calculado em
+    Python, não deixado por conta da IA — remove qualquer chance de erro
+    de cálculo de data/dia da semana por parte do modelo."""
+    nomes = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+             "sexta-feira", "sábado", "domingo"]
+    dias = []
+    d = a_partir_de + timedelta(days=1)
+    while len(dias) < quantidade:
+        if d.weekday() < 5:  # 0-4 = seg a sex
+            dias.append((d.strftime("%d/%m/%Y"), nomes[d.weekday()]))
+        d += timedelta(days=1)
+    return dias
+
+
+def _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis):
     linhas = []
     for a in atividades:
         linhas.append(
@@ -5315,11 +5331,19 @@ def _montar_prompt_reprogramacao(atividades, hoje_str):
             f"Status={a.get('status')}"
         )
     lista_atividades = "\n".join(linhas)
+    lista_dias_uteis = "\n".join(f"- {data} ({nome})" for data, nome in proximos_dias_uteis)
+    primeiro_dia = proximos_dias_uteis[0][0]
+    primeiro_dia_nome = proximos_dias_uteis[0][1]
 
     return f"""Aja como um Programador(a) de Manutenção Sênior de uma empresa de O&M de usinas solares fotovoltaicas. Você é especialista em otimizar rotas e agendas de equipes de campo, minimizando deslocamento e maximizando produtividade.
 
 CONTEXTO:
 Hoje é {hoje_str}. Abaixo está a lista de atividades/OS em aberto que precisam ser reprogramadas para datas futuras.
+
+DIAS ÚTEIS DISPONÍVEIS PRA REPROGRAMAR (já calculados, use SOMENTE essas datas — não calcule por conta própria, não use nenhuma data fora desta lista):
+{lista_dias_uteis}
+
+O primeiro dia útil disponível é {primeiro_dia} ({primeiro_dia_nome}) — a menos que os turnos desse dia já estejam no limite do critério 3 abaixo, ele DEVE ser usado por pelo menos uma equipe. Nunca pule esse primeiro dia sem necessidade real de agenda.
 
 REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
 - Cada "Responsável/Equipe" representa uma equipe de campo fisicamente alocada. Uma mesma equipe NUNCA pode ter atividades programadas em USINAS DIFERENTES no mesmo dia — o deslocamento entre usinas inviabiliza isso. Se a equipe tem atividades em mais de uma usina, agrupe-as em dias diferentes, dedicando um ou mais dias consecutivos inteiros a cada usina antes de mover a equipe pra próxima.
@@ -5329,8 +5353,8 @@ OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
 2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
 3. SEJA CONSERVADOR NA QUANTIDADE POR DIA — isso é crítico. Grande parte dessas atividades já está atrasada justamente porque a agenda anterior foi otimista demais e não sobrou tempo real de execução, deslocamento dentro da própria usina, imprevistos e deslocamento até o próximo compromisso. Distribua no máximo 1 atividade por turno (manhã OU tarde) por equipe — ou seja, no máximo 2 atividades por dia por equipe — a menos que sejam claramente rápidas/simples (ex.: inspeção visual, verificação de temperatura), caso em que até 2 por turno é aceitável. Nunca mais que isso.
-4. REGRA RÍGIDA, SEM NENHUMA EXCEÇÃO: só programe atividades de SEGUNDA A SEXTA-FEIRA. NUNCA, em hipótese alguma, sugira uma data que caia em sábado ou domingo — nem mesmo para atividades muito atrasadas ou urgentes. Antes de definir cada "dataSugerida", verifique o dia da semana correspondente e confirme que é um dia útil (segunda a sexta).
-5. Comece a reprogramação a partir de amanhã (ou da próxima segunda-feira, se amanhã cair em fim de semana), NUNCA em uma data já passada. Preencha os dias úteis mais próximos primeiro, na ordem — não pule um dia útil disponível pra frente sem necessidade (ex.: se amanhã é segunda-feira e uma equipe está livre nesse dia, use segunda-feira antes de terça). Só avance pra um dia mais distante quando os turnos dos dias mais próximos já estiverem no limite do critério 3.
+4. REGRA RÍGIDA, SEM NENHUMA EXCEÇÃO: a "dataSugerida" de TODA atividade precisa ser uma das datas listadas em "DIAS ÚTEIS DISPONÍVEIS" acima. Nunca use uma data que não esteja nessa lista — ela já exclui sábados e domingos pra você.
+5. Preencha os dias úteis mais próximos primeiro, na ordem em que aparecem na lista — não pule um dia disponível pra frente sem necessidade. Só avance pra um dia mais distante da lista quando os turnos dos dias mais próximos já estiverem no limite do critério 3.
 6. Para cada atividade, defina também um TURNO (manhã ou tarde) dentro do dia sugerido, respeitando o limite de 1-2 atividades por turno do critério 3.
 
 ATIVIDADES A REPROGRAMAR:
@@ -5421,7 +5445,8 @@ def sugerir_reprogramacao():
         atividades = sorted(atividades, key=_chave_urgencia)[:60]
 
     hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
-    prompt = _montar_prompt_reprogramacao(atividades, hoje_str)
+    proximos_dias_uteis = _proximos_dias_uteis(agora_br())
+    prompt = _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis)
 
     try:
         resp = requests.post(
