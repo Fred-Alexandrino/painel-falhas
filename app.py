@@ -5290,9 +5290,10 @@ def sugerir_reprogramacao():
                     "temperature": 0.2,
                     "maxOutputTokens": 8192,
                     "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
-            timeout=90,
+            timeout=45,
         )
         resp.raise_for_status()
         data = resp.json()
