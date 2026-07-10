@@ -1,0 +1,46 @@
+name: Gerar Relatório Semanal (sob demanda)
+
+on:
+  repository_dispatch:
+    types: [gerar_relatorio]
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gerar PPTX via backend
+        run: |
+          set -e
+          CLIENTE="${{ github.event.client_payload.cliente }}"
+          DATA_INICIO="${{ github.event.client_payload.dataInicio }}"
+          DATA_FIM="${{ github.event.client_payload.dataFim }}"
+          mkdir -p relatorios_gerados
+          HTTP_CODE=$(curl -sS -X POST "https://whatsapp-painel-falhas.onrender.com/gerar-relatorio-semanal" \
+            -H "Content-Type: application/json" \
+            -d "{\"cliente\": \"$CLIENTE\", \"dataInicio\": \"$DATA_INICIO\", \"dataFim\": \"$DATA_FIM\"}" \
+            -o relatorios_gerados/relatorio_teste.pptx \
+            -w "%{http_code}")
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Erro na geracao do relatorio (HTTP $HTTP_CODE):"
+            cat relatorios_gerados/relatorio_teste.pptx
+            exit 1
+          fi
+          HEADER=$(head -c 2 relatorios_gerados/relatorio_teste.pptx)
+          if [ "$HEADER" != "PK" ]; then
+            echo "Resposta nao parece ser um .pptx valido:"
+            cat relatorios_gerados/relatorio_teste.pptx
+            exit 1
+          fi
+          echo "PPTX gerado com sucesso."
+
+      - name: Commit e push do relatório gerado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add relatorios_gerados/relatorio_teste.pptx
+          git commit -m "Relatorio de teste gerado sob demanda" || echo "Nada para commitar"
+          git push
