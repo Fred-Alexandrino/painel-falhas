@@ -1,0 +1,47 @@
+name: Test Final Reprog
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          abertas = [a for a in ativs if (a.get('status','') or '').lower() not in ('concluído','concluido','cancelado')]
+          ids = [a['id'] for a in abertas][:25]
+          json.dump({'ids': ids}, open('/tmp/payload.json','w'))
+          "
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/sugerir-reprogramacao" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/payload.json \
+            -o backups/test-final-result.json --max-time 170
+          python3 -c "
+          import json
+          from collections import Counter
+          d = json.load(open('backups/test-final-result.json'))
+          print('ok:', d.get('ok'))
+          if not d.get('ok'):
+              print('erro:', d.get('error'))
+          else:
+              itens = d.get('sugestao',{}).get('reprogramacoes',[])
+              print('total:', len(itens))
+              datas = Counter(i.get('dataSugerida') for i in itens)
+              for data, qtd in sorted(datas.items(), key=lambda x: x[0]):
+                  print(data, '->', qtd)
+              tem_13_07 = any(i.get('dataSugerida')=='13/07/2026' for i in itens)
+              print('TEM 13/07/2026 (segunda):', tem_13_07)
+          "
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/test-final-result.json
+          git diff --quiet --cached || git commit -m "test final [skip ci]"
+          git push
