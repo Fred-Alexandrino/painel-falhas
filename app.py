@@ -5261,8 +5261,8 @@ def sugerir_reprogramacao():
 
     if not atividades:
         return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada para reprogramar"}), 400
-    if len(atividades) > 80:
-        atividades = atividades[:80]  # limite de segurança pro tamanho do prompt
+    if len(atividades) > 50:
+        atividades = atividades[:50]  # limite de segurança pro tamanho do prompt e tempo de resposta
 
     hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
     prompt = _montar_prompt_reprogramacao(atividades, hoje_str)
@@ -5274,11 +5274,11 @@ def sugerir_reprogramacao():
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": 8192,
+                    "maxOutputTokens": 16384,
                     "responseMimeType": "application/json",
                 },
             },
-            timeout=60,
+            timeout=90,
         )
         resp.raise_for_status()
         data = resp.json()
