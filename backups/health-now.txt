@@ -1,0 +1,4 @@
+{"status":"ok","timestamp":"2026-07-10T08:14:57.320423-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wppconnect-painel.onrender.com"}
+{"status":"ok","timestamp":"2026-07-10T08:14:57.484270-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wppconnect-painel.onrender.com"}
+
+HTTP:200
