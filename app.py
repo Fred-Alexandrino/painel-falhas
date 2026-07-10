@@ -5289,6 +5289,69 @@ Dados da solicitação:
 - Responsável: {d.get("responsavel") or "não informado"}"""
 
 
+def _indice_dia_util(data_str, hoje):
+    """Converte uma data (dd/mm/aaaa) em 'quantos dias úteis a partir de
+    amanhã' ela representa (0 = primeiro dia útil disponível). Ignora fins
+    de semana na contagem. Retorna None se a data já passou ou é hoje."""
+    m = re.match(r"(\d{2})/(\d{2})/(\d{4})", data_str)
+    if not m:
+        return None
+    dt = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    d = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
+    if isinstance(d, datetime) and d.tzinfo:
+        dt = dt.replace(tzinfo=d.tzinfo)
+    if dt <= d:
+        return None
+    idx = -1
+    cursor = d + timedelta(days=1)
+    while cursor <= dt:
+        if cursor.weekday() < 5:
+            idx += 1
+        cursor += timedelta(days=1)
+    return idx if idx >= 0 else None
+
+
+def _dia_util_por_indice(idx, hoje):
+    """Inverso de _indice_dia_util: dado um índice (0 = primeiro dia útil
+    disponível), devolve a data (dd/mm/aaaa) correspondente."""
+    d = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
+    cursor = d + timedelta(days=1)
+    contador = -1
+    while True:
+        if cursor.weekday() < 5:
+            contador += 1
+            if contador == idx:
+                return cursor.strftime("%d/%m/%Y")
+        cursor += timedelta(days=1)
+
+
+def _comprimir_agenda_reprogramacao(sugestao, hoje):
+    """Garantia extra e determinística, além do prompt: se a IA, mesmo com
+    a lista de dias úteis explícita, deixar o primeiro dia disponível sem
+    uso (ex.: começar só na terça quando segunda estava livre), desloca
+    TODA a agenda sugerida pra trás em dias úteis, preservando a ordem e
+    os turnos, até o dia mais cedo usado virar o primeiro dia disponível.
+    Roda in-place no dict."""
+    itens = sugestao.get("reprogramacoes", [])
+    indices = []
+    for item in itens:
+        idx = _indice_dia_util((item.get("dataSugerida") or "").strip(), hoje)
+        item["_idx_dia_util"] = idx
+        if idx is not None:
+            indices.append(idx)
+    if not indices:
+        return
+    deslocamento = min(indices)
+    if deslocamento <= 0:
+        for item in itens:
+            item.pop("_idx_dia_util", None)
+        return
+    for item in itens:
+        idx = item.pop("_idx_dia_util", None)
+        if idx is not None:
+            item["dataSugerida"] = _dia_util_por_indice(idx - deslocamento, hoje)
+
+
 def _corrigir_fins_de_semana(sugestao):
     """Garantia extra além do prompt: se a IA, mesmo assim, sugerir uma
     data em sábado ou domingo, empurra pra segunda-feira seguinte. Roda
@@ -5474,6 +5537,7 @@ def sugerir_reprogramacao():
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
         sugestao = json.loads(texto_limpo)
         _corrigir_fins_de_semana(sugestao)
+        _comprimir_agenda_reprogramacao(sugestao, agora_br())
         mapa_cluster = _mapa_cluster_usina()
         for item in sugestao.get("reprogramacoes", []):
             item["cluster"] = mapa_cluster.get((item.get("usina") or "").strip(), "")
