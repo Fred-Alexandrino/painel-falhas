@@ -33,9 +33,15 @@ COL_DATA_FECHAMENTO = 20  # coluna U (21ª, 1-based) = índice 20 (0-based)
 
 STATUS_CONCLUIDO = ["concluído", "concluido", "resolvido", "fechado", "resolved", "closed"]
 
+CAT_COMUNICACOES = "COMUNICAÇÕES / SCADA / CCTV"
+CAT_DESLIGAMENTOS = "DESLIGAMENTOS"
+
 # Categorias "bonitas" para exibir no relatório (padrões regex, avaliados em ordem —
 # o primeiro que bater define a categoria). Casa tanto nomes por extenso ("Inversor")
 # quanto códigos curtos usados em campo ("Inv-18", "NVR", "Chave Seccionadora Skid 1").
+# A ordem desta lista também define a ordem de exibição das categorias no relatório
+# (exceto Comunicações e Desligamentos, que sempre recebem página própria — ver
+# gerar_relatorio_pptx).
 PADROES_CATEGORIA = [
     (r"\binv[\s\-]*\d+|inversor", "INVERSORES"),
     (r"tracker|\btcu\b", "TRACKERS / TCU"),
@@ -43,8 +49,8 @@ PADROES_CATEGORIA = [
     (r"transformador", "TRANSFORMADORES"),
     (r"switchgear|chave seccionadora|disjuntor|religador", "SWITCHGEAR"),
     (r"\bstring\b|modulo|módulo|otimizador", "STRINGS / MÓDULOS"),
-    (r"usina desligad|usina offline|desligamento|ufv desligad|usina parad", "DESLIGAMENTOS"),
-    (r"comunica|scada|cctv|\bnvr\b|camera|câmera|speed dome|igate", "COMUNICAÇÕES / SCADA / CCTV"),
+    (r"usina desligad|usina offline|desligamento|ufv desligad|usina parad", CAT_DESLIGAMENTOS),
+    (r"comunica|scada|cctv|\bnvr\b|camera|câmera|speed dome|igate", CAT_COMUNICACOES),
     (r"sensor|piranometro|piranômetro|solarimetric|estacao solarimetrica|estação solarimétrica", "SENSORES"),
     (r"emergenc", "EMERGÊNCIAS"),
     (r"operac|opera[çc][aã]o", "OPERAÇÕES"),
@@ -54,6 +60,13 @@ PADROES_CATEGORIA = [
     (r"exaustor", "EXAUSTORES"),
     (r"vegeta", "CONTROLE DE VEGETAÇÃO"),
 ]
+
+# Ordem de exibição das categorias "genéricas" (tudo que não é Comunicações
+# nem Desligamentos, que são tratadas à parte). Categorias fora desta lista
+# (rótulos livres vindos direto do campo Equipamento) vão para o final, em
+# ordem alfabética.
+ORDEM_CATEGORIAS_GERAIS = [rotulo for _, rotulo in PADROES_CATEGORIA
+                           if rotulo not in (CAT_COMUNICACOES, CAT_DESLIGAMENTOS)]
 
 
 # ── Utilidades de texto/data ────────────────────────────────────────────────
@@ -85,6 +98,11 @@ def _parse_data(txt):
     return None
 
 
+def _fmt_data_hora(dt):
+    """datetime -> 'dd/mm/aaaa às HH:MM'."""
+    return dt.strftime("%d/%m/%Y às %H:%M")
+
+
 def _is_concluido(status):
     s = (status or "").lower()
     return any(x in s for x in STATUS_CONCLUIDO)
@@ -94,6 +112,16 @@ def _ticket_valido(ticket):
     """Só considera 'chamado real' se houver um número/identificador de verdade."""
     t = (ticket or "").strip().lower()
     return t not in ("", "n/a", "na", "-", "--", "nao", "não", "sem chamado", "sem ticket", "s/n")
+
+
+def _ordenar_categorias(chaves):
+    """Ordena rótulos de categoria pela ordem definida em ORDEM_CATEGORIAS_GERAIS;
+    o que não estiver na lista vai para o final, em ordem alfabética."""
+    def chave_ordenacao(rotulo):
+        if rotulo in ORDEM_CATEGORIAS_GERAIS:
+            return (0, ORDEM_CATEGORIAS_GERAIS.index(rotulo))
+        return (1, rotulo)
+    return sorted(chaves, key=chave_ordenacao)
 
 
 # ── Coleta e agrupamento dos dados ──────────────────────────────────────────
@@ -204,8 +232,60 @@ def gerar_paragrafos_categoria(categoria, dados):
     return paragrafos
 
 
+# ── Desligamentos: sempre com data/hora real (aberto via WhatsApp já traz a
+# hora do desligamento; ao normalizar, a hora de conclusão) ─────────────────
+
+def _linha_desligamento_runs(row):
+    """
+    Runs (mistura de negrito/normal na mesma linha) para uma ocorrência de
+    desligamento, incluindo data/hora real de abertura e, se concluída, de
+    conclusão. Só cai no aviso em negrito se a data realmente estiver
+    ausente na planilha (caso excepcional — normalmente já vem preenchida
+    pela automação do WhatsApp).
+    """
+    equip = row[COL_EQUIP].strip() or "Usina desligada"
+    falha = row[COL_FALHA].strip() or "Usina desligada"
+    status = row[COL_STATUS].strip() or "Em aberto"
+    concluida = _is_concluido(status)
+    dt_abertura = _parse_data(row[COL_DATA_ABERTURA])
+    dt_fecham = _parse_data(row[COL_DATA_FECHAMENTO])
+
+    runs = [{"texto": f"• {equip} – {falha}. Status: {status}. ", "bold": False}]
+
+    if dt_abertura:
+        runs.append({"texto": f"Desligada em {_fmt_data_hora(dt_abertura)}.", "bold": False})
+    else:
+        runs.append({"texto": "ACRESCENTAR A DATA E HORA DO DESLIGAMENTO", "bold": True})
+
+    if concluida:
+        if dt_fecham:
+            runs.append({"texto": f" Religada/concluída em {_fmt_data_hora(dt_fecham)}.", "bold": False})
+        else:
+            runs.append({"texto": " ACRESCENTAR A DATA E HORA DA CONCLUSÃO", "bold": True})
+
+    return runs
+
+
+def gerar_paragrafos_desligamentos(dados):
+    """Igual a gerar_paragrafos_categoria, mas com data/hora real por ocorrência."""
+    todas = list(dados["concluidas"]) + list(dados["abertas"])
+    por_usina = {}
+    for row in todas:
+        usina = row[COL_USINA].strip() or "Usina não informada"
+        por_usina.setdefault(usina, []).append(row)
+
+    paragrafos = []
+    for usina in sorted(por_usina.keys()):
+        paragrafos.append({"runs": [{"texto": usina, "bold": True}]})
+        for row in por_usina[usina]:
+            paragrafos.append({"runs": _linha_desligamento_runs(row)})
+    return paragrafos
+
+
+# ── Chamados em aberto: uma linha por chamado, usina em negrito inline ─────
+
 def gerar_paragrafos_chamados(chamados):
-    """Chamados com ticket válido, agrupados por usina em negrito."""
+    """Uma linha por chamado válido: '- Usina – Case #ticket -> resumo -> status.'"""
     if not chamados:
         return [{"texto": "Nenhum chamado em aberto nesta semana.", "bold": False}]
 
@@ -216,12 +296,16 @@ def gerar_paragrafos_chamados(chamados):
 
     paragrafos = []
     for usina in sorted(por_usina.keys()):
-        paragrafos.append({"texto": usina, "bold": True})
         for row in por_usina[usina]:
             ticket = row[COL_TICKET].strip()
             resumo = row[COL_FALHA].strip() or row[COL_CAUSA].strip() or "Sem descrição detalhada"
             status = row[COL_STATUS].strip() or "Em análise"
-            paragrafos.append({"texto": f"• {ticket} -> {resumo} -> {status}.", "bold": False})
+            runs = [
+                {"texto": "- ", "bold": False},
+                {"texto": usina, "bold": True},
+                {"texto": f" – Case #{ticket} -> {resumo} -> {status}.", "bold": False},
+            ]
+            paragrafos.append({"runs": runs})
     return paragrafos
 
 
@@ -279,6 +363,32 @@ def gerar_paragrafos_zeladoria(zeladoria_usinas):
                 linha = f"• {g['nome']}: {status}"
             paragrafos.append({"texto": linha, "bold": False})
     return paragrafos
+
+
+def _tamanho_zeladoria_usina(item):
+    return len(item["usina"]) + sum(
+        len(g["nome"]) + len(g["status"]) + len(g["ultima_data"]) + 20 for g in item["grupos"]
+    )
+
+
+def agrupar_zeladoria_em_paginas(zeladoria_usinas, orcamento_chars=550):
+    """
+    Divide as usinas da Zeladoria em várias páginas por orçamento de
+    caracteres, para nunca estourar o slide (o texto não cabia em uma
+    página quando havia muitas usinas de um mesmo cliente).
+    Retorna lista de páginas, cada página = lista de itens de zeladoria_usinas.
+    """
+    paginas, atual, atual_len = [], [], 0
+    for item in zeladoria_usinas:
+        tam = _tamanho_zeladoria_usina(item)
+        if atual and (atual_len + tam > orcamento_chars):
+            paginas.append(atual)
+            atual, atual_len = [], 0
+        atual.append(item)
+        atual_len += tam
+    if atual:
+        paginas.append(atual)
+    return paginas or [[]]
 
 
 # ── Clonagem de slides (mantém 100% do estilo do modelo Grid Co.) ──────────
@@ -355,8 +465,13 @@ def _set_text_preservando_estilo(shape, novo_texto):
 def _set_paragrafos_com_estilo(shape, paragrafos):
     """
     Substitui o conteúdo de um text box por uma lista de parágrafos, permitindo
-    alternar negrito por parágrafo (usado para destacar nome de usina/categoria).
-    paragrafos: lista de dicts {"texto": str, "bold": bool}
+    alternar negrito por parágrafo (usado para destacar nome de usina/categoria)
+    OU, quando o item tiver a chave "runs", misturar negrito/normal dentro da
+    MESMA linha (usado em Desligamentos e Chamados em Aberto).
+
+    paragrafos: lista de dicts, em um dos dois formatos:
+      - {"texto": str, "bold": bool}                      -> parágrafo simples
+      - {"runs": [{"texto": str, "bold": bool}, ...]}      -> parágrafo com runs mistos
     """
     fmt = _extrair_formato_base(shape)
     tf = shape.text_frame
@@ -367,18 +482,20 @@ def _set_paragrafos_com_estilo(shape, paragrafos):
 
     for i, p in enumerate(paragrafos):
         par = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        run = par.add_run()
-        run.text = p["texto"]
-        if fmt:
-            if fmt[0]:
-                run.font.name = fmt[0]
-            if fmt[1]:
-                run.font.size = fmt[1]
-            if fmt[2] is not None:
-                run.font.italic = fmt[2]
-            if fmt[3]:
-                run.font.color.rgb = fmt[3]
-        run.font.bold = bool(p.get("bold", False))
+        runs_def = p.get("runs") or [{"texto": p.get("texto", ""), "bold": p.get("bold", False)}]
+        for r in runs_def:
+            run = par.add_run()
+            run.text = r.get("texto", "")
+            if fmt:
+                if fmt[0]:
+                    run.font.name = fmt[0]
+                if fmt[1]:
+                    run.font.size = fmt[1]
+                if fmt[2] is not None:
+                    run.font.italic = fmt[2]
+                if fmt[3]:
+                    run.font.color.rgb = fmt[3]
+            run.font.bold = bool(r.get("bold", False))
 
 
 def _remover_fotos(slide):
@@ -398,15 +515,24 @@ def _find_shape(slide, contem_texto):
 # ── Montagem do PPTX final ──────────────────────────────────────────────────
 
 def _tamanho_paragrafos(paragrafos):
-    return sum(len(p["texto"]) for p in paragrafos)
+    total = 0
+    for p in paragrafos:
+        if "runs" in p:
+            total += sum(len(r.get("texto", "")) for r in p["runs"])
+        else:
+            total += len(p.get("texto", ""))
+    return total
 
 
-def agrupar_em_paginas(grupos, orcamento_chars=1400):
+def agrupar_em_paginas(grupos, orcamento_chars=1400, ordem=None):
     """
     Agrupa categorias em páginas por orçamento de caracteres. Retorna lista de
     páginas, cada página = lista de tuplas (categoria, paragrafos).
+    `ordem`, se fornecida, define a sequência das categorias (categorias fora
+    dela vão para o final, em ordem alfabética).
     """
-    blocos = [(cat, gerar_paragrafos_categoria(cat, dados)) for cat, dados in grupos.items()]
+    chaves = _ordenar_categorias(grupos.keys()) if ordem is None else ordem
+    blocos = [(cat, gerar_paragrafos_categoria(cat, grupos[cat])) for cat in chaves if cat in grupos]
     paginas, atual, atual_len = [], [], 0
     for cat, paragrafos in blocos:
         tam = _tamanho_paragrafos(paragrafos) + len(cat) + 10
@@ -420,81 +546,111 @@ def agrupar_em_paginas(grupos, orcamento_chars=1400):
     return paginas
 
 
+def agrupar_desligamentos_em_paginas(dados, orcamento_chars=1400):
+    """Pagina os parágrafos (com runs) de Desligamentos por orçamento de caracteres."""
+    paragrafos = gerar_paragrafos_desligamentos(dados)
+    paginas, atual, atual_len = [], [], 0
+    for p in paragrafos:
+        tam = _tamanho_paragrafos([p])
+        if atual and (atual_len + tam > orcamento_chars):
+            paginas.append(atual)
+            atual, atual_len = [], 0
+        atual.append(p)
+        atual_len += tam
+    if atual:
+        paginas.append(atual)
+    return paginas or [[]]
+
+
+def _renderizar_pagina_categoria(prs, titulo, corpo_paragrafos):
+    """Cria um slide de conteúdo (clonado do modelo) com título + corpo."""
+    novo = _duplicate_slide(prs, 2)
+    _remover_fotos(novo)
+    shp_categoria = _find_shape(novo, "DESLIGAMENTOS")
+    shp_corpo = _find_shape(novo, "Foram registradas")
+    if shp_categoria:
+        _set_text_preservando_estilo(shp_categoria, titulo)
+    if shp_corpo:
+        _set_paragrafos_com_estilo(shp_corpo, corpo_paragrafos)
+    return novo
+
+
 def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None, zeladoria_usinas=None):
     """
     grupos: dict categoria -> {"concluidas": [...], "abertas": [...]}
     semana_num: número da semana do ano (baseado na data final do período)
-    data_label: data final formatada (dd/mm/aaaa)
+    data_label: data final formatada (dd/mm/aaaa) — mantido por compatibilidade
+                de assinatura, não é mais exibido na capa (padrão Grid Co.).
     chamados: lista de linhas com chamado/ticket válido em aberto (opcional)
     zeladoria_usinas: retorno de coletar_zeladoria() (opcional)
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
 
-    # --- Slide 1: Capa — só cliente, semana e data -------------------------
+    grupos = dict(grupos)  # não alterar o dict do chamador
+    dados_comunicacoes = grupos.pop(CAT_COMUNICACOES, None)
+    dados_desligamentos = grupos.pop(CAT_DESLIGAMENTOS, None)
+    outras_categorias = grupos  # tudo que sobrou: Strings/Módulos, Inversores, etc.
+
+    # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
     capa = _duplicate_slide(prs, 0)
     shp_titulo = _find_shape(capa, "O&M")
     if shp_titulo:
-        _set_text_preservando_estilo(
-            shp_titulo, f"O&M – {cliente}\nSemana {semana_num}\n{data_label}"
-        )
+        _set_text_preservando_estilo(shp_titulo, f"O&M – {cliente}\nSemana {semana_num}")
 
-    # --- Slide 2: Ata da reunião (tópicos/categorias da semana + extras) --
-    topicos = list(grupos.keys())
+    # --- Slide 2: Ata da reunião — tópicos padronizados e fixos, nesta ordem
+    topicos = []
+    if dados_comunicacoes:
+        topicos.append(CAT_COMUNICACOES)
+    if outras_categorias:
+        topicos.append("OCORRÊNCIAS SEMANAIS")
+    if dados_desligamentos:
+        topicos.append(CAT_DESLIGAMENTOS)
     if chamados:
-        topicos.append("Chamados em aberto")
+        topicos.append("CHAMADOS EM ABERTO")
     if zeladoria_usinas:
-        topicos.append("Zeladoria")
+        topicos.append("ZELADORIA")
     ata = _duplicate_slide(prs, 1)
     shp_lista = _find_shape(ata, "Desligamentos")
     if shp_lista:
         _set_text_preservando_estilo(shp_lista, "\n".join(topicos))
 
-    # --- Uma página por grupo de categorias de ocorrências (empacotadas) ---
-    for pagina in agrupar_em_paginas(grupos):
-        novo = _duplicate_slide(prs, 2)
-        _remover_fotos(novo)
+    # --- Página(s): Comunicações / SCADA / CCTV — sempre primeiro, própria(s)
+    #     página(s), conforme ordem definida na Ata ---------------------------
+    if dados_comunicacoes:
+        for pagina in agrupar_em_paginas({CAT_COMUNICACOES: dados_comunicacoes}):
+            cat, paragrafos = pagina[0]
+            _renderizar_pagina_categoria(prs, cat, paragrafos)
 
-        shp_categoria = _find_shape(novo, "DESLIGAMENTOS")
-        shp_corpo = _find_shape(novo, "Foram registradas")
-
+    # --- Página(s): demais categorias de ocorrências (empacotadas) ----------
+    for pagina in agrupar_em_paginas(outras_categorias):
         if len(pagina) == 1:
             categoria, paragrafos = pagina[0]
-            if shp_categoria:
-                _set_text_preservando_estilo(shp_categoria, categoria)
-            if shp_corpo:
-                _set_paragrafos_com_estilo(shp_corpo, paragrafos)
+            _renderizar_pagina_categoria(prs, categoria, paragrafos)
         else:
-            if shp_categoria:
-                _set_text_preservando_estilo(shp_categoria, "OCORRÊNCIAS DA SEMANA")
-            if shp_corpo:
-                combinados = []
-                for cat, paragrafos in pagina:
-                    combinados.append({"texto": cat, "bold": True})
-                    combinados.extend(paragrafos)
-                _set_paragrafos_com_estilo(shp_corpo, combinados)
+            combinados = []
+            for cat, paragrafos in pagina:
+                combinados.append({"texto": cat, "bold": True})
+                combinados.extend(paragrafos)
+            _renderizar_pagina_categoria(prs, "OCORRÊNCIAS DA SEMANA", combinados)
+
+    # --- Página(s): Desligamentos — com data/hora real de abertura/conclusão
+    if dados_desligamentos:
+        paginas_deslig = agrupar_desligamentos_em_paginas(dados_desligamentos)
+        for i, pagina in enumerate(paginas_deslig):
+            titulo = CAT_DESLIGAMENTOS if i == 0 else f"{CAT_DESLIGAMENTOS} (cont.)"
+            _renderizar_pagina_categoria(prs, titulo, pagina)
 
     # --- Página: Chamados em aberto (só com ticket/case válido) ------------
     if chamados:
-        pg_chamados = _duplicate_slide(prs, 2)
-        _remover_fotos(pg_chamados)
-        shp_cat = _find_shape(pg_chamados, "DESLIGAMENTOS")
-        shp_corpo = _find_shape(pg_chamados, "Foram registradas")
-        if shp_cat:
-            _set_text_preservando_estilo(shp_cat, "CHAMADOS EM ABERTO")
-        if shp_corpo:
-            _set_paragrafos_com_estilo(shp_corpo, gerar_paragrafos_chamados(chamados))
+        _renderizar_pagina_categoria(prs, "CHAMADOS EM ABERTO", gerar_paragrafos_chamados(chamados))
 
-    # --- Página: Zeladoria --------------------------------------------------
+    # --- Página(s): Zeladoria — paginada para nunca estourar o slide -------
     if zeladoria_usinas:
-        pg_zeladoria = _duplicate_slide(prs, 2)
-        _remover_fotos(pg_zeladoria)
-        shp_cat = _find_shape(pg_zeladoria, "DESLIGAMENTOS")
-        shp_corpo = _find_shape(pg_zeladoria, "Foram registradas")
-        if shp_cat:
-            _set_text_preservando_estilo(shp_cat, "ZELADORIA")
-        if shp_corpo:
-            _set_paragrafos_com_estilo(shp_corpo, gerar_paragrafos_zeladoria(zeladoria_usinas))
+        paginas_zel = agrupar_zeladoria_em_paginas(zeladoria_usinas)
+        for i, pagina in enumerate(paginas_zel):
+            titulo = "ZELADORIA" if i == 0 else "ZELADORIA (cont.)"
+            _renderizar_pagina_categoria(prs, titulo, gerar_paragrafos_zeladoria(pagina))
 
     # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
     xml_slides = prs.slides._sldIdLst
