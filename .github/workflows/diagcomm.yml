@@ -1,0 +1,22 @@
+name: Diag Comunicados
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/config-ler" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/config-comunicados.json
+          curl -s "https://whatsapp-painel-falhas.onrender.com/verificar-e-enviar-comunicados" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/verificar-agora.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/config-comunicados.json backups/verificar-agora.json
+          git diff --quiet --cached || git commit -m "diag comunicados [skip ci]"
+          git push
