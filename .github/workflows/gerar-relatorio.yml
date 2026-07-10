@@ -4,6 +4,9 @@ on:
   repository_dispatch:
     types: [gerar_relatorio]
 
+permissions:
+  contents: write
+
 jobs:
   gerar:
     runs-on: ubuntu-latest
