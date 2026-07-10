@@ -1,0 +1,6 @@
+24 | OS Solicitada | 8866 | /07/2026 11:31 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
+10/07/2026 12:12 - Atividade #35 (duplicata manual da mesma OS) foi cancelada e mesclada aqui.
+---
+35 | Cancelado | 8866 | ) atualizado: "Em Processo" → "Em Revisão", 0% → 100% (Concluída).
+10/07/2026 12:12 - Cancelada: duplicata da atividade #24 pra mesma OS (8866). Mantida #24, vinculada pelo fluxo oficial Solicitar OS.
+---
