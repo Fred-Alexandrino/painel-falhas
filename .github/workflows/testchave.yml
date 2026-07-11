@@ -1,0 +1,23 @@
+name: Test Chave Teste
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/gerar-texto-os-ia?diagnostico=true" \
+            -H "Content-Type: application/json" \
+            -d '{"falha":"teste diagnostico chave separada","causa":"teste","acao":"teste"}' \
+            -o backups/test-chave-result.json --max-time 40
+          cat backups/test-chave-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/test-chave-result.json
+          git diff --quiet --cached || git commit -m "test chave [skip ci]"
+          git push
