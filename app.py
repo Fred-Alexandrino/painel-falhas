@@ -5606,6 +5606,7 @@ def gerar_texto_os_ia():
         return jsonify({"ok": False, "error": "Body inválido"}), 400
 
     prompt = _montar_prompt_os(body)
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
         resp = _chamar_gemini_com_retry(
             {
@@ -5617,7 +5618,7 @@ def gerar_texto_os_ia():
                 },
             },
             timeout=20,
-            usar_chave_teste=(request.args.get("diagnostico", "").lower() == "true"),
+            usar_chave_teste=diagnostico,
         )
         data = resp.json()
         candidato = data["candidates"][0]
@@ -5626,7 +5627,10 @@ def gerar_texto_os_ia():
         if not texto or len(texto) < 40:
             log.error(f"[gerar-texto-os-ia] Resposta curta/vazia (finishReason={finish_reason}): {texto!r}")
             raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
-        return jsonify({"ok": True, "texto": texto})
+        resultado = {"ok": True, "texto": texto}
+        if diagnostico:
+            resultado["chave_teste_configurada"] = bool(GEMINI_API_KEY_TESTE)
+        return jsonify(resultado)
     except requests.exceptions.HTTPError as e:
         if e.response is not None and e.response.status_code == 429:
             log.error(f"[gerar-texto-os-ia] Cota da IA esgotada mesmo apos retries: {e}")
