@@ -1,0 +1,25 @@
+name: Diag Push
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/push/test" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -H "Content-Type: application/json" \
+            -o backups/diag-push-result.json
+          cat backups/diag-push-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-push-result.json
+          git diff --quiet --cached || git commit -m "diag push [skip ci]"
+          git push
