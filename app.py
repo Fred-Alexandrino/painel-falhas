@@ -5207,6 +5207,11 @@ def converter_atividade_em_ocorrencia():
 
 # ── Geração de texto de OS via Gemini (gratuito), com fallback local ───────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# Chave separada (projeto próprio no Google AI Studio) usada só em
+# diagnósticos/testes ao vivo, pra nunca disputar cota com o uso real do
+# Fred. Só entra em ação quando explicitamente pedido (?diagnostico=true
+# ou header X-Usar-Chave-Teste), nunca no fluxo normal do dashboard.
+GEMINI_API_KEY_TESTE = os.environ.get("GEMINI_API_KEY_TESTE", "")
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
@@ -5384,19 +5389,24 @@ def _proximos_dias_uteis(a_partir_de, quantidade=12):
     return dias
 
 
-def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3):
+def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste=False):
     """Chama a API do Gemini com retry automático em caso de 429 (limite
     de taxa) — espera crescente entre tentativas (2s, 5s, 10s). Um pico
     passageiro de uso (ex.: várias chamadas em sequência rápida) costuma
     se resolver sozinho em poucos segundos; isso evita expor esse erro
     direto pro usuário na maioria dos casos. Levanta a exceção normalmente
     se todas as tentativas falharem (ex.: cota diária realmente esgotada,
-    que não se resolve só esperando)."""
+    que não se resolve só esperando).
+
+    usar_chave_teste=True usa GEMINI_API_KEY_TESTE (projeto separado no
+    Google AI Studio) em vez da chave de produção — só pra diagnósticos,
+    nunca no fluxo normal do dashboard."""
+    chave = (GEMINI_API_KEY_TESTE if usar_chave_teste and GEMINI_API_KEY_TESTE else GEMINI_API_KEY)
     esperas = [2, 5, 10]
     ultima_excecao = None
     for tentativa in range(tentativas):
         try:
-            resp = requests.post(f"{GEMINI_URL}?key={GEMINI_API_KEY}", json=payload, timeout=timeout)
+            resp = requests.post(f"{GEMINI_URL}?key={chave}", json=payload, timeout=timeout)
             if resp.status_code == 429 and tentativa < tentativas - 1:
                 time.sleep(esperas[tentativa])
                 continue
@@ -5550,6 +5560,7 @@ def sugerir_reprogramacao():
                 },
             },
             timeout=45,
+            usar_chave_teste=(request.args.get("diagnostico", "").lower() == "true"),
         )
         data = resp.json()
         candidato = data["candidates"][0]
@@ -5606,6 +5617,7 @@ def gerar_texto_os_ia():
                 },
             },
             timeout=20,
+            usar_chave_teste=(request.args.get("diagnostico", "").lower() == "true"),
         )
         data = resp.json()
         candidato = data["candidates"][0]
