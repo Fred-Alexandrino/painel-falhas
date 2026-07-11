@@ -2970,6 +2970,17 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
     todos.append(linha)
     log.info(f"[atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
+
+    try:
+        enviar_push(
+            titulo=f"🆕 Nova atividade — {usina or cliente}",
+            corpo=f"{descricao[:80] if descricao else 'Atividade criada'}" + (f" · OS {numeroOS}" if numeroOS else ""),
+            tipo="nova_atividade",
+            url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
+        )
+    except Exception as e:
+        log.error(f"[Push] Erro ao notificar nova atividade: {e}")
+
     return novo_id
 
 
