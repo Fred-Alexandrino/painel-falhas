@@ -5384,6 +5384,33 @@ def _proximos_dias_uteis(a_partir_de, quantidade=12):
     return dias
 
 
+def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3):
+    """Chama a API do Gemini com retry automático em caso de 429 (limite
+    de taxa) — espera crescente entre tentativas (2s, 5s, 10s). Um pico
+    passageiro de uso (ex.: várias chamadas em sequência rápida) costuma
+    se resolver sozinho em poucos segundos; isso evita expor esse erro
+    direto pro usuário na maioria dos casos. Levanta a exceção normalmente
+    se todas as tentativas falharem (ex.: cota diária realmente esgotada,
+    que não se resolve só esperando)."""
+    esperas = [2, 5, 10]
+    ultima_excecao = None
+    for tentativa in range(tentativas):
+        try:
+            resp = requests.post(f"{GEMINI_URL}?key={GEMINI_API_KEY}", json=payload, timeout=timeout)
+            if resp.status_code == 429 and tentativa < tentativas - 1:
+                time.sleep(esperas[tentativa])
+                continue
+            resp.raise_for_status()
+            return resp
+        except requests.exceptions.HTTPError as e:
+            ultima_excecao = e
+            if resp.status_code == 429 and tentativa < tentativas - 1:
+                time.sleep(esperas[tentativa])
+                continue
+            raise
+    raise ultima_excecao
+
+
 def _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis):
     linhas = []
     for a in atividades:
@@ -5512,9 +5539,8 @@ def sugerir_reprogramacao():
     prompt = _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis)
 
     try:
-        resp = requests.post(
-            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json={
+        resp = _chamar_gemini_com_retry(
+            {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
@@ -5525,7 +5551,6 @@ def sugerir_reprogramacao():
             },
             timeout=45,
         )
-        resp.raise_for_status()
         data = resp.json()
         candidato = data["candidates"][0]
         finish_reason = candidato.get("finishReason", "")
@@ -5546,6 +5571,13 @@ def sugerir_reprogramacao():
     except json.JSONDecodeError as e:
         log.error(f"[sugerir-reprogramacao] Resposta não é JSON válido: {e} | texto={texto[:500] if 'texto' in dir() else '?'}")
         return jsonify({"ok": False, "error": "A IA retornou um formato inesperado. Tente novamente."}), 502
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            log.error(f"[sugerir-reprogramacao] Cota da IA esgotada mesmo apos retries: {e}")
+            return jsonify({"ok": False, "error": ("A IA está temporariamente sem cota disponível (uso "
+                            "excessivo em pouco tempo). Aguarde alguns minutos e tente de novo.")}), 429
+        log.error(f"[sugerir-reprogramacao] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
     except Exception as e:
         log.error(f"[sugerir-reprogramacao] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -5564,9 +5596,8 @@ def gerar_texto_os_ia():
 
     prompt = _montar_prompt_os(body)
     try:
-        resp = requests.post(
-            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json={
+        resp = _chamar_gemini_com_retry(
+            {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.3,
@@ -5576,7 +5607,6 @@ def gerar_texto_os_ia():
             },
             timeout=20,
         )
-        resp.raise_for_status()
         data = resp.json()
         candidato = data["candidates"][0]
         finish_reason = candidato.get("finishReason", "")
@@ -5585,6 +5615,13 @@ def gerar_texto_os_ia():
             log.error(f"[gerar-texto-os-ia] Resposta curta/vazia (finishReason={finish_reason}): {texto!r}")
             raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
         return jsonify({"ok": True, "texto": texto})
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            log.error(f"[gerar-texto-os-ia] Cota da IA esgotada mesmo apos retries: {e}")
+            return jsonify({"ok": False, "error": ("A IA está temporariamente sem cota disponível (uso "
+                            "excessivo em pouco tempo). Aguarde alguns minutos e tente de novo.")}), 429
+        log.error(f"[gerar-texto-os-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
     except Exception as e:
         log.error(f"[gerar-texto-os-ia] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
