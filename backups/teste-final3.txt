@@ -1,0 +1,9 @@
+=== Atualizar OS (varredura status do que ja existe) ===
+ok: True | divergencias: 0 | desatualizadas: 88 | revalidadas: 35
+duracao: 27s
+
+=== Auditoria completa (descoberta + varredura ampla) ===
+ok: True
+descoberta - criadas: 0 | revisao_manual: 35
+consistencia - divergencias: 0 | desatualizadas: 88 | revalidadas: 31
+duracao: 31s
