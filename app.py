@@ -4989,6 +4989,14 @@ def atualizar_os_agora():
     if request.method == "OPTIONS":
         return ("", 204)
     body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=20)
+    # roda a auditoria de consistência também nesse clique — reforça a
+    # rede de segurança em cima do que acabou de ser (re)consultado na
+    # Fracttal, além do que já estava gravado de rodadas anteriores.
+    try:
+        body["auditoria_status"] = _auditoria_consistencia_os_core(aplicar=True)
+    except Exception as e:
+        log.error(f"[Auditoria] Erro no piggyback do botao Atualizar OS: {e}")
+        body["auditoria_status"] = {"erro": str(e)}
     return jsonify(body), status_code
 
 
