@@ -2899,6 +2899,63 @@ def resolver_duplicata_8866():
     return jsonify({"ok": True, "resultado": resultado}), 200
 
 
+def _auditoria_consistencia_os_core(aplicar=True):
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    divergencias = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[13].strip()
+        if not numero_os:
+            continue  # só audita quem está vinculado a uma OS da Fracttal
+        status_interno_atual = row[8].strip()
+        status_os_atual = row[14].strip()
+        if not status_os_atual:
+            continue  # ainda sem estado conhecido — nada a auditar
+
+        esperado = _status_interno_esperado(status_os_atual, status_interno_atual)
+        if esperado:
+            divergencias.append({"linha": i, "id": row[0], "numeroOS": numero_os,
+                                  "de": status_interno_atual, "para": esperado, "estadoFracttal": status_os_atual})
+            if aplicar:
+                ws.update_cell(i, ATIV_CAMPO_COL["status"], esperado)
+                nota = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - 🔧 Auditoria automática: status interno "
+                        f"corrigido de \"{status_interno_atual or '—'}\" pra \"{esperado}\" "
+                        f"(estado na Fracttal: \"{status_os_atual}\").")
+                hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+                ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{nota}".strip() if hist_atual else nota)
+
+    if divergencias:
+        log.warning(f"[Auditoria] {len(divergencias)} divergência(s) de status encontrada(s) "
+                    f"(aplicado={aplicar}): {[d['numeroOS'] for d in divergencias]}")
+
+    return {"aplicado": aplicar, "total_divergencias": len(divergencias), "divergencias": divergencias}
+
+
+@app.route("/auditoria-consistencia-os", methods=["POST", "GET"])
+def auditoria_consistencia_os():
+    """Rede de segurança definitiva: varre TODAS as atividades vinculadas
+    a uma OS da Fracttal e confere se o status interno bate com o que
+    _status_interno_esperado() diz que deveria ser, dado o estado
+    (statusOS) atual já registrado — sem precisar chamar a API da
+    Fracttal de novo (usa o que já está gravado, então é rápido e barato
+    de rodar com frequência). Corrige qualquer divergência encontrada.
+
+    Roda automaticamente a cada 5 min via piggyback no sync-fracttal
+    (gatilho confiável), então qualquer inconsistência que escape da
+    checagem normal (por bug futuro, edição manual, etc.) se autocorrige
+    sozinha em poucos minutos, sem precisar de intervenção manual."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    aplicar = request.args.get("apply", "true").lower() != "false"
+    resultado = _auditoria_consistencia_os_core(aplicar)
+    return jsonify({"ok": True, **resultado}), 200
+
+
 @app.route("/atividades", methods=["GET"])
 def listar_atividades():
     try:
@@ -3097,6 +3154,41 @@ _FRACTTAL_PRIORIDADE_MAP = {
 _FRACTTAL_STATUS_OS_MAP = {
     "1": "Em Processo", "2": "Em Revisão", "3": "Finalizada", "4": "Cancelada",
 }
+
+
+def _status_interno_esperado(estado_fracttal, status_interno_atual):
+    """FONTE ÚNICA DE VERDADE pra decidir o status interno (coluna
+    "status") a partir do ESTADO real da OS na Fracttal (coluna "statusOS"
+    — Em Processo/Em Revisão/Finalizada/Cancelada). Usada tanto na criação
+    de uma atividade nova quanto em TODA checagem de rotina subsequente —
+    nunca duplicar essa lógica em outro lugar do código.
+
+    Regras (only touches these two transitions, nunca mexe em status
+    manuais tipo "Pausado"/"Aguardando Cliente" etc. definidos por
+    técnico via WhatsApp):
+      1. Estado = Finalizada  → status interno deve ser "Concluído"
+         (a menos que já esteja "Cancelado", que é uma conclusão também).
+      2. Estado = Cancelada   → status interno deve ser "Cancelado".
+      3. Se o status interno atual é "Concluído"/"Cancelado" mas o estado
+         NÃO é mais Finalizada/Cancelada (reaberta/reprovada na Fracttal)
+         → volta pra "Em Aberto".
+      4. Qualquer outro caso (estado ainda em Processo/Revisão e status
+         interno não é Concluído/Cancelado) → não mexe, devolve None.
+
+    Retorna o novo valor se precisar corrigir, ou None se já está certo.
+    IMPORTANTE: essa função deve rodar em TODA checagem, independente de
+    mais alguma coisa ter mudado na mesma passada — é isso que garante
+    que o sistema se autocorrige, em vez de só corrigir "de carona" numa
+    mudança de outro campo (bug estrutural corrigido em 12/07/2026)."""
+    if estado_fracttal == "Finalizada":
+        alvo = "Concluído"
+    elif estado_fracttal == "Cancelada":
+        alvo = "Cancelado"
+    elif estado_fracttal in ("Em Processo", "Em Revisão") and status_interno_atual in ("Concluído", "Cancelado"):
+        alvo = "Em Aberto"
+    else:
+        return None
+    return alvo if alvo != status_interno_atual else None
 
 # A Fracttal tem o add-on "Share TOs" habilitado nesta conta, que gera uma
 # URL pública específica por OT via /work_orders_shared_url/{folio}
@@ -3471,7 +3563,7 @@ def _fracttal_mapear_grupo(tasks):
         # status interno tem que refletir isso já na criação — senão essa
         # atividade nunca mais é revisitada pelo rodízio (que pula quem já
         # está Finalizada/Cancelada) e fica presa em "Em Aberto" pra sempre.
-        "status": {"Finalizada": "Concluído", "Cancelada": "Cancelado"}.get(status_os, "Em Aberto"),
+        "status": (_status_interno_esperado(status_os, "Em Aberto") or "Em Aberto"),
         "numeroOS": (representante.get("wo_folio") or "").strip(),
         "editor": "fracttal-sync",
         "statusOS": status_os,
@@ -4134,35 +4226,37 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
                     ws.update(f"U{i}:W{i}", [[percentual_novo, status_geral_novo, detalhes_novo]])
                     mudou = True
 
+                hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
                 if mudou:
                     entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
                              f"\"{status_os_atual or '—'}\" → \"{status_novo or status_os_atual or '—'}\", "
                              f"{percentual_atual or '0'}% → {percentual_novo}% ({status_geral_novo}).")
-                    hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
                     ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
+                    hist_atual = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
                     mudancas_status.append({"numeroOS": numero_os, "statusOS": status_novo,
                                              "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo})
 
-                    # só considera a OS realmente encerrada quando o ESTADO
-                    # (card do Kanban na Fracttal) chega em "Finalizada".
-                    # "Em Revisão" é só a etapa de verificação — a OS ainda
-                    # está ativa/em aberto do ponto de vista do dashboard,
-                    # só muda de card dentro da Fracttal. Só quando ela sai
-                    # de vez pra "OSs Concluídas" lá (Finalizada) é que
-                    # consideramos concluída aqui.
-                    status_efetivo = status_novo or status_os_atual
-                    concluida_de_fato = status_efetivo == "Finalizada"
-                    if concluida_de_fato and status_interno_atual not in ("Concluído", "Cancelado"):
-                        ws.update_cell(i, ATIV_CAMPO_COL["status"], "Concluído")
-                    # regressão: estava Finalizada e voltou pra Em Processo/Em
-                    # Revisão (reprovada ou reaberta na Fracttal) — reabre.
-                    elif not concluida_de_fato and status_interno_atual == "Concluído":
-                        ws.update_cell(i, ATIV_CAMPO_COL["status"], "Em Aberto")
-                        reabertura = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
-                                      f"estava marcada como concluída, mas a Fracttal mostra status \"{status_efetivo or '—'}\" "
-                                      f"(voltou pra Em Processo/Em Revisão — provavelmente reprovada ou reaberta).")
-                        ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}\n{reabertura}".strip())
+                # ── Correção de status interno: roda SEMPRE, independente de
+                # "mudou" — é isso que garante consistência de verdade. Se só
+                # rodasse dentro do "if mudou", uma OS que já estava com o
+                # status interno errado (por qualquer motivo passado) nunca
+                # seria corrigida enquanto a Fracttal não mudasse de novo
+                # (bug estrutural identificado e corrigido em 12/07/2026).
+                status_efetivo = status_novo or status_os_atual
+                novo_status_interno = _status_interno_esperado(status_efetivo, status_interno_atual)
+                if novo_status_interno:
+                    ws.update_cell(i, ATIV_CAMPO_COL["status"], novo_status_interno)
+                    if novo_status_interno == "Em Aberto" and status_interno_atual in ("Concluído", "Cancelado"):
+                        correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
+                                    f"estava marcada como \"{status_interno_atual}\", mas a Fracttal mostra estado "
+                                    f"\"{status_efetivo or '—'}\" (voltou pra Em Processo/Em Revisão — provavelmente "
+                                    f"reprovada ou reaberta).")
+                    else:
+                        correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ✅ Status interno corrigido pra "
+                                    f"\"{novo_status_interno}\" (estado na Fracttal: \"{status_efetivo or '—'}\").")
+                    ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{correcao}".strip() if hist_atual else correcao)
 
+                if mudou:
                     try:
                         enviar_push(
                             titulo=f"🔄 OS {numero_os} atualizada",
@@ -4872,6 +4966,14 @@ def sync_fracttal():
     # das 7h também — o cron dedicado do GitHub Actions sozinho atrasa de
     # forma imprevisível e já deixou de disparar no horário certo.
     body["comunicados_check"] = _verificar_e_disparar_comunicados_se_necessario()
+    # idem pra auditoria de consistência de status — roda a cada 5 min,
+    # autocorrigindo qualquer divergência que tenha escapado da checagem
+    # normal (rede de segurança definitiva contra status/estado desalinhados).
+    try:
+        body["auditoria_status"] = _auditoria_consistencia_os_core(aplicar=True)
+    except Exception as e:
+        log.error(f"[Auditoria] Erro no piggyback: {e}")
+        body["auditoria_status"] = {"erro": str(e)}
     return jsonify(body), status_code
 
 
