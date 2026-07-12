@@ -2899,10 +2899,98 @@ def resolver_duplicata_8866():
     return jsonify({"ok": True, "resultado": resultado}), 200
 
 
-def _auditoria_consistencia_os_core(aplicar=True):
+def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
+    """Consulta a Fracttal AO VIVO pra uma única OS (linha i da planilha) e
+    atualiza todos os campos derivados (statusOS, percentualOS,
+    statusGeralOS, statusTarefaOS, detalhesEquipamentosOS) + aplica a
+    correção de status interno via _status_interno_esperado(). Usada tanto
+    pelo rodízio automático quanto pela auditoria completa — única função
+    que efetivamente fala com a Fracttal pra revalidar uma OS, pra nunca
+    ter dois lugares checando/decidindo isso de formas diferentes.
+
+    Retorna um dict com o resumo do que mudou (ou None em caso de erro,
+    já logado)."""
+    status_interno_atual = row[8].strip()
+    status_os_atual = row[14].strip()
+    percentual_atual = row[20].strip()
+    status_geral_atual = row[21].strip()
+    agora_iso = agora_br().strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        token = _fracttal_get_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=15)
+        resp.raise_for_status()
+        tasks = (resp.json().get("data") or [])
+        ws.update_cell(i, ATIV_CAMPO_COL["ultimaVerificacaoOS"], agora_iso)
+        if not tasks:
+            return {"numeroOS": numero_os, "mudou": False, "motivo": "OS sem tarefas na Fracttal"}
+
+        status_novo_raw = str(tasks[0].get("id_status_work_order", "")).strip()
+        status_novo = _FRACTTAL_STATUS_OS_MAP.get(status_novo_raw, "")
+        percentual_novo = str(_fracttal_percentual_conclusao(tasks))
+        status_geral_novo = _fracttal_status_geral(tasks)
+        status_tarefa_novo = _fracttal_status_tarefa_agregado(tasks)
+        detalhes_novo = _fracttal_detalhes_equipamentos(tasks)
+
+        mudou = False
+        if status_novo and status_novo != status_os_atual:
+            ws.update_cell(i, ATIV_CAMPO_COL["statusOS"], status_novo)
+            mudou = True
+        if (percentual_novo != percentual_atual) or (status_geral_novo != status_geral_atual):
+            ws.update_cell(i, ATIV_CAMPO_COL["statusTarefaOS"], status_tarefa_novo)
+            ws.update(f"U{i}:W{i}", [[percentual_novo, status_geral_novo, detalhes_novo]])
+            mudou = True
+
+        hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+        if mudou:
+            entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
+                     f"\"{status_os_atual or '—'}\" → \"{status_novo or status_os_atual or '—'}\", "
+                     f"{percentual_atual or '0'}% → {percentual_novo}% ({status_geral_novo}).")
+            ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
+            hist_atual = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+
+        # correção de status interno — roda SEMPRE, independente de "mudou"
+        # (bug estrutural identificado e corrigido em 12/07/2026: se só
+        # rodasse quando outro campo mudasse, um status já errado nunca
+        # seria corrigido enquanto a Fracttal não mudasse de novo).
+        status_efetivo = status_novo or status_os_atual
+        novo_status_interno = _status_interno_esperado(status_efetivo, status_interno_atual)
+        if novo_status_interno:
+            ws.update_cell(i, ATIV_CAMPO_COL["status"], novo_status_interno)
+            if novo_status_interno == "Em Aberto" and status_interno_atual in ("Concluído", "Cancelado"):
+                correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
+                            f"estava marcada como \"{status_interno_atual}\", mas a Fracttal mostra estado "
+                            f"\"{status_efetivo or '—'}\" (voltou pra Em Processo/Em Revisão — provavelmente "
+                            f"reprovada ou reaberta).")
+            else:
+                correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ✅ Status interno corrigido pra "
+                            f"\"{novo_status_interno}\" (estado na Fracttal: \"{status_efetivo or '—'}\").")
+            ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{correcao}".strip() if hist_atual else correcao)
+
+        if mudou:
+            try:
+                enviar_push(
+                    titulo=f"🔄 OS {numero_os} atualizada",
+                    corpo=f"{status_geral_novo} — {percentual_novo}% concluído",
+                    tipo="fracttal_status",
+                )
+            except Exception as e:
+                log.error(f"[sync-fracttal] Falha ao enviar push de mudança de status {numero_os}: {e}")
+
+        return {"numeroOS": numero_os, "mudou": mudou, "statusOS": status_novo or status_os_atual,
+                "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo,
+                "statusInternoCorrigido": novo_status_interno}
+    except Exception as e:
+        log.error(f"[Fracttal] Erro ao checar/atualizar OS {numero_os}: {e}")
+        return None
+
+
+def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=90, limite_recheck_ao_vivo=15):
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
     divergencias = []
+    desatualizadas = []
+    agora = agora_br()
     for i, row in enumerate(todos[1:], start=2):
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
@@ -2911,8 +2999,32 @@ def _auditoria_consistencia_os_core(aplicar=True):
             continue  # só audita quem está vinculado a uma OS da Fracttal
         status_interno_atual = row[8].strip()
         status_os_atual = row[14].strip()
+
+        # ── Parte 1: a OS está sendo verificada com a frequência que
+        # deveria? Isso pega o caso mais grave — uma OS que por algum bug
+        # ficou fora do rodízio e nunca mais é revisitada, então nem tem
+        # como a consistência interna (parte 2) detectar problema nela,
+        # porque o statusOS gravado pode estar simplesmente desatualizado
+        # há muito tempo, sem ninguém perceber.
+        if status_os_atual not in ("Finalizada", "Cancelada"):
+            ultima_verificacao = row[23].strip()
+            se_atrasada = True
+            if ultima_verificacao:
+                try:
+                    dt_verif = datetime.strptime(ultima_verificacao, "%Y-%m-%dT%H:%M:%S")
+                    if agora.tzinfo:
+                        dt_verif = dt_verif.replace(tzinfo=agora.tzinfo)
+                    minutos_desde = (agora - dt_verif).total_seconds() / 60
+                    se_atrasada = minutos_desde > limite_atraso_minutos
+                except Exception:
+                    se_atrasada = True
+            if se_atrasada:
+                desatualizadas.append({"id": row[0], "numeroOS": numero_os,
+                                        "ultimaVerificacao": ultima_verificacao or "nunca", "linha": i, "row": row})
+
+        # ── Parte 2: o status interno bate com o estado já gravado?
         if not status_os_atual:
-            continue  # ainda sem estado conhecido — nada a auditar
+            continue  # ainda sem estado conhecido — nada a auditar aqui
 
         esperado = _status_interno_esperado(status_os_atual, status_interno_atual)
         if esperado:
@@ -2926,11 +3038,36 @@ def _auditoria_consistencia_os_core(aplicar=True):
                 hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
                 ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{nota}".strip() if hist_atual else nota)
 
+    # ── Parte 3: recheca AO VIVO na Fracttal as OSs mais desatualizadas —
+    # isso é o que torna a auditoria de verdade "confiável", não só uma
+    # conferência de campos que já podem estar todos errados juntos. O
+    # rodízio automático já cobre isso normalmente, mas essa parte garante
+    # que mesmo uma OS presa fora do rodízio por algum bug futuro acaba
+    # sendo revisitada em pouco tempo, sem depender só do rodízio.
+    revalidadas_ao_vivo = []
+    if aplicar and desatualizadas:
+        desatualizadas.sort(key=lambda d: d["ultimaVerificacao"])  # "nunca" (vazio) primeiro
+        for d in desatualizadas[:limite_recheck_ao_vivo]:
+            resultado = _fracttal_verificar_e_atualizar_uma_os(ws, d["linha"], d["row"], d["numeroOS"])
+            if resultado:
+                revalidadas_ao_vivo.append(resultado)
+            time.sleep(0.35)
+
+    for d in desatualizadas:
+        d.pop("linha", None)
+        d.pop("row", None)
+
     if divergencias:
         log.warning(f"[Auditoria] {len(divergencias)} divergência(s) de status encontrada(s) "
                     f"(aplicado={aplicar}): {[d['numeroOS'] for d in divergencias]}")
+    if desatualizadas:
+        log.warning(f"[Auditoria] {len(desatualizadas)} OS(s) sem verificação recente na Fracttal "
+                    f"(>{limite_atraso_minutos}min), {len(revalidadas_ao_vivo)} revalidada(s) ao vivo agora: "
+                    f"{[d['numeroOS'] for d in desatualizadas]}")
 
-    return {"aplicado": aplicar, "total_divergencias": len(divergencias), "divergencias": divergencias}
+    return {"aplicado": aplicar, "total_divergencias": len(divergencias), "divergencias": divergencias,
+            "total_desatualizadas": len(desatualizadas), "desatualizadas": desatualizadas,
+            "revalidadas_ao_vivo": revalidadas_ao_vivo}
 
 
 @app.route("/auditoria-consistencia-os", methods=["POST", "GET"])
@@ -4192,83 +4329,15 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
         selecionadas = candidatas[:limite_checagem_status]
 
         for _, i, row in selecionadas:
-            editor_linha = row[12].strip()
             numero_os = row[13].strip()
-            status_interno_atual = row[8].strip()
-            status_os_atual = row[14].strip()
-            percentual_atual = row[20].strip()
-            status_geral_atual = row[21].strip()
-            agora_iso = agora_br().strftime("%Y-%m-%dT%H:%M:%S")
-            try:
-                token = _fracttal_get_token()
-                headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-                resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=15)
-                resp.raise_for_status()
-                tasks = (resp.json().get("data") or [])
-                ws.update_cell(i, ATIV_CAMPO_COL["ultimaVerificacaoOS"], agora_iso)
-                if not tasks:
-                    time.sleep(0.6)
-                    continue
-
-                status_novo_raw = str(tasks[0].get("id_status_work_order", "")).strip()
-                status_novo = _FRACTTAL_STATUS_OS_MAP.get(status_novo_raw, "")
-                percentual_novo = str(_fracttal_percentual_conclusao(tasks))
-                status_geral_novo = _fracttal_status_geral(tasks)
-                status_tarefa_novo = _fracttal_status_tarefa_agregado(tasks)
-                detalhes_novo = _fracttal_detalhes_equipamentos(tasks)
-
-                mudou = False
-                if status_novo and status_novo != status_os_atual:
-                    ws.update_cell(i, ATIV_CAMPO_COL["statusOS"], status_novo)
-                    mudou = True
-                if (percentual_novo != percentual_atual) or (status_geral_novo != status_geral_atual):
-                    ws.update_cell(i, ATIV_CAMPO_COL["statusTarefaOS"], status_tarefa_novo)
-                    ws.update(f"U{i}:W{i}", [[percentual_novo, status_geral_novo, detalhes_novo]])
-                    mudou = True
-
-                hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
-                if mudou:
-                    entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
-                             f"\"{status_os_atual or '—'}\" → \"{status_novo or status_os_atual or '—'}\", "
-                             f"{percentual_atual or '0'}% → {percentual_novo}% ({status_geral_novo}).")
-                    ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
-                    hist_atual = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
-                    mudancas_status.append({"numeroOS": numero_os, "statusOS": status_novo,
-                                             "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo})
-
-                # ── Correção de status interno: roda SEMPRE, independente de
-                # "mudou" — é isso que garante consistência de verdade. Se só
-                # rodasse dentro do "if mudou", uma OS que já estava com o
-                # status interno errado (por qualquer motivo passado) nunca
-                # seria corrigida enquanto a Fracttal não mudasse de novo
-                # (bug estrutural identificado e corrigido em 12/07/2026).
-                status_efetivo = status_novo or status_os_atual
-                novo_status_interno = _status_interno_esperado(status_efetivo, status_interno_atual)
-                if novo_status_interno:
-                    ws.update_cell(i, ATIV_CAMPO_COL["status"], novo_status_interno)
-                    if novo_status_interno == "Em Aberto" and status_interno_atual in ("Concluído", "Cancelado"):
-                        correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
-                                    f"estava marcada como \"{status_interno_atual}\", mas a Fracttal mostra estado "
-                                    f"\"{status_efetivo or '—'}\" (voltou pra Em Processo/Em Revisão — provavelmente "
-                                    f"reprovada ou reaberta).")
-                    else:
-                        correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ✅ Status interno corrigido pra "
-                                    f"\"{novo_status_interno}\" (estado na Fracttal: \"{status_efetivo or '—'}\").")
-                    ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{correcao}".strip() if hist_atual else correcao)
-
-                if mudou:
-                    try:
-                        enviar_push(
-                            titulo=f"🔄 OS {numero_os} atualizada",
-                            corpo=f"{status_geral_novo} — {percentual_novo}% concluído",
-                            tipo="fracttal_status",
-                        )
-                    except Exception as e:
-                        log.error(f"[sync-fracttal] Falha ao enviar push de mudança de status {numero_os}: {e}")
-                time.sleep(0.6)
-            except Exception as e:
-                log.error(f"[sync-fracttal] Erro ao checar status da OS {numero_os}: {e}")
-                erros_checagem.append({"numeroOS": numero_os, "erro": str(e)})
+            resultado = _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os)
+            if resultado is None:
+                erros_checagem.append({"numeroOS": numero_os, "erro": "falha na checagem — ver logs"})
+            elif resultado.get("mudou"):
+                mudancas_status.append({"numeroOS": numero_os, "statusOS": resultado.get("statusOS"),
+                                         "percentualOS": resultado.get("percentualOS"),
+                                         "statusGeralOS": resultado.get("statusGeralOS")})
+            time.sleep(0.35)
     except Exception as e:
         log.error(f"[sync-fracttal] Erro na checagem de mudanças de status: {e}")
         erros_checagem.append({"erro_geral": str(e)})
@@ -4960,7 +5029,7 @@ def sync_fracttal():
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
-    body, status_code = _sync_fracttal_core(desde_horas=3)
+    body, status_code = _sync_fracttal_core(desde_horas=3, limite_checagem_status=40)
     # piggyback: como este endpoint já é chamado de forma confiável a cada
     # 5 min via UptimeRobot, aproveita pra checar/disparar os comunicados
     # das 7h também — o cron dedicado do GitHub Actions sozinho atrasa de
@@ -4988,7 +5057,7 @@ def atualizar_os_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=20)
+    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=30)
     # roda a auditoria de consistência também nesse clique — reforça a
     # rede de segurança em cima do que acabou de ser (re)consultado na
     # Fracttal, além do que já estava gravado de rodadas anteriores.
