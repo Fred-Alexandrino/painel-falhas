@@ -3083,6 +3083,53 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=45, limi
             "revalidadas_ao_vivo": revalidadas_ao_vivo}
 
 
+def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=40):
+    """AUDITORIA COMPLETA — varredura de verdade nas usinas/equipes do
+    Fred, cobrindo tudo que uma auditoria de verdade precisa cobrir:
+      1. DESCOBERTA: busca na Fracttal por OTs novas dentro da janela
+         (padrão 24h) que ainda não estão no dashboard — pega OS nova
+         que a descoberta rápida de rotina (2h) porventura tenha perdido.
+      2. VARREDURA DE STATUS/ESTADO: revalida ao vivo na Fracttal um lote
+         das OSs já existentes — detecta não só mudança de percentual,
+         mas também cancelamentos e conclusões que tenham escapado.
+    Roda automaticamente 3x/dia (7h/12h/16h) e sob demanda no botão
+    "Auditoria". Mais pesada que a checagem de rotina (frequente, 5 em
+    5 min) de propósito — por isso não roda toda hora, só nesses horários."""
+    resultado_descoberta, _ = _sync_fracttal_core(desde_horas=desde_horas_descoberta)
+    resultado_consistencia = _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0,
+                                                              limite_recheck_ao_vivo=limite_recheck_ao_vivo)
+    return {"descoberta": resultado_descoberta, "consistencia": resultado_consistencia}
+
+
+def _verificar_e_disparar_auditoria_completa_se_necessario():
+    """Só dispara a auditoria completa de verdade se estiver dentro de uma
+    das 3 janelas do dia (07:00-07:09, 12:00-12:09, 16:00-16:09, horário
+    de Brasília) e ainda não tiver rodado nessa janela hoje — mesmo
+    padrão de trava usado pros comunicados, adaptado pra 3 horários."""
+    try:
+        agora = agora_br()
+        janela_atual = None
+        for h in (7, 12, 16):
+            if agora.hour == h and agora.minute < 10:
+                janela_atual = h
+                break
+        if janela_atual is None:
+            return {"disparado": False, "motivo": f"fora das janelas 7h/12h/16h (agora {agora.strftime('%H:%M')})"}
+
+        chave_trava = f"auditoria_completa_em_{janela_atual}h"
+        hoje_str = agora.strftime("%Y-%m-%d")
+        ja_rodou = _ler_trava(chave_trava)
+        if ja_rodou == hoje_str:
+            return {"disparado": False, "motivo": f"já rodou hoje na janela das {janela_atual}h"}
+
+        _gravar_trava(chave_trava, hoje_str)
+        resultado = _auditoria_completa_core()
+        return {"disparado": True, "janela": f"{janela_atual}h", "resultado": resultado}
+    except Exception as e:
+        log.error(f"[AuditoriaCompleta] Erro na verificação/disparo: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
 @app.route("/auditoria-consistencia-os", methods=["POST", "GET"])
 def auditoria_consistencia_os():
     """Rede de segurança definitiva: varre TODAS as atividades vinculadas
@@ -4990,15 +5037,15 @@ def reverter_excesso_fuso():
 def sync_fracttal():
     """
     Gatilho automático confiável (chamado a cada 5 min via UptimeRobot).
-    Faz duas coisas com cadências diferentes, de propósito:
-      1. DESCOBERTA de OS novas — só roda a cada 2h de fato (throttle via
-         _Sistema), porque não tem urgência real de rodar mais que isso.
-      2. AUDITORIA de consistência/frescor — roda em TODA chamada (5 em
-         5 min), porque isso sim precisa ficar em dia com frequência.
-    Separar as duas evita processar a descoberta (que varre todas as OTs
-    recentes da conta, inclusive de outras empresas) a cada 5 minutos à
-    toa, sem abrir mão de manter o status das OSs já existentes sempre
-    fresco.
+    Faz três coisas com cadências diferentes, de propósito:
+      1. VARREDURA DE STATUS/ESTADO das OSs já no dashboard — roda em
+         TODA chamada (5 em 5 min), porque isso precisa ficar em dia com
+         frequência (é o que o botão "Atualizar OS" também faz sob demanda).
+      2. AUDITORIA COMPLETA (descoberta de OS nova + varredura ampla,
+         incluindo detectar cancelamentos/conclusões) — só roda de fato
+         nas janelas das 7h/12h/16h (throttle via _Sistema), porque é mais
+         pesada e não precisa de frequência maior que isso.
+      3. Comunicados diários das 7h (piggyback, gatilho confiável).
     """
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
@@ -5006,38 +5053,21 @@ def sync_fracttal():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     body = {"ok": True}
-    agora = agora_br()
-    ultima_descoberta = _ler_trava("descoberta_os_em")
-    rodou_descoberta = False
-    if not ultima_descoberta:
-        rodou_descoberta = True
-    else:
-        try:
-            dt_ultima = datetime.strptime(ultima_descoberta, "%Y-%m-%dT%H:%M:%S")
-            if agora.tzinfo:
-                dt_ultima = dt_ultima.replace(tzinfo=agora.tzinfo)
-            rodou_descoberta = (agora - dt_ultima).total_seconds() / 3600 >= 2
-        except Exception:
-            rodou_descoberta = True
 
-    if rodou_descoberta:
-        descoberta_body, _ = _sync_fracttal_core(desde_horas=8)
-        body["descoberta"] = descoberta_body
-        _gravar_trava("descoberta_os_em", agora.strftime("%Y-%m-%dT%H:%M:%S"))
-    else:
-        body["descoberta"] = {"ok": True, "motivo": "fora da janela de 2h — só roda a auditoria agora"}
+    try:
+        body["atualizacao_status"] = _auditoria_consistencia_os_core(aplicar=True)
+    except Exception as e:
+        log.error(f"[Atualizacao] Erro no piggyback: {e}")
+        body["atualizacao_status"] = {"erro": str(e)}
 
-    # piggyback: como este endpoint já é chamado de forma confiável a cada
-    # 5 min via UptimeRobot, aproveita pra checar/disparar os comunicados
-    # das 7h também — o cron dedicado do GitHub Actions sozinho atrasa de
-    # forma imprevisível e já deixou de disparar no horário certo.
     body["comunicados_check"] = _verificar_e_disparar_comunicados_se_necessario()
 
     try:
-        body["auditoria_status"] = _auditoria_consistencia_os_core(aplicar=True)
+        body["auditoria_completa_check"] = _verificar_e_disparar_auditoria_completa_se_necessario()
     except Exception as e:
-        log.error(f"[Auditoria] Erro no piggyback: {e}")
-        body["auditoria_status"] = {"erro": str(e)}
+        log.error(f"[AuditoriaCompleta] Erro no piggyback: {e}")
+        body["auditoria_completa_check"] = {"erro": str(e)}
+
     return jsonify(body), 200
 
 
@@ -5045,30 +5075,29 @@ def sync_fracttal():
 def atualizar_os_agora():
     """
     Endpoint PÚBLICO (sem secret) pro botão "Atualizar OS" do dashboard —
-    SÓ faz descoberta de OS novas (busca forçada na Fracttal por OTs
-    criadas/atualizadas nas últimas 12h e cria o que for novo). Não
-    recheca status de OSs já existentes — isso é o botão "Auditoria",
-    separado. Ficou bem mais rápido assim, já que descoberta é uma
-    consulta só, enquanto rechecar tudo que já existe é o que pesava.
+    faz uma varredura de status/estado nas OSs que JÁ estão no dashboard
+    (revalida ao vivo na Fracttal, corrige status interno se precisar).
+    NÃO busca OS nova — isso é o botão "Auditoria", separado.
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=12)
-    return jsonify(body), status_code
+    resultado = _auditoria_consistencia_os_core(aplicar=True)
+    return jsonify({"ok": True, **resultado}), 200
 
 
 @app.route("/rodar-auditoria-agora", methods=["POST", "OPTIONS"])
 def rodar_auditoria_agora():
     """
     Endpoint PÚBLICO (sem secret) pro botão "Auditoria" do dashboard —
-    revalida ao vivo na Fracttal as OSs já existentes que estão
-    desatualizadas/inconsistentes, sem tocar em descoberta de OS novas
-    (isso é o botão "Atualizar OS", separado). Complementa o botão de
-    descoberta sem duplicar processamento.
+    varredura COMPLETA nas usinas/equipes: busca OS nova na Fracttal
+    (descoberta) e revalida ao vivo um lote amplo das já existentes,
+    detectando não só mudança de percentual mas também cancelamentos e
+    conclusões que possam ter passado batido. Mais pesada de propósito —
+    o "Atualizar OS" (mais rápido) cuida da atualização frequente.
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    resultado = _auditoria_consistencia_os_core(aplicar=True)
+    resultado = _auditoria_completa_core()
     return jsonify({"ok": True, **resultado}), 200
 
 
