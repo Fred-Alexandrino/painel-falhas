@@ -2921,6 +2921,19 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
         resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=15)
         resp.raise_for_status()
         tasks = (resp.json().get("data") or [])
+    except Exception as e:
+        log.error(f"[Fracttal] Erro ao checar/atualizar OS {numero_os}: {e}")
+        # marca como verificada MESMO em erro — senão essa OS quebrada
+        # (ex.: número inválido, removida da Fracttal, timeout) fica
+        # sempre "a mais antiga" e monopoliza a fila de prioridade pra
+        # sempre, nunca deixando outras OSs saudáveis serem revisitadas.
+        try:
+            ws.update_cell(i, ATIV_CAMPO_COL["ultimaVerificacaoOS"], agora_iso)
+        except Exception:
+            pass
+        return None
+
+    try:
         ws.update_cell(i, ATIV_CAMPO_COL["ultimaVerificacaoOS"], agora_iso)
         if not tasks:
             return {"numeroOS": numero_os, "mudou": False, "motivo": "OS sem tarefas na Fracttal"}
@@ -2985,7 +2998,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
         return None
 
 
-def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=45, limite_recheck_ao_vivo=20):
+def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=45, limite_recheck_ao_vivo=35):
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
     divergencias = []
@@ -4237,12 +4250,19 @@ def atualizar_links_fracttal():
                      "processadas_nesta_chamada": processadas, "limit": limit})
 
 
-def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
+def _sync_fracttal_core(desde_horas=8):
     """
-    Núcleo da sincronização: busca OTs recentes na Fracttal, cria atividades
-    novas e checa mudança de status em atividades já abertas. Usado tanto
-    pelo /sync-fracttal (cron protegido) quanto pelo /atualizar-os-agora
-    (botão público do dashboard).
+    Núcleo da DESCOBERTA: busca OTs recentes na Fracttal e cria atividades
+    novas pra qualquer uma que ainda não esteja no Painel de Atividades.
+    Só isso — não recheca status de OSs já existentes (isso é
+    responsabilidade exclusiva da auditoria, _auditoria_consistencia_os_core,
+    que faz esse trabalho de forma mais completa e sem duplicar lógica).
+
+    Separar descoberta de "manter status em dia" é proposital: descobrir
+    OS nova não é urgente (uma janela de horas é tranquila), enquanto
+    manter o status atualizado precisa rodar com frequência — juntar os
+    dois na mesma chamada só deixava tudo mais pesado e lento sem
+    necessidade.
     """
     try:
         ots = _fracttal_listar_ots_recentes(desde_horas=desde_horas)
@@ -4294,59 +4314,8 @@ def _sync_fracttal_core(desde_horas=3, limite_checagem_status=25):
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
             erros.append(mapeado.get("numeroOS", "?"))
 
-    # ── Segunda passada: reconsulta a OS completa (todas as tarefas) em OSs
-    # já criadas e ainda em aberto, e atualiza TODOS os campos derivados
-    # (statusOS, percentualOS, statusGeralOS, statusTarefaOS,
-    # detalhesEquipamentosOS) — não só o status bruto da OT.
-    #
-    # RODÍZIO JUSTO: em vez de sempre iterar da linha 2 pra baixo (o que
-    # faz as OSs mais antigas sempre consumirem a cota e as mais recentes
-    # nunca serem alcançadas quando há mais candidatas que o limite),
-    # ordena as candidatas por "ultimaVerificacaoOS" (nunca verificadas
-    # primeiro, depois as verificadas há mais tempo) e pega só as N
-    # primeiras. Assim, ao longo de várias rodadas, TODAS as OSs acabam
-    # sendo cobertas, e as recém-criadas são priorizadas na primeira vez.
-    mudancas_status = []
-    erros_checagem = []
-    candidatas = []
-    selecionadas = []
-    try:
-        candidatas = []
-        for i, row in enumerate(todos[1:], start=2):
-            if len(row) < ATIV_TOTAL_COLUNAS:
-                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
-            numero_os = row[13].strip()
-            status_os_atual = row[14].strip()
-            if not numero_os:
-                continue  # só monitora quem está de fato vinculado a uma OS da Fracttal
-            if status_os_atual in ("Finalizada", "Cancelada"):
-                continue  # só para de checar quando a Fracttal encerra de vez
-            ultima_verificacao = row[23].strip()  # vazio = nunca verificada, prioridade máxima
-            candidatas.append((ultima_verificacao, i, row))
-
-        random.shuffle(candidatas)  # desempate aleatório entre "nunca verificadas" (senão sempre as mesmas primeiras da planilha ganham a cota)
-        candidatas.sort(key=lambda t: t[0])  # "" (nunca) vem antes de qualquer timestamp
-        selecionadas = candidatas[:limite_checagem_status]
-
-        for _, i, row in selecionadas:
-            numero_os = row[13].strip()
-            resultado = _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os)
-            if resultado is None:
-                erros_checagem.append({"numeroOS": numero_os, "erro": "falha na checagem — ver logs"})
-            elif resultado.get("mudou"):
-                mudancas_status.append({"numeroOS": numero_os, "statusOS": resultado.get("statusOS"),
-                                         "percentualOS": resultado.get("percentualOS"),
-                                         "statusGeralOS": resultado.get("statusGeralOS")})
-            time.sleep(0.35)
-    except Exception as e:
-        log.error(f"[sync-fracttal] Erro na checagem de mudanças de status: {e}")
-        erros_checagem.append({"erro_geral": str(e)})
-
-    log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)} "
-             f"mudancas_status={len(mudancas_status)} checadas={len(selecionadas)} erros_checagem={len(erros_checagem)}")
-    return {"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros,
-            "mudancas_status": mudancas_status, "checadas_nesta_rodada": len(selecionadas),
-            "candidatas_totais": len(candidatas), "erros_checagem": erros_checagem}, 200
+    log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)}")
+    return {"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros}, 200
 
 
 
@@ -5020,53 +4989,87 @@ def reverter_excesso_fuso():
 @app.route("/sync-fracttal", methods=["POST", "GET"])
 def sync_fracttal():
     """
-    Sincroniza OTs novas da Fracttal para o Painel de Atividades.
-    Disparado periodicamente por cron via GitHub Actions
-    (.github/workflows/sync-fracttal.yml). Protegido pelo mesmo
-    WEBHOOK_SECRET usado nos demais endpoints sensíveis.
+    Gatilho automático confiável (chamado a cada 5 min via UptimeRobot).
+    Faz duas coisas com cadências diferentes, de propósito:
+      1. DESCOBERTA de OS novas — só roda a cada 2h de fato (throttle via
+         _Sistema), porque não tem urgência real de rodar mais que isso.
+      2. AUDITORIA de consistência/frescor — roda em TODA chamada (5 em
+         5 min), porque isso sim precisa ficar em dia com frequência.
+    Separar as duas evita processar a descoberta (que varre todas as OTs
+    recentes da conta, inclusive de outras empresas) a cada 5 minutos à
+    toa, sem abrir mão de manter o status das OSs já existentes sempre
+    fresco.
     """
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
-    body, status_code = _sync_fracttal_core(desde_horas=8, limite_checagem_status=40)
+
+    body = {"ok": True}
+    agora = agora_br()
+    ultima_descoberta = _ler_trava("descoberta_os_em")
+    rodou_descoberta = False
+    if not ultima_descoberta:
+        rodou_descoberta = True
+    else:
+        try:
+            dt_ultima = datetime.strptime(ultima_descoberta, "%Y-%m-%dT%H:%M:%S")
+            if agora.tzinfo:
+                dt_ultima = dt_ultima.replace(tzinfo=agora.tzinfo)
+            rodou_descoberta = (agora - dt_ultima).total_seconds() / 3600 >= 2
+        except Exception:
+            rodou_descoberta = True
+
+    if rodou_descoberta:
+        descoberta_body, _ = _sync_fracttal_core(desde_horas=8)
+        body["descoberta"] = descoberta_body
+        _gravar_trava("descoberta_os_em", agora.strftime("%Y-%m-%dT%H:%M:%S"))
+    else:
+        body["descoberta"] = {"ok": True, "motivo": "fora da janela de 2h — só roda a auditoria agora"}
+
     # piggyback: como este endpoint já é chamado de forma confiável a cada
     # 5 min via UptimeRobot, aproveita pra checar/disparar os comunicados
     # das 7h também — o cron dedicado do GitHub Actions sozinho atrasa de
     # forma imprevisível e já deixou de disparar no horário certo.
     body["comunicados_check"] = _verificar_e_disparar_comunicados_se_necessario()
-    # idem pra auditoria de consistência de status — roda a cada 5 min,
-    # autocorrigindo qualquer divergência que tenha escapado da checagem
-    # normal (rede de segurança definitiva contra status/estado desalinhados).
+
     try:
         body["auditoria_status"] = _auditoria_consistencia_os_core(aplicar=True)
     except Exception as e:
         log.error(f"[Auditoria] Erro no piggyback: {e}")
         body["auditoria_status"] = {"erro": str(e)}
-    return jsonify(body), status_code
+    return jsonify(body), 200
 
 
 @app.route("/atualizar-os-agora", methods=["POST", "OPTIONS"])
 def atualizar_os_agora():
     """
     Endpoint PÚBLICO (sem secret) pro botão "Atualizar OS" do dashboard —
-    dispara uma busca forçada na Fracttal por OTs criadas/atualizadas nas
-    últimas 6h (janela maior que o cron automático, pra não perder nada
-    entre cliques) e cria o que for novo. Não expõe nada sensível, só
-    aciona a mesma lógica de sincronização sob demanda.
+    SÓ faz descoberta de OS novas (busca forçada na Fracttal por OTs
+    criadas/atualizadas nas últimas 12h e cria o que for novo). Não
+    recheca status de OSs já existentes — isso é o botão "Auditoria",
+    separado. Ficou bem mais rápido assim, já que descoberta é uma
+    consulta só, enquanto rechecar tudo que já existe é o que pesava.
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=12, limite_checagem_status=30)
-    # roda a auditoria de consistência também nesse clique — reforça a
-    # rede de segurança em cima do que acabou de ser (re)consultado na
-    # Fracttal, além do que já estava gravado de rodadas anteriores.
-    try:
-        body["auditoria_status"] = _auditoria_consistencia_os_core(aplicar=True)
-    except Exception as e:
-        log.error(f"[Auditoria] Erro no piggyback do botao Atualizar OS: {e}")
-        body["auditoria_status"] = {"erro": str(e)}
+    body, status_code = _sync_fracttal_core(desde_horas=12)
     return jsonify(body), status_code
+
+
+@app.route("/rodar-auditoria-agora", methods=["POST", "OPTIONS"])
+def rodar_auditoria_agora():
+    """
+    Endpoint PÚBLICO (sem secret) pro botão "Auditoria" do dashboard —
+    revalida ao vivo na Fracttal as OSs já existentes que estão
+    desatualizadas/inconsistentes, sem tocar em descoberta de OS novas
+    (isso é o botão "Atualizar OS", separado). Complementa o botão de
+    descoberta sem duplicar processamento.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    resultado = _auditoria_consistencia_os_core(aplicar=True)
+    return jsonify({"ok": True, **resultado}), 200
 
 
 ATIV_CAMPO_LABEL = {
