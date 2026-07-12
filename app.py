@@ -2985,7 +2985,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
         return None
 
 
-def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=90, limite_recheck_ao_vivo=15):
+def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=45, limite_recheck_ao_vivo=40):
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
     divergencias = []
@@ -5029,7 +5029,7 @@ def sync_fracttal():
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
-    body, status_code = _sync_fracttal_core(desde_horas=3, limite_checagem_status=40)
+    body, status_code = _sync_fracttal_core(desde_horas=24, limite_checagem_status=40)
     # piggyback: como este endpoint já é chamado de forma confiável a cada
     # 5 min via UptimeRobot, aproveita pra checar/disparar os comunicados
     # das 7h também — o cron dedicado do GitHub Actions sozinho atrasa de
@@ -5057,7 +5057,7 @@ def atualizar_os_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    body, status_code = _sync_fracttal_core(desde_horas=6, limite_checagem_status=30)
+    body, status_code = _sync_fracttal_core(desde_horas=48, limite_checagem_status=30)
     # roda a auditoria de consistência também nesse clique — reforça a
     # rede de segurança em cima do que acabou de ser (re)consultado na
     # Fracttal, além do que já estava gravado de rodadas anteriores.
