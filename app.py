@@ -3466,7 +3466,12 @@ def _fracttal_mapear_grupo(tasks):
         "responsavel": tecnico_raw,
         "prazo": _fracttal_prazo_agregado(tasks),
         "prioridade": prioridade,
-        "status": "Em Aberto",
+        # se a OS já nasce Finalizada/Cancelada na Fracttal (ex.: criada e
+        # cancelada pelo operador antes do nosso sync sequer vê-la), o
+        # status interno tem que refletir isso já na criação — senão essa
+        # atividade nunca mais é revisitada pelo rodízio (que pula quem já
+        # está Finalizada/Cancelada) e fica presa em "Em Aberto" pra sempre.
+        "status": {"Finalizada": "Concluído", "Cancelada": "Cancelado"}.get(status_os, "Em Aberto"),
         "numeroOS": (representante.get("wo_folio") or "").strip(),
         "editor": "fracttal-sync",
         "statusOS": status_os,
