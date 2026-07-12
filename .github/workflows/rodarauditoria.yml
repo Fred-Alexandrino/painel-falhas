@@ -1,0 +1,27 @@
+name: Rodar Auditoria
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        required: true
+        default: 'false'
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/auditoria-consistencia-os?apply=${{ github.event.inputs.apply }}" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/auditoria-result.json
+          cat backups/auditoria-result.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/auditoria-result.json
+          git diff --quiet --cached || git commit -m "rodar auditoria [skip ci]"
+          git push
