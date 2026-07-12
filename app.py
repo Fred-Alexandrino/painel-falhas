@@ -3024,7 +3024,12 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=45, limi
             se_atrasada = True
             if ultima_verificacao:
                 try:
-                    dt_verif = datetime.strptime(ultima_verificacao, "%Y-%m-%dT%H:%M:%S")
+                    try:
+                        dt_verif = datetime.strptime(ultima_verificacao, "%Y-%m-%dT%H:%M:%S")
+                    except ValueError:
+                        # o Google Sheets reformata a data ao salvar/ler,
+                        # trocando o "T" por espaço — aceita os dois formatos.
+                        dt_verif = datetime.strptime(ultima_verificacao, "%Y-%m-%d %H:%M:%S")
                     if agora.tzinfo:
                         dt_verif = dt_verif.replace(tzinfo=agora.tzinfo)
                     minutos_desde = (agora - dt_verif).total_seconds() / 60
