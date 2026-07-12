@@ -1,0 +1,10 @@
+=== 1. numeroOS duplicado entre atividades ABERTAS ===
+
+=== 2. mesma usina + mesmo equipamento + descricao muito parecida (possivel duplicata sem OS repetida) ===
+Usina=crateús | Equip=gy-cdp100-infc1: 3 atividades, descricoes repetidas
+   id= 54 | OS= 9024 | desc= [Greenyellow] - Inspeção/Relatório fotográfico UFV
+   id= 55 | OS= 9023 | desc= [Grid Co.] - MPM - Spare Parts
+   id= 69 | OS= 8765 | desc= [Greenyellow] - Inspeção/Relatório fotográfico UFV
+Usina=boa esperança do sul i | Equip=bes100-etkr35.101: 2 atividades, descricoes repetidas
+   id= 121 | OS= 9252 | desc= Inspeção e diagnóstico de trackers inoperantes
+   id= 122 | OS= 9251 | desc= Inspeção e diagnóstico de trackers inoperantes
