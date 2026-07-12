@@ -1,0 +1,2 @@
+total OSs em aberto monitoradas: 88
+nunca verificadas: 1
