@@ -1,0 +1,7 @@
+=== Atualizar OS (so descoberta) ===
+ok: True | criadas: 0 | revisao_manual: 35
+duracao: 2s
+
+=== Auditoria (so rechecagem) ===
+ok: True | divergencias: 0 | desatualizadas: 88 | revalidadas: 35
+duracao: 29s
