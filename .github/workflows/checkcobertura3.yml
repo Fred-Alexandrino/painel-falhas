@@ -1,0 +1,48 @@
+name: Check Cobertura Real
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          from datetime import datetime
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          abertas = [a for a in ativs if (a.get('numeroOS') or '').strip() and a.get('statusOS') not in ('Finalizada','Cancelada')]
+          print('total OSs em aberto monitoradas:', len(abertas))
+          nunca = [a for a in abertas if not (a.get('ultimaVerificacaoOS') or '').strip()]
+          print('nunca verificadas:', len(nunca))
+          com_data = [a for a in abertas if (a.get('ultimaVerificacaoOS') or '').strip()]
+          agora = datetime.now()
+          atrasos = []
+          for a in com_data:
+              v = a['ultimaVerificacaoOS']
+              try:
+                  dt = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')
+              except:
+                  try:
+                      dt = datetime.strptime(v, '%Y-%m-%dT%H:%M:%S')
+                  except Exception as e:
+                      print('falhou parse:', repr(v), e)
+                      continue
+              atrasos.append((agora - dt).total_seconds() / 60)
+          if atrasos:
+              print('mais antiga (minutos desde ultima checagem):', round(max(atrasos), 1))
+              print('media (minutos):', round(sum(atrasos)/len(atrasos), 1))
+              print('mais recente (minutos):', round(min(atrasos), 1))
+          " > backups/check-cobertura-real.txt
+          cat backups/check-cobertura-real.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-cobertura-real.txt
+          git diff --quiet --cached || git commit -m "check cobertura real [skip ci]"
+          git push
