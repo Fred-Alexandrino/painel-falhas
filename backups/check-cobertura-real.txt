@@ -1,0 +1,5 @@
+total OSs em aberto monitoradas: 88
+nunca verificadas: 1
+mais antiga (minutos desde ultima checagem): 199.5
+media (minutos): 195.1
+mais recente (minutos): 190.4
