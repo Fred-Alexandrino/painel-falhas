@@ -1,0 +1,54 @@
+name: Check Duplicatas Completo
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          from collections import defaultdict
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          abertas = [a for a in ativs if (a.get('status','') or '').lower() not in ('concluído','concluido','cancelado')]
+
+          print('=== 1. numeroOS duplicado entre atividades ABERTAS ===')
+          por_os = defaultdict(list)
+          for a in abertas:
+              os_num = (a.get('numeroOS') or '').strip()
+              if os_num:
+                  por_os[os_num].append(a)
+          dups_os = {k:v for k,v in por_os.items() if len(v) > 1}
+          for os_num, lista in dups_os.items():
+              print(f'OS {os_num}: {len(lista)} atividades')
+              for a in lista:
+                  print('   id=', a.get('id'), '| usina=', a.get('usina'), '| equip=', a.get('equipamento'), '| desc=', (a.get('descricao') or '')[:60], '| responsavel=', a.get('responsavel'))
+
+          print()
+          print('=== 2. mesma usina + mesmo equipamento + descricao muito parecida (possivel duplicata sem OS repetida) ===')
+          por_equip = defaultdict(list)
+          for a in abertas:
+              chave = (a.get('usina','').strip().lower(), a.get('equipamento','').strip().lower())
+              if chave[0] and chave[1] and chave[1] not in ('múltiplas atividades','multiplas atividades'):
+                  por_equip[chave].append(a)
+          for chave, lista in por_equip.items():
+              if len(lista) > 1:
+                  # ve se as descricoes sao muito parecidas
+                  descs = set((a.get('descricao') or '').strip().lower() for a in lista)
+                  if len(descs) < len(lista):
+                      print(f'Usina={chave[0]} | Equip={chave[1]}: {len(lista)} atividades, descricoes repetidas')
+                      for a in lista:
+                          print('   id=', a.get('id'), '| OS=', a.get('numeroOS'), '| desc=', (a.get('descricao') or '')[:70])
+          " > backups/check-dup-completo.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-dup-completo.txt
+          git diff --quiet --cached || git commit -m "check dup completo [skip ci]"
+          git push
