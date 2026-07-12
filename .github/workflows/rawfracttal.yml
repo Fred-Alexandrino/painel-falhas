@@ -1,0 +1,22 @@
+name: Raw Fracttal 9251
+on:
+  workflow_dispatch: {}
+jobs:
+  r:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/fracttal-raw?folio=9251" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/raw-9251.json
+          curl -s "https://whatsapp-painel-falhas.onrender.com/fracttal-raw?folio=9252" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/raw-9252.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/raw-9251.json backups/raw-9252.json
+          git diff --quiet --cached || git commit -m "raw fracttal 9251 [skip ci]"
+          git push
