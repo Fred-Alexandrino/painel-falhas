@@ -1,0 +1,5 @@
+ok: True
+total_desatualizadas (agora deveria ser 88, todas elegiveis): 88
+revalidadas ao vivo: 35
+divergencias: 0
+duracao: 30s
