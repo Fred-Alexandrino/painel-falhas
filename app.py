@@ -2982,9 +2982,11 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
 
         if mudou:
             try:
+                usina_row = row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else ""
+                equipamento_row = row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else ""
                 enviar_push(
-                    titulo=f"🔄 OS {numero_os} atualizada",
-                    corpo=f"{status_geral_novo} — {percentual_novo}% concluído",
+                    titulo=f"🔄 OS {numero_os} — {usina_row or 'Usina não informada'}",
+                    corpo=f"{equipamento_row or 'Equipamento não informado'} · {status_geral_novo} — {percentual_novo}% concluído",
                     tipo="fracttal_status",
                 )
             except Exception as e:
@@ -3232,8 +3234,9 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
 
     try:
         enviar_push(
-            titulo=f"🆕 Nova atividade — {usina or cliente}",
-            corpo=f"{descricao[:80] if descricao else 'Atividade criada'}" + (f" · OS {numeroOS}" if numeroOS else ""),
+            titulo=f"🆕 Nova atividade" + (f" — OS {numeroOS}" if numeroOS else "") + f" — {usina or cliente}",
+            corpo=(f"{equipamento} · " if equipamento else "") +
+                  (f"{descricao[:80]}" if descricao else "Atividade criada"),
             tipo="nova_atividade",
             url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
         )
@@ -4356,8 +4359,8 @@ def _sync_fracttal_core(desde_horas=8):
             os_existentes.add(mapeado["numeroOS"])
             try:
                 enviar_push(
-                    titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']}",
-                    corpo=f"{mapeado['usina']} ({mapeado['cliente']}): {mapeado['descricao'][:120]}",
+                    titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']} — {mapeado['usina']}",
+                    corpo=f"{mapeado.get('equipamento', '') or 'Equipamento não informado'} ({mapeado['cliente']}): {mapeado['descricao'][:100]}",
                     tipo="fracttal_nova_os",
                 )
             except Exception as e:
