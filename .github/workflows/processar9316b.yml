@@ -1,0 +1,25 @@
+name: Processar 9316 v2
+on:
+  workflow_dispatch: {}
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/processar-texto-manual" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" --data @p1_temp.json -o backups/processar-9316-msg1.json
+          cat backups/processar-9316-msg1.json
+          echo ""
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/processar-texto-manual" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" --data @p2_temp.json -o backups/processar-9316-msg2.json
+          cat backups/processar-9316-msg2.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/processar-9316-msg1.json backups/processar-9316-msg2.json
+          git diff --quiet --cached || git commit -m "processar 9316 v2 [skip ci]"
+          git push
