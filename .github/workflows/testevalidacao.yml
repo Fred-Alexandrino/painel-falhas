@@ -1,0 +1,22 @@
+name: Teste Validacao Relatorios
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/validar-integridade-relatorios?apply=true" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/teste-validacao.json --max-time 40
+          cat backups/teste-validacao.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-validacao.json
+          git diff --quiet --cached || git commit -m "teste validacao [skip ci]"
+          git push
