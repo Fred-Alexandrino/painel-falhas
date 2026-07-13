@@ -197,7 +197,8 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
         if not (fechou_na_semana or abriu_na_semana or em_aberto_backlog):
             continue
 
-        categoria = _rotulo_categoria(row[COL_EQUIP])
+        texto_categoria = f"{row[COL_EQUIP]} {row[COL_FALHA]}"
+        categoria = _rotulo_categoria(texto_categoria)
         d = {
             "usina": row[COL_USINA].strip() or "Usina não informada",
             "equipamento": row[COL_EQUIP].strip() or "Equipamento não informado",
@@ -214,6 +215,12 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
             grupos[categoria]["concluidas"].append(d)
         elif em_aberto_backlog:
             grupos[categoria]["abertas"].append(d)
+        elif concluida and abriu_na_semana:
+            # mesmo fallback aplicado em coletar_atividades_semana: evita
+            # que uma ocorrência que abriu e fechou dentro da semana, mas
+            # sem Data de Fechamento gravada corretamente, suma do
+            # relatório sem aparecer em lugar nenhum.
+            grupos[categoria]["concluidas"].append(d)
 
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
 
@@ -254,7 +261,14 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
         if not (fechou_na_semana or abriu_na_semana or em_aberto_backlog):
             continue
 
-        categoria = _rotulo_categoria(row[ATIV_COL_EQUIP])
+        # categoriza pela descrição (onde aparecem palavras como "desligada",
+        # "offline", "religamento" etc.) — o código do equipamento sozinho
+        # (ex.: "2C-APG100") nunca bate em nenhum padrão, então cai sempre
+        # em OUTRAS OCORRÊNCIAS e perde a categorização real (bug corrigido
+        # em 13/07/2026). Usa equipamento+descrição juntos pra manter
+        # também os casos que só têm palavra-chave no nome do equipamento.
+        texto_categoria = f"{row[ATIV_COL_EQUIP]} {row[ATIV_COL_DESCRICAO]}"
+        categoria = _rotulo_categoria(texto_categoria)
         status_display = row[ATIV_COL_STATUSOS].strip() or row[ATIV_COL_STATUS].strip() or "Em aberto"
         d = {
             "usina": row[ATIV_COL_USINA].strip() or "Usina não informada",
@@ -272,6 +286,14 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
             grupos[categoria]["concluidas"].append(d)
         elif em_aberto_backlog:
             grupos[categoria]["abertas"].append(d)
+        elif concluida and abriu_na_semana:
+            # abriu E fechou dentro da semana, mas a Data de Conclusão
+            # ficou vazia/fora da janela (bug histórico corrigido em
+            # 13/07/2026 — atividades concluídas não gravavam essa data).
+            # Sem este fallback, a atividade não entra nem em "abertas"
+            # (já está concluída) nem em "concluídas" (falha o teste de
+            # data), e some do relatório inteiro sem deixar rastro.
+            grupos[categoria]["concluidas"].append(d)
 
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
 
