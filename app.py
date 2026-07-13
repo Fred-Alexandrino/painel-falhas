@@ -2153,10 +2153,12 @@ def webhook():
 
 
 @app.route("/processar-texto-manual", methods=["POST"])
-def processar_texto_manual_temp():
-    """Uso único: processa um texto de ocorrência manualmente (mensagem
-    perdida durante a queda de sessão do WhatsApp), usando o mesmo parser
-    do webhook normal."""
+def processar_texto_manual():
+    """Ferramenta de recuperação: processa manualmente o texto de uma
+    mensagem de ocorrência (útil quando uma mensagem real chegou num
+    grupo do WhatsApp mas não foi capturada — ex.: sessão do WhatsApp
+    caiu no momento). Usa o mesmo parser do webhook normal, então o
+    resultado fica idêntico ao que teria acontecido automaticamente."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
