@@ -2999,9 +2999,11 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
 
         if mudou:
             try:
+                usina_row = row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else ""
+                equipamento_row = row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else ""
                 enviar_push(
-                    titulo=f"🔄 OS {numero_os} atualizada",
-                    corpo=f"{status_geral_novo} — {percentual_novo}% concluído",
+                    titulo=f"🔄 OS {numero_os} — {usina_row or 'Usina não informada'}",
+                    corpo=f"{equipamento_row or 'Equipamento não informado'} · {status_geral_novo} — {percentual_novo}% concluído",
                     tipo="fracttal_status",
                 )
             except Exception as e:
@@ -3360,8 +3362,9 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
 
     try:
         enviar_push(
-            titulo=f"🆕 Nova atividade — {usina or cliente}",
-            corpo=f"{descricao[:80] if descricao else 'Atividade criada'}" + (f" · OS {numeroOS}" if numeroOS else ""),
+            titulo=f"🆕 Nova atividade" + (f" — OS {numeroOS}" if numeroOS else "") + f" — {usina or cliente}",
+            corpo=(f"{equipamento} · " if equipamento else "") +
+                  (f"{descricao[:80]}" if descricao else "Atividade criada"),
             tipo="nova_atividade",
             url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
         )
@@ -4500,8 +4503,8 @@ def _sync_fracttal_core(desde_horas=8):
             os_existentes.add(mapeado["numeroOS"])
             try:
                 enviar_push(
-                    titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']}",
-                    corpo=f"{mapeado['usina']} ({mapeado['cliente']}): {mapeado['descricao'][:120]}",
+                    titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']} — {mapeado['usina']}",
+                    corpo=f"{mapeado.get('equipamento', '') or 'Equipamento não informado'} ({mapeado['cliente']}): {mapeado['descricao'][:100]}",
                     tipo="fracttal_nova_os",
                 )
             except Exception as e:
@@ -4765,6 +4768,341 @@ def _gravar_trava(chave, valor):
             ws_cfg.update_cell(i, 2, valor)
             return
     ws_cfg.append_row([chave, valor])
+
+
+# ══════════════════════════════════════════════════════════════════════
+# COMPROMISSOS (Boletim de Medição, Relatório de Performance, Relatório
+# PCM) — checklist de prazos recorrentes por cliente/usina, com engine
+# de cálculo de dia útil/dia fixo e alertas push automáticos.
+# ══════════════════════════════════════════════════════════════════════
+
+COMPROMISSO_ETAPAS = {
+    "BM": ["Envio do BM", "Aprovação do Cliente", "Emissão da NF"],
+    "RelatorioPerformance": ["Envio do Relatório de Performance"],
+    "RelatorioPCM": ["Envio do Relatório de Manutenção (PCM)"],
+}
+
+COMPROMISSO_LABEL = {
+    "BM": "Boletim de Medição",
+    "RelatorioPerformance": "Relatório de Performance",
+    "RelatorioPCM": "Relatório de Manutenção (PCM)",
+}
+
+
+def _feriados_nacionais_brasil(ano):
+    """Feriados nacionais fixos + móveis (baseados na Páscoa, algoritmo
+    de Gauss). Não cobre feriados estaduais/municipais — só o suficiente
+    pra não antecipar prazo em cima de feriado nacional por engano."""
+    a = ano
+    # Páscoa (algoritmo de Meeus/Jones/Butcher)
+    y = a
+    g = y % 19
+    c = y // 100
+    h = (c - c // 4 - (8 * c + 13) // 25 + 19 * g + 15) % 30
+    i = h - (h // 28) * (1 - (h // 28) * (29 // (h + 1)) * ((21 - g) // 11))
+    j = (y + y // 4 + i + 2 - c + c // 4) % 7
+    l = i - j
+    mes = 3 + (l + 40) // 44
+    dia = l + 28 - 31 * (mes // 4)
+    pascoa = datetime(y, mes, dia)
+
+    fixos = [
+        datetime(a, 1, 1), datetime(a, 4, 21), datetime(a, 5, 1),
+        datetime(a, 9, 7), datetime(a, 10, 12), datetime(a, 11, 2),
+        datetime(a, 11, 15), datetime(a, 12, 25),
+    ]
+    moveis = [
+        pascoa - timedelta(days=47),  # carnaval segunda
+        pascoa - timedelta(days=46),  # carnaval terça
+        pascoa - timedelta(days=2),   # sexta-feira santa
+        pascoa + timedelta(days=60),  # corpus christi
+    ]
+    return {d.date() for d in (fixos + moveis)}
+
+
+def _e_dia_util(dt):
+    return dt.weekday() < 5 and dt.date() not in _feriados_nacionais_brasil(dt.year)
+
+
+def _enesimo_dia_util(ano, mes, n):
+    dt = datetime(ano, mes, 1)
+    contados = 0
+    while True:
+        if _e_dia_util(dt):
+            contados += 1
+            if contados == n:
+                return dt
+        dt += timedelta(days=1)
+        if dt.month != mes:  # segurança: não vaza pro mês seguinte
+            return dt - timedelta(days=1)
+
+
+def _ultimo_dia_do_mes(ano, mes):
+    if mes == 12:
+        prox = datetime(ano + 1, 1, 1)
+    else:
+        prox = datetime(ano, mes + 1, 1)
+    return prox - timedelta(days=1)
+
+
+def _ultimo_dia_util(ano, mes):
+    dt = _ultimo_dia_do_mes(ano, mes)
+    while not _e_dia_util(dt):
+        dt -= timedelta(days=1)
+    return dt
+
+
+def _dia_fixo_com_antecipacao(ano, mes, dia):
+    ultimo = _ultimo_dia_do_mes(ano, mes).day
+    dt = datetime(ano, mes, min(dia, ultimo))
+    while not _e_dia_util(dt):
+        dt -= timedelta(days=1)
+    return dt
+
+
+def _calcular_prazo_compromisso(regra_tipo, regra_valor, ano, mes):
+    regra_valor = int(regra_valor)
+    if regra_tipo == "nDiaUtil":
+        return _enesimo_dia_util(ano, mes, regra_valor)
+    if regra_tipo == "diaFixo":
+        return _dia_fixo_com_antecipacao(ano, mes, regra_valor)
+    if regra_tipo == "diaAoUltimoUtil":
+        return _ultimo_dia_util(ano, mes)
+    raise ValueError(f"regra_tipo desconhecido: {regra_tipo}")
+
+
+def _get_compromissos_regras_sheet():
+    sh = get_atividades_sheet().spreadsheet
+    try:
+        return sh.worksheet("_ComprometimentosRegras")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title="_ComprometimentosRegras", rows=50, cols=8)
+        ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "RegraTipo", "RegraValor", "Ativo"]])
+        # Seed inicial — só os clientes já mapeados no painel, regra de BM
+        # tirada do calendário de emissão enviado pelo Fred (13/07/2026).
+        seed = [
+            ["1", "BM", "RENOGRID", "", "diaAoUltimoUtil", "30", "TRUE"],
+            ["2", "BM", "THOPEN", "", "diaFixo", "15", "TRUE"],
+            ["3", "BM", "2C Energia", "", "nDiaUtil", "5", "TRUE"],
+            ["4", "BM", "GD Energy", "", "nDiaUtil", "5", "TRUE"],
+            ["5", "BM", "Alves Lima", "", "nDiaUtil", "5", "TRUE"],
+        ]
+        ws.append_rows(seed)
+        return ws
+
+
+def _get_compromissos_sheet():
+    sh = get_atividades_sheet().spreadsheet
+    try:
+        return sh.worksheet("Compromissos")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title="Compromissos", rows=200, cols=12)
+        ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "Competencia", "DataLimite",
+                           "Etapas", "EtapasConcluidas", "Status", "DataCriacao",
+                           "DataConclusao", "Historico"]])
+        return ws
+
+
+def _proximo_id_compromisso(todos):
+    maior = 0
+    for row in todos[1:]:
+        if row and row[0].strip().isdigit():
+            maior = max(maior, int(row[0].strip()))
+    return str(maior + 1)
+
+
+def _status_compromisso(etapas_concluidas, data_limite, hoje):
+    concluidas = [e for e in etapas_concluidas if e]
+    if len(concluidas) == len(etapas_concluidas):
+        return "Concluído"
+    if hoje.date() > data_limite.date() and not etapas_concluidas[0]:
+        return "Atrasado"
+    if concluidas:
+        return "Em Andamento"
+    return "Pendente"
+
+
+def _gerar_compromissos_mes_atual():
+    """Idempotente: cria o card do mês corrente pra cada regra ativa que
+    ainda não tenha um card gerado nessa competência. Fecha sozinho o
+    ciclo anterior (o card antigo simplesmente fica com seu status real —
+    Concluído ou Atrasado — e um novo é aberto pra competência atual)."""
+    ws_regras = _get_compromissos_regras_sheet()
+    regras = ws_regras.get_all_values()[1:]
+
+    ws_comp = _get_compromissos_sheet()
+    todos = ws_comp.get_all_values()
+    existentes = {(r[1], r[2], r[3], r[4]) for r in todos[1:] if len(r) >= 5}
+
+    agora = agora_br()
+    competencia = agora.strftime("%m/%Y")
+    criados = []
+
+    for r in regras:
+        if len(r) < 7 or r[6].strip().upper() != "TRUE":
+            continue
+        _id, tipo, cliente, usina, regra_tipo, regra_valor = r[0], r[1], r[2], r[3], r[4], r[5]
+        chave = (tipo, cliente, usina, competencia)
+        if chave in existentes:
+            continue
+        try:
+            prazo = _calcular_prazo_compromisso(regra_tipo, regra_valor, agora.year, agora.month)
+        except Exception as e:
+            log.error(f"[Compromissos] Erro ao calcular prazo pra regra {_id}: {e}")
+            continue
+
+        etapas = COMPROMISSO_ETAPAS.get(tipo, ["Envio"])
+        novo_id = _proximo_id_compromisso(todos)
+        linha = [novo_id, tipo, cliente, usina, competencia, prazo.strftime("%d/%m/%Y"),
+                  json.dumps(etapas, ensure_ascii=False), json.dumps([""] * len(etapas)),
+                  "Pendente", agora.strftime("%d/%m/%Y %H:%M:%S"), "",
+                  f"{agora.strftime('%d/%m/%Y %H:%M')} - Card criado automaticamente pra competência {competencia}."]
+        ws_comp.append_row(linha)
+        todos.append(linha)
+        existentes.add(chave)
+        criados.append({"id": novo_id, "tipo": tipo, "cliente": cliente, "competencia": competencia,
+                         "dataLimite": prazo.strftime("%d/%m/%Y")})
+
+    return criados
+
+
+def _listar_compromissos_core():
+    _gerar_compromissos_mes_atual()
+    ws = _get_compromissos_sheet()
+    todos = ws.get_all_values()
+    agora = agora_br()
+    resultado = []
+    for row in todos[1:]:
+        if len(row) < 12 or not row[0].strip():
+            continue
+        try:
+            data_limite = datetime.strptime(row[5].strip(), "%d/%m/%Y")
+        except Exception:
+            continue
+        etapas = json.loads(row[6]) if row[6] else []
+        etapas_concluidas = json.loads(row[7]) if row[7] else []
+        status_calc = _status_compromisso(etapas_concluidas, data_limite, agora)
+        dias_restantes = (data_limite.date() - agora.date()).days
+        resultado.append({
+            "id": row[0], "tipo": row[1], "tipoLabel": COMPROMISSO_LABEL.get(row[1], row[1]),
+            "cliente": row[2], "usina": row[3], "competencia": row[4],
+            "dataLimite": row[5], "diasRestantes": dias_restantes,
+            "etapas": etapas, "etapasConcluidas": etapas_concluidas,
+            "status": status_calc, "dataConclusao": row[10],
+        })
+    # Mais urgente primeiro: atrasado > vence antes > já concluído por último
+    ordem_status = {"Atrasado": 0, "Pendente": 1, "Em Andamento": 1, "Concluído": 2}
+    resultado.sort(key=lambda c: (ordem_status.get(c["status"], 1), c["diasRestantes"]))
+    return resultado
+
+
+@app.route("/compromissos", methods=["GET"])
+def listar_compromissos():
+    try:
+        return jsonify({"ok": True, "compromissos": _listar_compromissos_core()}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao listar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/compromissos/marcar-etapa", methods=["POST"])
+def marcar_etapa_compromisso():
+    try:
+        body = request.get_json(force=True) or {}
+        comp_id = str(body.get("id", "")).strip()
+        etapa_index = int(body.get("etapaIndex", -1))
+        concluida = bool(body.get("concluida", True))
+        editor = body.get("editor", "desconhecido")
+        if not comp_id or etapa_index < 0:
+            return jsonify({"ok": False, "error": "id e etapaIndex são obrigatórios"}), 400
+
+        ws = _get_compromissos_sheet()
+        todos = ws.get_all_values()
+        linha_idx, linha = None, None
+        for i, row in enumerate(todos[1:], start=2):
+            if row and row[0].strip() == comp_id:
+                linha_idx, linha = i, row
+                break
+        if not linha_idx:
+            return jsonify({"ok": False, "error": f"compromisso {comp_id} não encontrado"}), 404
+
+        etapas = json.loads(linha[6]) if linha[6] else []
+        etapas_concluidas = json.loads(linha[7]) if len(linha) > 7 and linha[7] else [""] * len(etapas)
+        if etapa_index >= len(etapas):
+            return jsonify({"ok": False, "error": "etapaIndex fora do intervalo"}), 400
+
+        agora = agora_br()
+        etapas_concluidas[etapa_index] = agora.strftime("%d/%m/%Y %H:%M") if concluida else ""
+
+        try:
+            data_limite = datetime.strptime(linha[5].strip(), "%d/%m/%Y")
+        except Exception:
+            data_limite = agora
+        novo_status = _status_compromisso(etapas_concluidas, data_limite, agora)
+
+        data_conclusao = agora.strftime("%d/%m/%Y %H:%M:%S") if novo_status == "Concluído" else ""
+
+        nome_etapa = etapas[etapa_index]
+        acao = "concluída" if concluida else "reaberta"
+        entry = f"{agora.strftime('%d/%m/%Y %H:%M')} - Etapa \"{nome_etapa}\" {acao} por {editor}."
+        hist_atual = linha[11] if len(linha) > 11 else ""
+        novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+
+        ws.update(f"H{linha_idx}:L{linha_idx}", [[
+            json.dumps(etapas_concluidas, ensure_ascii=False), novo_status,
+            linha[9] if len(linha) > 9 else agora.strftime("%d/%m/%Y %H:%M:%S"),
+            data_conclusao, novo_hist,
+        ]])
+
+        return jsonify({"ok": True, "id": comp_id, "status": novo_status,
+                         "etapasConcluidas": etapas_concluidas}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao marcar etapa: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _verificar_compromissos_se_necessario():
+    """Piggyback no /sync-fracttal: roda 1x por dia às 7h (mesma janela
+    dos comunicados). Gera os cards do mês corrente e dispara push pra
+    compromissos vencendo em 3/1/0 dias ou já atrasados."""
+    try:
+        agora = agora_br()
+        hoje_str = agora.strftime("%Y-%m-%d")
+        if not (agora.hour == 7 and agora.minute < 10):
+            return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
+        ja_feito = _ler_trava("compromissos_verificados_em")
+        if ja_feito == hoje_str:
+            return {"disparado": False, "motivo": "já verificado hoje"}
+        _gravar_trava("compromissos_verificados_em", hoje_str)
+
+        criados = _gerar_compromissos_mes_atual()
+        compromissos = _listar_compromissos_core()
+        alertados = []
+        for c in compromissos:
+            if c["status"] == "Concluído":
+                continue
+            dias = c["diasRestantes"]
+            if c["status"] == "Atrasado":
+                enviar_push(
+                    titulo=f"🔴 {c['tipoLabel']} atrasado — {c['cliente']}",
+                    corpo=f"Competência {c['competencia']} — prazo era {c['dataLimite']}. Etapa pendente: {c['etapas'][0]}.",
+                    tipo="compromisso_atrasado",
+                    url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
+                )
+                alertados.append(c["id"])
+            elif dias in (0, 1, 3):
+                prazo_txt = "vence hoje" if dias == 0 else f"faltam {dias} dia(s)"
+                enviar_push(
+                    titulo=f"📋 {c['tipoLabel']} — {c['cliente']}",
+                    corpo=f"Competência {c['competencia']}: {prazo_txt} ({c['dataLimite']}).",
+                    tipo="compromisso_alerta",
+                    url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
+                )
+                alertados.append(c["id"])
+        return {"disparado": True, "cardsCriados": criados, "alertados": alertados}
+    except Exception as e:
+        log.error(f"[Compromissos] Erro na verificação diária: {e}")
+        return {"disparado": False, "erro": str(e)}
 
 
 @app.route("/corrigir-nomenclatura-preventiva", methods=["POST", "GET"])
@@ -5216,6 +5554,12 @@ def sync_fracttal():
     except Exception as e:
         log.error(f"[AuditoriaCompleta] Erro no piggyback: {e}")
         body["auditoria_completa_check"] = {"erro": str(e)}
+
+    try:
+        body["compromissos_check"] = _verificar_compromissos_se_necessario()
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no piggyback: {e}")
+        body["compromissos_check"] = {"erro": str(e)}
 
     return jsonify(body), 200
 
