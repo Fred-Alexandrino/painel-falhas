@@ -3105,6 +3105,110 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
             "revalidadas_ao_vivo": revalidadas_ao_vivo}
 
 
+def _extrair_data_fallback_historico(historico, palavras_chave=None):
+    """Varre o histórico (texto multi-linha) procurando a última data/hora
+    (dd/mm/aaaa hh:mm) associada a uma transição de conclusão. Se
+    palavras_chave for dado, prioriza linhas que contenham alguma delas
+    (ex.: 'finalizada', 'concluíd', 'normalizad', 'cancelad'); senão usa a
+    última data encontrada em qualquer linha. Retorna string
+    'dd/mm/aaaa hh:mm:ss' pronta pra gravar, ou None se não achar nada."""
+    linhas = (historico or "").strip().split("\n")
+    padrao_data = re.compile(r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})")
+    candidatas = []
+    for linha in linhas:
+        m = padrao_data.search(linha)
+        if not m:
+            continue
+        prioridade = 0
+        if palavras_chave and any(p in linha.lower() for p in palavras_chave):
+            prioridade = 1
+        candidatas.append((prioridade, linha, m.group(1)))
+    if not candidatas:
+        return None
+    candidatas.sort(key=lambda t: t[0])  # prioridade 1 por último (a gente pega o último da lista com maior prioridade)
+    melhor = [c for c in candidatas if c[0] == 1] or candidatas
+    return f"{melhor[-1][2]}:00"
+
+
+def _validar_integridade_relatorios_core(aplicar=True):
+    """AUTOMAÇÃO DE VALIDAÇÃO — roda pra TODOS os clientes de uma vez (não
+    é específica de nenhum caso pontual). Varre tanto o Painel de Falhas
+    quanto o Painel de Atividades procurando o padrão de bug que fazia
+    ocorrências sumirem dos relatórios semanais (13/07/2026): status
+    marcado como concluído/cancelado mas sem a data de fechamento
+    correspondente gravada — o relatório usa exatamente esse campo pra
+    decidir se algo entra ou não.
+
+    Corrige automaticamente usando a última data relevante do histórico
+    de cada item (não usa "agora" como data, pra não distorcer em qual
+    semana o item realmente foi concluído). Roda 3x/dia junto com a
+    auditoria completa — funciona como um "aprovado/reprovado" contínuo
+    da integridade dos dados que alimentam todos os relatórios, sem
+    precisar esperar alguém notar um relatório com buraco."""
+    problemas = {"falhas": [], "atividades": []}
+
+    # ── Painel de Falhas ─────────────────────────────────────────────────
+    try:
+        ws_falhas = get_sheet()
+        todos_falhas = ws_falhas.get_all_values()
+        COL_CLIENTE, COL_STATUS, COL_HISTORICO = 1, 8, 11
+        COL_DATA_FECHAMENTO = 20
+        palavras_falha = ("normalizad", "resolvid", "concluíd", "concluid", "cancelad", "encerrad")
+        for i, row in enumerate(todos_falhas[1:], start=2):
+            if len(row) <= COL_DATA_FECHAMENTO:
+                row = row + [""] * (COL_DATA_FECHAMENTO + 1 - len(row))
+            status = row[COL_STATUS].strip().lower()
+            concluida = any(x in status for x in ("resolvid", "concluíd", "concluid", "normalizad", "cancelad"))
+            data_fechamento = row[COL_DATA_FECHAMENTO].strip()
+            if concluida and not data_fechamento:
+                fallback = _extrair_data_fallback_historico(row[COL_HISTORICO], palavras_falha)
+                item = {"linha": i, "cliente": row[COL_CLIENTE].strip(), "corrigivel": bool(fallback)}
+                problemas["falhas"].append(item)
+                if aplicar and fallback:
+                    ws_falhas.update_cell(i, COL_DATA_FECHAMENTO + 1, fallback)
+    except Exception as e:
+        log.error(f"[ValidacaoRelatorios] Erro ao varrer Painel de Falhas: {e}")
+
+    # ── Painel de Atividades ─────────────────────────────────────────────
+    try:
+        ws_ativ = get_atividades_sheet()
+        todos_ativ = ws_ativ.get_all_values()
+        palavras_ativ = ("finalizada", "concluíd", "concluid", "cancelad")
+        for i, row in enumerate(todos_ativ[1:], start=2):
+            if len(row) < ATIV_TOTAL_COLUNAS:
+                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            status = row[8].strip()
+            data_conclusao = row[10].strip()
+            if status in ("Concluído", "Cancelado") and not data_conclusao:
+                fallback = _extrair_data_fallback_historico(row[ATIV_COL_HISTORICO - 1], palavras_ativ)
+                item = {"linha": i, "id": row[0].strip(), "cliente": row[1].strip(),
+                        "numeroOS": row[13].strip(), "corrigivel": bool(fallback)}
+                problemas["atividades"].append(item)
+                if aplicar and fallback:
+                    ws_ativ.update_cell(i, ATIV_CAMPO_COL["dataConclusao"], fallback)
+    except Exception as e:
+        log.error(f"[ValidacaoRelatorios] Erro ao varrer Painel de Atividades: {e}")
+
+    total = len(problemas["falhas"]) + len(problemas["atividades"])
+    if total > 0:
+        clientes_afetados = sorted(set(
+            [p["cliente"] for p in problemas["falhas"] if p.get("cliente")] +
+            [p["cliente"] for p in problemas["atividades"] if p.get("cliente")]
+        ))
+        log.warning(f"[ValidacaoRelatorios] {total} problema(s) de integridade encontrado(s) "
+                    f"(clientes: {clientes_afetados}, aplicado={aplicar})")
+        try:
+            enviar_push(
+                titulo=f"🔧 Validação de relatórios: {total} corrigido(s)" if aplicar else f"⚠️ Validação de relatórios: {total} problema(s)",
+                corpo=f"Clientes afetados: {', '.join(clientes_afetados) or '—'}",
+                tipo="validacao_relatorios",
+            )
+        except Exception as e:
+            log.error(f"[ValidacaoRelatorios] Falha ao enviar push: {e}")
+
+    return {"aplicado": aplicar, "total_problemas": total, "detalhes": problemas}
+
+
 def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=40):
     """AUDITORIA COMPLETA — varredura de verdade nas usinas/equipes do
     Fred, cobrindo tudo que uma auditoria de verdade precisa cobrir:
@@ -3114,13 +3218,19 @@ def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=4
       2. VARREDURA DE STATUS/ESTADO: revalida ao vivo na Fracttal um lote
          das OSs já existentes — detecta não só mudança de percentual,
          mas também cancelamentos e conclusões que tenham escapado.
+      3. VALIDAÇÃO DE INTEGRIDADE DE RELATÓRIOS: varre Painel de Falhas +
+         Painel de Atividades (todos os clientes) procurando o padrão que
+         faz ocorrências sumirem dos relatórios semanais, corrigindo
+         automaticamente.
     Roda automaticamente 3x/dia (7h/12h/16h) e sob demanda no botão
     "Auditoria". Mais pesada que a checagem de rotina (frequente, 5 em
     5 min) de propósito — por isso não roda toda hora, só nesses horários."""
     resultado_descoberta, _ = _sync_fracttal_core(desde_horas=desde_horas_descoberta)
     resultado_consistencia = _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0,
                                                               limite_recheck_ao_vivo=limite_recheck_ao_vivo)
-    return {"descoberta": resultado_descoberta, "consistencia": resultado_consistencia}
+    resultado_validacao_relatorios = _validar_integridade_relatorios_core(aplicar=True)
+    return {"descoberta": resultado_descoberta, "consistencia": resultado_consistencia,
+            "validacao_relatorios": resultado_validacao_relatorios}
 
 
 def _verificar_e_disparar_auditoria_completa_se_necessario():
@@ -5219,6 +5329,24 @@ def rodar_auditoria_agora():
     if request.method == "OPTIONS":
         return ("", 204)
     resultado = _auditoria_completa_core()
+    return jsonify({"ok": True, **resultado}), 200
+
+
+@app.route("/validar-integridade-relatorios", methods=["POST", "GET"])
+def validar_integridade_relatorios():
+    """
+    Roda a validação de integridade dos relatórios (Painel de Falhas +
+    Painel de Atividades, TODOS os clientes) sob demanda — mesma lógica
+    que já roda automaticamente 3x/dia dentro da auditoria completa.
+    Útil pra rodar manualmente logo antes de gerar um relatório, com
+    confiança de que os dados estão íntegros.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    aplicar = request.args.get("apply", "true").lower() != "false"
+    resultado = _validar_integridade_relatorios_core(aplicar=aplicar)
     return jsonify({"ok": True, **resultado}), 200
 
 
