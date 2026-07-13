@@ -1,0 +1,31 @@
+name: Check WPP e Log
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          echo "=== Saude do backend principal ===" > backups/check-wpp.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/health" >> backups/check-wpp.txt
+          echo "" >> backups/check-wpp.txt
+          echo "=== Saude da ponte WhatsApp ===" >> backups/check-wpp.txt
+          curl -s "https://wppconnect-painel.onrender.com/health" --max-time 20 >> backups/check-wpp.txt || echo "SEM RESPOSTA /health" >> backups/check-wpp.txt
+          echo "" >> backups/check-wpp.txt
+          curl -s "https://wppconnect-painel.onrender.com/" --max-time 20 >> backups/check-wpp.txt || echo "SEM RESPOSTA /" >> backups/check-wpp.txt
+          echo "" >> backups/check-wpp.txt
+          echo "=== Log de mensagens (ultimas 20) ===" >> backups/check-wpp.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/diag-log-mensagens" -H "X-Webhook-Secret: $WEBHOOK_SECRET" --max-time 30 >> backups/check-wpp.txt
+          cat backups/check-wpp.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-wpp.txt
+          git diff --quiet --cached || git commit -m "check wpp e log [skip ci]"
+          git push
