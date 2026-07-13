@@ -1,0 +1,38 @@
+name: Check Fila
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          abertas = [a for a in ativs if (a.get('numeroOS') or '').strip() and a.get('statusOS') not in ('Finalizada','Cancelada')]
+          # ordena igual o sistema faz: vazio primeiro, depois por data
+          abertas.sort(key=lambda a: a.get('ultimaVerificacaoOS') or '')
+          print('total na fila:', len(abertas))
+          alvo = '2026-07-13 09:09:27'
+          mais_antigas = [a for a in abertas if (a.get('ultimaVerificacaoOS') or '') < alvo]
+          print('quantas estao na frente da 9097 (mais antigas que ela):', len(mais_antigas))
+          print()
+          print('as 10 primeiras da fila agora:')
+          for a in abertas[:10]:
+              print(' ', a.get('numeroOS'), '|', a.get('ultimaVerificacaoOS') or 'NUNCA')
+          print()
+          print('posicao da 9097 na fila:', next((i for i,a in enumerate(abertas) if a.get('numeroOS')=='9097'), '?'))
+          " > backups/check-fila.txt
+          cat backups/check-fila.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-fila.txt
+          git diff --quiet --cached || git commit -m "check fila [skip ci]"
+          git push
