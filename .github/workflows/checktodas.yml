@@ -1,0 +1,31 @@
+name: Check Todas Sem DataConclusao
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          afetadas = [a for a in ativs if a.get('status') in ('Concluído','Cancelado') and not (a.get('dataConclusao') or '').strip()]
+          print('total afetadas:', len(afetadas))
+          for a in afetadas:
+              print(a.get('id'), '|', a.get('numeroOS'), '|', a.get('usina'), '|', a.get('status'), '| historico ultimas linhas:')
+              hist = (a.get('historico') or '').strip().split(chr(10))
+              print('  ', hist[-1] if hist else '')
+          " > backups/check-todas.txt
+          cat backups/check-todas.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-todas.txt
+          git diff --quiet --cached || git commit -m "check todas [skip ci]"
+          git push
