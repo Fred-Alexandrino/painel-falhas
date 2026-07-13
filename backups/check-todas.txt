@@ -1,0 +1,27 @@
+total afetadas: 13
+28 | 981 | Boa Esperança do Sul II | Concluído | historico ultimas linhas:
+   08/07/2026 10:16 - Status na OS (Fracttal) atualizado: "—" → "Finalizada", 0% → 100% (Concluída).
+31 | 8945 | Sete Lagoas | Concluído | historico ultimas linhas:
+   09/07/2026 09:08 - Status na OS (Fracttal) atualizado: "Em Revisão" → "Finalizada", 100% → 100% (Concluída).
+53 | 9035 | Poconé | Concluído | historico ultimas linhas:
+   09/07/2026 09:30 - Status na OS (Fracttal) atualizado: "Em Revisão" → "Finalizada", 100% → 100% (Concluída).
+112 | 9154 | Nova Xavantina II | Concluído | historico ultimas linhas:
+   09/07/2026 10:14 - Status na OS (Fracttal) atualizado: "Em Revisão" → "Finalizada", 100% → 100% (Concluída).
+113 | 9205 | Nova Xavantina II | Concluído | historico ultimas linhas:
+   09/07/2026 10:13 - Status na OS (Fracttal) atualizado: "Em Revisão" → "Finalizada", 100% → 100% (Concluída).
+115 | 9226 | Ibaté I | Concluído | historico ultimas linhas:
+   12/07/2026 01:27 - Status na OS (Fracttal) atualizado: "Em Revisão" → "Finalizada", 100% → 100% (Concluída).
+116 | 9240 | Crateús | Concluído | historico ultimas linhas:
+   13/07/2026 13:30 - ✅ Status interno corrigido pra "Concluído" (estado na Fracttal: "Finalizada").
+117 | 9246 | Matão 1 | Concluído | historico ultimas linhas:
+   12/07/2026 12:35 - 🔧 Auditoria automática: status interno corrigido de "Em Aberto" pra "Concluído" (estado na Fracttal: "Finalizada").
+122 | 9251 | Boa Esperança do Sul I | Cancelado | historico ultimas linhas:
+   12/07/2026 12:23 - Status alterado de "Em Aberto" para "Cancelado" por dashboard.
+125 | 9285 | Crateús | Concluído | historico ultimas linhas:
+   13/07/2026 12:25 - ✅ Status interno corrigido pra "Concluído" (estado na Fracttal: "Finalizada").
+127 | 9287 | Colíder I | Concluído | historico ultimas linhas:
+   13/07/2026 11:57 - ✅ Status interno corrigido pra "Concluído" (estado na Fracttal: "Finalizada").
+128 | 9286 | Crateús | Concluído | historico ultimas linhas:
+   13/07/2026 11:57 - ✅ Status interno corrigido pra "Concluído" (estado na Fracttal: "Finalizada").
+131 | 9319 | Ibaté II | Concluído | historico ultimas linhas:
+   12/07/2026 12:36 - Atividade criada por fracttal-sync.
