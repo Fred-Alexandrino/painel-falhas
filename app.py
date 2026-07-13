@@ -5076,6 +5076,37 @@ def sync_fracttal():
     return jsonify(body), 200
 
 
+@app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
+def verificar_uma_os():
+    """
+    Endpoint PÚBLICO (sem secret) pra forçar a checagem AO VIVO de uma
+    única OS específica, furando a fila de prioridade do rodízio — útil
+    pra quando o técnico acabou de concluir algo e não dá pra esperar a
+    vez dela na fila (que pode ter dezenas de outras OSs mais "antigas"
+    na frente, mesmo que essa seja a mais importante agora).
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    id_atividade = str(body.get("id") or "").strip()
+    numero_os = str(body.get("numeroOS") or "").strip()
+    if not id_atividade and not numero_os:
+        return jsonify({"ok": False, "error": "informe id ou numeroOS"}), 400
+
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        if (id_atividade and row[0].strip() == id_atividade) or (numero_os and row[13].strip() == numero_os):
+            resultado = _fracttal_verificar_e_atualizar_uma_os(ws, i, row, row[13].strip())
+            if resultado is None:
+                return jsonify({"ok": False, "error": "falha ao consultar a Fracttal — ver logs"}), 502
+            return jsonify({"ok": True, **resultado}), 200
+
+    return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
+
+
 @app.route("/atualizar-os-agora", methods=["POST", "OPTIONS"])
 def atualizar_os_agora():
     """
