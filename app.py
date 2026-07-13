@@ -5076,6 +5076,27 @@ def sync_fracttal():
     return jsonify(body), 200
 
 
+@app.route("/diag-log-mensagens", methods=["GET"])
+def diag_log_mensagens():
+    """Diagnóstico temporário: últimas mensagens do log + config de grupos."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        ws_log = get_log_sheet()
+        todas = ws_log.get_all_values()
+        ultimas = todas[-20:] if len(todas) > 1 else []
+        return jsonify({
+            "ok": True,
+            "total_linhas_log": len(todas) - 1 if todas else 0,
+            "grupos_filtro_configurado": GRUPOS_FILTRO,
+            "ultimas_20_mensagens": ultimas,
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
 def verificar_uma_os():
     """
