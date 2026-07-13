@@ -2784,7 +2784,7 @@ ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "resp
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
-    "prazo": 7, "prioridade": 8, "status": 9, "historico": 12, "numeroOS": 14,
+    "prazo": 7, "prioridade": 8, "status": 9, "dataConclusao": 11, "historico": 12, "numeroOS": 14,
     "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
     "anotacoesPessoais": 20, "percentualOS": 21, "statusGeralOS": 22, "detalhesEquipamentosOS": 23,
     "ultimaVerificacaoOS": 24,
@@ -2986,7 +2986,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
         status_efetivo = status_novo or status_os_atual
         novo_status_interno = _status_interno_esperado(status_efetivo, status_interno_atual)
         if novo_status_interno:
-            ws.update_cell(i, ATIV_CAMPO_COL["status"], novo_status_interno)
+            _gravar_status_interno(ws, i, novo_status_interno)
             if novo_status_interno == "Em Aberto" and status_interno_atual in ("Concluído", "Cancelado"):
                 correcao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ OS reaberta automaticamente: "
                             f"estava marcada como \"{status_interno_atual}\", mas a Fracttal mostra estado "
@@ -3066,7 +3066,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
             divergencias.append({"linha": i, "id": row[0], "numeroOS": numero_os,
                                   "de": status_interno_atual, "para": esperado, "estadoFracttal": status_os_atual})
             if aplicar:
-                ws.update_cell(i, ATIV_CAMPO_COL["status"], esperado)
+                _gravar_status_interno(ws, i, esperado)
                 nota = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - 🔧 Auditoria automática: status interno "
                         f"corrigido de \"{status_interno_atual or '—'}\" pra \"{esperado}\" "
                         f"(estado na Fracttal: \"{status_os_atual}\").")
@@ -3237,9 +3237,10 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     novo_id = _proximo_id_atividade(todos)
     agora = agora_br().strftime('%d/%m/%Y %H:%M:%S')
     historico_inicial = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
+    data_conclusao_inicial = agora if status in ("Concluído", "Cancelado") else ""
 
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
-             prioridade, status, agora, "", historico_inicial, editor, numeroOS,
+             prioridade, status, agora, data_conclusao_inicial, historico_inicial, editor, numeroOS,
              statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais,
              percentualOS, statusGeralOS, detalhesEquipamentosOS, ""]
     ws.append_row(linha)
@@ -3408,6 +3409,22 @@ def _status_interno_esperado(estado_fracttal, status_interno_atual):
     else:
         return None
     return alvo if alvo != status_interno_atual else None
+
+
+def _gravar_status_interno(ws, i, novo_status):
+    """FONTE ÚNICA que grava o status interno na planilha — usada nos 3
+    pontos do código que podem mudar esse campo (checagem individual,
+    auditoria, reabertura). Sempre que o novo status é uma conclusão
+    (Concluído/Cancelado), também grava a Data de Conclusão — campo que
+    ficava sempre vazio antes (bug identificado em 13/07/2026: relatórios
+    semanais usam esse campo pra saber se algo fechou dentro do período,
+    e como nunca era preenchido, OSs concluídas sumiam dos relatórios).
+    Ao reabrir (volta pra "Em Aberto"), limpa a Data de Conclusão de novo."""
+    ws.update_cell(i, ATIV_CAMPO_COL["status"], novo_status)
+    if novo_status in ("Concluído", "Cancelado"):
+        ws.update_cell(i, ATIV_CAMPO_COL["dataConclusao"], agora_br().strftime("%d/%m/%Y %H:%M:%S"))
+    elif novo_status == "Em Aberto":
+        ws.update_cell(i, ATIV_CAMPO_COL["dataConclusao"], "")
 
 # A Fracttal tem o add-on "Share TOs" habilitado nesta conta, que gera uma
 # URL pública específica por OT via /work_orders_shared_url/{folio}
@@ -4712,7 +4729,7 @@ def corrigir_estado_revisao():
         if numero_os and status_interno == "Concluído" and status_os == "Em Revisão":
             corrigidas.append({"linha": i, "numeroOS": numero_os})
             if aplicar:
-                ws.update_cell(i, ATIV_CAMPO_COL["status"], "Em Aberto")
+                _gravar_status_interno(ws, i, "Em Aberto")
                 entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - ⚠️ Correção retroativa: OS reaberta — "
                          f"estava marcada como concluída, mas o estado na Fracttal é \"Em Revisão\", "
                          f"não \"Finalizada\" (bug de interpretação de estado corrigido).")
