@@ -5076,24 +5076,44 @@ def sync_fracttal():
     return jsonify(body), 200
 
 
-@app.route("/diag-log-mensagens", methods=["GET"])
-def diag_log_mensagens():
-    """Diagnóstico temporário: últimas mensagens do log + config de grupos."""
+@app.route("/alertar-wpp-status", methods=["POST"])
+def alertar_wpp_status():
+    """
+    Chamado pela ponte do WhatsApp (server.js) sempre que a conexão cai ou
+    precisa de novo QR code. Dispara push imediato pro celular do Fred —
+    sem isso, uma queda de sessão só é percebida dias depois (mensagens
+    de ocorrência chegam nos grupos mas não são capturadas enquanto a
+    sessão estiver caída, e não ficam "na fila" esperando reconexão).
+    """
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(force=True, silent=True) or {}
+    status = body.get("status", "desconhecido")
+    detalhe = body.get("detalhe", "")
     try:
-        ws_log = get_log_sheet()
-        todas = ws_log.get_all_values()
-        ultimas = todas[-20:] if len(todas) > 1 else []
-        return jsonify({
-            "ok": True,
-            "total_linhas_log": len(todas) - 1 if todas else 0,
-            "grupos_filtro_configurado": GRUPOS_FILTRO,
-            "ultimas_20_mensagens": ultimas,
-        }), 200
+        if status == "aguardando_qr":
+            enviar_push(
+                titulo="⚠️ WhatsApp precisa de novo QR Code",
+                corpo="A automação de ocorrências está sem conexão — mensagens de rondas não estão sendo capturadas até reconectar. Acesse /qr na ponte pra escanear.",
+                tipo="wpp_desconectado",
+            )
+        elif status == "desconectado":
+            enviar_push(
+                titulo="⚠️ WhatsApp desconectado",
+                corpo=f"Conexão caiu ({detalhe}). Tentando reconectar automaticamente.",
+                tipo="wpp_desconectado",
+            )
+        elif status == "reconectado":
+            enviar_push(
+                titulo="✅ WhatsApp reconectado",
+                corpo="A automação de ocorrências voltou a capturar mensagens normalmente.",
+                tipo="wpp_reconectado",
+            )
+        return jsonify({"ok": True}), 200
     except Exception as e:
+        log.error(f"[AlertaWPP] Erro ao enviar push: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
