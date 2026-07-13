@@ -2998,7 +2998,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
         return None
 
 
-def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=45, limite_recheck_ao_vivo=35):
+def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limite_recheck_ao_vivo=35):
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
     divergencias = []
@@ -5114,10 +5114,20 @@ def atualizar_os_agora():
     faz uma varredura de status/estado nas OSs que JÁ estão no dashboard
     (revalida ao vivo na Fracttal, corrige status interno se precisar).
     NÃO busca OS nova — isso é o botão "Auditoria", separado.
+
+    limite_atraso_minutos=0: um clique manual é um pedido explícito de
+    dado fresco AGORA — não faz sentido aplicar o filtro de "só recheca
+    se já passou de 45min" (que existe pra poupar chamadas no ciclo
+    automático). Sem esse filtro, cada clique sempre processa as 35 OSs
+    genuinamente mais antigas da fila, garantindo que repetir o clique
+    avança de verdade pela fila inteira (bug identificado em 13/07/2026:
+    uma OS checada há pouco tempo — ex.: técnico concluiu logo depois da
+    última verificação — ficava presa fora da lista de elegíveis pra
+    sempre, não importava quantos cliques).
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    resultado = _auditoria_consistencia_os_core(aplicar=True)
+    resultado = _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0)
     return jsonify({"ok": True, **resultado}), 200
 
 
