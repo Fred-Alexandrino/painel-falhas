@@ -6402,6 +6402,69 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     raise ultima_excecao
 
 
+def _montar_prompt_priorizacao(atividades, hoje_str):
+    mapa_cluster = _mapa_cluster_usina()
+    linhas = []
+    for a in atividades:
+        cluster = mapa_cluster.get((a.get("usina") or "").strip(), "não mapeado")
+        linhas.append(
+            f"- id={a['id']} | OS={a.get('numeroOS') or '—'} | Cliente={a['cliente']} | Usina={a['usina']} | "
+            f"Cluster/Região={cluster} | Equipamento={a.get('equipamento') or '—'} | "
+            f"Descrição={a.get('descricao') or '—'} | Responsável/Equipe={a.get('responsavel') or 'não informado'} | "
+            f"Prioridade={a.get('prioridade') or 'Média'} | Prazo={a.get('prazo') or 'sem prazo definido'} | "
+            f"Estado Fracttal={a.get('statusOS') or '—'} | % concluído={a.get('percentualOS') or '0'}"
+        )
+    lista_atividades = "\n".join(linhas)
+
+    return f"""Aja como um Engenheiro(a) de O&M Sênior especialista em usinas fotovoltaicas, responsável por decidir a ordem de execução das atividades de campo do dia para múltiplas equipes técnicas espalhadas por várias usinas.
+
+CONTEXTO:
+Hoje é {hoje_str}. Há um volume grande de atividades/OS em aberto e fica difícil pro supervisor saber, à primeira vista, o que priorizar. Seu trabalho é ler a lista completa abaixo e devolver uma ordem de prioridade clara e justificada — não é uma escala de quem faz o quê, é um raio-x de "o que mais importa agora e por quê".
+
+CRITÉRIOS DE PRIORIZAÇÃO (avalie todos, na ordem de peso abaixo):
+
+1. IMPACTO NA GERAÇÃO/EFICIÊNCIA DA USINA — o critério mais pesado. Qualquer atividade cuja descrição indique equipamento parado, desligado, offline, string sem corrente, inversor fora, usina total ou parcialmente fora de operação, deve subir para o topo, porque isso é dinheiro de geração perdido a cada hora que passa. Uma atividade cosmética ou de rotina (limpeza, organização, inspeção sem falha) nunca deve furar a frente de uma atividade que representa geração parada.
+
+2. CRITICIDADE + URGÊNCIA DE PRAZO — cruze o campo "Prioridade" (Alta/Média/Baixa) com o quanto falta pro prazo (ou se já está vencido). Uma "Alta" vencida ou vencendo hoje/amanhã é mais urgente que uma "Alta" com prazo confortável. Prazo vencido não é sinônimo automático de mais urgente se o impacto na geração for baixo — pese os dois juntos.
+
+3. DEPENDÊNCIA ENTRE ATIVIDADES — isso é essencial e frequentemente ignorado numa lista simples por prazo. Antes de finalizar a ordem, procure ativamente por atividades na MESMA usina (ou no mesmo equipamento) que tenham uma relação de pré-requisito entre si, e NUNCA sugira a atividade dependente antes da que ela depende. Exemplos do tipo de raciocínio esperado (use como padrão, não como lista fechada — identifique outros casos parecidos na lista real):
+   - Recomposição/emenda de cabos SEMPRE antes de amarração/organização dos mesmos cabos (não dá pra organizar o que ainda não foi consertado).
+   - Diagnóstico/inspeção de uma falha SEMPRE antes do reparo dela (não dá pra consertar sem saber a causa confirmada).
+   - Reparo elétrico ou troca de componente SEMPRE antes de teste/comissionamento daquele circuito.
+   - Verificação de aterramento/segurança SEMPRE antes de energizar ou religar o equipamento.
+   - Troca de fusível ou proteção SEMPRE antes de testar a string/circuito protegido por ele.
+   - Reparo físico/estrutural numa string ou trilho SEMPRE antes de limpeza de módulos naquele mesmo trecho (limpar antes só suja de novo durante o reparo).
+   - Calibração de sensor SEMPRE depois de qualquer reparo físico no equipamento monitorado por ele (calibrar antes exige recalibrar depois).
+   - Controle de vegetação/acesso ao redor de um equipamento SEMPRE antes de manutenção elétrica que exija acesso seguro àquele ponto.
+   Se identificar uma dependência assim na lista, a atividade pré-requisito deve aparecer com prioridade igual ou maior que a dependente, mesmo que isoladamente pareça menos urgente — porque atrasá-la atrasa a outra também.
+
+4. PROXIMIDADE GEOGRÁFICA (redução de deslocamento) — use o campo "Cluster/Região" pra agrupar, dentro da ordem final, atividades de usinas do mesmo cluster o mais próximas possível umas das outras na lista. Isso não deve nunca sobrepor os critérios 1-3 acima (nunca atrase uma usina parada só pra manter agrupamento geográfico) — é um critério de desempate/organização, não de prioridade em si.
+
+ATIVIDADES EM ABERTO HOJE:
+{lista_atividades}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO):
+Responda APENAS com um JSON válido (sem markdown, sem blocos de código com crase, sem texto antes ou depois), no formato:
+
+{{
+  "resumo_executivo": "2-3 frases dando o panorama geral do dia: quantas coisas críticas existem, algum padrão de dependência ou agrupamento geográfico relevante encontrado",
+  "prioridades": [
+    {{
+      "posicao": <número da posição na fila, 1 = mais prioritário>,
+      "id": "<id da atividade, exatamente como veio na lista>",
+      "numeroOS": "<número da OS, exatamente como veio na lista>",
+      "usina": "<usina>",
+      "cluster": "<cluster/região>",
+      "equipamento": "<equipamento/descrição resumida>",
+      "motivo": "<justificativa curta e direta — cite o critério principal: impacto na geração, prazo, dependência de outra atividade (cite qual), ou agrupamento geográfico>"
+    }}
+  ],
+  "mensagem_pronta": "<texto já formatado, pronto pra copiar e enviar, começando com um cabeçalho tipo '🎯 PRIORIDADES DE HOJE — <data>', listando as atividades em ordem numerada com usina + equipamento + motivo resumido em 1 linha cada, agrupadas visualmente por cluster quando fizer sentido. Use emojis moderadamente (🔴 pra crítico/geração parada, ⚠️ pra urgente por prazo, 📍 pra agrupamento geográfico). Máximo as 15 primeiras posições — se houver mais atividades, termine com uma linha tipo 'e mais N atividades de prioridade menor no painel'.>"
+}}
+
+Não invente atividades que não estão na lista. Inclua em "prioridades" todas as atividades recebidas, ordenadas do id 1 (mais prioritário) até a última — mas em "mensagem_pronta" mostre só o topo (até 15), como instruído."""
+
+
 def _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis):
     linhas = []
     for a in atividades:
@@ -6462,6 +6525,100 @@ Responda APENAS com um JSON válido (sem markdown, sem blocos de código com cra
 }}
 
 Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida (sempre dia útil) e um turno."""
+
+
+@app.route("/sugerir-priorizacao-diaria", methods=["POST", "OPTIONS"])
+def sugerir_priorizacao_diaria():
+    """
+    Usa o Gemini pra analisar TODAS as atividades em aberto (todas as
+    usinas, todos os clientes) e sugerir uma ordem de prioridade pro dia,
+    considerando impacto na geração, criticidade/prazo, dependência entre
+    atividades (ex.: recompor cabo antes de amarrar) e agrupamento
+    geográfico pra reduzir deslocamento. Usado pelo botão "Sugerir
+    Priorização (IA)" dentro do modal de Comunicados — gera uma mensagem
+    separada, não mistura com o comunicado normal por usina.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    status_excluidos = {"concluído", "concluido", "cancelado", "convertida em ocorrência", "convertida em ocorrencia"}
+    atividades = []
+    for row in todos[1:]:
+        if len(row) < len(ATIV_HEADERS_JSON):
+            row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+        item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+        if not item.get("id"):
+            continue
+        if (item.get("status") or "").strip().lower() in status_excluidos:
+            continue
+        if (item.get("statusOS") or "").strip() == "Em Revisão":
+            continue  # já foi feita, aguardando confirmação — não é prioridade de execução
+        atividades.append(item)
+
+    if not atividades:
+        return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada pra priorizar"}), 400
+
+    total_original = len(atividades)
+    truncado = total_original > 70
+    if truncado:
+        # mesmo teto de segurança usado na reprogramação — prioriza uma
+        # pré-seleção grosseira (Alta primeiro, prazo mais próximo) antes
+        # de mandar pra IA, que então refina de verdade considerando
+        # dependência e geografia.
+        def _chave_urgencia(item):
+            prioridade_peso = {"alta": 0, "média": 1, "media": 1, "baixa": 2}.get((item.get("prioridade") or "").strip().lower(), 1)
+            prazo_str = (item.get("prazo") or "").strip()
+            m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo_str)
+            prazo_ts = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp() if m else float("inf")
+            return (prioridade_peso, prazo_ts)
+        atividades = sorted(atividades, key=_chave_urgencia)[:70]
+
+    hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
+    prompt = _montar_prompt_priorizacao(atividades, hoje_str)
+
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.25,
+                    "maxOutputTokens": 24576,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=50,
+            usar_chave_teste=(request.args.get("diagnostico", "").lower() == "true"),
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        finish_reason = candidato.get("finishReason", "")
+        if finish_reason == "MAX_TOKENS":
+            log.error(f"[sugerir-priorizacao] Resposta cortada por limite de tokens ({len(atividades)} atividades)")
+            return jsonify({"ok": False, "error": ("A resposta da IA foi cortada por ser grande demais. "
+                            "Tente novamente em instantes.")}), 502
+        texto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
+        sugestao = json.loads(texto_limpo)
+        return jsonify({"ok": True, "truncado": truncado, "total_atividades": total_original,
+                         "consideradas": len(atividades), **sugestao}), 200
+    except requests.exceptions.HTTPError as e:
+        log.error(f"[sugerir-priorizacao] Erro HTTP do Gemini: {e}")
+        return jsonify({"ok": False, "error": f"Erro ao consultar a IA: {e}"}), 502
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        log.error(f"[sugerir-priorizacao] Erro ao processar resposta do Gemini: {e}")
+        return jsonify({"ok": False, "error": "A IA retornou uma resposta em formato inesperado. Tente novamente."}), 502
+    except Exception as e:
+        log.error(f"[sugerir-priorizacao] Erro inesperado: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/sugerir-reprogramacao", methods=["POST", "OPTIONS"])
