@@ -1,0 +1,32 @@
+{
+  "anotacoesPessoais": "",
+  "cliente": "RENOGRID",
+  "cluster": "CE Oeste 02",
+  "dataConclusao": "",
+  "dataCriacao": "14/07/2026 07:08:55",
+  "descricao": "Religamento de usina",
+  "detalhesEquipamentosOS": "[{\"equipamento\": \"RenoGrid - Crateús 1 - CE  Crateús  Ceará Brasil\", \"status\": \"Concluída\", \"prazo\": \"14/07/2026\"}]",
+  "editor": "fracttal-sync",
+  "equipamento": "RNGD-CTS100",
+  "etiquetasOS": "",
+  "historico": "14/07/2026 07:08 - Atividade criada por fracttal-sync.\n14/07/2026 07:33 - visualizado alterado de \"—\" para \"sim\" por dashboard.",
+  "id": "139",
+  "linkOS": "https://printwo.fracttal.com/?4987:e00519c3-3c12-492f-a545-3fd9c7f57426",
+  "numeroOS": "9396",
+  "observacoesOS": "",
+  "percentualOS": "100",
+  "prazo": "14/07/2026",
+  "prioridade": "Alta",
+  "responsavel": "Railson Gomes",
+  "status": "Em Aberto",
+  "statusGeralOS": "Concluída",
+  "statusOS": "Em Revisão",
+  "statusTarefaOS": "Concluída",
+  "ultimaVerificacaoOS": "",
+  "usina": "Crateús",
+  "visualizado": "sim"
+}
+
+=== dado bruto direto na Fracttal ===
+total tasks: 1
+id_status_work_order: 2 | status_label: None | percent: None
