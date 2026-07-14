@@ -2780,17 +2780,17 @@ ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "resp
                       "prioridade", "status", "dataCriacao", "dataConclusao", "historico", "editor",
                       "numeroOS", "statusOS", "observacoesOS", "linkOS", "statusTarefaOS", "etiquetasOS",
                       "anotacoesPessoais", "percentualOS", "statusGeralOS", "detalhesEquipamentosOS",
-                      "ultimaVerificacaoOS"]
+                      "ultimaVerificacaoOS", "visualizado"]
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
     "prazo": 7, "prioridade": 8, "status": 9, "dataConclusao": 11, "historico": 12, "numeroOS": 14,
     "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
     "anotacoesPessoais": 20, "percentualOS": 21, "statusGeralOS": 22, "detalhesEquipamentosOS": 23,
-    "ultimaVerificacaoOS": 24,
+    "ultimaVerificacaoOS": 24, "visualizado": 25,
 }
 
-ATIV_TOTAL_COLUNAS = 24
+ATIV_TOTAL_COLUNAS = 25
 
 _ativ_headers_ensured = {"done": False}
 
@@ -2820,8 +2820,10 @@ def _garantir_headers_atividades(ws):
         header = ws.row_values(1)
         extras = {15: "statusOS", 16: "observacoesOS", 17: "linkOS", 18: "statusTarefaOS",
                   19: "etiquetasOS", 20: "anotacoesPessoais", 21: "percentualOS",
-                  22: "statusGeralOS", 23: "detalhesEquipamentosOS", 24: "ultimaVerificacaoOS"}
+                  22: "statusGeralOS", 23: "detalhesEquipamentosOS", 24: "ultimaVerificacaoOS",
+                  25: "visualizado"}
         precisa = False
+        visualizado_e_novo = (len(header) < 25 or header[24].strip() != "visualizado")
         for col, nome in extras.items():
             atual = header[col - 1] if len(header) >= col else ""
             if atual.strip() != nome:
@@ -2834,6 +2836,20 @@ def _garantir_headers_atividades(ws):
                 novo_header[col - 1] = nome
             ws.update(f"A1:{chr(64 + ATIV_TOTAL_COLUNAS)}1", [novo_header])
             log.info("[Atividades] Header estendido com todos os campos Fracttal")
+        if visualizado_e_novo:
+            # backfill: atividades JÁ existentes não devem aparecer como
+            # "não lidas" quando essa funcionalidade é ligada pela primeira
+            # vez — só atividades genuinamente novas (criadas depois disso)
+            # devem nascer sem o marcador de "visualizado".
+            try:
+                total_linhas = len(ws.get_all_values())
+                if total_linhas > 1:
+                    coluna_letra = chr(64 + ATIV_CAMPO_COL["visualizado"])
+                    valores = [["sim"]] * (total_linhas - 1)
+                    ws.update(f"{coluna_letra}2:{coluna_letra}{total_linhas}", valores)
+                    log.info(f"[Atividades] Backfill: {total_linhas - 1} atividades existentes marcadas como já visualizadas")
+            except Exception as e:
+                log.error(f"[Atividades] Erro no backfill de visualizado: {e}")
         _ativ_headers_ensured["done"] = True
     except Exception as e:
         log.error(f"[Atividades] Erro ao garantir conteúdo do header estendido: {e}")
@@ -3354,7 +3370,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
              prioridade, status, agora, data_conclusao_inicial, historico_inicial, editor, numeroOS,
              statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais,
-             percentualOS, statusGeralOS, detalhesEquipamentosOS, ""]
+             percentualOS, statusGeralOS, detalhesEquipamentosOS, "", ""]
     ws.append_row(linha)
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
     todos.append(linha)
