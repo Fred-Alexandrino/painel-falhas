@@ -1,0 +1,33 @@
+name: Teste Exclusao Performance
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/enviar-comunicados-diarios?dry_run=true" -H "X-Webhook-Secret: $WEBHOOK_SECRET" --max-time 90 -o backups/teste-performance.json
+          python3 -c "
+          import json
+          d = json.load(open('backups/teste-performance.json'))
+          print('ok:', d.get('ok'))
+          achou_8025 = False
+          for e in d.get('enviados', []):
+              if '8025' in e.get('texto',''):
+                  achou_8025 = True
+                  print('!!! OS 8025 AINDA APARECE em', e.get('usina'))
+          print('OS 8025 no comunicado:', achou_8025)
+          " > backups/resumo-performance.txt
+          cat backups/resumo-performance.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/resumo-performance.txt
+          git diff --quiet --cached || git commit -m "teste performance [skip ci]"
+          git push
