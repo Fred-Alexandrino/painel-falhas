@@ -5353,8 +5353,26 @@ def _verificar_e_disparar_comunicados_se_necessario():
         if ja_enviado == hoje_str:
             return {"disparado": False, "motivo": "já enviado hoje"}
 
-        _gravar_trava("comunicados_enviados_em", hoje_str)
+        # a trava só é gravada DEPOIS de confirmar que o envio foi tentado
+        # de verdade — antes ela era gravada logo antes de chamar a função
+        # de envio, então uma falha (ex.: WhatsApp reconectando naquele
+        # minuto) deixava o dia "marcado como enviado" sem nada ter saído,
+        # bloqueando qualquer nova tentativa até o dia seguinte (bug
+        # identificado em 14/07/2026, depois de um dia sem comunicado).
         resultado = _enviar_comunicados_diarios_core()
+        if resultado.get("ok", True) is False and not resultado.get("enviados"):
+            log.error(f"[ComunicadosDiarios] Envio falhou, trava NÃO gravada (tenta de novo no próximo ciclo): {resultado}")
+            try:
+                enviar_push(
+                    titulo="⚠️ Comunicados de hoje não saíram",
+                    corpo=f"Falha no envio às {agora.strftime('%H:%M')}: {resultado.get('error', 'motivo desconhecido')}. Tentará de novo em 5 min.",
+                    tipo="comunicados_falha",
+                )
+            except Exception:
+                pass
+            return {"disparado": False, "motivo": "falha no envio, tentará de novo no próximo ciclo", "resultado": resultado}
+
+        _gravar_trava("comunicados_enviados_em", hoje_str)
         return {"disparado": True, "resultado": resultado}
     except Exception as e:
         log.error(f"[ComunicadosDiarios] Erro na verificação/disparo: {e}")
