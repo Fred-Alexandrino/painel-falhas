@@ -1,0 +1,27 @@
+name: Corrigir StatusGeral Cancelados
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          echo "resultado:" > backups/corrigir-statusgeral.txt
+          for id in 35 122 137 138; do
+            payload=$(python3 -c "import json; print(json.dumps({'id':'$id','field':'statusGeralOS','value':'Cancelada'}))")
+            resultado=$(curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/atualizar-campo-atividade" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" -d "$payload")
+            echo "id=$id -> $resultado" >> backups/corrigir-statusgeral.txt
+          done
+          cat backups/corrigir-statusgeral.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/corrigir-statusgeral.txt
+          git diff --quiet --cached || git commit -m "corrigir statusgeral cancelados [skip ci]"
+          git push
