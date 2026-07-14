@@ -1,0 +1,33 @@
+name: Check Apps Script
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -sL "https://script.google.com/macros/s/AKfycbya1PLWxm1quM889etDastzC4BMUOQCy6wYVZfWTFY5jy9jLKQR32XJdco7ywPaxmVm3g/exec" --max-time 30 -o /tmp/resp.json
+          python3 -c "
+          import json
+          try:
+              d = json.load(open('/tmp/resp.json'))
+              if isinstance(d, list) and d:
+                  print('total itens:', len(d))
+                  print('chaves do primeiro item:', list(d[0].keys()))
+              else:
+                  print(type(d))
+          except Exception as e:
+              print('erro parse:', e)
+              print(open('/tmp/resp.json').read()[:1000])
+          " > backups/apps-script-resumo.txt
+          cat backups/apps-script-resumo.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/apps-script-resumo.txt
+          git diff --quiet --cached || git commit -m "check apps script [skip ci]"
+          git push
