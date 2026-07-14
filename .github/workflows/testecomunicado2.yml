@@ -1,0 +1,22 @@
+name: Teste Comunicado Revalidado 2
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/enviar-comunicados-diarios?dry_run=true" -H "X-Webhook-Secret: $WEBHOOK_SECRET" --max-time 90 -o backups/teste-comunicado2.json
+          cat backups/teste-comunicado2.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-comunicado2.json
+          git diff --quiet --cached || git commit -m "teste comunicado 2 [skip ci]"
+          git push
