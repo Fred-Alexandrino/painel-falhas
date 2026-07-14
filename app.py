@@ -5605,6 +5605,27 @@ def alertar_wpp_status():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/diag-grupos-log", methods=["GET"])
+def diag_grupos_log():
+    """Diagnóstico temporário: config de grupos + log completo de mensagens."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        ws_log = get_log_sheet()
+        todas = ws_log.get_all_values()
+        return jsonify({
+            "ok": True,
+            "grupos_filtro": GRUPOS_FILTRO,
+            "total_grupos_filtro": len(GRUPOS_FILTRO),
+            "total_linhas_log": len(todas) - 1 if todas else 0,
+            "todas_as_mensagens": todas,
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
 def verificar_uma_os():
     """
