@@ -2932,7 +2932,7 @@ def resolver_duplicata_8866():
     return jsonify({"ok": True, "resultado": resultado}), 200
 
 
-def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
+def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notificacao=True):
     """Consulta a Fracttal AO VIVO pra uma única OS (linha i da planilha) e
     atualiza todos os campos derivados (statusOS, percentualOS,
     statusGeralOS, statusTarefaOS, detalhesEquipamentosOS) + aplica a
@@ -2940,6 +2940,12 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
     pelo rodízio automático quanto pela auditoria completa — única função
     que efetivamente fala com a Fracttal pra revalidar uma OS, pra nunca
     ter dois lugares checando/decidindo isso de formas diferentes.
+
+    enviar_notificacao=False quando quem chama está processando um lote
+    (rodízio de várias OSs de uma vez) — nesse caso, quem chama deve
+    mandar um único push resumido no final, em vez de um por item (evita
+    disparar muitas notificações em sequência rápida, o que já fez o
+    Chrome marcar o site como "possível spam" — relatado 14/07/2026).
 
     Retorna um dict com o resumo do que mudou (ou None em caso de erro,
     já logado)."""
@@ -3013,7 +3019,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
                             f"\"{novo_status_interno}\" (estado na Fracttal: \"{status_efetivo or '—'}\").")
             ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{correcao}".strip() if hist_atual else correcao)
 
-        if mudou:
+        if mudou and enviar_notificacao:
             try:
                 usina_row = row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else ""
                 equipamento_row = row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else ""
@@ -3103,10 +3109,35 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
     if aplicar and desatualizadas:
         desatualizadas.sort(key=lambda d: d["ultimaVerificacao"])  # "nunca" (vazio) primeiro
         for d in desatualizadas[:limite_recheck_ao_vivo]:
-            resultado = _fracttal_verificar_e_atualizar_uma_os(ws, d["linha"], d["row"], d["numeroOS"])
+            resultado = _fracttal_verificar_e_atualizar_uma_os(ws, d["linha"], d["row"], d["numeroOS"],
+                                                                enviar_notificacao=False)
             if resultado:
                 revalidadas_ao_vivo.append(resultado)
             time.sleep(0.35)
+
+    # um único push resumido pra tudo que mudou nessa rodada, em vez de um
+    # por OS — o rodízio pode processar até 40 de uma vez, e um push por
+    # item deixava a notificação "spammy" (o Chrome chegou a marcar o
+    # site como "possível spam" por causa disso — relatado 14/07/2026).
+    mudaram = [r for r in revalidadas_ao_vivo if r.get("mudou")]
+    if mudaram:
+        try:
+            if len(mudaram) == 1:
+                r = mudaram[0]
+                enviar_push(
+                    titulo=f"🔄 OS {r['numeroOS']} atualizada",
+                    corpo=f"{r.get('statusGeralOS','')} — {r.get('percentualOS','0')}% concluído",
+                    tipo="fracttal_status",
+                )
+            else:
+                numeros = ", ".join(r["numeroOS"] for r in mudaram[:8])
+                enviar_push(
+                    titulo=f"🔄 {len(mudaram)} OSs atualizadas",
+                    corpo=f"OS: {numeros}{'...' if len(mudaram) > 8 else ''}",
+                    tipo="fracttal_status",
+                )
+        except Exception as e:
+            log.error(f"[Auditoria] Falha ao enviar push resumido de status atualizado: {e}")
 
     for d in desatualizadas:
         d.pop("linha", None)
@@ -5468,7 +5499,7 @@ def _enviar_comunicados_diarios_core():
     candidatas_recheck = candidatas_recheck[:LIMITE_RECHECK_COMUNICADOS]
 
     for i, row, numero_os in candidatas_recheck:
-        _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os)
+        _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notificacao=False)
         time.sleep(0.35)
 
     # rebusca do zero — garante que a seleção final usa o dado que acabou
