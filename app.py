@@ -5443,7 +5443,7 @@ def _enviar_comunicados_diarios_core():
         if numero_os:
             candidatas_recheck.append((i, row, numero_os))
 
-    LIMITE_RECHECK_COMUNICADOS = 40  # trava de segurança de tempo — essa função
+    LIMITE_RECHECK_COMUNICADOS = 20  # trava de segurança de tempo — essa função
     # roda no mesmo ciclo que outras checagens (auditoria), então não pode
     # crescer sem limite. Prioriza as mais desatualizadas primeiro.
     candidatas_recheck.sort(key=lambda t: t[1][ATIV_CAMPO_COL["ultimaVerificacaoOS"] - 1] or "")
