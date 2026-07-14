@@ -5417,6 +5417,48 @@ def _enviar_comunicados_diarios_core():
 
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
+
+    # ── Revalida AO VIVO na Fracttal cada candidata antes de decidir se
+    # entra no comunicado — o dado gravado (statusOS) pode estar
+    # ligeiramente desatualizado se essa OS específica ainda não tiver
+    # caído no rodízio automático desde que o técnico a moveu pra
+    # "Em Verificação" na Fracttal. Como o comunicado só roda 1x/dia,
+    # vale o custo de checar direto na fonte pra garantir que nenhuma OS
+    # já resolvida pelo técnico seja cobrada de novo (bug relatado pelos
+    # técnicos em 14/07/2026 — "Em Verificação" sendo enviada mesmo
+    # assim, por causa de dado desatualizado no momento do envio).
+    candidatas_recheck = []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        if not row[0].strip():
+            continue
+        status = row[8].strip()
+        if _is_concluido_atividade(status):
+            continue
+        status_os = row[14].strip()
+        if status_os == "Em Revisão":
+            continue
+        numero_os = row[13].strip()
+        if numero_os:
+            candidatas_recheck.append((i, row, numero_os))
+
+    LIMITE_RECHECK_COMUNICADOS = 40  # trava de segurança de tempo — essa função
+    # roda no mesmo ciclo que outras checagens (auditoria), então não pode
+    # crescer sem limite. Prioriza as mais desatualizadas primeiro.
+    candidatas_recheck.sort(key=lambda t: t[1][ATIV_CAMPO_COL["ultimaVerificacaoOS"] - 1] or "")
+    candidatas_recheck = candidatas_recheck[:LIMITE_RECHECK_COMUNICADOS]
+
+    for i, row, numero_os in candidatas_recheck:
+        _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os)
+        time.sleep(0.35)
+
+    # rebusca do zero — garante que a seleção final usa o dado que acabou
+    # de ser gravado pela revalidação acima, sem depender de referências
+    # de lista em memória (que podem se desconectar quando uma linha
+    # precisa de padding).
+    todos = ws.get_all_values()
+
     por_usina = {}
     for row in todos[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
