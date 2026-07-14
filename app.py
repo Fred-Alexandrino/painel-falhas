@@ -5439,6 +5439,15 @@ def _enviar_comunicados_diarios_core():
         status_os = row[14].strip()
         if status_os == "Em Revisão":
             continue
+        etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
+        if "PERFORMANCE" in etiquetas:
+            # etiquetada na Fracttal como tarefa de análise de performance —
+            # normalmente atribuída a um analista, não ao técnico de campo.
+            # Mandar isso pro grupo da equipe só confunde quem recebe (não
+            # é responsabilidade deles) — identificado 14/07/2026 com a OS
+            # 8025 (Boa Esperança do Sul I), etiquetada PERFORMANCE e
+            # atribuída a um analista, mas enviada ao grupo de campo.
+            continue
         numero_os = row[13].strip()
         if numero_os:
             candidatas_recheck.append((i, row, numero_os))
@@ -5473,6 +5482,9 @@ def _enviar_comunicados_diarios_core():
             # já foi enviada pra verificação na Fracttal — o técnico já fez
             # a parte dele, não faz sentido cobrar de novo no comunicado.
             # Continua rastreada/ativa no sistema até virar "Finalizada".
+            continue
+        etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
+        if "PERFORMANCE" in etiquetas:
             continue
         usina = row[2].strip()
         if not usina:
