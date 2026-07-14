@@ -3017,10 +3017,12 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os):
             try:
                 usina_row = row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else ""
                 equipamento_row = row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else ""
+                id_atividade = row[0] if row else ""
                 enviar_push(
                     titulo=f"🔄 OS {numero_os} — {usina_row or 'Usina não informada'}",
                     corpo=f"{equipamento_row or 'Equipamento não informado'} · {status_geral_novo} — {percentual_novo}% concluído",
                     tipo="fracttal_status",
+                    url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={id_atividade}",
                 )
             except Exception as e:
                 log.error(f"[sync-fracttal] Falha ao enviar push de mudança de status {numero_os}: {e}")
@@ -4522,6 +4524,7 @@ def _sync_fracttal_core(desde_horas=8):
                     titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']} — {mapeado['usina']}",
                     corpo=f"{mapeado.get('equipamento', '') or 'Equipamento não informado'} ({mapeado['cliente']}): {mapeado['descricao'][:100]}",
                     tipo="fracttal_nova_os",
+                    url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
                 )
             except Exception as e:
                 log.error(f"[sync-fracttal] Falha ao enviar push de nova OS {mapeado['numeroOS']}: {e}")
