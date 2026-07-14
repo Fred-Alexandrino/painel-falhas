@@ -1,0 +1,7 @@
+total: 112
+total com problema: 5
+('23', '', 'Concluído', 'statusGeralOS VAZIO')
+('35', '', 'Cancelado', "statusGeralOS='Concluída' nao bate")
+('122', '9251', 'Cancelado', "statusGeralOS='Não Iniciada' nao bate")
+('137', '9355', 'Cancelado', "statusGeralOS='Não Iniciada' nao bate")
+('138', '9354', 'Cancelado', "statusGeralOS='Não Iniciada' nao bate")
