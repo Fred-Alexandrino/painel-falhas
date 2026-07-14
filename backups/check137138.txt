@@ -1,0 +1,18 @@
+=== id 23 ===
+numeroOS:  | statusOS:  | status: Concluído | statusGeralOS: 
+historico (ultimas linhas):
+   03/07/2026 13:36 - Prioridade alterado de "Alta" para "Média" por fredalexandrino.
+   03/07/2026 14:52 - Responsável alterado de "FRED ALEXANDRINO" para "COS" por fredalexandrino.
+   09/07/2026 16:14 - Status alterado de "Em Andamento" para "Concluído" por fredalexandrino.
+   09/07/2026 16:14 - Formulário atualizado e enviado
+
+=== id 137 ===
+numeroOS: 9355 | statusOS: Cancelada | status: Cancelado | statusGeralOS: Não Iniciada
+historico (ultimas linhas):
+   13/07/2026 16:05 - Atividade criada por fracttal-sync.
+
+=== id 138 ===
+numeroOS: 9354 | statusOS: Cancelada | status: Cancelado | statusGeralOS: Não Iniciada
+historico (ultimas linhas):
+   13/07/2026 16:05 - Atividade criada por fracttal-sync.
+
