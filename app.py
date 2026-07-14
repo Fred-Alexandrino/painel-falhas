@@ -3550,12 +3550,21 @@ def _gravar_status_interno(ws, i, novo_status):
     ficava sempre vazio antes (bug identificado em 13/07/2026: relatórios
     semanais usam esse campo pra saber se algo fechou dentro do período,
     e como nunca era preenchido, OSs concluídas sumiam dos relatórios).
-    Ao reabrir (volta pra "Em Aberto"), limpa a Data de Conclusão de novo."""
+    Ao reabrir (volta pra "Em Aberto"), limpa a Data de Conclusão de novo.
+
+    Quando vira "Cancelado", também sincroniza o statusGeralOS pra
+    "Cancelada" — senão esse campo (progresso da tarefa) fica com o valor
+    de antes do cancelamento pra sempre (a Fracttal não manda mais dado
+    novo pra uma OS cancelada), fazendo o badge mostrar algo tipo "Não
+    Iniciada" em vez de refletir que foi cancelada (bug identificado em
+    14/07/2026)."""
     ws.update_cell(i, ATIV_CAMPO_COL["status"], novo_status)
     if novo_status in ("Concluído", "Cancelado"):
         ws.update_cell(i, ATIV_CAMPO_COL["dataConclusao"], agora_br().strftime("%d/%m/%Y %H:%M:%S"))
     elif novo_status == "Em Aberto":
         ws.update_cell(i, ATIV_CAMPO_COL["dataConclusao"], "")
+    if novo_status == "Cancelado":
+        ws.update_cell(i, ATIV_CAMPO_COL["statusGeralOS"], "Cancelada")
 
 # A Fracttal tem o add-on "Share TOs" habilitado nesta conta, que gera uma
 # URL pública específica por OT via /work_orders_shared_url/{folio}
