@@ -1,0 +1,22 @@
+name: Test Diag Header
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/diag-header-visualizado" -H "X-Webhook-Secret: $WEBHOOK_SECRET" --max-time 30 -o backups/diag-header.json
+          cat backups/diag-header.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-header.json
+          git diff --quiet --cached || git commit -m "test diag header [skip ci]"
+          git push
