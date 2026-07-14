@@ -4922,24 +4922,6 @@ def _status_compromisso(etapas_concluidas, data_limite, hoje):
     return "Pendente"
 
 
-def _gerar_compromissos_mes_atual_se_necessario():
-    """Versão econômica de _gerar_compromissos_mes_atual(): só faz a
-    varredura pesada (2 leituras completas de planilha) 1x por competência,
-    usando a trava em _Sistema (leitura pequena e barata) pra decidir se
-    vale a pena. Sem isso, todo GET /compromissos gastava 2 leituras
-    completas — e como o frontend recarregava a lista a cada clique de
-    checkbox, isso estourou a cota de leitura do Google Sheets (429) e
-    derrubou o resto do painel junto (13/07/2026)."""
-    agora = agora_br()
-    competencia = agora.strftime("%m/%Y")
-    ja_gerado = _ler_trava("compromissos_gerados_em")
-    if ja_gerado == competencia:
-        return []
-    criados = _gerar_compromissos_mes_atual()
-    _gravar_trava("compromissos_gerados_em", competencia)
-    return criados
-
-
 def _gerar_compromissos_mes_atual():
     """Idempotente: cria o card do mês corrente pra cada regra ativa que
     ainda não tenha um card gerado nessa competência. Fecha sozinho o
@@ -4985,7 +4967,7 @@ def _gerar_compromissos_mes_atual():
 
 
 def _listar_compromissos_core():
-    _gerar_compromissos_mes_atual_se_necessario()
+    _gerar_compromissos_mes_atual()
     ws = _get_compromissos_sheet()
     todos = ws.get_all_values()
     agora = agora_br()
@@ -5617,30 +5599,20 @@ def alertar_wpp_status():
                 corpo="A automação de ocorrências voltou a capturar mensagens normalmente.",
                 tipo="wpp_reconectado",
             )
+        elif status == "falha_encaminhamento":
+            # A conexão com o WhatsApp em si pode estar normal, mas a
+            # ponte não conseguiu repassar essa mensagem específica pro
+            # backend depois de 3 tentativas — sem esse alerta, isso
+            # ficava só no console, invisível, e a ocorrência real se
+            # perdia por dias sem ninguém saber (identificado 13/07/2026).
+            enviar_push(
+                titulo="⚠️ Mensagem de ronda não foi registrada",
+                corpo=f"Falha ao gravar após 3 tentativas: {detalhe[:150]}",
+                tipo="wpp_falha_encaminhamento",
+            )
         return jsonify({"ok": True}), 200
     except Exception as e:
         log.error(f"[AlertaWPP] Erro ao enviar push: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/diag-grupos-log", methods=["GET"])
-def diag_grupos_log():
-    """Diagnóstico temporário: config de grupos + log completo de mensagens."""
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-    try:
-        ws_log = get_log_sheet()
-        todas = ws_log.get_all_values()
-        return jsonify({
-            "ok": True,
-            "grupos_filtro": GRUPOS_FILTRO,
-            "total_grupos_filtro": len(GRUPOS_FILTRO),
-            "total_linhas_log": len(todas) - 1 if todas else 0,
-            "todas_as_mensagens": todas,
-        }), 200
-    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
