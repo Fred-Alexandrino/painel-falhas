@@ -1,0 +1,27 @@
+name: Check Grupos Monitorados
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://wppconnect-painel.onrender.com/grupos" --max-time 30 -o backups/grupos-nomes.json
+          python3 -c "
+          import json
+          d = json.load(open('backups/grupos-nomes.json'))
+          print('total:', d.get('total'))
+          for g in d.get('grupos', []):
+              print(g['id'], '|', g['nome'])
+          " > backups/grupos-resumo.txt
+          cat backups/grupos-resumo.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/grupos-nomes.json backups/grupos-resumo.txt
+          git diff --quiet --cached || git commit -m "check grupos nomes [skip ci]"
+          git push
