@@ -5650,6 +5650,34 @@ def alertar_wpp_status():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/diag-header-visualizado", methods=["GET"])
+def diag_header_visualizado():
+    """Diagnóstico temporário."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        ws = get_atividades_sheet()
+        header = ws.row_values(1)
+        col_count = ws.col_count
+        # força re-checagem, ignorando o cache do processo
+        _ativ_headers_ensured["done"] = False
+        _garantir_headers_atividades(ws)
+        header_depois = ws.row_values(1)
+        amostra = ws.get_all_values()[1:4]
+        return jsonify({
+            "ok": True,
+            "col_count": col_count,
+            "header_antes": header,
+            "header_depois": header_depois,
+            "amostra_linhas": amostra,
+        }), 200
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
+
+
 @app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
 def verificar_uma_os():
     """
