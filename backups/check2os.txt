@@ -1,0 +1,2 @@
+OS 8025 | id= 80 | status= Em Aberto | statusOS= Em Processo | ultimaVerificacaoOS= 2026-07-14 08:11:01
+OS 9251 | id= 122 | status= Cancelado | statusOS= Cancelada | ultimaVerificacaoOS= 2026-07-14 08:05:52
