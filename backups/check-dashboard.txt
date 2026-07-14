@@ -1,0 +1,33 @@
+=== OS 8025 ===
+id: 80
+usina: Boa Esperança do Sul I | THOPEN
+descricao: Normalizar PV23 - String sem corrente
+status (interno): Em Aberto
+statusOS (estado Fracttal): Em Processo
+statusGeralOS: Não Iniciada
+percentualOS: 0
+ultimaVerificacaoOS: 2026-07-14 08:11:01
+prazo: 19/06/2026
+
+=== OS 9251 ===
+id: 122
+usina: Boa Esperança do Sul I | THOPEN
+descricao: Inspeção e diagnóstico de trackers inoperantes
+status (interno): Cancelado
+statusOS (estado Fracttal): Cancelada
+statusGeralOS: Não Iniciada
+percentualOS: 0
+ultimaVerificacaoOS: 2026-07-14 08:05:52
+prazo: 10/07/2026
+
+=== OS 8605 ===
+id: 76
+usina: Ibaté II | THOPEN
+descricao: PREVENTIVA MENSAL
+status (interno): Em Aberto
+statusOS (estado Fracttal): Em Processo
+statusGeralOS: Não Iniciada
+percentualOS: 0
+ultimaVerificacaoOS: 2026-07-14 08:10:58
+prazo: 17/07/2026
+
