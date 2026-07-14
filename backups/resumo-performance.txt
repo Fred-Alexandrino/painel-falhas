@@ -1,0 +1,3 @@
+ok: True
+!!! OS 8025 AINDA APARECE em Boa Esperança do Sul I
+OS 8025 no comunicado: True
