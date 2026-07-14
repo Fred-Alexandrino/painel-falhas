@@ -3104,7 +3104,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
 
     return {"aplicado": aplicar, "total_divergencias": len(divergencias), "divergencias": divergencias,
             "total_desatualizadas": len(desatualizadas), "desatualizadas": desatualizadas,
-            "revalidadas_ao_vivo": revalidadas_ao_vivo}
+            "revalidadas_ao_vivo": revalidadas_ao_vivo, "limite_recheck_ao_vivo": limite_recheck_ao_vivo}
 
 
 def _extrair_data_fallback_historico(historico, palavras_chave=None):
@@ -4922,6 +4922,24 @@ def _status_compromisso(etapas_concluidas, data_limite, hoje):
     return "Pendente"
 
 
+def _gerar_compromissos_mes_atual_se_necessario():
+    """Versão econômica de _gerar_compromissos_mes_atual(): só faz a
+    varredura pesada (2 leituras completas de planilha) 1x por competência,
+    usando a trava em _Sistema (leitura pequena e barata) pra decidir se
+    vale a pena. Sem isso, todo GET /compromissos gastava 2 leituras
+    completas — e como o frontend recarregava a lista a cada clique de
+    checkbox, isso estourou a cota de leitura do Google Sheets (429) e
+    derrubou o resto do painel junto (13/07/2026)."""
+    agora = agora_br()
+    competencia = agora.strftime("%m/%Y")
+    ja_gerado = _ler_trava("compromissos_gerados_em")
+    if ja_gerado == competencia:
+        return []
+    criados = _gerar_compromissos_mes_atual()
+    _gravar_trava("compromissos_gerados_em", competencia)
+    return criados
+
+
 def _gerar_compromissos_mes_atual():
     """Idempotente: cria o card do mês corrente pra cada regra ativa que
     ainda não tenha um card gerado nessa competência. Fecha sozinho o
@@ -4967,7 +4985,7 @@ def _gerar_compromissos_mes_atual():
 
 
 def _listar_compromissos_core():
-    _gerar_compromissos_mes_atual()
+    _gerar_compromissos_mes_atual_se_necessario()
     ws = _get_compromissos_sheet()
     todos = ws.get_all_values()
     agora = agora_br()
