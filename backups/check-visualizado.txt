@@ -1,0 +1,5 @@
+total: 111
+distribuicao visualizado: {'': 111}
+23 | 
+24 | 
+25 | 
