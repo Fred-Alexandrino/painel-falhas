@@ -1,0 +1,34 @@
+name: Check 137 138 23
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          for a in ativs:
+              if a.get('id') in ('137','138','23'):
+                  print('=== id', a.get('id'), '===')
+                  print('numeroOS:', a.get('numeroOS'), '| statusOS:', a.get('statusOS'), '| status:', a.get('status'), '| statusGeralOS:', a.get('statusGeralOS'))
+                  print('historico (ultimas linhas):')
+                  hist = (a.get('historico') or '').split(chr(10))
+                  for h in hist[-4:]:
+                      print('  ', h)
+                  print()
+          " > backups/check137138.txt
+          cat backups/check137138.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check137138.txt
+          git diff --quiet --cached || git commit -m "check 137 138 [skip ci]"
+          git push
