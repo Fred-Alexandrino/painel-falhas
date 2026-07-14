@@ -1,0 +1,36 @@
+name: Check Comunicados Hoje
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          echo "=== hora atual do servidor ===" > backups/check-comunicados.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/health" >> backups/check-comunicados.txt
+          echo "" >> backups/check-comunicados.txt
+          echo "=== trava de comunicados ===" >> backups/check-comunicados.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/config-ler" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/config.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/config.json'))
+          for k,v in d.get('pares',{}).items():
+              if 'comunicado' in k.lower() or 'descoberta' in k.lower() or 'auditoria_completa' in k.lower():
+                  print(k, '->', v)
+          " >> backups/check-comunicados.txt
+          echo "" >> backups/check-comunicados.txt
+          echo "=== disparo manual de verificacao agora ===" >> backups/check-comunicados.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/verificar-e-enviar-comunicados" -H "X-Webhook-Secret: $WEBHOOK_SECRET" >> backups/check-comunicados.txt
+          cat backups/check-comunicados.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-comunicados.txt
+          git diff --quiet --cached || git commit -m "check comunicados hoje [skip ci]"
+          git push
