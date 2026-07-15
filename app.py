@@ -5488,7 +5488,13 @@ def _enviar_comunicados_diarios_core():
         if _is_concluido_atividade(status):
             continue
         status_os = row[14].strip()
-        if status_os == "Em Revisão":
+        if status_os in ("Em Revisão", "Finalizada", "Cancelada"):
+            # o status interno pode ainda não ter sido sincronizado (rodízio
+            # não chegou nessa linha ainda), mas se a Fracttal já diz que
+            # terminou/cancelou, não faz sentido cobrar do técnico de novo
+            # — antes só "Em Revisão" era checado aqui, deixando passar
+            # OSs já Finalizadas/Canceladas cujo status interno ainda
+            # estava desatualizado (relatado pelo Fred em 15/07/2026).
             continue
         etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
         if "PERFORMANCE" in etiquetas:
@@ -5529,10 +5535,11 @@ def _enviar_comunicados_diarios_core():
         if _is_concluido_atividade(status):
             continue
         status_os = row[14].strip()
-        if status_os == "Em Revisão":
-            # já foi enviada pra verificação na Fracttal — o técnico já fez
-            # a parte dele, não faz sentido cobrar de novo no comunicado.
-            # Continua rastreada/ativa no sistema até virar "Finalizada".
+        if status_os in ("Em Revisão", "Finalizada", "Cancelada"):
+            # "Em Revisão": já foi enviada pra verificação, técnico já fez a
+            # parte dele. "Finalizada"/"Cancelada": mesmo que o status
+            # interno ainda não tenha sido sincronizado, a Fracttal já diz
+            # que terminou — não cobra de novo (relatado pelo Fred 15/07/2026).
             continue
         etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
         if "PERFORMANCE" in etiquetas:
