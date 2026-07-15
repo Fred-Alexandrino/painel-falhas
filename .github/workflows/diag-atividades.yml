@@ -1,0 +1,19 @@
+name: Diagnostico Atividades
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o backups/diag-atividades.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-atividades.json
+          git diff --quiet --cached || git commit -m "diag atividades [skip ci]"
+          git push
