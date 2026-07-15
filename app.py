@@ -5139,13 +5139,15 @@ def marcar_etapa_compromisso():
 
 
 def _verificar_compromissos_se_necessario():
-    """Piggyback no /sync-fracttal: roda 1x por dia às 7h (mesma janela
-    dos comunicados). Gera os cards do mês corrente e dispara push pra
-    compromissos vencendo em 3/1/0 dias ou já atrasados."""
+    """Piggyback no /sync-fracttal: roda 1x por dia na janela 07:00-08:30
+    (mesma janela alargada dos comunicados, mesmo motivo — cold-start do
+    Render podia consumir a janela de 9 minutos inteira em dias ruins).
+    Gera os cards do mês corrente e dispara push pra compromissos
+    vencendo em 3/1/0 dias ou já atrasados."""
     try:
         agora = agora_br()
         hoje_str = agora.strftime("%Y-%m-%d")
-        if not (agora.hour == 7 and agora.minute < 10):
+        if not (agora.hour == 7 or (agora.hour == 8 and agora.minute <= 30)):
             return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
         ja_feito = _ler_trava("compromissos_verificados_em")
         if ja_feito == hoje_str:
@@ -5377,16 +5379,25 @@ def _montar_texto_comunicado_usina(usina, atividades):
 @app.route("/verificar-e-enviar-comunicados", methods=["POST", "GET"])
 def _verificar_e_disparar_comunicados_se_necessario():
     """Lógica compartilhada: só dispara o envio de verdade se for dia útil,
-    estiver na janela 07:00-07:09 (BRT) e ainda não tiver sido enviado
+    estiver na janela 07:00-08:30 (BRT) e ainda não tiver sido enviado
     hoje. Retorna um dict com o resultado (nunca levanta exceção pro
-    chamador, pra nunca quebrar quem estiver piggybackando nela)."""
+    chamador, pra nunca quebrar quem estiver piggybackando nela).
+
+    Janela alargada de 9 minutos pra 90 minutos em 15/07/2026: um dia em
+    que o Render aparentemente estava com cold-start bem lento resultou
+    em 502 em TODAS as tentativas dentro da janela original (confirmado
+    manualmente: 1ª tentativa deu 502, 2ª — minutos depois — funcionou).
+    Como o ciclo de 5 em 5 min só tinha ~2 chances dentro de 9 minutos,
+    um dia ruim de Render bastava pra perder o comunicado inteiro. Com
+    90 minutos de janela, sobra bastante margem pro serviço esquentar
+    sozinho sem precisar de intervenção manual."""
     try:
         agora = agora_br()
         hoje_str = agora.strftime("%Y-%m-%d")
 
         if agora.weekday() >= 5:  # sábado=5, domingo=6
             return {"disparado": False, "motivo": "fim de semana"}
-        if not (agora.hour == 7 and agora.minute < 10):
+        if not (agora.hour == 7 or (agora.hour == 8 and agora.minute <= 30)):
             return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
 
         ja_enviado = _ler_trava("comunicados_enviados_em")
