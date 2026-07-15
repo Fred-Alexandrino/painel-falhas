@@ -1,0 +1,22 @@
+ok: True
+total_atividades: 38
+resumo_executivo: O dia 15/07/2026 apresenta diversas atividades críticas, com destaque para falhas que impactam diretamente a geração de energia em usinas como Colíder I e Boa Esperança do Sul I. Há também um volume significativo de preventivas mensais com prazos vencidos ou vencendo hoje, e algumas dependências importantes foram identificadas, especialmente em Ibaté II, onde a amarração de cabos depende de recomposição prévia. O agrupamento geográfico foi considerado para otimizar deslocamentos dentro dos clusters MT Norte 01 e SP Centro 01, após a priorização por impacto e prazo.
+qtd prioridades: 38
+
+top 5:
+  1 | Boa Esperança do Sul I | BES100-INVR1.8 - String sem corrente | IMPACTO NA GERAÇÃO: String sem corrente = perda de geração. Prioridade máxima.
+  2 | Colíder I | Inversor 2.8 SOLAREDGE (CLD100-INVR2.8) - Baixa resistência de isolamento | IMPACTO NA GERAÇÃO: Baixa resistência de isolamento pode levar à parada do inversor. Prazo vencido.
+  3 | Colíder II | Inversor 1.2 SOLAREDGE (CLD200-INVR1.2) - Queda de geração | IMPACTO NA GERAÇÃO: Queda de geração significa perda de receita. Prazo vencido.
+  4 | Colíder II | Inversor 1.7 SOLAREDGE (CLD200-INVR1.7) - Queda de geração | IMPACTO NA GERAÇÃO: Queda de geração significa perda de receita. Prazo vencido. Agrupamento geográfico com OS 36.
+  5 | Ibaté I | IBT100-TRFR1 - Manutenção paliativa de isolamento de cabo de transformador | IMPACTO NA GERAÇÃO: Problema em transformador é crítico para a operação da usina. Prazo hoje.
+
+mensagem_pronta (primeiros 500 chars):
+🎯 PRIORIDADES DE HOJE — 15/07/2026
+
+🔴 SP Centro 01
+1. Boa Esperança do Sul I (OS 8025) - Normalizar PV23 - String sem corrente (IMPACTO NA GERAÇÃO)
+2. Ibaté I (OS 9444) - Manutenção paliativa de isolamento de cabo de transformador (IMPACTO NA GERAÇÃO)
+3. Ibaté II (OS 8605) - PREVENTIVA MENSAL (Prioridade Alta, prazo amanhã)
+4. Ibaté I (OS 8604) - PREVENTIVA MENSAL (Prioridade Alta, prazo amanhã)
+5. Ibaté II (OS 7084) - Amarração dos cabos recompostos (DEPENDÊNCIA)
+6. Ibaté II (OS 6622/7854) - Ac
