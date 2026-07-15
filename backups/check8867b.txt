@@ -1,0 +1,13 @@
+historico completo:
+06/07/2026 13:53 - Atividade criada por claude-chat.
+Equipamentos e pendências: Cabine 1 (CLD200-CABN1) - Fotos invalidadas (Sol. 2884); Preventiva Grupo de Inversores (RNGD-CLD200-PGINVR1) - Termografia invalidada (Sol. 2885); QGBT 1 (CLD200-QGBT1) - Termografia não realizada (Sol. 2886); SPDA (CLD200-SPDA1) - Incompleta (Sol. 2887); Transformador 1 Blutrafo (CLD200-TRFR1) - Termografia não realizada (Sol. 2888).
+06/07/2026 14:08 - Prioridade alterado de "Média" para "Baixa" por fredalexandrino.
+08/07/2026 10:17 - Status na OS (Fracttal) atualizado: "—" → "Em Processo", 0% → 0% (Não Iniciada).
+15/07/2026 10:48 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Processo", 0% → 20% (Em Progresso).
+15/07/2026 12:23 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Processo", 20% → 40% (Em Progresso).
+15/07/2026 15:44 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Processo", 40% → 80% (Em Progresso).
+15/07/2026 17:20 - Responsável alterado de "Deivity Jhon Cunha Saugo" para "Deivity Saugo" por tecnico:120363426700120222.
+15/07/2026 17:20 - tecnico:120363426700120222: Multiplos cld 02
+15/07/2026 17:20 - Status alterado de "Em Aberto" para "Concluído" por tecnico:120363426700120222.
+15/07/2026 17:23 - 🔧 Auditoria automática: status interno corrigido de "Concluído" pra "Em Aberto" (estado na Fracttal: "Em Processo").
+15/07/2026 17:23 - Status na OS (Fracttal) atualizado: "Em Processo" → "Em Revisão", 80% → 100% (Concluída).
