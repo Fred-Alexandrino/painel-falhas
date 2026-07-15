@@ -1,0 +1,36 @@
+name: Investigar Comunicados Hoje
+on:
+  workflow_dispatch: {}
+jobs:
+  i:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          echo "=== hora do servidor ===" > backups/investigar-com.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/health" >> backups/investigar-com.txt
+          echo "" >> backups/investigar-com.txt
+          echo "=== travas ===" >> backups/investigar-com.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/config-ler" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/config.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/config.json'))
+          for k,v in d.get('pares',{}).items():
+              if 'comunicado' in k.lower() or 'auditoria_completa' in k.lower():
+                  print(k, '->', v)
+          " >> backups/investigar-com.txt
+          echo "" >> backups/investigar-com.txt
+          echo "=== status wpp ===" >> backups/investigar-com.txt
+          curl -s "https://wppconnect-painel.onrender.com/health" --max-time 20 >> backups/investigar-com.txt
+          cat backups/investigar-com.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/investigar-com.txt
+          git diff --quiet --cached || git commit -m "investigar comunicados hoje [skip ci]"
+          git push
