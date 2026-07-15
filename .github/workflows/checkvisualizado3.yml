@@ -1,0 +1,29 @@
+name: Check Visualizado 3
+on:
+  workflow_dispatch: {}
+jobs:
+  c:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          python3 -c "
+          import json
+          from collections import Counter
+          d = json.load(open('/tmp/a.json'))
+          ativs = d.get('atividades', [])
+          print('total:', len(ativs))
+          contagem = Counter(a.get('visualizado') for a in ativs)
+          print('distribuicao visualizado:', dict(contagem))
+          " > backups/check-vis3.txt
+          cat backups/check-vis3.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-vis3.txt
+          git diff --quiet --cached || git commit -m "check vis3 [skip ci]"
+          git push
