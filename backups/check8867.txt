@@ -1,0 +1,35 @@
+{
+  "anotacoesPessoais": "",
+  "cliente": "RENOGRID",
+  "cluster": "MT Norte 01",
+  "dataConclusao": "",
+  "dataCriacao": "06/07/2026 13:53:52",
+  "descricao": "Correção de pendências de rotina: Cabine 1, Preventiva Inversores, QGBT 1, SPDA e Transformador 1",
+  "detalhesEquipamentosOS": "[{\"equipamento\": \"Transformador 1 Blutrafo\", \"status\": \"Concluída\", \"prazo\": \"15/07/2026\"}, {\"equipamento\": \"SPDA Sítio Nossa Senhora Salete, Estrada Vicinal Rural, S/N. Colíder  Mato Grosso Brasil\", \"status\": \"Concluída\", \"prazo\": \"15/07/2026\"}, {\"equipamento\": \"QGBT 1 Sítio Nossa Senhora Salete, Estrada Vicinal Rural, S/N. Colíder  Mato Grosso Brasil\", \"status\": \"Concluída\", \"prazo\": \"15/07/2026\"}, {\"equipamento\": \"Preventiva Grupo de Inversores\", \"status\": \"Concluída\", \"prazo\": \"15/07/2026\"}, {\"equipamento\": \"Cabine 1 Sítio Nossa Senhora Salete, Estrada Vicinal Rural, S/N. Colíder  Mato Grosso Brasil\", \"status\": \"Concluída\", \"prazo\": \"15/07/2026\"}]",
+  "editor": "claude-chat",
+  "equipamento": "Múltiplos equipamentos (Cabine, Inversores, QGBT, SPDA, Transformador)",
+  "etiquetasOS": "",
+  "historico": "06/07/2026 13:53 - Atividade criada por claude-chat.\nEquipamentos e pendências: Cabine 1 (CLD200-CABN1) - Fotos invalidadas (Sol. 2884); Preventiva Grupo de Inversores (RNGD-CLD200-PGINVR1) - Termografia invalidada (Sol. 2885); QGBT 1 (CLD200-QGBT1) - Termografia não realizada (Sol. 2886); SPDA (CLD200-SPDA1) - Incompleta (Sol. 2887); Transformador 1 Blutrafo (CLD200-TRFR1) - Termografia não realizada (Sol. 2888).\n06/07/2026 14:08 - Prioridade alterado de \"Média\" para \"Baixa\" por fredalexandrino.\n08/07/2026 10:17 - Status na OS (Fracttal) atualizado: \"—\" → \"Em Processo\", 0% → 0% (Não Iniciada).\n15/07/2026 10:48 - Status na OS (Fracttal) atualizado: \"Em Processo\" → \"Em Processo\", 0% → 20% (Em Progresso).\n15/07/2026 12:23 - Status na OS (Fracttal) atualizado: \"Em Processo\" → \"Em Processo\", 20% → 40% (Em Progresso).\n15/07/2026 15:44 - Status na OS (Fracttal) atualizado: \"Em Processo\" → \"Em Processo\", 40% → 80% (Em Progresso).\n15/07/2026 17:20 - Responsável alterado de \"Deivity Jhon Cunha Saugo\" para \"Deivity Saugo\" por tecnico:120363426700120222.\n15/07/2026 17:20 - tecnico:120363426700120222: Multiplos cld 02\n15/07/2026 17:20 - Status alterado de \"Em Aberto\" para \"Concluído\" por tecnico:120363426700120222.\n15/07/2026 17:23 - 🔧 Auditoria automática: status interno corrigido de \"Concluído\" pra \"Em Aberto\" (estado na Fracttal: \"Em Processo\").\n15/07/2026 17:23 - Status na OS (Fracttal) atualizado: \"Em Processo\" → \"Em Revisão\", 80% → 100% (Concluída).",
+  "id": "34",
+  "linkOS": "",
+  "numeroOS": "8867",
+  "observacoesOS": "",
+  "percentualOS": "100",
+  "prazo": "07/07/2026",
+  "prioridade": "Baixa",
+  "responsavel": "Deivity Saugo",
+  "status": "Em Aberto",
+  "statusGeralOS": "Concluída",
+  "statusOS": "Em Revisão",
+  "statusTarefaOS": "5 Concluída",
+  "ultimaVerificacaoOS": "2026-07-15 17:24:49",
+  "usina": "Colíder II",
+  "visualizado": "sim"
+}
+
+=== dado bruto Fracttal ===
+id_status_work_order: 2 | percent: None
+id_status_work_order: 2 | percent: None
+id_status_work_order: 2 | percent: None
+id_status_work_order: 2 | percent: None
+id_status_work_order: 2 | percent: None
