@@ -6178,7 +6178,34 @@ def _processar_um_bloco_atividade(texto, editor="tecnico-whatsapp"):
         todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
 
     if dados["status"]:
-        _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "status", dados["status"], editor)
+        numero_os_linha = linha_atual[13].strip() if len(linha_atual) > 13 else ""
+        if numero_os_linha:
+            # OS vinculada à Fracttal: o status NUNCA é escrito a partir do
+            # texto da mensagem — só a Fracttal (via API e as automações
+            # já existentes: rodízio, auditoria, descoberta) decide o
+            # status real. A mensagem do técnico só serve de GATILHO pra
+            # checar a Fracttal imediatamente, sem esperar a próxima
+            # rodada de auditoria. Antes disso, o texto do WhatsApp
+            # escrevia o status direto, sem nenhuma validação — foi
+            # exatamente isso que causou a OS 8867 aparecer como
+            # "Concluída" no painel enquanto a Fracttal ainda mostrava
+            # "Em Processo" (relatado pelo Fred em 15/07/2026, que pediu
+            # essa mudança de arquitetura em vez de só reconciliar depois).
+            entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {editor} reportou status \"{dados['status']}\" "
+                     f"pelo WhatsApp — verificando direto na Fracttal (o status real vem de lá, não da mensagem).")
+            _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "historico", entry, editor, append=True)
+            try:
+                todos_frescos = ws.get_all_values()
+                linha_fresca = todos_frescos[linha_idx - 1]
+                _fracttal_verificar_e_atualizar_uma_os(ws, linha_idx, linha_fresca, numero_os_linha,
+                                                        enviar_notificacao=False)
+            except Exception as e:
+                log.error(f"[Atividades WhatsApp] Falha ao checar a Fracttal pra OS {numero_os_linha}: {e}")
+        else:
+            # atividade manual, sem vínculo com nenhuma OS da Fracttal —
+            # não existe outra fonte de verdade pra ela, então o status
+            # informado pelo técnico continua sendo aceito diretamente.
+            _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "status", dados["status"], editor)
 
     return {"ok": True, "id": linha_atual[0]}
 
