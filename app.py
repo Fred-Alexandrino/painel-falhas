@@ -5419,6 +5419,24 @@ def _montar_texto_comunicado_usina(usina, atividades):
 
 @app.route("/verificar-e-enviar-comunicados", methods=["POST", "GET"])
 def _verificar_e_disparar_comunicados_se_necessario():
+    """DESATIVADA a pedido do Fred em 15/07/2026 — ver detalhes no
+    corpo da função. Mantida com esse nome (em vez de apagada) porque
+    está diretamente exposta como rota pública (/verificar-e-enviar-
+    comunicados) — se algum monitor externo (UptimeRobot ou outro) ainda
+    estiver batendo nela numa agenda própria, precisa continuar
+    respondendo 200 sem disparar nada, em vez de dar erro.
+
+    Histórico do problema: o piggyback dentro de /sync-fracttal já tinha
+    sido desligado (ligava aqui indiretamente), mas essa função também
+    é chamada DIRETO por essa rota própria — que outra sessão/monitor
+    pode estar acionando de forma independente, a cada poucos minutos,
+    sem eu saber. Isso explicava comunicados continuando a sair sozinhos
+    mesmo depois do primeiro desligamento. Agora a desativação está na
+    fonte única (aqui dentro), então funciona não importa quem chame."""
+    return {"disparado": False, "motivo": "disparo automático desativado — use o botão Comunicados no painel"}
+
+
+def _verificar_e_disparar_comunicados_se_necessario_DESATIVADA_ORIGINAL():
     """Lógica compartilhada: só dispara o envio de verdade se for dia útil,
     estiver na janela 07:00-08:30 (BRT) e ainda não tiver sido enviado
     hoje. Retorna um dict com o resultado (nunca levanta exceção pro
