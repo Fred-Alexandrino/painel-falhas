@@ -1,0 +1,2 @@
+total: 116
+distribuicao visualizado: {'sim': 116}
