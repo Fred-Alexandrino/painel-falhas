@@ -3033,7 +3033,8 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             except Exception as e:
                 log.error(f"[sync-fracttal] Falha ao enviar push de mudança de status {numero_os}: {e}")
 
-        return {"numeroOS": numero_os, "mudou": mudou, "statusOS": status_novo or status_os_atual,
+        return {"numeroOS": numero_os, "id": row[0] if row else "", "mudou": mudou,
+                "statusOS": status_novo or status_os_atual,
                 "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo,
                 "statusInternoCorrigido": novo_status_interno}
     except Exception as e:
@@ -3128,6 +3129,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                     titulo=f"🔄 OS {r['numeroOS']} atualizada",
                     corpo=f"{r.get('statusGeralOS','')} — {r.get('percentualOS','0')}% concluído",
                     tipo="fracttal_status",
+                    url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={r.get('id','')}",
                 )
             else:
                 numeros = ", ".join(r["numeroOS"] for r in mudaram[:8])
@@ -3403,7 +3405,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
                               editor="dashboard", statusOS="", observacoesOS="", linkOS="",
                               statusTarefaOS="", etiquetasOS="", anotacoesPessoais="",
                               percentualOS="", statusGeralOS="", detalhesEquipamentosOS="",
-                              ws=None, todos=None):
+                              ws=None, todos=None, enviar_notificacao=True):
     """
     Cria uma linha na aba Painel de Atividades. Usada tanto pelo endpoint
     HTTP /nova-atividade quanto pelo sync automático do Fracttal
@@ -3412,6 +3414,15 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
 
     Se `ws`/`todos` forem passados (leitura já feita por quem chamou, ex.
     sync em lote), evita reler a planilha inteira a cada chamada.
+
+    enviar_notificacao=False quando quem chama vai criar várias atividades
+    de uma vez (ex.: descoberta da Fracttal encontrando N OTs novas na
+    mesma rodada) — nesse caso, quem chama deve mandar um único push
+    resumido no final, em vez de um por item (evita disparar muitas
+    notificações em sequência rápida — o Chrome já marcou o site como
+    "possível spam" por causa disso antes, 14/07/2026. RESTAURADO em
+    15/07/2026 depois de ter sido perdido numa edição de outra sessão que
+    reconstruiu esta função a partir de uma versão mais antiga do arquivo).
     """
     cliente = (cliente or "").strip()
     descricao = (descricao or "").strip()
@@ -3450,16 +3461,17 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
     todos.append(linha)
     log.info(f"[atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
 
-    try:
-        enviar_push(
-            titulo=f"🆕 Nova atividade" + (f" — OS {numeroOS}" if numeroOS else "") + f" — {usina or cliente}",
-            corpo=(f"{equipamento} · " if equipamento else "") +
-                  (f"{descricao[:80]}" if descricao else "Atividade criada"),
-            tipo="nova_atividade",
-            url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
-        )
-    except Exception as e:
-        log.error(f"[Push] Erro ao notificar nova atividade: {e}")
+    if enviar_notificacao:
+        try:
+            enviar_push(
+                titulo=f"🆕 Nova atividade" + (f" — OS {numeroOS}" if numeroOS else "") + f" — {usina or cliente}",
+                corpo=(f"{equipamento} · " if equipamento else "") +
+                      (f"{descricao[:80]}" if descricao else "Atividade criada"),
+                tipo="nova_atividade",
+                url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
+            )
+        except Exception as e:
+            log.error(f"[Push] Erro ao notificar nova atividade: {e}")
 
     return novo_id
 
@@ -4121,7 +4133,7 @@ def backfill_fracttal():
         alerta = mapeado.pop("_alerta", None)
         mapeado["editor"] = "fracttal-backfill"
         try:
-            novo_id = _criar_atividade_interna(ws=ws, todos=todos, **mapeado)
+            novo_id = _criar_atividade_interna(ws=ws, todos=todos, enviar_notificacao=False, **mapeado)
             if alerta:
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-backfill", append=True)
@@ -4594,24 +4606,41 @@ def _sync_fracttal_core(desde_horas=8):
 
         alerta = mapeado.pop("_alerta", None)
         try:
-            novo_id = _criar_atividade_interna(ws=ws, todos=todos, **mapeado)
+            novo_id = _criar_atividade_interna(ws=ws, todos=todos, enviar_notificacao=False, **mapeado)
             if alerta:
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-sync", append=True)
-            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta})
+            criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta,
+                             "usina": mapeado["usina"], "cliente": mapeado["cliente"]})
             os_existentes.add(mapeado["numeroOS"])
-            try:
-                enviar_push(
-                    titulo=f"🆕 Nova OS Fracttal — {mapeado['numeroOS']} — {mapeado['usina']}",
-                    corpo=f"{mapeado.get('equipamento', '') or 'Equipamento não informado'} ({mapeado['cliente']}): {mapeado['descricao'][:100]}",
-                    tipo="fracttal_nova_os",
-                    url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
-                )
-            except Exception as e:
-                log.error(f"[sync-fracttal] Falha ao enviar push de nova OS {mapeado['numeroOS']}: {e}")
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
             erros.append(mapeado.get("numeroOS", "?"))
+
+    # um único push resumido pra todas as OSs novas descobertas nessa
+    # rodada — restaurado 15/07/2026 (tinha sido perdido numa reconstrução
+    # desta função por outra sessão, reintroduzindo notificação em
+    # duplicidade/spam por item que já tinha sido corrigido antes).
+    if criadas:
+        try:
+            if len(criadas) == 1:
+                c = criadas[0]
+                enviar_push(
+                    titulo=f"🆕 Nova OS Fracttal — {c['numeroOS']} — {c['usina']}",
+                    corpo=f"{c['cliente']}",
+                    tipo="fracttal_nova_os",
+                    url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={c['id']}",
+                )
+            else:
+                usinas_resumo = ", ".join(sorted(set(c["usina"] for c in criadas))[:5])
+                enviar_push(
+                    titulo=f"🆕 {len(criadas)} novas OSs na Fracttal",
+                    corpo=f"Usinas: {usinas_resumo}{'...' if len(set(c['usina'] for c in criadas)) > 5 else ''}",
+                    tipo="fracttal_nova_os",
+                    url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
+                )
+        except Exception as e:
+            log.error(f"[sync-fracttal] Falha ao enviar push resumido de novas OSs: {e}")
 
     log.info(f"[sync-fracttal] criadas={len(criadas)} revisao_manual={len(revisao_manual)} erros={len(erros)}")
     return {"ok": True, "criadas": criadas, "revisao_manual": revisao_manual, "erros": erros}, 200
