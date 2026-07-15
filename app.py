@@ -3313,6 +3313,47 @@ def _verificar_e_disparar_auditoria_completa_se_necessario():
         return {"disparado": False, "erro": str(e)}
 
 
+def _verificar_e_disparar_descoberta_rapida_se_necessario(intervalo_minutos=30):
+    """DESCOBERTA RÁPIDA — roda automaticamente a cada 30 min via piggyback
+    no /sync-fracttal (mesmo gatilho confiável dos 5 min já usado pra
+    atualização de status). Sem botão manual — existe só pra reduzir o
+    gap de latência entre uma OS nova nascer na Fracttal e ela aparecer
+    no dashboard, que antes podia chegar a ~9h (pior caso: OS criada logo
+    depois da janela das 16h só entraria às 7h do dia seguinte).
+
+    Deliberadamente LEVE, ao contrário da auditoria completa: só chama
+    _sync_fracttal_core (descoberta pura, sem recheck de OSs existentes)
+    com janela curta (2h) — não faz a varredura ampla nem a validação de
+    integridade de relatórios que a auditoria completa faz. Isso evita
+    reintroduzir o risco de 502 que já vimos quando descoberta ampla e
+    recheck pesado rodaram juntos no mesmo request.
+
+    Trava por timestamp (não por dia, como as outras) porque precisa
+    rodar várias vezes ao dia, não uma vez só por janela."""
+    try:
+        agora = agora_br()
+        chave_trava = "descoberta_rapida_ultima_em"
+        ultima_str = _ler_trava(chave_trava)
+        if ultima_str:
+            try:
+                ultima = datetime.strptime(ultima_str, "%Y-%m-%d %H:%M:%S")
+                minutos_desde = (agora.replace(tzinfo=None) - ultima).total_seconds() / 60
+                if minutos_desde < intervalo_minutos:
+                    return {"disparado": False,
+                            "motivo": f"rodou há {minutos_desde:.1f}min (< {intervalo_minutos}min); última em {ultima_str}"}
+            except ValueError:
+                pass  # trava com valor inválido/corrompido — trata como se nunca tivesse rodado
+
+        _gravar_trava(chave_trava, agora.strftime("%Y-%m-%d %H:%M:%S"))
+        resultado, status_http = _sync_fracttal_core(desde_horas=2)
+        if status_http != 200:
+            return {"disparado": True, "erro": resultado}
+        return {"disparado": True, "resultado": resultado}
+    except Exception as e:
+        log.error(f"[DescobertaRapida] Erro na verificação/disparo: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
 @app.route("/auditoria-consistencia-os", methods=["POST", "GET"])
 def auditoria_consistencia_os():
     """Rede de segurança definitiva: varre TODAS as atividades vinculadas
@@ -5690,15 +5731,21 @@ def reverter_excesso_fuso():
 def sync_fracttal():
     """
     Gatilho automático confiável (chamado a cada 5 min via UptimeRobot).
-    Faz três coisas com cadências diferentes, de propósito:
+    Faz quatro coisas com cadências diferentes, de propósito:
       1. VARREDURA DE STATUS/ESTADO das OSs já no dashboard — roda em
          TODA chamada (5 em 5 min), porque isso precisa ficar em dia com
          frequência (é o que o botão "Atualizar OS" também faz sob demanda).
-      2. AUDITORIA COMPLETA (descoberta de OS nova + varredura ampla,
-         incluindo detectar cancelamentos/conclusões) — só roda de fato
-         nas janelas das 7h/12h/16h (throttle via _Sistema), porque é mais
-         pesada e não precisa de frequência maior que isso.
-      3. Comunicados diários das 7h (piggyback, gatilho confiável).
+      2. AUDITORIA COMPLETA (descoberta ampla de 24h + varredura ampla,
+         incluindo detectar cancelamentos/conclusões, + validação de
+         integridade de relatórios) — só roda de fato nas janelas das
+         7h/12h/16h (throttle via _Sistema), porque é mais pesada e não
+         precisa de frequência maior que isso.
+      3. DESCOBERTA RÁPIDA (só descoberta, janela curta de 2h, sem recheck
+         amplo) — roda a cada 30 min (throttle por timestamp via _Sistema),
+         pra reduzir o gap de latência entre a criação de uma OS nova na
+         Fracttal e ela aparecer no dashboard, sem esperar a próxima
+         janela fixa de auditoria completa.
+      4. Comunicados diários das 7h (piggyback, gatilho confiável).
     """
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
@@ -5728,6 +5775,12 @@ def sync_fracttal():
     except Exception as e:
         log.error(f"[AuditoriaCompleta] Erro no piggyback: {e}")
         body["auditoria_completa_check"] = {"erro": str(e)}
+
+    try:
+        body["descoberta_rapida_check"] = _verificar_e_disparar_descoberta_rapida_se_necessario()
+    except Exception as e:
+        log.error(f"[DescobertaRapida] Erro no piggyback: {e}")
+        body["descoberta_rapida_check"] = {"erro": str(e)}
 
     try:
         body["compromissos_check"] = _verificar_compromissos_se_necessario()
