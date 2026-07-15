@@ -5713,7 +5713,15 @@ def sync_fracttal():
         log.error(f"[Atualizacao] Erro no piggyback: {e}")
         body["atualizacao_status"] = {"erro": str(e)}
 
-    body["comunicados_check"] = _verificar_e_disparar_comunicados_se_necessario()
+    # DESATIVADO a pedido do Fred em 15/07/2026: o disparo automático não
+    # estava rodando de forma confiável às 7h (mesmo com a janela alargada
+    # pra 90min) e, quando ele intervinha manualmente pra investigar, às
+    # vezes resultava em envio em duplicidade (até 3x o mesmo comunicado
+    # pras mesmas equipes) — prejudicando a credibilidade da ferramenta.
+    # O botão "Comunicados" no painel continua funcionando normalmente,
+    # sob demanda — só o gatilho automático (piggyback no /sync-fracttal)
+    # foi desligado.
+    body["comunicados_check"] = {"disparado": False, "motivo": "disparo automático desativado — use o botão Comunicados"}
 
     try:
         body["auditoria_completa_check"] = _verificar_e_disparar_auditoria_completa_se_necessario()
@@ -6455,7 +6463,9 @@ CRITÉRIOS DE PRIORIZAÇÃO (avalie todos, na ordem de peso abaixo):
    - Controle de vegetação/acesso ao redor de um equipamento SEMPRE antes de manutenção elétrica que exija acesso seguro àquele ponto.
    Se identificar uma dependência assim na lista, a atividade pré-requisito deve aparecer com prioridade igual ou maior que a dependente, mesmo que isoladamente pareça menos urgente — porque atrasá-la atrasa a outra também.
 
-4. PROXIMIDADE GEOGRÁFICA (redução de deslocamento) — use o campo "Cluster/Região" pra agrupar, dentro da ordem final, atividades de usinas do mesmo cluster o mais próximas possível umas das outras na lista. Isso não deve nunca sobrepor os critérios 1-3 acima (nunca atrase uma usina parada só pra manter agrupamento geográfico) — é um critério de desempate/organização, não de prioridade em si.
+4. AGRUPAMENTO POR EQUIPE E USINA (redução de deslocamento) — REGRA RÍGIDA, do mesmo peso que os critérios 1-3, não é só desempate: uma mesma equipe/responsável ("Responsável/Equipe" na lista) NUNCA deve aparecer com atividades de USINAS DIFERENTES intercaladas na ordem final. Se a equipe "X" tem atividades em Usina A e também em Usina B, TODAS as atividades da equipe X na Usina A devem aparecer em posições consecutivas antes de qualquer atividade da equipe X na Usina B (ou vice-versa) — nunca A, depois B, depois A de novo. Use o campo "Cluster/Região" do mesmo jeito: atividades do mesmo cluster, mesmo que de responsáveis diferentes, também devem ficar próximas na lista sempre que os critérios 1-3 permitirem. Isso existe porque a ordem de prioridade também comunica o que a equipe deve fazer em sequência no mesmo deslocamento — intercalar usinas diferentes pra mesma equipe sugere um vai-e-vem fisicamente inviável no mesmo dia.
+
+REGRA DE OURO PRA COMBINAR OS 4 CRITÉRIOS: primeiro ordene por impacto/prazo/dependência (1-3). DEPOIS, ao montar a lista final, reagrupe mantendo blocos contíguos por equipe+usina — dentro de um mesmo bloco, a ordem interna já definida pelos critérios 1-3 se mantém; entre blocos, o bloco com a atividade mais urgente (critérios 1-3) do grupo vem primeiro.
 
 ATIVIDADES EM ABERTO HOJE:
 {lista_atividades}
