@@ -1,0 +1,11 @@
+=== hora do servidor ===
+{"status":"ok","timestamp":"2026-07-15T08:04:14.726833-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wppconnect-painel.onrender.com"}
+
+=== travas ===
+auditoria_completa_em_12h -> 2026-07-14
+auditoria_completa_em_16h -> 2026-07-13
+auditoria_completa_em_7h -> 2026-07-14
+comunicados_enviados_em -> 2026-07-14
+
+=== status wpp ===
+{"status":"ok","wpp":"conectado"}
