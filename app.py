@@ -3042,7 +3042,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         return None
 
 
-def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limite_recheck_ao_vivo=35):
+def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limite_recheck_ao_vivo=35, origem="automática"):
     ws = get_atividades_sheet()
     todos = ws.get_all_values()
     divergencias = []
@@ -3094,7 +3094,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                                   "de": status_interno_atual, "para": esperado, "estadoFracttal": status_os_atual})
             if aplicar:
                 _gravar_status_interno(ws, i, esperado)
-                nota = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - 🔧 Auditoria automática: status interno "
+                nota = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - 🔧 Auditoria {origem}: status interno "
                         f"corrigido de \"{status_interno_atual or '—'}\" pra \"{esperado}\" "
                         f"(estado na Fracttal: \"{status_os_atual}\").")
                 hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
@@ -3262,7 +3262,7 @@ def _validar_integridade_relatorios_core(aplicar=True):
     return {"aplicado": aplicar, "total_problemas": total, "detalhes": problemas}
 
 
-def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=40):
+def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=40, origem="automática"):
     """AUDITORIA COMPLETA — varredura de verdade nas usinas/equipes do
     Fred, cobrindo tudo que uma auditoria de verdade precisa cobrir:
       1. DESCOBERTA: busca na Fracttal por OTs novas dentro da janela
@@ -3280,7 +3280,8 @@ def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=4
     5 min) de propósito — por isso não roda toda hora, só nesses horários."""
     resultado_descoberta, _ = _sync_fracttal_core(desde_horas=desde_horas_descoberta)
     resultado_consistencia = _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0,
-                                                              limite_recheck_ao_vivo=limite_recheck_ao_vivo)
+                                                              limite_recheck_ao_vivo=limite_recheck_ao_vivo,
+                                                              origem=origem)
     resultado_validacao_relatorios = _validar_integridade_relatorios_core(aplicar=True)
     return {"descoberta": resultado_descoberta, "consistencia": resultado_consistencia,
             "validacao_relatorios": resultado_validacao_relatorios}
@@ -3375,7 +3376,7 @@ def auditoria_consistencia_os():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     aplicar = request.args.get("apply", "true").lower() != "false"
-    resultado = _auditoria_consistencia_os_core(aplicar)
+    resultado = _auditoria_consistencia_os_core(aplicar, origem="manual (diagnóstico)")
     return jsonify({"ok": True, **resultado}), 200
 
 
@@ -5942,7 +5943,7 @@ def atualizar_os_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    resultado = _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0)
+    resultado = _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, origem="manual (botão Atualizar OS)")
     return jsonify({"ok": True, **resultado}), 200
 
 
@@ -5958,7 +5959,7 @@ def rodar_auditoria_agora():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    resultado = _auditoria_completa_core()
+    resultado = _auditoria_completa_core(origem="manual (botão Auditoria)")
     return jsonify({"ok": True, **resultado}), 200
 
 
