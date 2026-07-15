@@ -5487,14 +5487,16 @@ def _enviar_comunicados_diarios_core():
         status = row[8].strip()
         if _is_concluido_atividade(status):
             continue
+        numero_os = row[13].strip()
         status_os = row[14].strip()
-        if status_os in ("Em Revisão", "Finalizada", "Cancelada"):
-            # o status interno pode ainda não ter sido sincronizado (rodízio
-            # não chegou nessa linha ainda), mas se a Fracttal já diz que
-            # terminou/cancelou, não faz sentido cobrar do técnico de novo
-            # — antes só "Em Revisão" era checado aqui, deixando passar
-            # OSs já Finalizadas/Canceladas cujo status interno ainda
-            # estava desatualizado (relatado pelo Fred em 15/07/2026).
+        if numero_os and status_os != "Em Processo":
+            # regra simples e direta: só OS com estado "Em Processo" na
+            # Fracttal entra no comunicado — qualquer outra coisa (Em
+            # Revisão, Finalizada, Cancelada, vazio, ou qualquer estado
+            # futuro que a Fracttal venha a usar) fica de fora por padrão,
+            # em vez de tentar prever e listar cada estado que deveria
+            # excluir (regra anterior, mais frágil — deixava passar coisa
+            # nova que não estivesse na lista). Ajustado 15/07/2026.
             continue
         etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
         if "PERFORMANCE" in etiquetas:
@@ -5505,7 +5507,6 @@ def _enviar_comunicados_diarios_core():
             # 8025 (Boa Esperança do Sul I), etiquetada PERFORMANCE e
             # atribuída a um analista, mas enviada ao grupo de campo.
             continue
-        numero_os = row[13].strip()
         if numero_os:
             candidatas_recheck.append((i, row, numero_os))
 
@@ -5535,11 +5536,9 @@ def _enviar_comunicados_diarios_core():
         if _is_concluido_atividade(status):
             continue
         status_os = row[14].strip()
-        if status_os in ("Em Revisão", "Finalizada", "Cancelada"):
-            # "Em Revisão": já foi enviada pra verificação, técnico já fez a
-            # parte dele. "Finalizada"/"Cancelada": mesmo que o status
-            # interno ainda não tenha sido sincronizado, a Fracttal já diz
-            # que terminou — não cobra de novo (relatado pelo Fred 15/07/2026).
+        numero_os = row[13].strip()
+        if numero_os and status_os != "Em Processo":
+            # mesma regra positiva do primeiro loop: só "Em Processo" entra.
             continue
         etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
         if "PERFORMANCE" in etiquetas:
@@ -5552,7 +5551,7 @@ def _enviar_comunicados_diarios_core():
             "equipamento": row[3].strip(),
             "descricao": row[4].strip(),
             "prazo": row[6].strip(),
-            "numeroOS": row[13].strip(),
+            "numeroOS": numero_os,
         }
         por_usina.setdefault(usina, []).append(d)
 
