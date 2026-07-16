@@ -4,10 +4,20 @@ on:
 jobs:
   d:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
       - env:
           UR_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
         run: |
+          mkdir -p backups
           curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
             -H "content-type: application/x-www-form-urlencoded" \
-            -d "api_key=$UR_KEY&format=json" | python3 -m json.tool
+            -d "api_key=$UR_KEY&format=json" -o backups/ur-status-check.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/ur-status-check.json
+          git diff --quiet --cached || git commit -m "check ur status [skip ci]"
+          git push
