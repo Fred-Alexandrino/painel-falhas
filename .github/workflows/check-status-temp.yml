@@ -1,0 +1,13 @@
+name: Check UR status temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          UR_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: |
+          curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
+            -H "content-type: application/x-www-form-urlencoded" \
+            -d "api_key=$UR_KEY&format=json" | python3 -m json.tool
