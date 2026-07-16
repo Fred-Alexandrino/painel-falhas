@@ -3095,8 +3095,25 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                 except Exception:
                     se_atrasada = True
             if se_atrasada:
+                # BUG CRÍTICO identificado em 16/07/2026: o campo usado pra
+                # ordenar (abaixo) usava "ultima_verificacao or 'nunca'" —
+                # ou seja, OSs NUNCA verificadas recebiam o texto "nunca"
+                # em vez de string vazia. Só que a string "nunca" começa
+                # com 'n', que em ordenação alfabética vem DEPOIS de
+                # qualquer timestamp (que começa com dígito) — o oposto do
+                # pretendido pelo comentário original ("nunca vazio
+                # primeiro"). Resultado: toda OS nunca verificada era
+                # empurrada pro FIM da fila, e como só as N primeiras (35)
+                # são de fato rechecadas ao vivo por rodada, uma OS nova
+                # (ex.: 9513) ficava starved indefinidamente sempre que
+                # havia 35+ outras OSs com QUALQUER timestamp anterior,
+                # por mais antigo que fosse — nunca chegava a vez dela.
+                # Corrigido usando uma chave de ordenação separada com o
+                # valor cru (string vazia ordena primeiro de verdade),
+                # mantendo "nunca" só como texto de exibição.
                 desatualizadas.append({"id": row[0], "numeroOS": numero_os,
-                                        "ultimaVerificacao": ultima_verificacao or "nunca", "linha": i, "row": row})
+                                        "ultimaVerificacao": ultima_verificacao or "nunca",
+                                        "_sortKey": ultima_verificacao, "linha": i, "row": row})
 
         # ── Parte 2: o status interno bate com o estado já gravado?
         if not status_os_atual:
@@ -3122,7 +3139,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
     # sendo revisitada em pouco tempo, sem depender só do rodízio.
     revalidadas_ao_vivo = []
     if aplicar and desatualizadas:
-        desatualizadas.sort(key=lambda d: d["ultimaVerificacao"])  # "nunca" (vazio) primeiro
+        desatualizadas.sort(key=lambda d: d["_sortKey"])  # string vazia (nunca verificada) primeiro de verdade
         for d in desatualizadas[:limite_recheck_ao_vivo]:
             resultado = _fracttal_verificar_e_atualizar_uma_os(ws, d["linha"], d["row"], d["numeroOS"],
                                                                 enviar_notificacao=False)
@@ -3158,6 +3175,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
     for d in desatualizadas:
         d.pop("linha", None)
         d.pop("row", None)
+        d.pop("_sortKey", None)
 
     if divergencias:
         log.warning(f"[Auditoria] {len(divergencias)} divergência(s) de status encontrada(s) "
