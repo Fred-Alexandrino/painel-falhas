@@ -1,0 +1,27 @@
+name: Teste Desligamento Manual
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          echo "=== marcar override ===" > backups/teste-deslig.txt
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/marcar-desligamento-manual" -H "Content-Type: application/json" -d '{"origem":"falha","id":"TESTE123","valor":"nao","editor":"teste-automatizado"}' --max-time 20 >> backups/teste-deslig.txt
+          echo "" >> backups/teste-deslig.txt
+          echo "=== listar ===" >> backups/teste-deslig.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/desligamento-manual" --max-time 20 >> backups/teste-deslig.txt
+          echo "" >> backups/teste-deslig.txt
+          echo "=== remover override ===" >> backups/teste-deslig.txt
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/marcar-desligamento-manual" -H "Content-Type: application/json" -d '{"origem":"falha","id":"TESTE123","valor":"","editor":"teste-automatizado"}' --max-time 20 >> backups/teste-deslig.txt
+          cat backups/teste-deslig.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-deslig.txt
+          git diff --quiet --cached || git commit -m "teste desligamento manual [skip ci]"
+          git push
