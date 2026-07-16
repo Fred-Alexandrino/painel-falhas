@@ -1,0 +1,19 @@
+name: Diag Atualizar OS Call
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/atualizar-os-agora" -o backups/diag-atualizar-call.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-atualizar-call.json
+          git diff --quiet --cached || git commit -m "diag atualizar-os call [skip ci]"
+          git push
