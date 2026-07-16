@@ -1,0 +1,23 @@
+name: List UptimeRobot Monitors
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          UR_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
+            -H "content-type: application/x-www-form-urlencoded" \
+            -d "api_key=$UR_KEY&format=json" -o backups/ur-monitors.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/ur-monitors.json
+          git diff --quiet --cached || git commit -m "list uptimerobot monitors [skip ci]"
+          git push
