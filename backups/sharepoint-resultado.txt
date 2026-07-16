@@ -1,0 +1,5 @@
+HTTP_CODE:403
+CONTENT_TYPE:text/plain; charset=utf-8
+SIZE:13
+--- primeiros bytes do arquivo baixado ---
+403 FORBIDDEN
