@@ -1,0 +1,8 @@
+=== marcar override ===
+{"ok":true}
+
+=== listar ===
+{"itens":[{"atualizadoEm":"16/07/2026 08:25:58","editor":"teste-automatizado","id":"TESTE123","origem":"falha","valor":"nao"}],"ok":true}
+
+=== remover override ===
+{"ok":true,"removido":true}
