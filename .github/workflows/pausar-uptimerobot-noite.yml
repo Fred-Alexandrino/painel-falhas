@@ -1,0 +1,19 @@
+name: Pausar UptimeRobot - Painel Falhas (madrugada)
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC = 00:00 America/Fortaleza
+  workflow_dispatch: {}
+jobs:
+  pausar:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          UR_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: |
+          set -e
+          for ID in 803376989 803473818; do
+            RESP=$(curl -s -X POST "https://api.uptimerobot.com/v2/editMonitor" \
+              -H "content-type: application/x-www-form-urlencoded" \
+              -d "api_key=$UR_KEY&id=$ID&status=0&format=json")
+            echo "Monitor $ID pausado: $RESP"
+          done
