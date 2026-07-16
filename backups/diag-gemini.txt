@@ -1,0 +1,29 @@
+== /health ==
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Service Suspended</title>
+</head>
+<body>
+This service has been suspended.
+</body>
+</html>
+
+HTTP_STATUS:503 TIME:0.316527s
+
+== /gerar-texto-os-ia ==
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Service Suspended</title>
+</head>
+<body>
+This service has been suspended.
+</body>
+</html>
+
+HTTP_STATUS:503 TIME:0.125785s
