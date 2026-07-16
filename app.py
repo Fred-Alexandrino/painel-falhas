@@ -1174,6 +1174,20 @@ ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Equipamento", "Descricao", "Res
                        "Prioridade", "Status", "DataCriacao", "DataConclusao", "Historico", "Editor",
                        "NumeroOS"]
 
+DESLIGAMENTO_MANUAL_SHEET_NAME = "_DesligamentoManual"
+DESLIGAMENTO_MANUAL_HEADERS = ["origem", "id", "valor", "editor", "atualizadoEm"]
+
+def get_desligamento_manual_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(DESLIGAMENTO_MANUAL_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=DESLIGAMENTO_MANUAL_SHEET_NAME, rows=200, cols=len(DESLIGAMENTO_MANUAL_HEADERS))
+        ws.append_row(DESLIGAMENTO_MANUAL_HEADERS)
+    return ws
+
+
 def get_atividades_sheet():
     gc = get_gc()
     ss = gc.open_by_key(SHEET_ID)
@@ -5890,6 +5904,70 @@ def alertar_wpp_status():
         log.error(f"[AlertaWPP] Erro ao enviar push: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
+
+@app.route("/desligamento-manual", methods=["GET"])
+def listar_desligamento_manual():
+    """Lista todos os overrides manuais de classificação de desligamento
+    (Falhas e Atividades juntos) — usado pelo frontend pra sobrepor a
+    detecção automática por palavra-chave quando o Fred marcar manualmente
+    que algo É ou NÃO É um desligamento de usina de verdade."""
+    try:
+        ws = get_desligamento_manual_sheet()
+        todos = ws.get_all_values()
+        itens = []
+        for row in todos[1:]:
+            if len(row) < 3 or not row[0].strip():
+                continue
+            itens.append({
+                "origem": row[0].strip(), "id": row[1].strip(), "valor": row[2].strip(),
+                "editor": row[3].strip() if len(row) > 3 else "",
+                "atualizadoEm": row[4].strip() if len(row) > 4 else "",
+            })
+        return jsonify({"ok": True, "itens": itens}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/marcar-desligamento-manual", methods=["POST", "OPTIONS"])
+def marcar_desligamento_manual():
+    """Grava (ou limpa) a classificação manual de desligamento pra uma
+    ocorrência/atividade específica. valor: "sim" (força tratar como
+    desligamento), "nao" (força tratar como NÃO desligamento, mesmo que a
+    detecção automática por palavra-chave tivesse batido), ou "" (remove o
+    override, volta a valer só a detecção automática)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    origem = str(body.get("origem", "")).strip()
+    item_id = str(body.get("id", "")).strip()
+    valor = str(body.get("valor", "")).strip().lower()
+    editor = str(body.get("editor", "dashboard")).strip()
+    if origem not in ("falha", "atividade") or not item_id:
+        return jsonify({"ok": False, "error": "origem (falha|atividade) e id são obrigatórios"}), 400
+    if valor not in ("sim", "nao", ""):
+        return jsonify({"ok": False, "error": "valor deve ser 'sim', 'nao' ou vazio"}), 400
+
+    try:
+        ws = get_desligamento_manual_sheet()
+        todos = ws.get_all_values()
+        linha_existente = None
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) >= 2 and row[0].strip() == origem and row[1].strip() == item_id:
+                linha_existente = i
+                break
+        agora = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+        if valor == "":
+            if linha_existente:
+                ws.delete_rows(linha_existente)
+            return jsonify({"ok": True, "removido": bool(linha_existente)}), 200
+        if linha_existente:
+            ws.update(f"A{linha_existente}:E{linha_existente}", [[origem, item_id, valor, editor, agora]])
+        else:
+            ws.append_row([origem, item_id, valor, editor, agora])
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
