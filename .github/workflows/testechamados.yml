@@ -1,0 +1,26 @@
+name: Teste Chamados Fabricante
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          echo "=== enviar teste ===" > backups/teste-chamados.txt
+          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/sincronizar-chamados" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" -d '{"Ativo":"Inversor 03","UFV":"Colíder I","Cliente":"RENOGRID","Ticket/RMA":"TESTE-999","Fabricante":"Huawei","Status":"Aberto","Data da ocorrência":"16/07/2026"}' --max-time 20 >> backups/teste-chamados.txt
+          echo "" >> backups/teste-chamados.txt
+          echo "=== listar ===" >> backups/teste-chamados.txt
+          curl -s "https://whatsapp-painel-falhas.onrender.com/chamados-fabricante" --max-time 20 >> backups/teste-chamados.txt
+          cat backups/teste-chamados.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-chamados.txt
+          git diff --quiet --cached || git commit -m "teste chamados [skip ci]"
+          git push
