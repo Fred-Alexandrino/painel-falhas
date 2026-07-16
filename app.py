@@ -1177,6 +1177,28 @@ ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Equipamento", "Descricao", "Res
 DESLIGAMENTO_MANUAL_SHEET_NAME = "_DesligamentoManual"
 DESLIGAMENTO_MANUAL_HEADERS = ["origem", "id", "valor", "editor", "atualizadoEm"]
 
+CHAMADOS_FABRICANTE_SHEET_NAME = "ChamadosFabricante"
+CHAMADOS_FABRICANTE_HEADERS = [
+    "Ativo", "UFV", "Cliente", "Equipe", "Supervisor", "OS de Abertura", "Ticket/RMA",
+    "Fabricante", "Identificação Supervisório", "Identificação do Equipamento", "Serial Number",
+    "Data da ocorrência", "Data da abertura do chamado", "Data da Última Atualização",
+    "Motivo da abertura do chamado", "Causa da Falha", "Dias corridos", "Data de finalização",
+    "Status", "Título do E-mail", "Observações", "N° da Solicitação de OS", "Supervisor Antigo",
+    "Status OS", "Resolução",
+]
+
+def get_chamados_fabricante_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(CHAMADOS_FABRICANTE_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=CHAMADOS_FABRICANTE_SHEET_NAME, rows=500,
+                               cols=len(CHAMADOS_FABRICANTE_HEADERS))
+        ws.append_row(CHAMADOS_FABRICANTE_HEADERS)
+    return ws
+
+
 def get_desligamento_manual_sheet():
     gc = get_gc()
     ss = gc.open_by_key(SHEET_ID)
@@ -5984,6 +6006,104 @@ def marcar_desligamento_manual():
         else:
             ws.append_row([origem, item_id, valor, editor, agora])
         return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/sincronizar-chamados", methods=["POST", "OPTIONS"])
+def sincronizar_chamados():
+    """
+    Recebe dados da tabela de chamados de fabricante do SharePoint via
+    Power Automate (fluxo configurado pelo Fred: quando uma linha é
+    criada ou alterada na tabela, dispara um POST pra cá com o conteúdo
+    da linha). Faz upsert por "Ticket/RMA" (ou por Ativo+Data da
+    ocorrência se o ticket ainda não tiver sido aberto) — substitui o
+    processo manual de copiar e colar do SharePoint pro painel.
+
+    Aceita tanto uma linha única (objeto) quanto várias de uma vez
+    (lista de objetos), pra funcionar bem tanto com o gatilho de
+    "linha criada/modificada" quanto com uma sincronização em lote.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True)
+    if body is None:
+        return jsonify({"ok": False, "error": "corpo da requisição precisa ser JSON"}), 400
+    linhas = body if isinstance(body, list) else [body]
+
+    try:
+        ws = get_chamados_fabricante_sheet()
+        todos = ws.get_all_values()
+        atualizadas, criadas, erros = 0, 0, []
+
+        for linha_recebida in linhas:
+            if not isinstance(linha_recebida, dict):
+                erros.append("item não é um objeto JSON válido")
+                continue
+            # monta a linha na ordem exata do cabeçalho, aceitando chaves
+            # com nomes ligeiramente diferentes (Power Automate às vezes
+            # normaliza acentos/espaços) via comparação flexível
+            def _buscar_campo(nome_coluna):
+                if nome_coluna in linha_recebida:
+                    return str(linha_recebida[nome_coluna] or "").strip()
+                alvo_norm = nome_coluna.lower().strip()
+                for k, v in linha_recebida.items():
+                    if k.lower().strip() == alvo_norm:
+                        return str(v or "").strip()
+                return ""
+
+            nova_linha = [_buscar_campo(h) for h in CHAMADOS_FABRICANTE_HEADERS]
+            ticket = nova_linha[CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")]
+            ativo = nova_linha[CHAMADOS_FABRICANTE_HEADERS.index("Ativo")]
+            data_ocorrencia = nova_linha[CHAMADOS_FABRICANTE_HEADERS.index("Data da ocorrência")]
+
+            linha_existente = None
+            for i, row in enumerate(todos[1:], start=2):
+                if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
+                    row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
+                if ticket and row[CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")].strip() == ticket:
+                    linha_existente = i
+                    break
+                if not ticket and ativo and row[0].strip() == ativo and \
+                   row[CHAMADOS_FABRICANTE_HEADERS.index("Data da ocorrência")].strip() == data_ocorrencia:
+                    linha_existente = i
+                    break
+
+            colunas_letra_fim = chr(64 + len(CHAMADOS_FABRICANTE_HEADERS)) if len(CHAMADOS_FABRICANTE_HEADERS) <= 26 else "Z"
+            if linha_existente:
+                ws.update(f"A{linha_existente}:{colunas_letra_fim}{linha_existente}", [nova_linha])
+                atualizadas += 1
+            else:
+                ws.append_row(nova_linha)
+                todos.append(nova_linha)
+                criadas += 1
+
+        return jsonify({"ok": True, "criadas": criadas, "atualizadas": atualizadas, "erros": erros}), 200
+    except Exception as e:
+        log.error(f"[ChamadosFabricante] Erro ao sincronizar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/chamados-fabricante", methods=["GET"])
+def listar_chamados_fabricante():
+    """Devolve a tabela de chamados de fabricante inteira, pro frontend
+    exibir no Painel de Chamados sem precisar de nenhuma cópia manual."""
+    try:
+        ws = get_chamados_fabricante_sheet()
+        todos = ws.get_all_values()
+        itens = []
+        for row in todos[1:]:
+            if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
+                row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
+            if not row[0].strip():
+                continue
+            itens.append(dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)])))
+        return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
