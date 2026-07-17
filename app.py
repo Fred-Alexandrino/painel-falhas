@@ -6151,7 +6151,11 @@ def listar_chamados_fabricante():
         for row in todos[1:]:
             if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
                 row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
-            if not row[0].strip():
+            # linha em branco de verdade = TODAS as células vazias, não só a
+            # primeira coluna (Ativo pode legitimamente vir vazio — ex.:
+            # célula mesclada no Excel original — enquanto o resto da linha
+            # tem dados reais; checar só row[0] descartava chamados válidos)
+            if not any(cell.strip() for cell in row):
                 continue
             itens.append(dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)])))
         return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
