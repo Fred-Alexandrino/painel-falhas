@@ -13,7 +13,7 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/config-set-lote" \
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-set-lote" \
             -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
             -H "Content-Type: application/json" \
             --data @pares.json -o backups/gravar-config-result.json
