@@ -6898,21 +6898,60 @@ Responda APENAS com um JSON válido (sem markdown, sem blocos de código com cra
 Não invente atividades que não estão na lista. Não omita nenhuma atividade da lista — toda atividade precisa aparecer em "reprogramacoes" com uma data sugerida (sempre dia útil) e um turno."""
 
 
+# Mesmo mapeamento usado no frontend (_RESPONSAVEL_ALIASES em index.html)
+# pra manter o rótulo de "equipe" consistente entre o modal de Comunicados
+# e a Priorização IA — o mesmo técnico grafado de formas diferentes na
+# Fracttal (apelido x nome completo) cai numa única entrada.
+RESPONSAVEL_ALIASES = {
+    "deivity jhon cunha saugo": "Deivity Saugo",
+    "claudio ferreira": "Cláudio Ferreira",
+    "valmir junior": "Valmir Júnior",
+}
+
+
+def _normalizar_responsavel(nome):
+    limpo = re.sub(r"\s+", " ", (nome or "")).strip()
+    if not limpo:
+        return ""
+    return RESPONSAVEL_ALIASES.get(limpo.lower(), limpo)
+
+
+def _equipe_label(item, mapa_cluster):
+    """Mesmo cálculo do frontend: a.cluster || responsável normalizado ||
+    'Sem cluster'. Usado tanto pra exibir quanto pra filtrar por seleção."""
+    cluster = mapa_cluster.get((item.get("usina") or "").strip(), "")
+    if cluster:
+        return cluster
+    resp = _normalizar_responsavel(item.get("responsavel"))
+    return resp or "Sem cluster"
+
+
 @app.route("/sugerir-priorizacao-diaria", methods=["POST", "OPTIONS"])
 def sugerir_priorizacao_diaria():
     """
-    Usa o Gemini pra analisar TODAS as atividades em aberto (todas as
-    usinas, todos os clientes) e sugerir uma ordem de prioridade pro dia,
-    considerando impacto na geração, criticidade/prazo, dependência entre
-    atividades (ex.: recompor cabo antes de amarrar) e agrupamento
-    geográfico pra reduzir deslocamento. Usado pelo botão "Sugerir
-    Priorização (IA)" dentro do modal de Comunicados — gera uma mensagem
-    separada, não mistura com o comunicado normal por usina.
+    Usa o Gemini pra analisar as atividades em aberto e sugerir uma ordem
+    de prioridade pro dia, considerando impacto na geração, criticidade/
+    prazo, dependência entre atividades (ex.: recompor cabo antes de
+    amarrar) e agrupamento geográfico pra reduzir deslocamento. Usado pelo
+    botão "Sugerir Priorização (IA)" dentro do modal de Comunicados —
+    gera uma mensagem separada, não mistura com o comunicado normal por
+    usina.
+
+    Aceita opcionalmente {"clusters": ["SP Centro 01", ...]} no corpo do
+    POST — mesma seleção de checkboxes já usada nos Comunicados — pra
+    restringir a análise só às equipes marcadas, em vez de misturar todas
+    as usinas numa lista só (dificultava separar por técnico na hora de
+    enviar). Sem esse campo (ou lista vazia), mantém o comportamento
+    antigo de considerar todas as atividades — compatibilidade com
+    chamadas antigas.
     """
     if request.method == "OPTIONS":
         return ("", 204)
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    dados = request.get_json(force=True, silent=True) or {}
+    clusters_selecionados = set(c.strip() for c in dados.get("clusters", []) if c and c.strip())
 
     try:
         ws = get_atividades_sheet()
@@ -6920,6 +6959,7 @@ def sugerir_priorizacao_diaria():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+    mapa_cluster = _mapa_cluster_usina()
     status_excluidos = {"concluído", "concluido", "cancelado", "convertida em ocorrência", "convertida em ocorrencia"}
     atividades = []
     for row in todos[1:]:
@@ -6932,10 +6972,15 @@ def sugerir_priorizacao_diaria():
             continue
         if (item.get("statusOS") or "").strip() == "Em Revisão":
             continue  # já foi feita, aguardando confirmação — não é prioridade de execução
+        if clusters_selecionados and _equipe_label(item, mapa_cluster) not in clusters_selecionados:
+            continue
         atividades.append(item)
 
     if not atividades:
-        return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada pra priorizar"}), 400
+        motivo = ("Nenhuma atividade em aberto nos clusters selecionados"
+                   if clusters_selecionados else
+                   "Nenhuma atividade em aberto encontrada pra priorizar")
+        return jsonify({"ok": False, "error": motivo}), 400
 
     total_original = len(atividades)
     truncado = total_original > 70
@@ -7513,3 +7558,4 @@ except Exception as e:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
+
