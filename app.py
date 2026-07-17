@@ -6040,16 +6040,21 @@ def marcar_desligamento_manual():
 @app.route("/sincronizar-chamados", methods=["POST", "OPTIONS"])
 def sincronizar_chamados():
     """
-    Recebe dados da tabela de chamados de fabricante do SharePoint via
-    Power Automate (fluxo configurado pelo Fred: quando uma linha é
-    criada ou alterada na tabela, dispara um POST pra cá com o conteúdo
-    da linha). Faz upsert por "Ticket/RMA" (ou por Ativo+Data da
-    ocorrência se o ticket ainda não tiver sido aberto) — substitui o
-    processo manual de copiar e colar do SharePoint pro painel.
+    Recebe dados da tabela de chamados de fabricante (hoje: exportação
+    manual da planilha do SharePoint enviada pelo Fred; futuramente,
+    talvez um fluxo automático). Faz upsert por "Ticket/RMA" (ou por
+    Ativo+Data da ocorrência se o ticket ainda não tiver sido aberto).
 
     Aceita tanto uma linha única (objeto) quanto várias de uma vez
-    (lista de objetos), pra funcionar bem tanto com o gatilho de
-    "linha criada/modificada" quanto com uma sincronização em lote.
+    (lista de objetos).
+
+    IMPORTANTE (17/07/2026): escreve tudo em LOTE — no máximo duas
+    chamadas à API do Google Sheets no total (uma pra criar todas as
+    linhas novas, outra pra atualizar todas as existentes), não importa
+    se são 5 ou 5.000 linhas recebidas. A versão anterior fazia uma
+    chamada por linha, o que estourava a cota de escrita da API do
+    Google (~60/min) e travava em importações grandes — nunca mais
+    fazer isso aqui.
     """
     if request.method == "OPTIONS":
         return ("", 204)
@@ -6063,18 +6068,39 @@ def sincronizar_chamados():
         return jsonify({"ok": False, "error": "corpo da requisição precisa ser JSON"}), 400
     linhas = body if isinstance(body, list) else [body]
 
+    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
+    idx_ativo = CHAMADOS_FABRICANTE_HEADERS.index("Ativo")
+    idx_data_ocorrencia = CHAMADOS_FABRICANTE_HEADERS.index("Data da ocorrência")
+    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
+    colunas_letra_fim = chr(64 + n_cols) if n_cols <= 26 else "Z"
+
     try:
         ws = get_chamados_fabricante_sheet()
         todos = ws.get_all_values()
-        atualizadas, criadas, erros = 0, 0, []
+
+        # índices pra achar linha existente em O(1) em vez de varrer a
+        # planilha inteira pra cada item recebido
+        por_ticket = {}
+        por_ativo_data = {}
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < n_cols:
+                row = row + [""] * (n_cols - len(row))
+            t = row[idx_ticket].strip()
+            if t:
+                por_ticket[t] = i
+            a, d = row[idx_ativo].strip(), row[idx_data_ocorrencia].strip()
+            if a and d:
+                por_ativo_data[(a, d)] = i
+
+        atualizadas_map = {}  # linha_sheet -> nova_linha (dedupe se o batch repetir a mesma OS)
+        criadas_map = {}      # chave (ticket ou ativo+data) -> nova_linha (dedupe dentro do próprio batch)
+        erros = []
 
         for linha_recebida in linhas:
             if not isinstance(linha_recebida, dict):
                 erros.append("item não é um objeto JSON válido")
                 continue
-            # monta a linha na ordem exata do cabeçalho, aceitando chaves
-            # com nomes ligeiramente diferentes (Power Automate às vezes
-            # normaliza acentos/espaços) via comparação flexível
+
             def _buscar_campo(nome_coluna):
                 if nome_coluna in linha_recebida:
                     return str(linha_recebida[nome_coluna] or "").strip()
@@ -6085,32 +6111,33 @@ def sincronizar_chamados():
                 return ""
 
             nova_linha = [_buscar_campo(h) for h in CHAMADOS_FABRICANTE_HEADERS]
-            ticket = nova_linha[CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")]
-            ativo = nova_linha[CHAMADOS_FABRICANTE_HEADERS.index("Ativo")]
-            data_ocorrencia = nova_linha[CHAMADOS_FABRICANTE_HEADERS.index("Data da ocorrência")]
+            ticket = nova_linha[idx_ticket]
+            ativo = nova_linha[idx_ativo]
+            data_ocorrencia = nova_linha[idx_data_ocorrencia]
 
-            linha_existente = None
-            for i, row in enumerate(todos[1:], start=2):
-                if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
-                    row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
-                if ticket and row[CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")].strip() == ticket:
-                    linha_existente = i
-                    break
-                if not ticket and ativo and row[0].strip() == ativo and \
-                   row[CHAMADOS_FABRICANTE_HEADERS.index("Data da ocorrência")].strip() == data_ocorrencia:
-                    linha_existente = i
-                    break
+            linha_existente = por_ticket.get(ticket) if ticket else None
+            if linha_existente is None and not ticket and ativo:
+                linha_existente = por_ativo_data.get((ativo, data_ocorrencia))
 
-            colunas_letra_fim = chr(64 + len(CHAMADOS_FABRICANTE_HEADERS)) if len(CHAMADOS_FABRICANTE_HEADERS) <= 26 else "Z"
             if linha_existente:
-                ws.update(f"A{linha_existente}:{colunas_letra_fim}{linha_existente}", [nova_linha])
-                atualizadas += 1
+                atualizadas_map[linha_existente] = nova_linha
             else:
-                ws.append_row(nova_linha)
-                todos.append(nova_linha)
-                criadas += 1
+                chave_batch = ticket or (ativo, data_ocorrencia)
+                criadas_map[chave_batch] = nova_linha  # última ocorrência no batch vence
 
-        return jsonify({"ok": True, "criadas": criadas, "atualizadas": atualizadas, "erros": erros}), 200
+        # ── Uma chamada em lote pra todas as atualizações ──
+        if atualizadas_map:
+            ws.batch_update([
+                {"range": f"A{linha}:{colunas_letra_fim}{linha}", "values": [valores]}
+                for linha, valores in atualizadas_map.items()
+            ])
+
+        # ── Uma chamada em lote pra todas as linhas novas ──
+        if criadas_map:
+            ws.append_rows(list(criadas_map.values()))
+
+        return jsonify({"ok": True, "criadas": len(criadas_map), "atualizadas": len(atualizadas_map),
+                         "erros": erros}), 200
     except Exception as e:
         log.error(f"[ChamadosFabricante] Erro ao sincronizar: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
