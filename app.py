@@ -6042,19 +6042,28 @@ def sincronizar_chamados():
     """
     Recebe dados da tabela de chamados de fabricante (hoje: exportação
     manual da planilha do SharePoint enviada pelo Fred; futuramente,
-    talvez um fluxo automático). Faz upsert por "Ticket/RMA" (ou por
-    Ativo+Data da ocorrência se o ticket ainda não tiver sido aberto).
+    talvez um fluxo automático). Faz upsert por uma CHAVE COMPOSTA
+    (Ticket/RMA + Ativo + Identificação do Equipamento + Data da
+    ocorrência), não só pelo Ticket/RMA sozinho.
+
+    Por quê: na planilha real, valores de Ticket/RMA como "00" são
+    usados como placeholder em dezenas de chamados completamente
+    diferentes (usinas/equipamentos diferentes) até o número real ser
+    aberto — e alguns tickets legítimos (ex.: "00574/26") cobrem
+    várias peças de equipamento diferentes na mesma usina/data. Usar só
+    o Ticket/RMA como chave colapsaria esses grupos numa linha só,
+    apagando dados de verdade. A combinação dos 4 campos já foi
+    validada como livre de colisão na importação inicial de 553
+    registros reais (17/07/2026).
 
     Aceita tanto uma linha única (objeto) quanto várias de uma vez
     (lista de objetos).
 
-    IMPORTANTE (17/07/2026): escreve tudo em LOTE — no máximo duas
-    chamadas à API do Google Sheets no total (uma pra criar todas as
-    linhas novas, outra pra atualizar todas as existentes), não importa
-    se são 5 ou 5.000 linhas recebidas. A versão anterior fazia uma
-    chamada por linha, o que estourava a cota de escrita da API do
-    Google (~60/min) e travava em importações grandes — nunca mais
-    fazer isso aqui.
+    Escreve tudo em LOTE — no máximo duas chamadas à API do Google
+    Sheets no total (uma pra criar todas as linhas novas, outra pra
+    atualizar todas as existentes), não importa se são 5 ou 5.000
+    linhas recebidas — evita estourar a cota de escrita da API do
+    Google (~60/min).
     """
     if request.method == "OPTIONS":
         return ("", 204)
@@ -6070,30 +6079,26 @@ def sincronizar_chamados():
 
     idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
     idx_ativo = CHAMADOS_FABRICANTE_HEADERS.index("Ativo")
+    idx_equip = CHAMADOS_FABRICANTE_HEADERS.index("Identificação do Equipamento")
     idx_data_ocorrencia = CHAMADOS_FABRICANTE_HEADERS.index("Data da ocorrência")
     n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
     colunas_letra_fim = chr(64 + n_cols) if n_cols <= 26 else "Z"
+
+    def _chave(row_vals):
+        return (row_vals[idx_ticket], row_vals[idx_ativo], row_vals[idx_equip], row_vals[idx_data_ocorrencia])
 
     try:
         ws = get_chamados_fabricante_sheet()
         todos = ws.get_all_values()
 
-        # índices pra achar linha existente em O(1) em vez de varrer a
-        # planilha inteira pra cada item recebido
-        por_ticket = {}
-        por_ativo_data = {}
+        por_chave = {}
         for i, row in enumerate(todos[1:], start=2):
             if len(row) < n_cols:
                 row = row + [""] * (n_cols - len(row))
-            t = row[idx_ticket].strip()
-            if t:
-                por_ticket[t] = i
-            a, d = row[idx_ativo].strip(), row[idx_data_ocorrencia].strip()
-            if a and d:
-                por_ativo_data[(a, d)] = i
+            por_chave[_chave(row)] = i
 
-        atualizadas_map = {}  # linha_sheet -> nova_linha (dedupe se o batch repetir a mesma OS)
-        criadas_map = {}      # chave (ticket ou ativo+data) -> nova_linha (dedupe dentro do próprio batch)
+        atualizadas_map = {}
+        criadas_map = {}
         erros = []
 
         for linha_recebida in linhas:
@@ -6111,28 +6116,20 @@ def sincronizar_chamados():
                 return ""
 
             nova_linha = [_buscar_campo(h) for h in CHAMADOS_FABRICANTE_HEADERS]
-            ticket = nova_linha[idx_ticket]
-            ativo = nova_linha[idx_ativo]
-            data_ocorrencia = nova_linha[idx_data_ocorrencia]
+            chave = _chave(nova_linha)
 
-            linha_existente = por_ticket.get(ticket) if ticket else None
-            if linha_existente is None and not ticket and ativo:
-                linha_existente = por_ativo_data.get((ativo, data_ocorrencia))
-
+            linha_existente = por_chave.get(chave)
             if linha_existente:
                 atualizadas_map[linha_existente] = nova_linha
             else:
-                chave_batch = ticket or (ativo, data_ocorrencia)
-                criadas_map[chave_batch] = nova_linha  # última ocorrência no batch vence
+                criadas_map[chave] = nova_linha  # última ocorrência no batch vence, se repetir
 
-        # ── Uma chamada em lote pra todas as atualizações ──
         if atualizadas_map:
             ws.batch_update([
                 {"range": f"A{linha}:{colunas_letra_fim}{linha}", "values": [valores]}
                 for linha, valores in atualizadas_map.items()
             ])
 
-        # ── Uma chamada em lote pra todas as linhas novas ──
         if criadas_map:
             ws.append_rows(list(criadas_map.values()))
 
