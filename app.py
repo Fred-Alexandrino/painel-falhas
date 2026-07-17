@@ -3175,7 +3175,12 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
     parou_por_orcamento = False
     if aplicar and desatualizadas:
         desatualizadas.sort(key=lambda d: d["_sortKey"])  # string vazia (nunca verificada) primeiro de verdade
-        ORCAMENTO_SEGUNDOS = 90  # margem de segurança abaixo do timeout de 120s do gunicorn
+        ORCAMENTO_SEGUNDOS = 60  # reduzido de 90 pra 60 (17/07/2026) — com só 1 worker
+                                 # no gunicorn, cada segundo aqui é 1 segundo em que o
+                                 # backend inteiro fica sem responder mais nada (frontend
+                                 # trava em "Erro ao carregar atividades"). O fix real é
+                                 # rodar com 2+ workers (systemd, fora do código) — isso
+                                 # aqui é só uma margem extra de segurança complementar.
         inicio_recheck = time.time()
         for d in desatualizadas:
             if time.time() - inicio_recheck > ORCAMENTO_SEGUNDOS:
