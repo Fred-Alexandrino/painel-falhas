@@ -1,0 +1,24 @@
+name: Testar Atualizar OS (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -w "\nHTTP_STATUS:%{http_code}\nTIME_TOTAL:%{time_total}\n" -X POST "https://api.168.138.232.237.sslip.io/atualizar-os-agora" \
+            -H "Content-Type: application/json" \
+            --max-time 170 \
+            -o backups/atualizar_os_resultado.json 2> backups/atualizar_os_stderr.txt || echo "CURL FALHOU" >> backups/atualizar_os_stderr.txt
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/atualizar_os_resultado.json backups/atualizar_os_stderr.txt
+          git diff --quiet --cached || git commit -m "teste atualizar os [skip ci]"
+          git push
