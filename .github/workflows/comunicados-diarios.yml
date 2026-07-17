@@ -13,5 +13,5 @@ jobs:
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
-          curl -s -X POST "https://whatsapp-painel-falhas.onrender.com/verificar-e-enviar-comunicados" \
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/verificar-e-enviar-comunicados" \
             -H "X-Webhook-Secret: $WEBHOOK_SECRET"
