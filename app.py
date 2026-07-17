@@ -26,7 +26,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_ocorrencias_semana, coletar_atividades_semana,
                                 mesclar_grupos, gerar_relatorio_pptx,
-                                coletar_chamados_abertos, listar_usinas_cliente,
+                                listar_usinas_cliente,
                                 coletar_zeladoria)
 
 # Push notifications (pywebpush)
@@ -6140,15 +6140,28 @@ def sincronizar_chamados():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _mapa_notas_chamados():
+    """Notas que o Fred escreve no popup de detalhe do painel de Chamados
+    — ficam só na aba _Sistema (chave 'nota_chamado:<ticket>|<ufv>|<equip>'),
+    NUNCA na aba ChamadosFabricante, pra sobreviver a reimportações
+    futuras da planilha do SharePoint sem serem apagadas."""
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    mapa = {}
+    for row in valores[1:]:
+        if row and row[0].strip().startswith("nota_chamado:"):
+            chave = row[0].strip()[len("nota_chamado:"):]
+            mapa[chave] = row[1].strip() if len(row) > 1 else ""
+    return mapa
+
+
 @app.route("/atualizar-observacao-chamado", methods=["POST", "OPTIONS"])
 def atualizar_observacao_chamado():
     """
-    Salva o texto de Observações que o Fred edita direto no painel de
-    Chamados (popup de detalhe do card). Localiza a linha por Ticket/RMA
-    + UFV + Identificação do Equipamento (chave já usada no upsert
-    principal) e SOBRESCREVE o campo Observações com o texto novo —
-    diferente da correção de tickets empilhados, aqui é edição manual
-    intencional do usuário, então não faz sentido só acrescentar.
+    Salva a nota que o Fred escreve no popup de detalhe de um chamado —
+    fica só na aba _Sistema (dashboard), NUNCA na aba ChamadosFabricante,
+    pra não ser apagada quando a planilha do SharePoint for reimportada
+    de novo no futuro.
 
     Corpo esperado: {"ticket": "...", "ufv": "...", "equipamento": "...",
     "novaObservacao": "..."}
@@ -6165,26 +6178,21 @@ def atualizar_observacao_chamado():
     ufv = (body.get("ufv") or "").strip()
     equipamento = (body.get("equipamento") or "").strip()
     nova_obs = body.get("novaObservacao") or ""
-
-    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
-    idx_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
-    idx_equip = CHAMADOS_FABRICANTE_HEADERS.index("Identificação do Equipamento")
-    idx_obs = CHAMADOS_FABRICANTE_HEADERS.index("Observações")
-    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
-    col_letra_obs = chr(65 + idx_obs)
+    chave = f"nota_chamado:{ticket}|{ufv}|{equipamento}"
 
     try:
-        ws = get_chamados_fabricante_sheet()
-        todos = ws.get_all_values()
-
-        for i, row in enumerate(todos[1:], start=2):
-            if len(row) < n_cols:
-                row = row + [""] * (n_cols - len(row))
-            if row[idx_ticket].strip() == ticket and row[idx_ufv].strip() == ufv and row[idx_equip].strip() == equipamento:
-                ws.update(f"{col_letra_obs}{i}", [[nova_obs]])
-                return jsonify({"ok": True}), 200
-
-        return jsonify({"ok": False, "error": "chamado não encontrado"}), 404
+        ws_cfg = _get_config_sheet()
+        valores = ws_cfg.get_all_values()
+        linha_existente = None
+        for i, row in enumerate(valores[1:], start=2):
+            if row and row[0].strip() == chave:
+                linha_existente = i
+                break
+        if linha_existente:
+            ws_cfg.update(f"B{linha_existente}", [[nova_obs]])
+        else:
+            ws_cfg.append_row([chave, nova_obs])
+        return jsonify({"ok": True}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -6311,24 +6319,36 @@ def corrigir_ativo_chamado():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _chamados_fabricante_itens():
+    """Lê a aba ChamadosFabricante inteira + mescla as notas do dashboard
+    (aba _Sistema). Reaproveitada tanto pelo endpoint GET /chamados-fabricante
+    quanto pela geração do relatório semanal — uma única fonte de verdade."""
+    ws = get_chamados_fabricante_sheet()
+    todos = ws.get_all_values()
+    notas = _mapa_notas_chamados()
+    itens = []
+    for row in todos[1:]:
+        if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
+            row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
+        # linha em branco de verdade = TODAS as células vazias, não só a
+        # primeira coluna (Ativo pode legitimamente vir vazio — ex.:
+        # célula mesclada no Excel original — enquanto o resto da linha
+        # tem dados reais; checar só row[0] descartava chamados válidos)
+        if not any(cell.strip() for cell in row):
+            continue
+        item = dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)]))
+        chave_nota = f"{item.get('Ticket/RMA','')}|{item.get('UFV','')}|{item.get('Identificação do Equipamento','')}"
+        item["NotaDashboard"] = notas.get(chave_nota, "")
+        itens.append(item)
+    return itens
+
+
 @app.route("/chamados-fabricante", methods=["GET"])
 def listar_chamados_fabricante():
     """Devolve a tabela de chamados de fabricante inteira, pro frontend
     exibir no Painel de Chamados sem precisar de nenhuma cópia manual."""
     try:
-        ws = get_chamados_fabricante_sheet()
-        todos = ws.get_all_values()
-        itens = []
-        for row in todos[1:]:
-            if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
-                row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
-            # linha em branco de verdade = TODAS as células vazias, não só a
-            # primeira coluna (Ativo pode legitimamente vir vazio — ex.:
-            # célula mesclada no Excel original — enquanto o resto da linha
-            # tem dados reais; checar só row[0] descartava chamados válidos)
-            if not any(cell.strip() for cell in row):
-                continue
-            itens.append(dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)])))
+        itens = _chamados_fabricante_itens()
         return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -7535,7 +7555,18 @@ def gerar_relatorio_semanal_route():
         ws = get_sheet()
         todos = carregar_planilha(ws)
         grupos_falhas = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
-        chamados = coletar_chamados_abertos(todos, cliente)
+
+        try:
+            cliente_norm = _norm(cliente)
+            todos_chamados = _chamados_fabricante_itens()
+            chamados = [
+                c for c in todos_chamados
+                if cliente_norm in _norm(c.get("Cliente", ""))
+                and _norm(c.get("Status", "")) != "concluido"
+            ]
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao ler ChamadosFabricante: {e}")
+            chamados = []
 
         try:
             ws_atividades = get_atividades_sheet()
