@@ -1,0 +1,90 @@
+name: Backfill Fracttal (marco ate hoje, Em Processo)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rodar backfill paginado
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          SINCE="2026-03-01T00:00:00-00:00"
+          START=0
+          LIMIT=100
+          TOTAL_CRIADAS=0
+          TOTAL_REVISAO=0
+          TOTAL_ERROS=0
+          PAGINA=1
+
+          mkdir -p backups
+          echo "Backfill Fracttal iniciado em $(date -u +%Y-%m-%dT%H:%M:%SZ)" > backups/backfill-fracttal-result.txt
+          echo "since=$SINCE ot_status=1" >> backups/backfill-fracttal-result.txt
+          echo "" >> backups/backfill-fracttal-result.txt
+
+          while true; do
+            echo "Pagina $PAGINA (start=$START)..."
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              "$BASE/backfill-fracttal?since=$SINCE&ot_status=1&start=$START&limit=$LIMIT" \
+              -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            STATUS=$(echo "$RESPONSE" | tail -n 1)
+
+            {
+              echo "===== Pagina $PAGINA (start=$START) — HTTP $STATUS ====="
+              echo "$BODY"
+              echo ""
+            } >> backups/backfill-fracttal-result.txt
+
+            if [ "$STATUS" -ge 400 ]; then
+              echo "::error::backfill-fracttal falhou na pagina $PAGINA (start=$START), status $STATUS"
+              break
+            fi
+
+            TEM_MAIS=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tem_mais', False))")
+            PROXIMO_START=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('proximo_start', -1))")
+            QTD_CRIADAS=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('criadas', [])))")
+            QTD_REVISAO=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('revisao_manual', [])))")
+            QTD_ERROS=$(echo "$BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('erros', [])))")
+
+            TOTAL_CRIADAS=$((TOTAL_CRIADAS + QTD_CRIADAS))
+            TOTAL_REVISAO=$((TOTAL_REVISAO + QTD_REVISAO))
+            TOTAL_ERROS=$((TOTAL_ERROS + QTD_ERROS))
+
+            if [ "$TEM_MAIS" != "True" ] || [ "$PROXIMO_START" -eq "-1" ]; then
+              break
+            fi
+
+            START=$PROXIMO_START
+            PAGINA=$((PAGINA + 1))
+
+            if [ "$PAGINA" -gt 60 ]; then
+              echo "::warning::Parando por seguranca apos 60 paginas"
+              break
+            fi
+
+            sleep 2
+          done
+
+          {
+            echo "===== RESUMO FINAL ====="
+            echo "Total criadas: $TOTAL_CRIADAS"
+            echo "Total revisao_manual: $TOTAL_REVISAO"
+            echo "Total erros: $TOTAL_ERROS"
+          } >> backups/backfill-fracttal-result.txt
+
+      - name: Salvar resultado no repositório
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/backfill-fracttal-result.txt
+          git diff --quiet --cached || git commit -m "Resultado do backfill Fracttal [skip ci]"
+          git push
