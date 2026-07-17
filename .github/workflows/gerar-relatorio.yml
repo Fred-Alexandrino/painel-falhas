@@ -21,7 +21,7 @@ jobs:
           DATA_INICIO="${{ github.event.client_payload.dataInicio }}"
           DATA_FIM="${{ github.event.client_payload.dataFim }}"
           mkdir -p relatorios_gerados
-          HTTP_CODE=$(curl -sS -X POST "https://whatsapp-painel-falhas.onrender.com/gerar-relatorio-semanal" \
+          HTTP_CODE=$(curl -sS -X POST "https://api.168.138.232.237.sslip.io/gerar-relatorio-semanal" \
             -H "Content-Type: application/json" \
             -d "{\"cliente\": \"$CLIENTE\", \"dataInicio\": \"$DATA_INICIO\", \"dataFim\": \"$DATA_FIM\"}" \
             -o relatorios_gerados/relatorio_teste.pptx \
