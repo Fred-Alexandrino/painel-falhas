@@ -1,0 +1,21 @@
+name: Ler Config Cluster (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  ler:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/config-ler?secret=$WEBHOOK_SECRET" -o backups/config-atual.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/config-atual.json
+          git diff --quiet --cached || git commit -m "ler config atual [skip ci]"
+          git push
