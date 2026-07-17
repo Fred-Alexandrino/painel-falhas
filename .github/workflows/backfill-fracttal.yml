@@ -15,7 +15,7 @@ jobs:
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
-          BASE="https://whatsapp-painel-falhas.onrender.com"
+          BASE="https://api.168.138.232.237.sslip.io"
           SINCE="2026-03-01T00:00:00-00:00"
           START=0
           LIMIT=100
