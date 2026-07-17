@@ -1,0 +1,25 @@
+name: Importar Chamados Inicial (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  importar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/sincronizar-chamados" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            --data-binary @backups/chamados_payload_import.json \
+            --max-time 150 \
+            -o backups/importacao_resultado.json
+      - run: |
+          git config user.name "import-bot"
+          git config user.email "actions@github.com"
+          git add backups/importacao_resultado.json
+          git diff --quiet --cached || git commit -m "resultado importacao chamados [skip ci]"
+          git push
