@@ -3155,14 +3155,35 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
 
     # ── Parte 3: recheca AO VIVO na Fracttal as OSs mais desatualizadas —
     # isso é o que torna a auditoria de verdade "confiável", não só uma
-    # conferência de campos que já podem estar todos errados juntos. O
-    # rodízio automático já cobre isso normalmente, mas essa parte garante
-    # que mesmo uma OS presa fora do rodízio por algum bug futuro acaba
-    # sendo revisitada em pouco tempo, sem depender só do rodízio.
+    # conferência de campos que já podem estar todos errados juntos.
+    #
+    # MUDANÇA (17/07/2026, pedido do Fred): antes processava só um lote
+    # fixo (limite_recheck_ao_vivo, 35) por chamada — significava que,
+    # com fila grande (ex.: 114 OSs), uma OS específica podia esperar
+    # vários ciclos de 5min pra ser rechecada de novo. Agora processa a
+    # fila TODA em sequência dentro da mesma chamada (nº de "rodadas"
+    # necessárias pra cobrir tudo, calculado a partir do total ÷ 35 —
+    # só que aqui, em vez de rodadas HTTP separadas como o botão manual
+    # faz, é o mesmo loop contínuo, sem reabrir conexão a cada 35).
+    # Protegido por um orçamento de tempo (não um teto de contagem) pra
+    # nunca estourar o timeout do gunicorn (120s) — se a fila for grande
+    # demais pra caber no orçamento, processa o que der e para; o resto
+    # continua com timestamp antigo, então cai automaticamente no topo
+    # da fila (mais antigo primeiro) na PRÓXIMA chamada de 5min, sem
+    # precisar de nenhuma lógica extra pra "lembrar onde parou".
     revalidadas_ao_vivo = []
+    parou_por_orcamento = False
     if aplicar and desatualizadas:
         desatualizadas.sort(key=lambda d: d["_sortKey"])  # string vazia (nunca verificada) primeiro de verdade
-        for d in desatualizadas[:limite_recheck_ao_vivo]:
+        ORCAMENTO_SEGUNDOS = 90  # margem de segurança abaixo do timeout de 120s do gunicorn
+        inicio_recheck = time.time()
+        for d in desatualizadas:
+            if time.time() - inicio_recheck > ORCAMENTO_SEGUNDOS:
+                parou_por_orcamento = True
+                log.warning(f"[Auditoria] Orçamento de {ORCAMENTO_SEGUNDOS}s esgotado — "
+                            f"{len(revalidadas_ao_vivo)}/{len(desatualizadas)} revalidadas nesta rodada, "
+                            f"restante fica pro próximo ciclo automático (5min).")
+                break
             resultado = _fracttal_verificar_e_atualizar_uma_os(ws, d["linha"], d["row"], d["numeroOS"],
                                                                 enviar_notificacao=False)
             if resultado:
@@ -3209,7 +3230,8 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
 
     return {"aplicado": aplicar, "total_divergencias": len(divergencias), "divergencias": divergencias,
             "total_desatualizadas": len(desatualizadas), "desatualizadas": desatualizadas,
-            "revalidadas_ao_vivo": revalidadas_ao_vivo, "limite_recheck_ao_vivo": limite_recheck_ao_vivo}
+            "revalidadas_ao_vivo": revalidadas_ao_vivo, "limite_recheck_ao_vivo": limite_recheck_ao_vivo,
+            "parou_por_orcamento_tempo": parou_por_orcamento}
 
 
 def _extrair_data_fallback_historico(historico, palavras_chave=None):
