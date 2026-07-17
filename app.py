@@ -6891,6 +6891,12 @@ REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
 - Cada "Responsável/Equipe" representa uma equipe de campo fisicamente alocada. Uma mesma equipe NUNCA pode ter atividades programadas em USINAS DIFERENTES no mesmo dia — o deslocamento entre usinas inviabiliza isso. Se a equipe tem atividades em mais de uma usina, agrupe-as em dias diferentes, dedicando um ou mais dias consecutivos inteiros a cada usina antes de mover a equipe pra próxima.
 - Atividades da MESMA equipe na MESMA usina podem (e devem, quando fizer sentido) ser agrupadas no mesmo dia ou em dias consecutivos, pra reduzir viagens.
 
+REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre os critérios de preenchimento por proximidade abaixo): a equipe do Cláudio Ferreira (cluster CE Leste 01) tem dias fixos por cliente, definidos pelo Fred:
+- Atividades em usinas do cliente GD Energy (ex.: Guajirú, Sol do Norte I, Sol do Norte II) alocadas a essa equipe: "dataSugerida" DEVE cair numa quarta-feira (dentre as datas disponíveis na lista de dias úteis).
+- Atividades em usinas do cliente Alves Lima (ABC Morada Nova) alocadas a essa equipe: "dataSugerida" DEVE cair numa segunda-feira (dentre as datas disponíveis na lista de dias úteis).
+- Se não houver nenhuma quarta-feira (ou segunda-feira, conforme o caso) disponível na lista de dias úteis fornecida, escolha a data disponível mais próxima e explique isso claramente na "justificativa".
+- Essa regra vale só pra essa equipe/cliente específicos — não aplique padrão parecido pra outras equipes sem instrução explícita.
+
 OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
 2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
