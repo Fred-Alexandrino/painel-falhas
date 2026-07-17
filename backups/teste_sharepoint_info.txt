@@ -1,0 +1,6 @@
+=== Tipo de arquivo detectado ===
+backups/teste_sharepoint_download.bin: ASCII text, with no line terminators
+=== Tamanho ===
+13 backups/teste_sharepoint_download.bin
+=== Primeiros 500 caracteres ===
+403 FORBIDDEN
