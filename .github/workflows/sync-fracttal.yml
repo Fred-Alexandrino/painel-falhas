@@ -17,7 +17,7 @@ jobs:
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
-          BASE="https://whatsapp-painel-falhas.onrender.com"
+          BASE="https://api.168.138.232.237.sslip.io"
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE/sync-fracttal" \
             -H "X-Webhook-Secret: $WEBHOOK_SECRET")
           BODY=$(echo "$RESPONSE" | head -n -1)
