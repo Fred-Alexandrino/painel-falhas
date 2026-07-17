@@ -1,0 +1,19 @@
+name: Deploy Ponte WhatsApp VM2 (auto)
+on:
+  workflow_dispatch: {}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH (git pull + restart)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            git pull
+            sudo systemctl restart wppconnect
+            sleep 3
+            sudo systemctl status wppconnect --no-pager
