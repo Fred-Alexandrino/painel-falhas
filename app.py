@@ -7101,6 +7101,14 @@ def sugerir_reprogramacao():
             continue
         if (item.get("status") or "").strip().lower() in status_excluidos:
             continue
+        # Camada extra de proteção (17/07/2026): "Em Revisão" é o estado
+        # de uma OS já concluída em campo, só aguardando confirmação da
+        # Fracttal — não faz sentido sugerir uma NOVA data pra ela. O
+        # frontend já filtra isso antes de mandar os ids, mas replicar
+        # aqui evita que um chamado direto ao endpoint (sem passar pelo
+        # filtro do modal) traga OSs que não deveriam ser reprogramadas.
+        if (item.get("statusOS") or "").strip().lower() in ("em revisão", "em revisao"):
+            continue
         if ids_filtro is not None and item["id"] not in ids_filtro:
             continue
         atividades.append(item)
