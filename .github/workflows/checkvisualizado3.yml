@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p backups
-          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o /tmp/a.json
+          curl -s "https://api.168.138.232.237.sslip.io/atividades" -o /tmp/a.json
           python3 -c "
           import json
           from collections import Counter
