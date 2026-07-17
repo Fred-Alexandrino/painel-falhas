@@ -1,0 +1,19 @@
+name: Checagem Final Chamados (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -s "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/checagem_final.json
+          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/checagem_health.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/checagem_final.json backups/checagem_health.json
+          git diff --quiet --cached || git commit -m "checagem final chamados [skip ci]"
+          git push
