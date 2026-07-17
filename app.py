@@ -6140,6 +6140,60 @@ def sincronizar_chamados():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/corrigir-ativo-chamado", methods=["POST", "OPTIONS"])
+def corrigir_ativo_chamado():
+    """
+    Correção pontual: atualiza SÓ a coluna "Ativo" de uma ou mais linhas
+    já existentes na aba ChamadosFabricante, localizadas por Ticket/RMA
+    + UFV (não usa a chave composta normal do /sincronizar-chamados,
+    porque nesse caso o próprio "Ativo" é o campo que está sendo
+    corrigido — geralmente linhas que vieram com Ativo vazio por causa
+    de célula mesclada no Excel original).
+
+    Corpo esperado: {"correcoes": [{"ticket": "...", "ufv": "...", "novoAtivo": "..."}, ...]}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    correcoes = body.get("correcoes", [])
+    if not correcoes:
+        return jsonify({"ok": False, "error": "nenhuma correção informada"}), 400
+
+    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
+    idx_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
+    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
+
+    try:
+        ws = get_chamados_fabricante_sheet()
+        todos = ws.get_all_values()
+
+        atualizacoes, nao_encontradas = [], []
+        for c in correcoes:
+            ticket, ufv, novo_ativo = (c.get("ticket") or "").strip(), (c.get("ufv") or "").strip(), c.get("novoAtivo") or ""
+            achou = False
+            for i, row in enumerate(todos[1:], start=2):
+                if len(row) < n_cols:
+                    row = row + [""] * (n_cols - len(row))
+                if row[idx_ticket].strip() == ticket and row[idx_ufv].strip() == ufv:
+                    atualizacoes.append({"range": f"A{i}", "values": [[novo_ativo]]})
+                    achou = True
+                    break
+            if not achou:
+                nao_encontradas.append({"ticket": ticket, "ufv": ufv})
+
+        if atualizacoes:
+            ws.batch_update(atualizacoes)
+
+        return jsonify({"ok": True, "corrigidas": len(atualizacoes), "nao_encontradas": nao_encontradas}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/chamados-fabricante", methods=["GET"])
 def listar_chamados_fabricante():
     """Devolve a tabela de chamados de fabricante inteira, pro frontend
