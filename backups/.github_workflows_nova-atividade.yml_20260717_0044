@@ -1,0 +1,44 @@
+name: Nova Atividade (via Claude)
+
+on:
+  repository_dispatch:
+    types: [nova_atividade]
+
+jobs:
+  criar-atividade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar atividade no backend
+        id: criar
+        env:
+          P_CLIENTE: ${{ github.event.client_payload.cliente }}
+          P_USINA: ${{ github.event.client_payload.usina }}
+          P_EQUIPAMENTO: ${{ github.event.client_payload.equipamento }}
+          P_DESCRICAO: ${{ github.event.client_payload.descricao }}
+          P_RESPONSAVEL: ${{ github.event.client_payload.responsavel }}
+          P_PRAZO: ${{ github.event.client_payload.prazo }}
+          P_PRIORIDADE: ${{ github.event.client_payload.prioridade }}
+          P_NUMEROOS: ${{ github.event.client_payload.numeroOS }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          PRIORIDADE_FINAL="${P_PRIORIDADE:-Média}"
+          PAYLOAD=$(jq -n --arg cliente "$P_CLIENTE" --arg usina "$P_USINA" --arg equipamento "$P_EQUIPAMENTO" --arg descricao "$P_DESCRICAO" --arg responsavel "$P_RESPONSAVEL" --arg prazo "$P_PRAZO" --arg prioridade "$PRIORIDADE_FINAL" --arg numeroOS "$P_NUMEROOS" '{cliente:$cliente,usina:$usina,equipamento:$equipamento,descricao:$descricao,responsavel:$responsavel,prazo:$prazo,prioridade:$prioridade,numeroOS:$numeroOS,editor:"claude-chat"}')
+          echo "Payload: $PAYLOAD"
+          RESPONSE=$(curl -s -X POST "$BASE/nova-atividade" -H "Content-Type: application/json" -d "$PAYLOAD")
+          echo "Resposta: $RESPONSE"
+          ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Complementar historico se enviado
+        if: ${{ github.event.client_payload.historico_extra != '' && github.event.client_payload.historico_extra != null }}
+        env:
+          ATIV_ID: ${{ steps.criar.outputs.id }}
+          P_HIST: ${{ github.event.client_payload.historico_extra }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          if [ -z "$ATIV_ID" ]; then
+            echo "Sem ID retornado na criacao - nao foi possivel complementar historico."
+            exit 0
+          fi
+          PAYLOAD=$(jq -n --arg id "$ATIV_ID" --arg value "$P_HIST" '{id:$id,field:"historico",append:true,value:$value,editor:"claude-chat"}')
+          curl -s -X POST "$BASE/atualizar-campo-atividade" -H "Content-Type: application/json" -d "$PAYLOAD"
