@@ -15,7 +15,7 @@ jobs:
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
-          BASE="https://whatsapp-painel-falhas.onrender.com"
+          BASE="https://api.168.138.232.237.sslip.io"
           mkdir -p backups
           curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/ativs.json
           python3 -c "
