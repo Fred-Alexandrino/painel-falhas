@@ -15,7 +15,7 @@ jobs:
           P_VALUE: ${{ github.event.client_payload.value }}
           P_APPEND: ${{ github.event.client_payload.append }}
         run: |
-          BASE="https://whatsapp-painel-falhas.onrender.com"
+          BASE="https://api.168.138.232.237.sslip.io"
           LISTA=$(curl -s "$BASE/atividades")
           ID=$(echo "$LISTA" | jq -r --arg os "$P_NUMEROOS" '.atividades[] | select(.numeroOS == $os) | .id' | head -n1)
           if [ -z "$ID" ] || [ "$ID" = "null" ]; then
