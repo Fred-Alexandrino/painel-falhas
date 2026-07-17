@@ -13,10 +13,10 @@ jobs:
         run: |
           mkdir -p backups
           echo "== /health ==" > backups/diag-gemini.txt
-          curl -s -w "\nHTTP_STATUS:%{http_code} TIME:%{time_total}s\n" "https://whatsapp-painel-falhas.onrender.com/health" >> backups/diag-gemini.txt 2>&1
+          curl -s -w "\nHTTP_STATUS:%{http_code} TIME:%{time_total}s\n" "https://api.168.138.232.237.sslip.io/health" >> backups/diag-gemini.txt 2>&1
           echo "" >> backups/diag-gemini.txt
           echo "== /gerar-texto-os-ia ==" >> backups/diag-gemini.txt
-          curl -s -w "\nHTTP_STATUS:%{http_code} TIME:%{time_total}s\n" -m 60 -X POST "https://whatsapp-painel-falhas.onrender.com/gerar-texto-os-ia" -H "Content-Type: application/json" -d '{"cliente":"THOPEN","usina":"Boa Esperanca do Sul I","equipamento":"Inversor 01","falha":"Teste diagnostico","causa":"","acao":"","historico":"","responsavel":"Diagnostico"}' >> backups/diag-gemini.txt 2>&1
+          curl -s -w "\nHTTP_STATUS:%{http_code} TIME:%{time_total}s\n" -m 60 -X POST "https://api.168.138.232.237.sslip.io/gerar-texto-os-ia" -H "Content-Type: application/json" -d '{"cliente":"THOPEN","usina":"Boa Esperanca do Sul I","equipamento":"Inversor 01","falha":"Teste diagnostico","causa":"","acao":"","historico":"","responsavel":"Diagnostico"}' >> backups/diag-gemini.txt 2>&1
       - run: |
           git config user.name "diag-bot"
           git config user.email "actions@github.com"
