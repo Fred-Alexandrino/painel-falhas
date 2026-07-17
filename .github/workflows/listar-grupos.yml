@@ -13,7 +13,7 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s "https://whatsapp-painel-falhas.onrender.com/health" -o /tmp/health.json
+          curl -s "https://api.168.138.232.237.sslip.io/health" -o /tmp/health.json
           cat /tmp/health.json
           WPP_URL=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('wpp_server',''))")
           echo "WPP_URL=$WPP_URL"
