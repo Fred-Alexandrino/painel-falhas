@@ -6140,6 +6140,74 @@ def sincronizar_chamados():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/corrigir-tickets-empilhados", methods=["POST", "OPTIONS"])
+def corrigir_tickets_empilhados():
+    """
+    Correção em lote (17/07/2026): na planilha original do SharePoint,
+    várias linhas tinham MÚLTIPLOS tickets de fabricante empilhados
+    numa célula só (ex.: "Ticket Novo: 15817311\\n15751652\\n15651216"),
+    e vieram assim pro import inicial. Esse endpoint localiza cada linha
+    pelo valor ANTIGO (bruto, empilhado) de Ticket/RMA + UFV, troca o
+    Ticket/RMA pelo primeiro/mais recente já limpo (sem o rótulo tipo
+    "Ticket Novo:"), e acrescenta os tickets mais antigos como nota no
+    campo Observações (sem apagar o que já tinha lá).
+
+    Corpo esperado: {"correcoes": [{"ticketAntigo": "...", "ufv": "...",
+    "novoTicket": "...", "notaObservacao": "..."}, ...]}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    correcoes = body.get("correcoes", [])
+    if not correcoes:
+        return jsonify({"ok": False, "error": "nenhuma correção informada"}), 400
+
+    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
+    idx_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
+    idx_obs = CHAMADOS_FABRICANTE_HEADERS.index("Observações")
+    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
+    col_letra_ticket = chr(65 + idx_ticket)
+    col_letra_obs = chr(65 + idx_obs)
+
+    try:
+        ws = get_chamados_fabricante_sheet()
+        todos = ws.get_all_values()
+
+        atualizacoes, nao_encontradas = [], []
+        for c in correcoes:
+            ticket_antigo = (c.get("ticketAntigo") or "").strip()
+            ufv = (c.get("ufv") or "").strip()
+            novo_ticket = c.get("novoTicket") or ""
+            nota = c.get("notaObservacao") or ""
+            achou = False
+            for i, row in enumerate(todos[1:], start=2):
+                if len(row) < n_cols:
+                    row = row + [""] * (n_cols - len(row))
+                if row[idx_ticket].strip() == ticket_antigo and row[idx_ufv].strip() == ufv:
+                    obs_atual = row[idx_obs].strip()
+                    obs_nova = f"{obs_atual}\n{nota}".strip() if obs_atual and nota else (nota or obs_atual)
+                    atualizacoes.append({"range": f"{col_letra_ticket}{i}", "values": [[novo_ticket]]})
+                    if nota:
+                        atualizacoes.append({"range": f"{col_letra_obs}{i}", "values": [[obs_nova]]})
+                    achou = True
+                    break
+            if not achou:
+                nao_encontradas.append({"ticketAntigo": ticket_antigo, "ufv": ufv})
+
+        if atualizacoes:
+            ws.batch_update(atualizacoes)
+
+        return jsonify({"ok": True, "corrigidas": len(correcoes) - len(nao_encontradas),
+                         "nao_encontradas": nao_encontradas}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/corrigir-ativo-chamado", methods=["POST", "OPTIONS"])
 def corrigir_ativo_chamado():
     """
