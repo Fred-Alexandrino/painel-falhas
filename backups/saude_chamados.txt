@@ -1,0 +1,2 @@
+total chamados: 553
+tem NotaDashboard: True
