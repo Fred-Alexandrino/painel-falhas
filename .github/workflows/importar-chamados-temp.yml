@@ -14,7 +14,7 @@ jobs:
           curl -s -X POST "https://api.168.138.232.237.sslip.io/sincronizar-chamados" \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
-            --data-binary @backups/chamados_retry.json \
+            --data-binary @backups/chamados_payload_import.json \
             --max-time 150 \
             -o backups/importacao_resultado.json
       - run: |
