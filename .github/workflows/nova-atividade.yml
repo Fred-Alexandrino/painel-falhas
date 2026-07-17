@@ -20,7 +20,7 @@ jobs:
           P_PRIORIDADE: ${{ github.event.client_payload.prioridade }}
           P_NUMEROOS: ${{ github.event.client_payload.numeroOS }}
         run: |
-          BASE="https://whatsapp-painel-falhas.onrender.com"
+          BASE="https://api.168.138.232.237.sslip.io"
           PRIORIDADE_FINAL="${P_PRIORIDADE:-Média}"
           PAYLOAD=$(jq -n --arg cliente "$P_CLIENTE" --arg usina "$P_USINA" --arg equipamento "$P_EQUIPAMENTO" --arg descricao "$P_DESCRICAO" --arg responsavel "$P_RESPONSAVEL" --arg prazo "$P_PRAZO" --arg prioridade "$PRIORIDADE_FINAL" --arg numeroOS "$P_NUMEROOS" '{cliente:$cliente,usina:$usina,equipamento:$equipamento,descricao:$descricao,responsavel:$responsavel,prazo:$prazo,prioridade:$prioridade,numeroOS:$numeroOS,editor:"claude-chat"}')
           echo "Payload: $PAYLOAD"
@@ -35,7 +35,7 @@ jobs:
           ATIV_ID: ${{ steps.criar.outputs.id }}
           P_HIST: ${{ github.event.client_payload.historico_extra }}
         run: |
-          BASE="https://whatsapp-painel-falhas.onrender.com"
+          BASE="https://api.168.138.232.237.sslip.io"
           if [ -z "$ATIV_ID" ]; then
             echo "Sem ID retornado na criacao - nao foi possivel complementar historico."
             exit 0
