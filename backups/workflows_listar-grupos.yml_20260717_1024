@@ -1,0 +1,29 @@
+name: Listar Grupos WhatsApp
+on:
+  workflow_dispatch: {}
+jobs:
+  listar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar URL do bridge e listar grupos
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://whatsapp-painel-falhas.onrender.com/health" -o /tmp/health.json
+          cat /tmp/health.json
+          WPP_URL=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('wpp_server',''))")
+          echo "WPP_URL=$WPP_URL"
+          curl -s "$WPP_URL/grupos" -o backups/grupos-whatsapp.json
+          cat backups/grupos-whatsapp.json
+      - name: Salvar
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/grupos-whatsapp.json
+          git diff --quiet --cached || git commit -m "Listar grupos whatsapp [skip ci]"
+          git push
