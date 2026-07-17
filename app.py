@@ -6140,6 +6140,55 @@ def sincronizar_chamados():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/atualizar-observacao-chamado", methods=["POST", "OPTIONS"])
+def atualizar_observacao_chamado():
+    """
+    Salva o texto de Observações que o Fred edita direto no painel de
+    Chamados (popup de detalhe do card). Localiza a linha por Ticket/RMA
+    + UFV + Identificação do Equipamento (chave já usada no upsert
+    principal) e SOBRESCREVE o campo Observações com o texto novo —
+    diferente da correção de tickets empilhados, aqui é edição manual
+    intencional do usuário, então não faz sentido só acrescentar.
+
+    Corpo esperado: {"ticket": "...", "ufv": "...", "equipamento": "...",
+    "novaObservacao": "..."}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    ticket = (body.get("ticket") or "").strip()
+    ufv = (body.get("ufv") or "").strip()
+    equipamento = (body.get("equipamento") or "").strip()
+    nova_obs = body.get("novaObservacao") or ""
+
+    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
+    idx_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
+    idx_equip = CHAMADOS_FABRICANTE_HEADERS.index("Identificação do Equipamento")
+    idx_obs = CHAMADOS_FABRICANTE_HEADERS.index("Observações")
+    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
+    col_letra_obs = chr(65 + idx_obs)
+
+    try:
+        ws = get_chamados_fabricante_sheet()
+        todos = ws.get_all_values()
+
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < n_cols:
+                row = row + [""] * (n_cols - len(row))
+            if row[idx_ticket].strip() == ticket and row[idx_ufv].strip() == ufv and row[idx_equip].strip() == equipamento:
+                ws.update(f"{col_letra_obs}{i}", [[nova_obs]])
+                return jsonify({"ok": True}), 200
+
+        return jsonify({"ok": False, "error": "chamado não encontrado"}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/corrigir-tickets-empilhados", methods=["POST", "OPTIONS"])
 def corrigir_tickets_empilhados():
     """
