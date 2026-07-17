@@ -1,0 +1,42 @@
+name: Fracttal Raw Diagnostic (temporario)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  raw:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checar quantas atividades faltam completar
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          BASE="https://whatsapp-painel-falhas.onrender.com"
+          mkdir -p backups
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/ativs.json
+          python3 -c "
+import json
+d = json.load(open('/tmp/ativs.json'))
+ativs = d.get('atividades', [])
+fracttal = [a for a in ativs if a.get('editor') in ('fracttal-backfill','fracttal-sync')]
+sem_status = [a for a in fracttal if not a.get('statusOS')]
+print('Total atividades vindas da Fracttal:', len(fracttal))
+print('Sem statusOS preenchido:', len(sem_status))
+print()
+for a in fracttal:
+    print(a.get('numeroOS'), '|', a.get('statusOS') or '(vazio)', '|', a.get('prazo') or '(sem prazo)', '|', (a.get('observacoesOS') or '')[:40])
+" > backups/fracttal-raw-sample.txt
+          cat backups/fracttal-raw-sample.txt
+
+      - name: Salvar resultado no repositório
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/fracttal-raw-sample.txt
+          git diff --quiet --cached || git commit -m "Resultado completar-fracttal-backfill em lotes [skip ci]"
+          git push
