@@ -12,7 +12,7 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s "https://whatsapp-painel-falhas.onrender.com/atividades" -o backups/diag2-atividades.json
+          curl -s "https://api.168.138.232.237.sslip.io/atividades" -o backups/diag2-atividades.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
