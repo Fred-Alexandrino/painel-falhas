@@ -1,0 +1,25 @@
+name: Testar Link SharePoint (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -L "https://gridcobr.sharepoint.com/:x:/s/GRIDCO/IQDDVutOXnEOS7ZYbp-CmK7FAVec5J84CPw1jmQoMVcDEuE?e=khj5Gb&download=1" -o backups/teste_sharepoint_download.bin
+          echo "=== Tipo de arquivo detectado ===" > backups/teste_sharepoint_info.txt
+          file backups/teste_sharepoint_download.bin >> backups/teste_sharepoint_info.txt
+          echo "=== Tamanho ===" >> backups/teste_sharepoint_info.txt
+          wc -c backups/teste_sharepoint_download.bin >> backups/teste_sharepoint_info.txt
+          echo "=== Primeiros 500 caracteres ===" >> backups/teste_sharepoint_info.txt
+          head -c 500 backups/teste_sharepoint_download.bin >> backups/teste_sharepoint_info.txt
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste_sharepoint_info.txt
+          git diff --quiet --cached || git commit -m "teste link sharepoint [skip ci]"
+          git push
