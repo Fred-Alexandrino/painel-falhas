@@ -428,6 +428,42 @@ def gerar_paragrafos_desligamentos(dados):
 
 # ── Chamados em aberto: uma linha por chamado, usina em negrito inline ─────
 
+def gerar_paragrafos_chamados_fabricante(chamados):
+    """Uma linha por chamado da aba ChamadosFabricante (dashboard novo,
+    17/07/2026) — mostra Ativo, Identificação do Equipamento, Ticket/RMA,
+    Status e a Nota do dashboard (quando o Fred escreveu alguma no popup
+    de detalhe). Recebe a lista JÁ filtrada por cliente e sem os
+    concluídos — este código só formata, não filtra."""
+    if not chamados:
+        return [{"texto": "Nenhum chamado em aberto nesta semana.", "bold": False}]
+
+    por_usina = {}
+    for c in chamados:
+        usina = (c.get("UFV") or "Usina não informada").strip()
+        por_usina.setdefault(usina, []).append(c)
+
+    paragrafos = []
+    for usina in sorted(por_usina.keys()):
+        paragrafos.append({"runs": [{"texto": usina, "bold": True}]})
+        for c in por_usina[usina]:
+            ativo = (c.get("Ativo") or "").strip()
+            equip = (c.get("Identificação do Equipamento") or "").strip()
+            ticket = (c.get("Ticket/RMA") or "").strip()
+            status = (c.get("Status") or "Em análise").strip()
+            nota = (c.get("NotaDashboard") or "").strip()
+
+            descricao_equip = equip or ativo or "Equipamento não informado"
+            if equip and ativo and ativo.lower() not in equip.lower():
+                descricao_equip = f"{ativo} — {equip}"
+
+            texto_principal = f"- {descricao_equip} – Ticket {ticket or 's/n'} – {status}."
+            runs = [{"texto": texto_principal, "bold": False}]
+            if nota:
+                runs.append({"texto": f" Obs.: {nota}", "bold": False})
+            paragrafos.append({"runs": runs})
+    return paragrafos
+
+
 def gerar_paragrafos_chamados(chamados):
     """Uma linha por chamado válido: '- Usina – Case #ticket -> resumo -> status.'
     (chamados vêm sempre do Painel de Falhas — Painel de Atividades não tem
@@ -895,9 +931,9 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
             titulo = CAT_DESLIGAMENTOS if i == 0 else f"{CAT_DESLIGAMENTOS} (cont.)"
             _renderizar_pagina_categoria(prs, titulo, pagina)
 
-    # --- Página: Chamados em aberto (só com ticket/case válido) ------------
+    # --- Página: Chamados em aberto (aba ChamadosFabricante, dashboard) ----
     if chamados:
-        _renderizar_pagina_categoria(prs, "CHAMADOS EM ABERTO", gerar_paragrafos_chamados(chamados))
+        _renderizar_pagina_categoria(prs, "CHAMADOS EM ABERTO", gerar_paragrafos_chamados_fabricante(chamados))
 
     # --- Página(s): Zeladoria — tabela real (Usina | Roçagem | Poda Química |
     #     Limpeza dos Módulos), paginada para nunca estourar o slide ---------
