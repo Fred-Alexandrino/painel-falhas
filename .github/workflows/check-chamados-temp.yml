@@ -1,0 +1,19 @@
+name: Checar ChamadosFabricante (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/chamados-check.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/chamados-check.json
+          git diff --quiet --cached || git commit -m "check chamados [skip ci]"
+          git push
