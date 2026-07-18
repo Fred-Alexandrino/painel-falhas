@@ -15,7 +15,7 @@ jobs:
           curl -s -X POST "https://api.168.138.232.237.sslip.io/migrar-historico-legivel" \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
-            -d '{"aplicar": false}' \
+            -d '{"aplicar": true}' \
             --max-time 120 \
             -o backups/teste_migracao_resultado.json
       - run: |
