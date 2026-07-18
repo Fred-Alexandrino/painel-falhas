@@ -5535,6 +5535,137 @@ def _editor_legivel(editor):
     return mapa.get(editor, editor)
 
 
+_MIGRAR_HIST_PADRAO_CRIACAO = re.compile(
+    r'^(?P<data>\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - Atividade criada por (fracttal-sync|fracttal-backfill)\.$')
+_MIGRAR_HIST_PADRAO_VISUALIZADO = re.compile(
+    r'^(?P<data>\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - visualizado alterado de "(?P<de>.*?)" para "(?P<para>.*?)" por (?P<editor>.*?)\.$')
+_MIGRAR_HIST_PADRAO_TECNICO_DESC = re.compile(
+    r'^(?P<data>\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - tecnico:(?P<grupo>\d+): (?P<texto>.*)$')
+_MIGRAR_HIST_PADRAO_TECNICO_STATUS = re.compile(
+    r'^(?P<data>\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - tecnico:(?P<grupo>\d+) reportou status "(?P<status>.*?)" '
+    r'pelo WhatsApp — verificando direto na Fracttal \(o status real vem de lá, não da mensagem\)\.$')
+_MIGRAR_HIST_PADRAO_STATUS_OS = re.compile(
+    r'^(?P<data>\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - Status na OS \(Fracttal\) atualizado: '
+    r'"(?P<de>.*?)" → "(?P<para>.*?)", (?P<pde>\d+)% → (?P<ppara>\d+)% \((?P<geral>.*?)\)\.$')
+
+
+def _migrar_linha_historico(linha):
+    """Reescreve uma única linha de histórico (formato antigo) pro formato
+    novo, mais legível. Devolve a linha original sem alterar se nenhum dos
+    padrões conhecidos bater — nunca inventa nem apaga informação."""
+    m = _MIGRAR_HIST_PADRAO_CRIACAO.match(linha)
+    if m:
+        return f'{m["data"]} - Atividade criada por sincronização automática com a Fracttal.'
+
+    m = _MIGRAR_HIST_PADRAO_VISUALIZADO.match(linha)
+    if m and m["para"].strip().lower() == "sim":
+        return f'{m["data"]} - Marcado como visualizado ({m["editor"]}).'
+
+    m = _MIGRAR_HIST_PADRAO_TECNICO_DESC.match(linha)
+    if m:
+        nome = _nome_amigavel_grupo(m["grupo"]) or "via WhatsApp"
+        return f'{m["data"]} - técnico de campo ({nome}): {m["texto"]}'
+
+    m = _MIGRAR_HIST_PADRAO_TECNICO_STATUS.match(linha)
+    if m:
+        nome = _nome_amigavel_grupo(m["grupo"]) or "via WhatsApp"
+        return (f'{m["data"]} - técnico de campo ({nome}) reportou status "{m["status"]}" '
+                f'pelo WhatsApp (confirmado em seguida direto com a Fracttal).')
+
+    m = _MIGRAR_HIST_PADRAO_STATUS_OS.match(linha)
+    if m:
+        partes = []
+        if m["de"] != m["para"]:
+            partes.append(f'status na Fracttal mudou de "{m["de"]}" para "{m["para"]}"')
+        if m["pde"] != m["ppara"]:
+            partes.append(f'progresso da tarefa foi de {m["pde"]}% para {m["ppara"]}%')
+        if not partes:
+            # nem status nem percentual mudaram no texto antigo — o único
+            # jeito de "mudou" ter sido true na época é a situação geral da
+            # tarefa ter mudado; não temos o valor "de" no texto antigo
+            # (só foi gravado o "para"), então afirmamos só o que sabemos
+            # de verdade, sem inventar uma transição que não temos como
+            # confirmar.
+            partes.append(f'situação geral da tarefa: "{m["geral"]}"')
+        return f'{m["data"]} - ' + "; ".join(partes) + "."
+
+    return linha
+
+
+@app.route("/migrar-historico-legivel", methods=["POST", "OPTIONS"])
+def migrar_historico_legivel():
+    """
+    Reescreve retroativamente o texto já salvo no histórico de TODAS as
+    atividades, aplicando os mesmos formatos mais legíveis usados a partir
+    de 17/07/2026 (sem ID de grupo do WhatsApp cru, sem nome de rotina
+    interna tipo 'fracttal-sync', sem 'X → X' quando nada mudou de verdade).
+
+    Por padrão roda em modo TESTE (aplicar=false): não grava nada, só
+    devolve quantas linhas/atividades seriam alteradas e uma amostra, pra
+    conferir antes de aplicar de verdade.
+
+    Corpo esperado (opcional): {"aplicar": true}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    aplicar = bool(body.get("aplicar", False))
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+
+        atualizacoes = []  # {"range": f"L{i}", "values": [[novo_historico]]}
+        amostra = []
+        atividades_afetadas = 0
+        linhas_afetadas = 0
+
+        for i, row in enumerate(todos[1:], start=2):
+            hist_col = ATIV_COL_HISTORICO - 1
+            if len(row) <= hist_col or not row[hist_col].strip():
+                continue
+            hist_original = row[hist_col]
+            linhas_originais = hist_original.split("\n")
+            linhas_novas = [_migrar_linha_historico(l) for l in linhas_originais]
+            if linhas_novas == linhas_originais:
+                continue
+
+            atividades_afetadas += 1
+            n_mudou = sum(1 for a, b in zip(linhas_originais, linhas_novas) if a != b)
+            linhas_afetadas += n_mudou
+            hist_novo = "\n".join(linhas_novas)
+
+            if len(amostra) < 5:
+                amostra.append({
+                    "id": row[0] if row else "?",
+                    "antes": [l for l, n in zip(linhas_originais, linhas_novas) if l != n][:3],
+                    "depois": [n for l, n in zip(linhas_originais, linhas_novas) if l != n][:3],
+                })
+
+            if aplicar:
+                col_letra = chr(64 + ATIV_COL_HISTORICO) if ATIV_COL_HISTORICO <= 26 else "AA"
+                atualizacoes.append({"range": f"{col_letra}{i}", "values": [[hist_novo]]})
+
+        if aplicar and atualizacoes:
+            ws.batch_update(atualizacoes)
+
+        return jsonify({
+            "ok": True,
+            "aplicado": aplicar,
+            "atividades_afetadas": atividades_afetadas,
+            "linhas_afetadas": linhas_afetadas,
+            "amostra": amostra,
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
     01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'."""
