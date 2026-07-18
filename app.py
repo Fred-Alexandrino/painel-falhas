@@ -3031,11 +3031,22 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
 
         hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
         if mudou:
-            entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Status na OS (Fracttal) atualizado: "
-                     f"\"{status_os_atual or '—'}\" → \"{status_novo or status_os_atual or '—'}\", "
-                     f"{percentual_atual or '0'}% → {percentual_novo}% ({status_geral_novo}).")
-            ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
-            hist_atual = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+            # Mensagem reescrita (17/07/2026): a versão anterior sempre
+            # mostrava "status X → X, 0% → 0%" mesmo quando SÓ a situação
+            # geral da tarefa tinha mudado — confuso, parecia que nada
+            # tinha acontecido de verdade. Agora só entra na frase o que
+            # de fato mudou, cada coisa em sua própria oração.
+            partes = []
+            if status_novo and status_novo != status_os_atual:
+                partes.append(f"status na Fracttal mudou de \"{status_os_atual or '—'}\" para \"{status_novo}\"")
+            if percentual_novo != percentual_atual:
+                partes.append(f"progresso da tarefa foi de {percentual_atual or '0'}% para {percentual_novo}%")
+            if status_geral_novo != status_geral_atual:
+                partes.append(f"situação geral da tarefa mudou de \"{status_geral_atual or '—'}\" para \"{status_geral_novo}\"")
+            if partes:
+                entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - " + "; ".join(partes) + "."
+                ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
+                hist_atual = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
 
         # correção de status interno — roda SEMPRE, independente de "mudou"
         # (bug estrutural identificado e corrigido em 12/07/2026: se só
