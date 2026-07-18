@@ -1,0 +1,26 @@
+name: Migracao Historico Rodada 2 (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/migrar-historico-legivel" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -d '{"aplicar": true}' \
+            --max-time 120 \
+            -o backups/migracao_r2_resultado.json
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/migracao_r2_resultado.json
+          git diff --quiet --cached || git commit -m "migracao rodada 2 [skip ci]"
+          git push
