@@ -5547,6 +5547,7 @@ _MIGRAR_HIST_PADRAO_TECNICO_STATUS = re.compile(
 _MIGRAR_HIST_PADRAO_STATUS_OS = re.compile(
     r'^(?P<data>\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - Status na OS \(Fracttal\) atualizado: '
     r'"(?P<de>.*?)" → "(?P<para>.*?)", (?P<pde>\d+)% → (?P<ppara>\d+)% \((?P<geral>.*?)\)\.$')
+_MIGRAR_HIST_PADRAO_GENERICO_TECNICO = re.compile(r'^(?P<prefixo>.*) por tecnico:(?P<grupo>\d+)\.$')
 
 
 def _migrar_linha_historico(linha):
@@ -5588,6 +5589,15 @@ def _migrar_linha_historico(linha):
             # confirmar.
             partes.append(f'situação geral da tarefa: "{m["geral"]}"')
         return f'{m["data"]} - ' + "; ".join(partes) + "."
+
+    # Padrão genérico: PEGA QUALQUER linha que termine em "por tecnico:ID."
+    # (ex.: "Responsável alterado de X para Y por tecnico:123."), não só os
+    # formatos específicos já tratados acima — cobre qualquer campo editado
+    # por um técnico via WhatsApp, sem precisar prever cada rótulo de campo.
+    m = _MIGRAR_HIST_PADRAO_GENERICO_TECNICO.match(linha)
+    if m:
+        nome = _nome_amigavel_grupo(m["grupo"]) or "via WhatsApp"
+        return f'{m["prefixo"]} por técnico de campo ({nome}).'
 
     return linha
 
