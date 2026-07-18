@@ -3542,7 +3542,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
 
     novo_id = _proximo_id_atividade(todos)
     agora = agora_br().strftime('%d/%m/%Y %H:%M:%S')
-    historico_inicial = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {editor}."
+    historico_inicial = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Atividade criada por {_editor_legivel(editor)}."
     data_conclusao_inicial = agora if status in ("Concluído", "Cancelado") else ""
 
     linha = [novo_id, cliente, usina, equipamento, descricao, responsavel, prazo,
@@ -5499,6 +5499,42 @@ def _mapa_grupo_usina():
     return mapa
 
 
+def _nome_amigavel_grupo(grupo_id):
+    """Resolve um ID bruto de grupo do WhatsApp (ex.: '120363...@g.us')
+    pro nome da(s) usina(s) que esse grupo atende, usando o mapeamento já
+    existente — em vez de expor o número do grupo cru no histórico."""
+    try:
+        mapa = _mapa_grupo_usina()  # usina -> grupo_id
+        usinas = sorted({u for u, g in mapa.items() if g == grupo_id})
+        if usinas:
+            return " / ".join(usinas[:3]) + (" e outras" if len(usinas) > 3 else "")
+    except Exception:
+        pass
+    return None
+
+
+def _editor_legivel(editor):
+    """Traduz identificadores internos de 'quem fez a alteração' pra texto
+    apresentável (inclusive pro cliente ver) — nunca mostra ID de grupo do
+    WhatsApp, nome de rotina interna (ex.: 'fracttal-sync'), etc. direto no
+    histórico. Adicionado em 17/07/2026 a pedido do Fred, depois de reparar
+    que o histórico mostrava coisas como 'tecnico:120363...' pro cliente."""
+    editor = (editor or "").strip()
+    if not editor:
+        return "sistema"
+    if editor.startswith("tecnico:"):
+        grupo_id = editor[len("tecnico:"):]
+        nome = _nome_amigavel_grupo(grupo_id)
+        return f"técnico de campo ({nome})" if nome else "técnico de campo (via WhatsApp)"
+    mapa = {
+        "fracttal-sync": "sincronização automática com a Fracttal",
+        "fracttal-backfill": "sincronização automática com a Fracttal",
+        "claude-chat": "assistente (Claude)",
+        "reprogramacao-ia": "reprogramação sugerida por IA",
+    }
+    return mapa.get(editor, editor)
+
+
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
     01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'."""
@@ -6512,11 +6548,11 @@ def atualizar_campo_atividade():
                     # Fred, parecendo uma edição de dado real em vez do que
                     # realmente é — só o rastreio de "já vi essa atividade"
                     # usado pro badge de não-lido.
-                    entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Marcado como visualizado ({editor})."
+                    entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Marcado como visualizado ({_editor_legivel(editor)})."
                 else:
                     label = ATIV_CAMPO_LABEL.get(field, field)
                     entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
-                             f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
+                             f"de \"{valor_antigo or '—'}\" para \"{value}\" por {_editor_legivel(editor)}.")
                 hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
                 novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
                 ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
@@ -6611,11 +6647,11 @@ def _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, field, value, ed
     ws.update_cell(linha_idx, col, value)
     if str(valor_antigo).strip() != str(value).strip():
         if field == "visualizado":
-            entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Marcado como visualizado ({editor})."
+            entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Marcado como visualizado ({_editor_legivel(editor)})."
         else:
             label = ATIV_CAMPO_LABEL.get(field, field)
             entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
-                     f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
+                     f"de \"{valor_antigo or '—'}\" para \"{value}\" por {_editor_legivel(editor)}.")
         hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
         novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
         ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
@@ -6657,7 +6693,7 @@ def _processar_um_bloco_atividade(texto, editor="tecnico-whatsapp"):
         todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
 
     if dados["descricao"]:
-        entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {editor}: {dados['descricao']}"
+        entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {_editor_legivel(editor)}: {dados['descricao']}"
         _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "historico", entry, editor, append=True)
         todos = ws.get_all_values(); linha_atual = todos[linha_idx - 1]
 
@@ -6675,8 +6711,8 @@ def _processar_um_bloco_atividade(texto, editor="tecnico-whatsapp"):
             # "Concluída" no painel enquanto a Fracttal ainda mostrava
             # "Em Processo" (relatado pelo Fred em 15/07/2026, que pediu
             # essa mudança de arquitetura em vez de só reconciliar depois).
-            entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {editor} reportou status \"{dados['status']}\" "
-                     f"pelo WhatsApp — verificando direto na Fracttal (o status real vem de lá, não da mensagem).")
+            entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {_editor_legivel(editor)} reportou status "
+                     f"\"{dados['status']}\" pelo WhatsApp (confirmado em seguida direto com a Fracttal).")
             _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, "historico", entry, editor, append=True)
             try:
                 todos_frescos = ws.get_all_values()
@@ -6783,7 +6819,7 @@ def converter_atividade_em_ocorrencia():
             equipamento = "Não informado"
 
         nota_conversao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
-                           f"Atividades (Atividade #{atividade_id}) por {editor}.")
+                           f"Atividades (Atividade #{atividade_id}) por {_editor_legivel(editor)}.")
         historico_ocorrencia = nota_conversao
         if historico_ativ:
             historico_ocorrencia += "\n" + historico_ativ
@@ -6812,7 +6848,7 @@ def converter_atividade_em_ocorrencia():
         # Marca a atividade original como convertida e registra no histórico dela
         ws_ativ.update_cell(linha_idx, 9, "Convertida em Ocorrência")  # coluna I = Status
         entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida em ocorrência "
-                 f"#{novo_id_ocorrencia} por {editor}.")
+                 f"#{novo_id_ocorrencia} por {_editor_legivel(editor)}.")
         novo_hist_ativ = f"{historico_ativ}\n{entry}".strip() if historico_ativ else entry
         ws_ativ.update_cell(linha_idx, 12, novo_hist_ativ)  # coluna L = Historico
 
@@ -7528,7 +7564,7 @@ def converter_ocorrencia_em_atividade():
             descricao += f" — Causa: {causa}"
 
         nota_conversao = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida do Painel de "
-                           f"Falhas (Ocorrência #{ocorrencia_id}) por {editor}.")
+                           f"Falhas (Ocorrência #{ocorrencia_id}) por {_editor_legivel(editor)}.")
         historico_atividade = nota_conversao
         if acao:
             historico_atividade += f"\nAção registrada na ocorrência: {acao}"
@@ -7549,7 +7585,7 @@ def converter_ocorrencia_em_atividade():
         # Marca a ocorrência original como convertida
         ws_falhas.update_cell(linha_idx, 9, "Convertida em Atividade")  # coluna I = Status
         entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida em atividade "
-                 f"#{novo_id_atividade} por {editor}.")
+                 f"#{novo_id_atividade} por {_editor_legivel(editor)}.")
         novo_hist_ocorr = f"{historico_ocorr}\n{entry}".strip() if historico_ocorr else entry
         ws_falhas.update_cell(linha_idx, 12, novo_hist_ocorr)  # coluna L = Historico
 
