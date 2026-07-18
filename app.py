@@ -6495,9 +6495,17 @@ def atualizar_campo_atividade():
 
             # Registra automaticamente a alteração no histórico cronológico
             if str(valor_antigo).strip() != str(value).strip():
-                label = ATIV_CAMPO_LABEL.get(field, field)
-                entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
-                         f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
+                if field == "visualizado":
+                    # Mensagem dedicada (17/07/2026): o formato genérico
+                    # "visualizado alterado de '—' para 'sim'" confundia o
+                    # Fred, parecendo uma edição de dado real em vez do que
+                    # realmente é — só o rastreio de "já vi essa atividade"
+                    # usado pro badge de não-lido.
+                    entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Marcado como visualizado ({editor})."
+                else:
+                    label = ATIV_CAMPO_LABEL.get(field, field)
+                    entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
+                             f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
                 hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
                 novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
                 ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
@@ -6591,9 +6599,12 @@ def _aplicar_update_campo_atividade(ws, linha_idx, linha_atual, field, value, ed
     valor_antigo = linha_atual[col - 1] if len(linha_atual) >= col else ""
     ws.update_cell(linha_idx, col, value)
     if str(valor_antigo).strip() != str(value).strip():
-        label = ATIV_CAMPO_LABEL.get(field, field)
-        entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
-                 f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
+        if field == "visualizado":
+            entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Marcado como visualizado ({editor})."
+        else:
+            label = ATIV_CAMPO_LABEL.get(field, field)
+            entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - {label} alterado "
+                     f"de \"{valor_antigo or '—'}\" para \"{value}\" por {editor}.")
         hist_atual = linha_atual[ATIV_COL_HISTORICO - 1] if len(linha_atual) >= ATIV_COL_HISTORICO else ""
         novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
         ws.update_cell(linha_idx, ATIV_COL_HISTORICO, novo_hist)
