@@ -1,0 +1,30 @@
+name: Sincronizar Chamados Fabricante
+on:
+  workflow_dispatch: {}
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          if [ ! -f chamados_payload.json ]; then
+            echo '{"ok":false,"error":"chamados_payload.json nao encontrado na raiz do repositorio"}' > backups/sincronizar_chamados_resultado.json
+            exit 0
+          fi
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/sincronizar-chamados" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            --data-binary @chamados_payload.json \
+            --max-time 150 \
+            -o backups/sincronizar_chamados_resultado.json
+      - run: |
+          git config user.name "sincronizar-chamados-bot"
+          git config user.email "actions@github.com"
+          rm -f chamados_payload.json
+          git add -A
+          git diff --quiet --cached || git commit -m "sincronizacao de chamados [skip ci]"
+          git push
