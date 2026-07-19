@@ -3472,6 +3472,91 @@ def auditoria_consistencia_os():
     return jsonify({"ok": True, **resultado}), 200
 
 
+@app.route("/resumo", methods=["GET"])
+def resumo_widget():
+    """
+    Endpoint leve pra consumo por widgets externos (ex.: apps de widget
+    Android tipo KWGT/HTTP Request Widget, configurados pelo Fred na tela
+    inicial do celular) — só os números-chave, sem os dados completos de
+    cada atividade/chamado, pra ser rápido e simples de exibir.
+
+    GET simples, sem secret (só números agregados, nada sensível de cada
+    registro individual é exposto aqui).
+    """
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        status_excluidos = {"concluído", "concluido", "cancelado",
+                             "convertida em ocorrência", "convertida em ocorrencia"}
+        total = abertas = atrasadas = altas_abertas = concluidas_7d = 0
+        hoje = agora_br().date()
+        limite7 = hoje - timedelta(days=7)
+
+        for row in todos[1:]:
+            if len(row) < len(ATIV_HEADERS_JSON):
+                row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+            item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+            if not item.get("id"):
+                continue
+            total += 1
+            concluida = (item.get("status") or "").strip().lower() in status_excluidos
+            if not concluida:
+                abertas += 1
+                prazo_str = (item.get("prazo") or "").strip()
+                if prazo_str:
+                    try:
+                        if datetime.strptime(prazo_str, "%d/%m/%Y").date() < hoje:
+                            atrasadas += 1
+                    except Exception:
+                        pass
+                if (item.get("prioridade") or "").strip().lower() == "alta":
+                    altas_abertas += 1
+            else:
+                dataconc = (item.get("dataConclusao") or "").strip().split(" ")[0]
+                if dataconc:
+                    try:
+                        if datetime.strptime(dataconc, "%d/%m/%Y").date() >= limite7:
+                            concluidas_7d += 1
+                    except Exception:
+                        pass
+
+        chamados_total = chamados_abertos = 0
+        try:
+            ws_ch = get_chamados_fabricante_sheet()
+            todos_ch = ws_ch.get_all_values()
+            idx_supervisor = CHAMADOS_FABRICANTE_HEADERS.index("Supervisor")
+            idx_status = CHAMADOS_FABRICANTE_HEADERS.index("Status")
+            for row in todos_ch[1:]:
+                if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
+                    row = row + [""] * (len(CHAMADOS_FABRICANTE_HEADERS) - len(row))
+                if row[idx_supervisor].strip().lower() != "fred alexandrino":
+                    continue
+                chamados_total += 1
+                st = row[idx_status].strip().lower()
+                if not any(k in st for k in ("conclu", "resolv", "fechad", "finaliz")):
+                    chamados_abertos += 1
+        except Exception:
+            pass  # chamados é "bônus" no resumo, não deve derrubar o endpoint todo
+
+        return jsonify({
+            "ok": True,
+            "atualizado_em": agora_br().strftime("%d/%m/%Y %H:%M"),
+            "atividades": {
+                "total": total,
+                "em_aberto": abertas,
+                "atrasadas": atrasadas,
+                "prioridade_alta_abertas": altas_abertas,
+                "concluidas_7d": concluidas_7d,
+            },
+            "chamados_fred": {
+                "total": chamados_total,
+                "em_aberto": chamados_abertos,
+            },
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/atividades", methods=["GET"])
 def listar_atividades():
     try:
