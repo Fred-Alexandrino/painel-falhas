@@ -8,11 +8,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - env:
-          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
-        run: |
+      - run: |
           mkdir -p backups
-          curl -s "https://api.168.138.232.237.sslip.io/sync-fracttal?secret=$WEBHOOK_SECRET" -o backups/diag-sync.json
+          curl -s "https://api.168.138.232.237.sslip.io/resumo" -o backups/diag-sync.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
