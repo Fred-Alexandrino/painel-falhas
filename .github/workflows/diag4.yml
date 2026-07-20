@@ -1,0 +1,23 @@
+name: Diagnostico Comunicado Cluster Real
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -i -X POST "https://api.168.138.232.237.sslip.io/disparar-comunicado-cluster" \
+            -H "Content-Type: application/json" \
+            -d '{"cluster":"MT Sul 03","texto":"teste diagnostico real"}' \
+            -o backups/diag-comunicado-cluster-real.txt \
+            --max-time 40
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-comunicado-cluster-real.txt
+          git diff --quiet --cached || git commit -m "diag comunicado cluster real [skip ci]"
+          git push
