@@ -1,0 +1,10 @@
+HTTP/2 200 
+access-control-allow-origin: *
+alt-svc: h3=":443"; ma=2592000
+content-type: application/json
+date: Mon, 20 Jul 2026 11:10:03 GMT
+server: gunicorn
+via: 1.1 Caddy
+content-length: 46
+
+{"grupo":"120363406329162612@g.us","ok":true}
