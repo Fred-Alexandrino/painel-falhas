@@ -3221,13 +3221,24 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
 @app.route("/zeladoria-processar-fotos-pendentes", methods=["POST", "GET"])
 def zeladoria_processar_fotos_pendentes():
     """Agrupa as fotos cruas ainda não processadas por grupo de WhatsApp
-    (tudo que ainda está pendente do mesmo grupo vira 1 leva só) e manda
-    cada leva pra classificação por IA (Gemini Vision), gravando um
+    (tudo que ainda está pendente do mesmo grupo vira 1 ou mais levas) e
+    manda cada leva pra classificação por IA (Gemini Vision), gravando um
     resumo em _ZeladoriaFotos. Chamado sob demanda (botão no painel de
     Zeladoria) — não é automático, pra Fred controlar quando gastar cota
-    da IA e evitar rodar em cima de webhooks concorrentes."""
+    da IA e evitar rodar em cima de webhooks concorrentes.
+
+    Processa só um número limitado de levas por chamada (cada leva também
+    limitada em quantidade de fotos) — um volume grande de fotos
+    pendentes (ex.: acúmulo de vários dias) levava o Gemini Vision a
+    demorar demais numa única requisição e estourava o timeout do
+    Gunicorn/Caddy, devolvendo uma página de erro HTML em vez de JSON pro
+    frontend. O frontend chama essa rota em rounds sucessivos (mesmo
+    padrão do "Atualizar OS") até `lotesRestantes` zerar."""
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    MAX_FOTOS_POR_LOTE = 10
+    MAX_LOTES_POR_CHAMADA = 3
 
     ws_raw = get_zeladoria_fotos_raw_sheet()
     linhas = ws_raw.get_all_values()
@@ -3240,16 +3251,27 @@ def zeladoria_processar_fotos_pendentes():
             })
 
     if not pendentes:
-        return jsonify({"ok": True, "processados": 0, "lotes": 0}), 200
+        return jsonify({"ok": True, "processados": 0, "lotes": 0, "lotesRestantes": 0}), 200
 
-    lotes = {}
+    # agrupa por grupo (ordem de chegada preservada) e quebra cada grupo
+    # em pedaços de no máximo MAX_FOTOS_POR_LOTE fotos, pra manter cada
+    # chamada ao Gemini rápida e o payload pequeno
+    por_grupo = {}
     for f in pendentes:
-        lotes.setdefault(f["grupoId"], []).append(f)
+        por_grupo.setdefault(f["grupoId"], []).append(f)
+
+    todos_lotes = []  # lista de (grupo_id, [fotos])
+    for grupo_id, fotos in por_grupo.items():
+        for i in range(0, len(fotos), MAX_FOTOS_POR_LOTE):
+            todos_lotes.append((grupo_id, fotos[i:i + MAX_FOTOS_POR_LOTE]))
+
+    lotes_desta_chamada = todos_lotes[:MAX_LOTES_POR_CHAMADA]
+    lotes_restantes = max(0, len(todos_lotes) - len(lotes_desta_chamada))
 
     ws_resumo = get_zeladoria_fotos_sheet()
     processados = 0
     erros = []
-    for grupo_id, fotos in lotes.items():
+    for grupo_id, fotos in lotes_desta_chamada:
         semana = fotos[0]["semana"]
         try:
             resultado = _processar_lote_fotos_zeladoria(grupo_id, fotos)
@@ -3270,7 +3292,10 @@ def zeladoria_processar_fotos_pendentes():
             log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
             erros.append(f"{grupo_id}/{semana}: {e}")
 
-    return jsonify({"ok": True, "processados": processados, "lotes": len(lotes), "erros": erros}), 200
+    return jsonify({
+        "ok": True, "processados": processados, "lotes": len(lotes_desta_chamada),
+        "lotesRestantes": lotes_restantes, "erros": erros,
+    }), 200
 
 
 @app.route("/zeladoria-fotos-status", methods=["GET"])
