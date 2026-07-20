@@ -3026,9 +3026,9 @@ def _montar_texto_comunicado_zeladoria(cluster, usinas, semana):
         f"🌿 *Comunicado de Zeladoria — Semana {semana}*\n\n"
         f"Como de costume, precisamos das fotos de vegetação e sujidade dos módulos das usinas abaixo:\n\n"
         f"{lista_usinas}\n\n"
-        f"📸 Padrão das fotos:\n"
-        f"• Sujidade: fotos da face do painel mostrando claramente a sujidade, com uma parte limpa ao lado pra comparação (usar pano com água)\n"
-        f"• Vegetação: fotos da vegetação próxima aos módulos, cabine primária, inversores e sala de O&M\n\n"
+        f"📸 Padrão das fotos (por usina):\n"
+        f"• 5 fotos de vegetação: próxima aos módulos, cabine primária, inversores e sala de O&M\n"
+        f"• 3 fotos de sujidade: face do painel mostrando claramente a sujidade, com uma parte limpa ao lado pra comparação (usar pano com água)\n\n"
         f"Por favor, enviem aqui no grupo o quanto antes. Qualquer dúvida, me chamem."
     )
 
@@ -3123,40 +3123,42 @@ def _montar_prompt_classificacao_zeladoria(fotos_info, candidatas_usinas, cluste
         f"- Foto {i + 1}: legenda = \"{f.get('legenda') or '(sem legenda)'}\""
         for i, f in enumerate(fotos_info)
     )
-    return f"""Você é um assistente de O&M de usinas solares fotovoltaicas. Vai analisar um lote de fotos enviadas por uma equipe de campo no WhatsApp, referentes à zeladoria quinzenal (vegetação ao redor da usina e sujidade na face dos módulos).
+    return f"""Você é um assistente de O&M de usinas solares fotovoltaicas. Vai analisar um lote de fotos enviadas por uma equipe de campo no WhatsApp, referentes à zeladoria quinzenal (vegetação ao redor da usina e sujidade na face dos módulos). O lote pode conter fotos de MAIS DE UMA usina misturadas — separe corretamente cada foto pra sua usina, foto por foto.
 
 CONTEXTO:
 - Cluster/equipe responsável pelo grupo: {cluster or 'não identificado'}
 - Usina(s) candidata(s) que esse grupo de WhatsApp costuma atender: {candidatas_str}
 - Dia da semana em que as fotos foram enviadas: {dia_semana}{dica}
 - Cada foto pode ter uma marca d'água (Timemark) com data/hora, endereço, cidade/UF e coordenadas — LEIA esse texto na imagem se estiver visível, é uma pista forte de local.
+- Padrão esperado por usina: 5 fotos de vegetação + 3 fotos de sujidade (mas pode vir diferente na prática — não invente fotos que não existem).
 - Legendas escritas pela equipe (se houver):
 {legendas}
 
-TAREFA:
-1. Para cada foto (na ordem enviada), classifique como um destes tipos:
-   - "sujidade": foto de perto mostrando a face de um módulo fotovoltaico, evidenciando poeira/sujeira acumulada.
-   - "vegetacao": foto mostrando vegetação/mato/grama ao redor dos módulos ou nas fileiras.
-   - "indefinido": não dá pra classificar com confiança em nenhuma das duas.
-2. Considerando TODAS as fotos, o texto das marcas d'água, as legendas e as usinas candidatas acima, determine qual é a usina mais provável desse lote. Se só existir 1 candidata, use-a. Se houver mais de uma candidata, use o endereço/cidade lido nas fotos e a dica de agenda pra decidir.
-3. Dê um nível de confiança: "alta" (endereço na foto bate exatamente com uma candidata), "media" (indícios razoáveis mas não conclusivos) ou "baixa" (chute entre candidatas sem evidência clara).
+TAREFA — pra CADA foto, na ordem enviada, determine:
+1. Tipo: "sujidade" (foto de perto da face de um módulo, mostrando poeira/sujeira), "vegetacao" (vegetação/mato ao redor dos módulos, cabine primária, inversores ou sala de O&M) ou "indefinido" (não dá pra classificar com confiança).
+2. Usina: qual das candidatas acima essa foto pertence, usando o endereço/cidade da marca d'água, a legenda e a dica de agenda. Se só existir 1 candidata, use-a pra todas as fotos. Se não conseguir determinar com nenhuma evidência, deixe em branco (não chute às cegas).
+3. Confiança dessa atribuição de usina pra essa foto: "alta" (endereço bate exatamente com uma candidata), "media" (indícios razoáveis mas não conclusivos) ou "baixa" (chute entre candidatas sem evidência clara).
 
-Responda APENAS em JSON estrito, neste formato exato:
+Responda APENAS em JSON estrito, neste formato exato (um item por foto, na MESMA ORDEM em que as fotos foram enviadas):
 {{
-  "classificacoes": ["sujidade", "vegetacao", "..."],
-  "usina_provavel": "nome da usina",
-  "confianca": "alta|media|baixa",
-  "justificativa": "1-2 frases explicando o motivo da escolha"
+  "fotos": [
+    {{"classificacao": "sujidade", "usina": "nome da usina ou vazio", "confianca": "alta|media|baixa"}}
+  ],
+  "justificativa_geral": "1-2 frases explicando como você separou as fotos entre as usinas"
 }}"""
 
 
 def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
     """fotos_raw: lista de dicts {id, legenda, arquivo, recebidoEm} da
-    mesma leva (mesmo grupo, ainda não processados)."""
+    mesma leva (mesmo grupo, ainda não processados). Retorna uma LISTA de
+    resultados — um por usina identificada dentro do lote, já que um
+    mesmo grupo de WhatsApp pode cobrir mais de uma usina (ex.: equipe
+    que atende GD Energy e Alves Lima no mesmo grupo). As fotos são
+    classificadas e atribuídas à usina foto a foto, depois agrupadas."""
     mapa_grupo_usina = _mapa_grupo_usina()
     mapa_cluster_usina = _mapa_cluster_usina()
     candidatas = sorted({u for u, g in mapa_grupo_usina.items() if g == grupo_id})
-    cluster = next((mapa_cluster_usina.get(u) for u in candidatas if mapa_cluster_usina.get(u)), None)
+    cluster_padrao = next((mapa_cluster_usina.get(u) for u in candidatas if mapa_cluster_usina.get(u)), None)
 
     dica_agenda = None
     for chave, texto in _AGENDA_EQUIPES_CONHECIDA.items():
@@ -3170,7 +3172,7 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
         dt_ref = agora_br()
     dia_semana = _dia_semana_pt(dt_ref)
 
-    parts = [{"text": _montar_prompt_classificacao_zeladoria(fotos_raw, candidatas, cluster, dia_semana, dica_agenda)}]
+    parts = [{"text": _montar_prompt_classificacao_zeladoria(fotos_raw, candidatas, cluster_padrao, dia_semana, dica_agenda)}]
     fotos_validas = []
     for foto in fotos_raw:
         caminho_completo = os.path.join(ZELADORIA_FOTOS_DIR, foto["arquivo"])
@@ -3190,7 +3192,7 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
             "contents": [{"parts": parts}],
             "generationConfig": {
                 "temperature": 0.15,
-                "maxOutputTokens": 2048,
+                "maxOutputTokens": 4096,
                 "responseMimeType": "application/json",
                 "thinkingConfig": {"thinkingBudget": 0},
             },
@@ -3202,20 +3204,55 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
     texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto)
     resultado = json.loads(texto_limpo)
 
-    classificacoes = resultado.get("classificacoes", [])
-    qtd_sujidade = sum(1 for c in classificacoes if c == "sujidade")
-    qtd_vegetacao = sum(1 for c in classificacoes if c == "vegetacao")
-    qtd_indefinido = max(0, len(fotos_validas) - qtd_sujidade - qtd_vegetacao)
+    fotos_ia = resultado.get("fotos", [])
+    justificativa_geral = resultado.get("justificativa_geral", "")
 
-    return {
-        "cluster": cluster or "",
-        "usina_candidata_ia": resultado.get("usina_provavel", ""),
-        "confianca_ia": resultado.get("confianca", "baixa"),
-        "justificativa_ia": resultado.get("justificativa", ""),
-        "qtd_sujidade": qtd_sujidade,
-        "qtd_vegetacao": qtd_vegetacao,
-        "qtd_indefinido": qtd_indefinido,
-    }
+    # casa o nome de usina devolvido pela IA (pode vir sem acento/variado)
+    # com o nome canônico das candidatas, usando o normalizador já
+    # existente no sistema (sem acento, minúsculo, só alfanum)
+    candidatas_norm = {_norm(u): u for u in candidatas}
+
+    ordem_confianca = {"alta": 3, "media": 2, "baixa": 1}
+    grupos_por_usina = {}  # usina canônica ("" = não identificada) -> agregados
+    for i, foto in enumerate(fotos_validas):
+        item_ia = fotos_ia[i] if i < len(fotos_ia) else {}
+        classificacao = item_ia.get("classificacao", "indefinido")
+        usina_bruta = (item_ia.get("usina") or "").strip()
+        confianca = item_ia.get("confianca", "baixa")
+
+        if len(candidatas) == 1:
+            usina_final = candidatas[0]
+        else:
+            usina_final = candidatas_norm.get(_norm(usina_bruta), usina_bruta)
+
+        chave = usina_final
+        if chave not in grupos_por_usina:
+            grupos_por_usina[chave] = {"fotos": [], "sujidade": 0, "vegetacao": 0, "indefinido": 0, "confiancas": []}
+        g = grupos_por_usina[chave]
+        g["fotos"].append(foto)
+        g["confiancas"].append(confianca)
+        if classificacao == "sujidade":
+            g["sujidade"] += 1
+        elif classificacao == "vegetacao":
+            g["vegetacao"] += 1
+        else:
+            g["indefinido"] += 1
+
+    resultados = []
+    for usina, g in grupos_por_usina.items():
+        # confiança do lote = a mais baixa entre as fotos atribuídas a essa usina (conservador)
+        confianca_lote = min(g["confiancas"], key=lambda c: ordem_confianca.get(c, 0)) if g["confiancas"] else "baixa"
+        resultados.append({
+            "usina": usina,
+            "cluster": mapa_cluster_usina.get(usina, cluster_padrao or ""),
+            "fotos": g["fotos"],
+            "confianca_ia": confianca_lote,
+            "justificativa_ia": justificativa_geral,
+            "qtd_sujidade": g["sujidade"],
+            "qtd_vegetacao": g["vegetacao"],
+            "qtd_indefinido": g["indefinido"],
+        })
+    return resultados
 
 
 @app.route("/zeladoria-processar-fotos-pendentes", methods=["POST", "GET"])
@@ -3270,21 +3307,24 @@ def zeladoria_processar_fotos_pendentes():
 
     ws_resumo = get_zeladoria_fotos_sheet()
     processados = 0
+    linhas_criadas = 0
     erros = []
     for grupo_id, fotos in lotes_desta_chamada:
         semana = fotos[0]["semana"]
         try:
-            resultado = _processar_lote_fotos_zeladoria(grupo_id, fotos)
+            resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos)
             agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            arquivos_str = "|".join(f["arquivo"] for f in fotos)
-            novo_id = str(uuid.uuid4())[:8]
-            ws_resumo.append_row([
-                novo_id, semana, grupo_id, resultado["cluster"],
-                resultado["usina_candidata_ia"], resultado["confianca_ia"],
-                resultado["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
-                resultado["qtd_sujidade"], resultado["qtd_vegetacao"], resultado["qtd_indefinido"],
-                arquivos_str, "nao", agora_str, agora_str,
-            ])
+            for r in resultados_por_usina:
+                arquivos_str = "|".join(f["arquivo"] for f in r["fotos"])
+                novo_id = str(uuid.uuid4())[:8]
+                ws_resumo.append_row([
+                    novo_id, semana, grupo_id, r["cluster"],
+                    r["usina"], r["confianca_ia"],
+                    r["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
+                    r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
+                    arquivos_str, "nao", agora_str, agora_str,
+                ])
+                linhas_criadas += 1
             for f in fotos:
                 ws_raw.update_cell(f["row"], 7, "sim")
             processados += len(fotos)
@@ -3293,7 +3333,7 @@ def zeladoria_processar_fotos_pendentes():
             erros.append(f"{grupo_id}/{semana}: {e}")
 
     return jsonify({
-        "ok": True, "processados": processados, "lotes": len(lotes_desta_chamada),
+        "ok": True, "processados": processados, "lotes": linhas_criadas,
         "lotesRestantes": lotes_restantes, "erros": erros,
     }), 200
 
