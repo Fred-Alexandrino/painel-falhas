@@ -62,6 +62,21 @@ app = Flask(__name__)
 # (o dashboard fica em fred-alexandrino.github.io)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+
+@app.errorhandler(Exception)
+def _tratar_erro_nao_previsto(e):
+    """Rede de segurança global: sem isso, qualquer exceção não tratada
+    em qualquer endpoint vira a página de erro HTML padrão do Flask/
+    Werkzeug — e o frontend, que sempre espera JSON, quebra com
+    'Unexpected token '<'' em vez de mostrar o erro real. Preserva o
+    código HTTP de erros conhecidos (ex.: HTTPException do Werkzeug,
+    como 404) e usa 500 pra qualquer outra coisa inesperada."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return jsonify({"ok": False, "error": e.description or str(e)}), e.code
+    log.error(f"[erro-nao-tratado] {request.method} {request.path}: {e}")
+    return jsonify({"ok": False, "error": f"Erro interno inesperado: {e}"}), 500
+
 # ── Configuração ──────────────────────────────────────────────────────────────
 SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
 SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandrino")
@@ -106,6 +121,28 @@ def get_gc():
         creds = _Creds.from_service_account_info(creds_dict, scopes=scopes)
         _gc_cache = gspread.authorize(creds)
     return _gc_cache
+
+
+def _gspread_retry(fn, tentativas=4, esperas=(3, 6, 12, 20)):
+    """Executa uma chamada ao Google Sheets com retry exponencial em caso
+    de erro 429 (cota de leitura/escrita por minuto excedida — limite
+    padrão do Google é 60 requisições/min por usuário). Ficou comum
+    depois que as funcionalidades de fotos/graus de Zeladoria passaram a
+    fazer várias chamadas em sequência rápida (uma leitura + escrita por
+    usina, por lote). Sem isso, o erro sobe cru como um 500 genérico pro
+    frontend. `fn` deve ser uma função sem argumentos (lambda ou closure)."""
+    ultima_excecao = None
+    for tentativa in range(tentativas):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as e:
+            ultima_excecao = e
+            corpo = str(e)
+            if ("429" in corpo or "Quota exceeded" in corpo) and tentativa < tentativas - 1:
+                time.sleep(esperas[tentativa])
+                continue
+            raise
+    raise ultima_excecao
 
 def get_log_sheet():
     """Retorna a aba 'Log de Mensagens' da planilha."""
@@ -1202,7 +1239,11 @@ def get_zeladoria_fotos_raw_sheet():
     return ws
 
 
+_zeladoria_fotos_sheet_migrada = False
+
+
 def get_zeladoria_fotos_sheet():
+    global _zeladoria_fotos_sheet_migrada
     gc = get_gc()
     ss = gc.open_by_key(SHEET_ID)
     try:
@@ -1210,14 +1251,21 @@ def get_zeladoria_fotos_sheet():
     except gspread.WorksheetNotFound:
         ws = ss.add_worksheet(title=ZELADORIA_FOTOS_SHEET_NAME, rows=500, cols=len(ZELADORIA_FOTOS_HEADERS))
         ws.append_row(ZELADORIA_FOTOS_HEADERS)
+        _zeladoria_fotos_sheet_migrada = True
         return ws
-    # migração incremental: garante que colunas novas (ex: descartado) existam
-    header = ws.row_values(1)
-    if len(header) < len(ZELADORIA_FOTOS_HEADERS):
-        if ws.col_count < len(ZELADORIA_FOTOS_HEADERS):
-            ws.add_cols(len(ZELADORIA_FOTOS_HEADERS) - ws.col_count)
-        for i in range(len(header), len(ZELADORIA_FOTOS_HEADERS)):
-            ws.update_cell(1, i + 1, ZELADORIA_FOTOS_HEADERS[i])
+    # migração incremental: garante que colunas novas (ex: descartado)
+    # existam. Só checa uma vez por ciclo de vida do processo (variável
+    # global) — não a cada chamada, que é o que estava sobrecarregando a
+    # cota de leitura do Sheets em fluxos que abrem essa planilha várias
+    # vezes seguidas (processar fotos, confirmar, status, etc.).
+    if not _zeladoria_fotos_sheet_migrada:
+        header = _gspread_retry(lambda: ws.row_values(1))
+        if len(header) < len(ZELADORIA_FOTOS_HEADERS):
+            if ws.col_count < len(ZELADORIA_FOTOS_HEADERS):
+                ws.add_cols(len(ZELADORIA_FOTOS_HEADERS) - ws.col_count)
+            for i in range(len(header), len(ZELADORIA_FOTOS_HEADERS)):
+                ws.update_cell(1, i + 1, ZELADORIA_FOTOS_HEADERS[i])
+        _zeladoria_fotos_sheet_migrada = True
     return ws
 
 
@@ -3133,10 +3181,10 @@ def webhook_foto_zeladoria():
     try:
         ws = get_zeladoria_fotos_raw_sheet()
         novo_id = str(uuid.uuid4())[:8]
-        ws.append_row([
+        _gspread_retry(lambda: ws.append_row([
             novo_id, grupo_id, semana, agora.strftime("%d/%m/%Y %H:%M:%S"),
             legenda, f"{semana}/{nome_arquivo}", "nao",
-        ])
+        ]))
     except Exception as e:
         log.error(f"[webhook-foto-zeladoria] Erro ao gravar na planilha: {e}")
         return jsonify({"ok": False, "error": "falha ao registrar na planilha"}), 500
@@ -3363,10 +3411,10 @@ def zeladoria_processar_fotos_pendentes():
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
 
     MAX_FOTOS_POR_LOTE = 10
-    MAX_LOTES_POR_CHAMADA = 3
+    MAX_LOTES_POR_CHAMADA = 2
 
     ws_raw = get_zeladoria_fotos_raw_sheet()
-    linhas = ws_raw.get_all_values()
+    linhas = _gspread_retry(lambda: ws_raw.get_all_values())
     pendentes = []
     for idx, row in enumerate(linhas[1:], start=2):
         if len(row) >= 7 and row[6].strip().lower() != "sim":
@@ -3397,6 +3445,8 @@ def zeladoria_processar_fotos_pendentes():
     processados = 0
     linhas_criadas = 0
     erros = []
+    novas_linhas_resumo = []
+    atualizacoes_processado = []  # (row, "sim") — marcadas como processado em lote no final
     for grupo_id, fotos in lotes_desta_chamada:
         semana = fotos[0]["semana"]
         try:
@@ -3405,7 +3455,7 @@ def zeladoria_processar_fotos_pendentes():
             for r in resultados_por_usina:
                 arquivos_str = "|".join(f["arquivo"] for f in r["fotos"])
                 novo_id = str(uuid.uuid4())[:8]
-                ws_resumo.append_row([
+                novas_linhas_resumo.append([
                     novo_id, semana, grupo_id, r["cluster"],
                     r["usina"], r["confianca_ia"],
                     r["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
@@ -3415,11 +3465,21 @@ def zeladoria_processar_fotos_pendentes():
                 ])
                 linhas_criadas += 1
             for f in fotos:
-                ws_raw.update_cell(f["row"], 7, "sim")
+                atualizacoes_processado.append({
+                    "range": gspread.utils.rowcol_to_a1(f["row"], 7),
+                    "values": [["sim"]],
+                })
             processados += len(fotos)
         except Exception as e:
             log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
             erros.append(f"{grupo_id}/{semana}: {e}")
+
+    # escreve tudo de uma vez (1-2 chamadas em vez de uma por usina/foto) —
+    # é o maior fator que estava estourando a cota de escrita do Sheets
+    if novas_linhas_resumo:
+        _gspread_retry(lambda: ws_resumo.append_rows(novas_linhas_resumo, value_input_option="RAW"))
+    if atualizacoes_processado:
+        _gspread_retry(lambda: ws_raw.batch_update(atualizacoes_processado, value_input_option="RAW"))
 
     return jsonify({
         "ok": True, "processados": processados, "lotes": linhas_criadas,
@@ -3439,7 +3499,7 @@ def zeladoria_fotos_status():
     mostrar_confirmadas = request.args.get("mostrarConfirmadas", "").lower() in ("1", "true", "sim")
 
     ws = get_zeladoria_fotos_sheet()
-    linhas = ws.get_all_values()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
     resultado = []
     for row in linhas[1:]:
         if len(row) < len(ZELADORIA_FOTOS_HEADERS):
@@ -3465,7 +3525,7 @@ def zeladoria_fotos_status():
 
     # também informa quantas fotos cruas ainda estão na fila sem processar
     ws_raw = get_zeladoria_fotos_raw_sheet()
-    linhas_raw = ws_raw.get_all_values()
+    linhas_raw = _gspread_retry(lambda: ws_raw.get_all_values())
     pendentes = sum(1 for row in linhas_raw[1:] if len(row) >= 7 and row[6].strip().lower() != "sim")
 
     return jsonify({"ok": True, "semana": semana, "lotes": resultado, "fotosPendentesProcessar": pendentes}), 200
@@ -3487,16 +3547,16 @@ def zeladoria_fotos_confirmar():
         return jsonify({"ok": False, "error": "id é obrigatório"}), 400
 
     ws = get_zeladoria_fotos_sheet()
-    linhas = ws.get_all_values()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
     for idx, row in enumerate(linhas[1:], start=2):
         if row and row[0].strip() == lote_id:
             if len(row) < len(ZELADORIA_FOTOS_HEADERS):
                 row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
             agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            if usina_confirmada:
-                ws.update_cell(idx, 8, usina_confirmada)  # usinaConfirmada
-            ws.update_cell(idx, 13, "sim")                # confirmadoFred
-            ws.update_cell(idx, 15, agora_str)             # atualizadoEm
+            usina_confirmada_final = usina_confirmada or row[7]
+            _gspread_retry(lambda: ws.update(f"H{idx}:O{idx}", [[
+                usina_confirmada_final, row[8], row[9], row[10], row[11], "sim", row[13], agora_str,
+            ]]))
 
             usina_final = usina_confirmada or row[4]  # usinaConfirmada (se veio) ou usinaCandidataIA
             semana = row[1]
@@ -3544,10 +3604,10 @@ def zeladoria_fotos_reclassificar_grau():
 
     payload = request.get_json(force=True, silent=True) or {}
     lote_id_unico = (payload.get("id") or "").strip()
-    MAX_LOTES_POR_CHAMADA = 3
+    MAX_LOTES_POR_CHAMADA = 2
 
     ws = get_zeladoria_fotos_sheet()
-    linhas = ws.get_all_values()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
     candidatos = []
     for idx, row in enumerate(linhas[1:], start=2):
         if len(row) < len(ZELADORIA_FOTOS_HEADERS):
@@ -3593,8 +3653,7 @@ def zeladoria_fotos_reclassificar_grau():
 
             grau_sujidade_ia = escolhido["grau_sujidade_ia"]
             grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
-            ws.update_cell(idx, 17, grau_sujidade_ia)
-            ws.update_cell(idx, 18, grau_vegetacao_ia)
+            _gspread_retry(lambda: ws.update(f"Q{idx}:R{idx}", [[grau_sujidade_ia, grau_vegetacao_ia]]))
 
             if grau_sujidade_ia:
                 _upsert_grau_zeladoria(
@@ -3628,12 +3687,11 @@ def zeladoria_fotos_descartar():
         return jsonify({"ok": False, "error": "id é obrigatório"}), 400
 
     ws = get_zeladoria_fotos_sheet()
-    linhas = ws.get_all_values()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
     for idx, row in enumerate(linhas[1:], start=2):
         if row and row[0].strip() == lote_id:
             agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            ws.update_cell(idx, 16, "sim")     # descartado
-            ws.update_cell(idx, 15, agora_str)  # atualizadoEm
+            _gspread_retry(lambda: ws.update(f"O{idx}:P{idx}", [[agora_str, "sim"]]))  # atualizadoEm, descartado
             return jsonify({"ok": True}), 200
 
     return jsonify({"ok": False, "error": "lote não encontrado"}), 404
@@ -3652,7 +3710,7 @@ def zeladoria_graus_listar():
     mapa_cluster = _mapa_cluster_usina()
 
     ws = get_zeladoria_graus_sheet()
-    linhas = ws.get_all_values()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
 
     # último registro por (usina, tipo) — a planilha guarda um histórico
     # de todas as quinzenas, aqui só queremos o mais recente de cada
@@ -3689,7 +3747,7 @@ def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, sema
     pelo preenchimento automático quando um lote de fotos é confirmado."""
     semana = semana or _semana_iso(agora_br())
     ws = get_zeladoria_graus_sheet()
-    linhas = ws.get_all_values()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
     linha_alvo = None
     for idx, row in enumerate(linhas[1:], start=2):
         if len(row) >= 4 and row[0].strip() == usina and row[2].strip() == tipo and row[3].strip() == semana:
@@ -3698,9 +3756,9 @@ def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, sema
 
     agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
     if linha_alvo:
-        ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]])
+        _gspread_retry(lambda: ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]]))
     else:
-        ws.append_row([usina, cliente, tipo, semana, grau, observacoes, editor, agora_str])
+        _gspread_retry(lambda: ws.append_row([usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]))
 
 
 @app.route("/zeladoria-grau-atualizar", methods=["POST"])
@@ -6366,9 +6424,20 @@ def config_set_lote():
 # um novo deploy. Usinas sem grupo configurado são simplesmente ignoradas
 # (não dá erro, só não recebem comunicado).
 
+_mapa_grupo_usina_cache = {"dados": None, "expira_em": 0}
+
+
 def _mapa_grupo_usina():
+    """Cache curto (30s) porque essa função é chamada MUITAS vezes em
+    sequência durante o processamento de fotos de zeladoria (uma vez por
+    lote) — sem cache, isso sozinho já contribuía bastante pra estourar a
+    cota de leitura do Google Sheets. _Sistema muda raramente, então 30s
+    de defasagem não é problema."""
+    agora_ts = time.time()
+    if _mapa_grupo_usina_cache["dados"] is not None and agora_ts < _mapa_grupo_usina_cache["expira_em"]:
+        return _mapa_grupo_usina_cache["dados"]
     ws_cfg = _get_config_sheet()
-    valores = ws_cfg.get_all_values()
+    valores = _gspread_retry(lambda: ws_cfg.get_all_values())
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("grupo_usina:"):
@@ -6376,6 +6445,8 @@ def _mapa_grupo_usina():
             grupo_id = row[1].strip() if len(row) > 1 else ""
             if usina and grupo_id:
                 mapa[usina] = grupo_id
+    _mapa_grupo_usina_cache["dados"] = mapa
+    _mapa_grupo_usina_cache["expira_em"] = agora_ts + 30
     return mapa
 
 
@@ -6556,11 +6627,18 @@ def migrar_historico_legivel():
 
 
 
+_mapa_cluster_usina_cache = {"dados": None, "expira_em": 0}
+
+
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
-    01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'."""
+    01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'.
+    Cache curto (30s) pelo mesmo motivo do _mapa_grupo_usina."""
+    agora_ts = time.time()
+    if _mapa_cluster_usina_cache["dados"] is not None and agora_ts < _mapa_cluster_usina_cache["expira_em"]:
+        return _mapa_cluster_usina_cache["dados"]
     ws_cfg = _get_config_sheet()
-    valores = ws_cfg.get_all_values()
+    valores = _gspread_retry(lambda: ws_cfg.get_all_values())
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("cluster_usina:"):
@@ -6568,6 +6646,8 @@ def _mapa_cluster_usina():
             cluster = row[1].strip() if len(row) > 1 else ""
             if usina and cluster:
                 mapa[usina] = cluster
+    _mapa_cluster_usina_cache["dados"] = mapa
+    _mapa_cluster_usina_cache["expira_em"] = agora_ts + 30
     return mapa
 
 
