@@ -16,11 +16,11 @@ Suporta:
 - Formato Cos Grid com bullets (·) sem emojis
 """
 
-import os, re, json, logging, time, random
+import os, re, json, logging, time, random, base64, uuid
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
@@ -1168,6 +1168,71 @@ ZELADORIA_GID = 987654321
 def get_zeladoria_sheet():
     gc = get_gc()
     return gc.open_by_key(SHEET_ID).get_worksheet_by_id(ZELADORIA_GID)
+
+
+# ── Controle de Fotos de Zeladoria (vegetação/sujidade) ──────────────────
+# Duas abas: uma fila crua (uma linha por foto recebida, sem processar) e
+# um resumo processado (uma linha por leva já classificada pela IA). A
+# separação evita que o webhook do WhatsApp precise esperar a IA responder
+# — ele só salva o arquivo e registra a linha crua; a classificação roda
+# depois, sob demanda, via /zeladoria-processar-fotos-pendentes.
+ZELADORIA_FOTOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zeladoria_fotos")
+os.makedirs(ZELADORIA_FOTOS_DIR, exist_ok=True)
+
+ZELADORIA_FOTOS_RAW_SHEET_NAME = "_ZeladoriaFotosRaw"
+ZELADORIA_FOTOS_RAW_HEADERS = ["id", "grupoId", "semanaISO", "recebidoEm", "legenda", "arquivo", "processado"]
+
+ZELADORIA_FOTOS_SHEET_NAME = "_ZeladoriaFotos"
+ZELADORIA_FOTOS_HEADERS = [
+    "id", "semanaISO", "grupoId", "clusterProvavel", "usinaCandidataIA", "confiancaIA",
+    "justificativaIA", "usinaConfirmada", "qtdSujidade", "qtdVegetacao", "qtdIndefinido",
+    "arquivos", "confirmadoFred", "criadoEm", "atualizadoEm",
+]
+
+
+def get_zeladoria_fotos_raw_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(ZELADORIA_FOTOS_RAW_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=ZELADORIA_FOTOS_RAW_SHEET_NAME, rows=2000, cols=len(ZELADORIA_FOTOS_RAW_HEADERS))
+        ws.append_row(ZELADORIA_FOTOS_RAW_HEADERS)
+    return ws
+
+
+def get_zeladoria_fotos_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(ZELADORIA_FOTOS_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=ZELADORIA_FOTOS_SHEET_NAME, rows=500, cols=len(ZELADORIA_FOTOS_HEADERS))
+        ws.append_row(ZELADORIA_FOTOS_HEADERS)
+    return ws
+
+
+def _semana_iso(dt):
+    ano, semana, _ = dt.isocalendar()
+    return f"{ano}-W{semana:02d}"
+
+
+_DIAS_SEMANA_PT = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
+
+
+def _dia_semana_pt(dt):
+    return _DIAS_SEMANA_PT[dt.weekday()]
+
+
+# Regras de agenda conhecidas — contexto extra pra IA tentar identificar a
+# usina certa quando um mesmo grupo de WhatsApp cobre mais de uma usina.
+# Se a lista crescer, migrar pra aba _Sistema como as outras regras
+# editáveis sem deploy (ex.: "agenda_usina:<Usina>" = "segunda-feira").
+_AGENDA_EQUIPES_CONHECIDA = {
+    "Guajirú": "equipe Cláudio Ferreira/Isake Costa costuma atender as usinas GD Energy (Guajirú, Sol do Norte I/II) às QUARTAS-FEIRAS",
+    "Sol do Norte": "equipe Cláudio Ferreira/Isake Costa costuma atender as usinas GD Energy (Guajirú, Sol do Norte I/II) às QUARTAS-FEIRAS",
+    "ABC Morada Nova": "equipe Cláudio Ferreira/Isake Costa costuma atender ABC Morada Nova (Alves Lima) às SEGUNDAS-FEIRAS",
+}
 
 ATIVIDADES_SHEET_NAME = "Painel de Atividades"
 ATIVIDADES_HEADERS = ["ID", "Cliente", "Usina", "Equipamento", "Descricao", "Responsavel", "Prazo",
@@ -2932,6 +2997,319 @@ def disparar_comunicado_cluster():
         return jsonify({"ok": False, "error": r.text[:300]}), 502
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _montar_texto_comunicado_zeladoria(cluster, usinas, semana):
+    """Monta o texto do comunicado quinzenal pedindo as fotos de zeladoria
+    (vegetação e sujidade) das usinas de um cluster. Formato do padrão de
+    fotos alinhado com o modelo já usado por Fred: 3 fotos de sujidade
+    (face do painel) + 3 fotos de vegetação."""
+    lista_usinas = "\n".join(f"• {u}" for u in usinas)
+    return (
+        f"🌿 *Comunicado de Zeladoria — Semana {semana}*\n\n"
+        f"Como de costume, precisamos das fotos de vegetação e sujidade dos módulos das usinas abaixo:\n\n"
+        f"{lista_usinas}\n\n"
+        f"📸 Padrão: 3 fotos mostrando a sujidade na face do painel + 3 fotos da vegetação ao redor.\n\n"
+        f"Por favor, enviem aqui no grupo o quanto antes. Qualquer dúvida, me chamem."
+    )
+
+
+@app.route("/gerar-comunicado-zeladoria", methods=["GET"])
+def gerar_comunicado_zeladoria():
+    """Monta, por cluster/equipe, a lista de usinas e o texto do comunicado
+    quinzenal pedindo as fotos de zeladoria (vegetação e sujidade).
+    Reaproveita o mesmo mapeamento cluster/grupo usado no comunicado de
+    Atividades (aba _Sistema: "cluster_usina:<Usina>" e "grupo_usina:
+    <Usina>"), então os comunicados de Zeladoria saem pros mesmos grupos
+    de WhatsApp das equipes."""
+    mapa_cluster = _mapa_cluster_usina()  # usina -> cluster
+    semana = agora_br().isocalendar()[1]
+
+    por_cluster = {}
+    for usina, cluster in mapa_cluster.items():
+        por_cluster.setdefault(cluster, []).append(usina)
+
+    resultado = []
+    for cluster, usinas in sorted(por_cluster.items(), key=lambda kv: -len(kv[1])):
+        usinas_ordenadas = sorted(usinas)
+        texto = _montar_texto_comunicado_zeladoria(cluster, usinas_ordenadas, semana)
+        resultado.append({"cluster": cluster, "usinas": usinas_ordenadas, "texto": texto})
+
+    return jsonify({"ok": True, "semana": semana, "clusters": resultado}), 200
+
+
+@app.route("/webhook-foto-zeladoria", methods=["POST"])
+def webhook_foto_zeladoria():
+    """Recebe uma foto individual encaminhada pelo server.js (mensagem de
+    imagem num grupo monitorado). Só salva o arquivo e registra uma linha
+    crua na fila — a classificação por IA roda depois, em lote, via
+    /zeladoria-processar-fotos-pendentes. Isso evita segurar o webhook
+    esperando a IA responder e permite juntar várias fotos da mesma leva
+    antes de classificar em conjunto."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    payload = request.get_json(force=True, silent=True) or {}
+    grupo_id = (payload.get("grupoId") or "").strip()
+    imagem_b64 = payload.get("imagemBase64") or ""
+    mime_type = payload.get("mimeType") or "image/jpeg"
+    legenda = (payload.get("legenda") or "").strip()
+
+    if not grupo_id or not imagem_b64:
+        return jsonify({"ok": False, "error": "grupoId e imagemBase64 são obrigatórios"}), 400
+
+    try:
+        bruto = base64.b64decode(imagem_b64)
+    except Exception:
+        return jsonify({"ok": False, "error": "imagemBase64 inválida"}), 400
+
+    agora = agora_br()
+    semana = _semana_iso(agora)
+    ext = "png" if "png" in mime_type else "jpg"
+    nome_arquivo = f"{semana}_{uuid.uuid4().hex[:10]}.{ext}"
+    pasta_semana = os.path.join(ZELADORIA_FOTOS_DIR, semana)
+    os.makedirs(pasta_semana, exist_ok=True)
+    try:
+        with open(os.path.join(pasta_semana, nome_arquivo), "wb") as f:
+            f.write(bruto)
+    except Exception as e:
+        log.error(f"[webhook-foto-zeladoria] Erro ao salvar arquivo: {e}")
+        return jsonify({"ok": False, "error": "falha ao salvar arquivo no servidor"}), 500
+
+    try:
+        ws = get_zeladoria_fotos_raw_sheet()
+        novo_id = str(uuid.uuid4())[:8]
+        ws.append_row([
+            novo_id, grupo_id, semana, agora.strftime("%d/%m/%Y %H:%M:%S"),
+            legenda, f"{semana}/{nome_arquivo}", "nao",
+        ])
+    except Exception as e:
+        log.error(f"[webhook-foto-zeladoria] Erro ao gravar na planilha: {e}")
+        return jsonify({"ok": False, "error": "falha ao registrar na planilha"}), 500
+
+    return jsonify({"ok": True, "id": novo_id, "semana": semana}), 200
+
+
+@app.route("/zeladoria_fotos/<path:filename>")
+def servir_foto_zeladoria(filename):
+    return send_from_directory(ZELADORIA_FOTOS_DIR, filename)
+
+
+def _montar_prompt_classificacao_zeladoria(fotos_info, candidatas_usinas, cluster, dia_semana, dica_agenda):
+    candidatas_str = ", ".join(candidatas_usinas) if candidatas_usinas else "não identificado"
+    dica = f"\nDica de agenda conhecida: {dica_agenda}" if dica_agenda else ""
+    legendas = "\n".join(
+        f"- Foto {i + 1}: legenda = \"{f.get('legenda') or '(sem legenda)'}\""
+        for i, f in enumerate(fotos_info)
+    )
+    return f"""Você é um assistente de O&M de usinas solares fotovoltaicas. Vai analisar um lote de fotos enviadas por uma equipe de campo no WhatsApp, referentes à zeladoria quinzenal (vegetação ao redor da usina e sujidade na face dos módulos).
+
+CONTEXTO:
+- Cluster/equipe responsável pelo grupo: {cluster or 'não identificado'}
+- Usina(s) candidata(s) que esse grupo de WhatsApp costuma atender: {candidatas_str}
+- Dia da semana em que as fotos foram enviadas: {dia_semana}{dica}
+- Cada foto pode ter uma marca d'água (Timemark) com data/hora, endereço, cidade/UF e coordenadas — LEIA esse texto na imagem se estiver visível, é uma pista forte de local.
+- Legendas escritas pela equipe (se houver):
+{legendas}
+
+TAREFA:
+1. Para cada foto (na ordem enviada), classifique como um destes tipos:
+   - "sujidade": foto de perto mostrando a face de um módulo fotovoltaico, evidenciando poeira/sujeira acumulada.
+   - "vegetacao": foto mostrando vegetação/mato/grama ao redor dos módulos ou nas fileiras.
+   - "indefinido": não dá pra classificar com confiança em nenhuma das duas.
+2. Considerando TODAS as fotos, o texto das marcas d'água, as legendas e as usinas candidatas acima, determine qual é a usina mais provável desse lote. Se só existir 1 candidata, use-a. Se houver mais de uma candidata, use o endereço/cidade lido nas fotos e a dica de agenda pra decidir.
+3. Dê um nível de confiança: "alta" (endereço na foto bate exatamente com uma candidata), "media" (indícios razoáveis mas não conclusivos) ou "baixa" (chute entre candidatas sem evidência clara).
+
+Responda APENAS em JSON estrito, neste formato exato:
+{{
+  "classificacoes": ["sujidade", "vegetacao", "..."],
+  "usina_provavel": "nome da usina",
+  "confianca": "alta|media|baixa",
+  "justificativa": "1-2 frases explicando o motivo da escolha"
+}}"""
+
+
+def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
+    """fotos_raw: lista de dicts {id, legenda, arquivo, recebidoEm} da
+    mesma leva (mesmo grupo, ainda não processados)."""
+    mapa_grupo_usina = _mapa_grupo_usina()
+    mapa_cluster_usina = _mapa_cluster_usina()
+    candidatas = sorted({u for u, g in mapa_grupo_usina.items() if g == grupo_id})
+    cluster = next((mapa_cluster_usina.get(u) for u in candidatas if mapa_cluster_usina.get(u)), None)
+
+    dica_agenda = None
+    for chave, texto in _AGENDA_EQUIPES_CONHECIDA.items():
+        if any(chave.lower() in u.lower() for u in candidatas):
+            dica_agenda = texto
+            break
+
+    try:
+        dt_ref = datetime.strptime(fotos_raw[0]["recebidoEm"], "%d/%m/%Y %H:%M:%S")
+    except Exception:
+        dt_ref = agora_br()
+    dia_semana = _dia_semana_pt(dt_ref)
+
+    parts = [{"text": _montar_prompt_classificacao_zeladoria(fotos_raw, candidatas, cluster, dia_semana, dica_agenda)}]
+    fotos_validas = []
+    for foto in fotos_raw:
+        caminho_completo = os.path.join(ZELADORIA_FOTOS_DIR, foto["arquivo"])
+        if not os.path.exists(caminho_completo):
+            continue
+        with open(caminho_completo, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode()
+        mime = "image/png" if foto["arquivo"].lower().endswith(".png") else "image/jpeg"
+        parts.append({"inline_data": {"mime_type": mime, "data": img_b64}})
+        fotos_validas.append(foto)
+
+    if not fotos_validas:
+        raise RuntimeError("nenhum arquivo de foto encontrado no disco pra essa leva")
+
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "temperature": 0.15,
+                "maxOutputTokens": 2048,
+                "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        },
+        timeout=60,
+    )
+    data = resp.json()
+    texto = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto)
+    resultado = json.loads(texto_limpo)
+
+    classificacoes = resultado.get("classificacoes", [])
+    qtd_sujidade = sum(1 for c in classificacoes if c == "sujidade")
+    qtd_vegetacao = sum(1 for c in classificacoes if c == "vegetacao")
+    qtd_indefinido = max(0, len(fotos_validas) - qtd_sujidade - qtd_vegetacao)
+
+    return {
+        "cluster": cluster or "",
+        "usina_candidata_ia": resultado.get("usina_provavel", ""),
+        "confianca_ia": resultado.get("confianca", "baixa"),
+        "justificativa_ia": resultado.get("justificativa", ""),
+        "qtd_sujidade": qtd_sujidade,
+        "qtd_vegetacao": qtd_vegetacao,
+        "qtd_indefinido": qtd_indefinido,
+    }
+
+
+@app.route("/zeladoria-processar-fotos-pendentes", methods=["POST", "GET"])
+def zeladoria_processar_fotos_pendentes():
+    """Agrupa as fotos cruas ainda não processadas por grupo de WhatsApp
+    (tudo que ainda está pendente do mesmo grupo vira 1 leva só) e manda
+    cada leva pra classificação por IA (Gemini Vision), gravando um
+    resumo em _ZeladoriaFotos. Chamado sob demanda (botão no painel de
+    Zeladoria) — não é automático, pra Fred controlar quando gastar cota
+    da IA e evitar rodar em cima de webhooks concorrentes."""
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    ws_raw = get_zeladoria_fotos_raw_sheet()
+    linhas = ws_raw.get_all_values()
+    pendentes = []
+    for idx, row in enumerate(linhas[1:], start=2):
+        if len(row) >= 7 and row[6].strip().lower() != "sim":
+            pendentes.append({
+                "row": idx, "id": row[0], "grupoId": row[1], "semana": row[2],
+                "recebidoEm": row[3], "legenda": row[4], "arquivo": row[5],
+            })
+
+    if not pendentes:
+        return jsonify({"ok": True, "processados": 0, "lotes": 0}), 200
+
+    lotes = {}
+    for f in pendentes:
+        lotes.setdefault(f["grupoId"], []).append(f)
+
+    ws_resumo = get_zeladoria_fotos_sheet()
+    processados = 0
+    erros = []
+    for grupo_id, fotos in lotes.items():
+        semana = fotos[0]["semana"]
+        try:
+            resultado = _processar_lote_fotos_zeladoria(grupo_id, fotos)
+            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            arquivos_str = "|".join(f["arquivo"] for f in fotos)
+            novo_id = str(uuid.uuid4())[:8]
+            ws_resumo.append_row([
+                novo_id, semana, grupo_id, resultado["cluster"],
+                resultado["usina_candidata_ia"], resultado["confianca_ia"],
+                resultado["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
+                resultado["qtd_sujidade"], resultado["qtd_vegetacao"], resultado["qtd_indefinido"],
+                arquivos_str, "nao", agora_str, agora_str,
+            ])
+            for f in fotos:
+                ws_raw.update_cell(f["row"], 7, "sim")
+            processados += len(fotos)
+        except Exception as e:
+            log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
+            erros.append(f"{grupo_id}/{semana}: {e}")
+
+    return jsonify({"ok": True, "processados": processados, "lotes": len(lotes), "erros": erros}), 200
+
+
+@app.route("/zeladoria-fotos-status", methods=["GET"])
+def zeladoria_fotos_status():
+    """Retorna o resumo de fotos de zeladoria da semana pedida (ou da
+    semana ISO atual, por padrão), pro painel de Zeladoria mostrar o
+    controle de fotos recebidas."""
+    semana = request.args.get("semana") or _semana_iso(agora_br())
+
+    ws = get_zeladoria_fotos_sheet()
+    linhas = ws.get_all_values()
+    resultado = []
+    for row in linhas[1:]:
+        if len(row) < len(ZELADORIA_FOTOS_HEADERS):
+            row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
+        if row[1].strip() != semana:
+            continue
+        arquivos = [a for a in row[11].split("|") if a]
+        resultado.append({
+            "id": row[0], "semana": row[1], "grupoId": row[2], "cluster": row[3],
+            "usinaCandidataIA": row[4], "confiancaIA": row[5], "justificativaIA": row[6],
+            "usinaConfirmada": row[7],
+            "qtdSujidade": row[8], "qtdVegetacao": row[9], "qtdIndefinido": row[10],
+            "fotos": [f"/zeladoria_fotos/{a}" for a in arquivos],
+            "confirmadoFred": row[12].strip().lower() == "sim",
+            "criadoEm": row[13], "atualizadoEm": row[14],
+        })
+
+    # também informa quantas fotos cruas ainda estão na fila sem processar
+    ws_raw = get_zeladoria_fotos_raw_sheet()
+    linhas_raw = ws_raw.get_all_values()
+    pendentes = sum(1 for row in linhas_raw[1:] if len(row) >= 7 and row[6].strip().lower() != "sim")
+
+    return jsonify({"ok": True, "semana": semana, "lotes": resultado, "fotosPendentesProcessar": pendentes}), 200
+
+
+@app.route("/zeladoria-fotos-confirmar", methods=["POST"])
+def zeladoria_fotos_confirmar():
+    """Fred confirma o recebimento de um lote de fotos de zeladoria e,
+    se necessário, corrige manualmente a usina atribuída pela IA."""
+    payload = request.get_json(force=True, silent=True) or {}
+    lote_id = (payload.get("id") or "").strip()
+    usina_confirmada = (payload.get("usinaConfirmada") or "").strip()
+    if not lote_id:
+        return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+
+    ws = get_zeladoria_fotos_sheet()
+    linhas = ws.get_all_values()
+    for idx, row in enumerate(linhas[1:], start=2):
+        if row and row[0].strip() == lote_id:
+            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            if usina_confirmada:
+                ws.update_cell(idx, 8, usina_confirmada)  # usinaConfirmada
+            ws.update_cell(idx, 13, "sim")                # confirmadoFred
+            ws.update_cell(idx, 15, agora_str)             # atualizadoEm
+            return jsonify({"ok": True}), 200
+
+    return jsonify({"ok": False, "error": "lote não encontrado"}), 404
 
 
 @app.route("/resolver-duplicata-8866", methods=["POST"])
