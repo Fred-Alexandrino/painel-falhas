@@ -1,0 +1,10 @@
+HTTP/2 400 
+access-control-allow-origin: *
+alt-svc: h3=":443"; ma=2592000
+content-type: application/json
+date: Mon, 20 Jul 2026 11:09:01 GMT
+server: gunicorn
+via: 1.1 Caddy
+content-length: 167
+
+{"error":"Nenhum grupo de WhatsApp configurado pras usinas do cluster \"__DIAG_TESTE__\". Configure em _Sistema: \"grupo_usina:<Usina>\" = \"<id>@g.us\".","ok":false}
