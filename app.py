@@ -3129,22 +3129,27 @@ CONTEXTO:
 - Cluster/equipe responsável pelo grupo: {cluster or 'não identificado'}
 - Usina(s) candidata(s) que esse grupo de WhatsApp costuma atender: {candidatas_str}
 - Dia da semana em que as fotos foram enviadas: {dia_semana}{dica}
-- Cada foto pode ter uma marca d'água (Timemark) com data/hora, endereço, cidade/UF e coordenadas — LEIA esse texto na imagem se estiver visível, é uma pista forte de local.
 - Padrão esperado por usina: 5 fotos de vegetação + 3 fotos de sujidade (mas pode vir diferente na prática — não invente fotos que não existem).
 - Legendas escritas pela equipe (se houver):
 {legendas}
 
+IDENTIFICAÇÃO DA USINA — SINAL PRIMÁRIO (leia isso com atenção antes de tudo):
+As fotos são tiradas com um app de georreferenciamento (tipo "Timemark") que grava uma marca d'água NA PRÓPRIA IMAGEM com data/hora, endereço completo, cidade/UF e coordenadas (lat/long). Essa marca d'água é a fonte MAIS CONFIÁVEL de localização — sempre leia e priorize esse texto antes de qualquer outra pista.
+- Muitas usinas de Fred têm o mesmo nome do município onde ficam (ex.: a usina "Araputanga" fica na cidade de Araputanga-MT, a usina "Nobres" fica em Nobres-MT). Ao ler a cidade/município na marca d'água, compare esse texto diretamente com o nome de cada usina candidata — bate na maioria dos casos.
+- Ordem de prioridade das evidências: 1º) cidade/endereço/coordenadas lidos na marca d'água da própria foto — 2º) legenda escrita pela equipe — 3º) dica de agenda conhecida (só usa se as duas primeiras não bastarem).
+- Se a marca d'água não estiver visível ou legível em alguma foto, tente pelas outras evidências, mas marque confiança mais baixa.
+
 TAREFA — pra CADA foto, na ordem enviada, determine:
 1. Tipo: "sujidade" (foto de perto da face de um módulo, mostrando poeira/sujeira), "vegetacao" (vegetação/mato ao redor dos módulos, cabine primária, inversores ou sala de O&M) ou "indefinido" (não dá pra classificar com confiança).
-2. Usina: qual das candidatas acima essa foto pertence, usando o endereço/cidade da marca d'água, a legenda e a dica de agenda. Se só existir 1 candidata, use-a pra todas as fotos. Se não conseguir determinar com nenhuma evidência, deixe em branco (não chute às cegas).
-3. Confiança dessa atribuição de usina pra essa foto: "alta" (endereço bate exatamente com uma candidata), "media" (indícios razoáveis mas não conclusivos) ou "baixa" (chute entre candidatas sem evidência clara).
+2. Usina: qual das candidatas acima essa foto pertence, seguindo a ordem de prioridade de evidências acima. Se só existir 1 candidata, use-a pra todas as fotos. Se não conseguir determinar com nenhuma evidência, deixe em branco (não chute às cegas).
+3. Confiança dessa atribuição de usina pra essa foto: "alta" (cidade/endereço da marca d'água bate claramente com uma candidata), "media" (legenda ou outros indícios razoáveis, sem confirmação clara da marca d'água) ou "baixa" (chute entre candidatas sem evidência clara).
 
 Responda APENAS em JSON estrito, neste formato exato (um item por foto, na MESMA ORDEM em que as fotos foram enviadas):
 {{
   "fotos": [
-    {{"classificacao": "sujidade", "usina": "nome da usina ou vazio", "confianca": "alta|media|baixa"}}
+    {{"classificacao": "sujidade", "usina": "nome da usina ou vazio", "confianca": "alta|media|baixa", "cidade_lida": "cidade/endereço lido na marca d'água, ou vazio se não visível"}}
   ],
-  "justificativa_geral": "1-2 frases explicando como você separou as fotos entre as usinas"
+  "justificativa_geral": "1-2 frases explicando como você separou as fotos entre as usinas, citando a cidade/endereço lido quando relevante"
 }}"""
 
 
@@ -3219,6 +3224,7 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
         classificacao = item_ia.get("classificacao", "indefinido")
         usina_bruta = (item_ia.get("usina") or "").strip()
         confianca = item_ia.get("confianca", "baixa")
+        cidade_lida = (item_ia.get("cidade_lida") or "").strip()
 
         if len(candidatas) == 1:
             usina_final = candidatas[0]
@@ -3227,10 +3233,12 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
 
         chave = usina_final
         if chave not in grupos_por_usina:
-            grupos_por_usina[chave] = {"fotos": [], "sujidade": 0, "vegetacao": 0, "indefinido": 0, "confiancas": []}
+            grupos_por_usina[chave] = {"fotos": [], "sujidade": 0, "vegetacao": 0, "indefinido": 0, "confiancas": [], "cidades": []}
         g = grupos_por_usina[chave]
         g["fotos"].append(foto)
         g["confiancas"].append(confianca)
+        if cidade_lida and cidade_lida not in g["cidades"]:
+            g["cidades"].append(cidade_lida)
         if classificacao == "sujidade":
             g["sujidade"] += 1
         elif classificacao == "vegetacao":
@@ -3242,12 +3250,15 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
     for usina, g in grupos_por_usina.items():
         # confiança do lote = a mais baixa entre as fotos atribuídas a essa usina (conservador)
         confianca_lote = min(g["confiancas"], key=lambda c: ordem_confianca.get(c, 0)) if g["confiancas"] else "baixa"
+        justificativa = justificativa_geral
+        if g["cidades"]:
+            justificativa = (justificativa + f" · Local lido na foto: {', '.join(g['cidades'])}").strip(" ·")
         resultados.append({
             "usina": usina,
             "cluster": mapa_cluster_usina.get(usina, cluster_padrao or ""),
             "fotos": g["fotos"],
             "confianca_ia": confianca_lote,
-            "justificativa_ia": justificativa_geral,
+            "justificativa_ia": justificativa,
             "qtd_sujidade": g["sujidade"],
             "qtd_vegetacao": g["vegetacao"],
             "qtd_indefinido": g["indefinido"],
