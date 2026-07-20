@@ -3528,6 +3528,94 @@ def zeladoria_fotos_confirmar():
     return jsonify({"ok": False, "error": "lote não encontrado"}), 404
 
 
+@app.route("/zeladoria-fotos-reclassificar-grau", methods=["POST"])
+def zeladoria_fotos_reclassificar_grau():
+    """Corrige lotes que já tinham sido confirmados ANTES da classificação
+    de grau (sujidade/vegetação) existir no sistema — essas levas ficaram
+    sem grauSujidadeIA/grauVegetacaoIA e, por já estarem confirmadas,
+    somem da tela principal sem nunca terem alimentado o Controle de
+    Sujidade e Vegetação. Reroda a IA sobre os arquivos já salvos em
+    disco (sem mexer na usina/confirmação, que já estão corretas), grava
+    o grau na linha e alimenta a tabela, do mesmo jeito que o fluxo
+    normal de confirmação já faz. Processa em rounds limitados (mesmo
+    motivo do /zeladoria-processar-fotos-pendentes: evitar timeout)."""
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    payload = request.get_json(force=True, silent=True) or {}
+    lote_id_unico = (payload.get("id") or "").strip()
+    MAX_LOTES_POR_CHAMADA = 3
+
+    ws = get_zeladoria_fotos_sheet()
+    linhas = ws.get_all_values()
+    candidatos = []
+    for idx, row in enumerate(linhas[1:], start=2):
+        if len(row) < len(ZELADORIA_FOTOS_HEADERS):
+            row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
+        if row[15].strip().lower() == "sim":  # descartado — ignora
+            continue
+        if row[12].strip().lower() != "sim":  # só os já confirmados
+            continue
+        if row[16].strip() or row[17].strip():  # já tem grau — não precisa
+            continue
+        if lote_id_unico and row[0].strip() != lote_id_unico:
+            continue
+        candidatos.append((idx, row))
+
+    if not candidatos:
+        return jsonify({"ok": True, "processados": 0, "restantes": 0, "erros": []}), 200
+
+    lote_desta_chamada = candidatos[:MAX_LOTES_POR_CHAMADA]
+    restantes = max(0, len(candidatos) - len(lote_desta_chamada))
+
+    processados = 0
+    erros = []
+    for idx, row in lote_desta_chamada:
+        lote_id = row[0]
+        grupo_id = row[2]
+        usina_final = (row[7] or row[4]).strip()  # usinaConfirmada ou usinaCandidataIA
+        semana = row[1]
+        arquivos = [a for a in row[11].split("|") if a]
+        if not usina_final or not arquivos:
+            erros.append(f"{lote_id}: sem usina confirmada ou sem arquivos salvos")
+            continue
+
+        recebido_em = row[13] or agora_br().strftime("%d/%m/%Y %H:%M:%S")
+        fotos_raw = [{"id": lote_id, "legenda": "", "arquivo": a, "recebidoEm": recebido_em} for a in arquivos]
+        try:
+            resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos_raw)
+            escolhido = next((r for r in resultados_por_usina if _norm(r["usina"]) == _norm(usina_final)), None)
+            if not escolhido and resultados_por_usina:
+                escolhido = max(resultados_por_usina, key=lambda r: len(r["fotos"]))
+            if not escolhido:
+                erros.append(f"{lote_id}: IA não retornou classificação")
+                continue
+
+            grau_sujidade_ia = escolhido["grau_sujidade_ia"]
+            grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
+            ws.update_cell(idx, 17, grau_sujidade_ia)
+            ws.update_cell(idx, 18, grau_vegetacao_ia)
+
+            if grau_sujidade_ia:
+                _upsert_grau_zeladoria(
+                    usina_final, "", "sujidade", grau_sujidade_ia,
+                    f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                    "IA (fotos confirmadas)", semana,
+                )
+            if grau_vegetacao_ia:
+                _upsert_grau_zeladoria(
+                    usina_final, "", "vegetacao", grau_vegetacao_ia,
+                    f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                    "IA (fotos confirmadas)", semana,
+                )
+            processados += 1
+        except Exception as e:
+            log.error(f"[zeladoria-fotos-reclassificar-grau] Erro no lote {lote_id}: {e}")
+            erros.append(f"{lote_id}: {e}")
+
+    return jsonify({"ok": True, "processados": processados, "restantes": restantes, "erros": erros}), 200
+
+
 @app.route("/zeladoria-fotos-descartar", methods=["POST"])
 def zeladoria_fotos_descartar():
     """Descarta um lote de fotos capturado erroneamente (ex.: veio de um
