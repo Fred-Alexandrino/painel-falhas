@@ -7177,7 +7177,7 @@ Comentários:
 3. Verificar as condições gerais da usina, incluindo vias de acesso, drenagem e integridade das estruturas.
 4. Conferir o cercamento perimetral, identificando pontos de vulnerabilidade ou danos.
 5. Inspecionar visualmente os inversores, verificando a limpeza externa, funcionamento dos ventiladores e ausência de alarmes no display.
-6. Coletar os dados de geração de cada inversor (potência instantânea, energia acumulada, tensão e corrente CC/CA) registrados no display ou no sistema de monitoramento.
+6. Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
 7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
 8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
 9. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
