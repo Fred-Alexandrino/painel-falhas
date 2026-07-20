@@ -12,14 +12,12 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.168.138.232.237.sslip.io/zeladoria-fotos-reclassificar-grau" \
-            -H "Content-Type: application/json" -d '{}' -o backups/diag-recalc-grau.json --max-time 60
-          echo "---" >> backups/diag-recalc-grau.json
-          curl -s "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status" -o backups/diag-fotos-status2.json
-          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/diag-health2.json
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" "https://api.168.138.232.237.sslip.io/health" -o backups/diag-v-health.json
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status" -o backups/diag-v-status.json
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" "https://api.168.138.232.237.sslip.io/zeladoria-graus" -o backups/diag-v-graus.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-recalc-grau.json backups/diag-fotos-status2.json backups/diag-health2.json
+          git add backups/diag-v-health.json backups/diag-v-status.json backups/diag-v-graus.json
           git diff --quiet --cached || git commit -m "diag sync [skip ci]"
           git push
