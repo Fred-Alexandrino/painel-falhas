@@ -1,0 +1,22 @@
+name: Diagnostico Atualizar OS Agora
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/atualizar-os-agora" \
+            -H "Content-Type: application/json" \
+            -o backups/diag-atualizar-os.json \
+            --max-time 90
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-atualizar-os.json
+          git diff --quiet --cached || git commit -m "diag atualizar os [skip ci]"
+          git push
