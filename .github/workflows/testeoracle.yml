@@ -1,0 +1,20 @@
+name: Teste Backend Oracle
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -m 15 "https://api.168.138.232.237.sslip.io/health" -w "\nHTTP_CODE:%{http_code}\n" > backups/teste-oracle.txt 2>&1 || echo "FALHOU" >> backups/teste-oracle.txt
+          cat backups/teste-oracle.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-oracle.txt
+          git diff --quiet --cached || git commit -m "teste oracle [skip ci]"
+          git push
