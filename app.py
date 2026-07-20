@@ -7101,9 +7101,16 @@ def _montar_prompt_os(d):
 
 Sua tarefa é redigir Ordens de Serviço (OS) baseadas na solicitação abaixo. Transforme a solicitação em um texto objetivo, profissional, técnico e estritamente padronizado.
 
-REGRAS DE FORMATAÇÃO (OBRIGATÓRIO):
+REGRA DE SEPARAÇÃO EM MÚLTIPLAS OS (MUITO IMPORTANTE, leia antes de tudo):
+A solicitação abaixo pode descrever mais de uma frente de trabalho de uma vez (texto colado direto de anotações de campo, por exemplo). Você deve dividir em OSs SEPARADAS sempre que identificar:
+- **Usinas diferentes** — cada usina distinta vira sua própria OS.
+- **Equipamentos/sistemas diferentes** dentro da mesma usina — ex.: inversor e tracker são frentes diferentes, viram OSs separadas; trafo e string também.
+EXCEÇÃO — CÂMERAS/CFTV: todo o conteúdo relacionado a câmeras/CFTV (reposicionamento, foco, teste, instalação, mesmo que em mais de uma usina ou câmera) fica **numa única OS só**, mesmo cruzando usinas — o sistema de CFTV é tratado como uma frente de trabalho só, não se separa por usina.
+Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou só câmeras), gere apenas UMA OS normalmente.
+
+REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente:
 - Esqueça introduções, conclusões, saudações, tabelas, ou seções como "Objetivo", "Descrição", "Responsáveis" ou "Evidências".
-- O texto deve conter APENAS o "Título" e os "Comentários". Siga este modelo exato:
+- Cada OS deve conter APENAS o "Título" e os "Comentários". Siga este modelo exato:
 
 Título: [Nome curto e direto da atividade]
 Comentários:
@@ -7124,7 +7131,7 @@ REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
 - Em qualquer outro caso, termine com um item dizendo que a atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
-EXEMPLOS DO PADRÃO ESPERADO:
+EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS):
 
 Exemplo 1 (Atividade de Execução/Facilities)
 Título: Limpeza de caixa d'água
@@ -7152,7 +7159,7 @@ Comentários:
 3. Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
 4. Registrar o andamento com evidências fotográficas e anotar eventuais pendências para correção.
 
-Exemplo 4 (Atividade de Ajuste)
+Exemplo 4 (Atividade de Ajuste — CFTV, várias câmeras/usinas ficam JUNTAS numa OS só)
 Título: Reposicionamento de câmeras de CFTV
 Comentários:
 
@@ -7161,7 +7168,11 @@ Comentários:
 3. Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
 4. Registrar a atividade e as evidências de antes e depois da intervenção.
 
-Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Gere apenas o texto da OS — sem introdução, comentário ou explicação antes ou depois.
+Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"textos": ["Título: ...\\nComentários:\\n\\n1. ...\\n2. ...", "Título: ...\\nComentários:\\n\\n1. ..."]}}
+Cada item da lista é o texto completo de uma OS, no padrão exato descrito acima. Se só houver uma frente de trabalho, a lista tem um item só.
 
 Dados da solicitação:
 - Cliente: {d.get("cliente") or "não informado"}
@@ -7711,21 +7722,41 @@ def gerar_texto_os_ia():
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.3,
-                    "maxOutputTokens": 2048,
+                    "maxOutputTokens": 4096,
+                    "responseMimeType": "application/json",
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
-            timeout=20,
+            timeout=25,
             usar_chave_teste=diagnostico,
         )
         data = resp.json()
         candidato = data["candidates"][0]
         finish_reason = candidato.get("finishReason", "")
-        texto = candidato["content"]["parts"][0]["text"].strip()
-        if not texto or len(texto) < 40:
-            log.error(f"[gerar-texto-os-ia] Resposta curta/vazia (finishReason={finish_reason}): {texto!r}")
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        if not texto_bruto or len(texto_bruto) < 20:
+            log.error(f"[gerar-texto-os-ia] Resposta curta/vazia (finishReason={finish_reason}): {texto_bruto!r}")
             raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
-        resultado = {"ok": True, "texto": texto}
+
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        try:
+            parsed = json.loads(texto_limpo)
+            textos = parsed.get("textos") or []
+            textos = [t.strip() for t in textos if t and t.strip()]
+        except (json.JSONDecodeError, AttributeError):
+            # fallback: se a IA não devolveu o JSON esperado por algum
+            # motivo, trata a resposta inteira como um texto único —
+            # evita quebrar a funcionalidade por causa de um formato
+            # inesperado pontual.
+            textos = [texto_bruto]
+
+        if not textos:
+            raise ValueError("A IA não retornou nenhum texto de OS")
+
+        # "texto" continua existindo (primeiro item) pra não quebrar quem
+        # já usava o formato antigo; "textos" é a lista completa, usada
+        # quando a solicitação foi dividida em mais de uma OS.
+        resultado = {"ok": True, "texto": textos[0], "textos": textos}
         if diagnostico:
             resultado["chave_teste_configurada"] = bool(GEMINI_API_KEY_TESTE)
         return jsonify(resultado)
