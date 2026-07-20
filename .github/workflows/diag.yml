@@ -12,12 +12,13 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" "https://api.168.138.232.237.sslip.io/health" -o backups/diag-v-health.json
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status" -o backups/diag-v-status.json
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" "https://api.168.138.232.237.sslip.io/zeladoria-graus" -o backups/diag-v-graus.json
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" \
+            --max-time 100 -o backups/diag-stuck-round1.json
+          echo "round1 done"
+          curl -s "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status?mostrarConfirmadas=1" -o backups/diag-stuck-status.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-v-health.json backups/diag-v-status.json backups/diag-v-graus.json
+          git add backups/diag-stuck-round1.json backups/diag-stuck-status.json
           git diff --quiet --cached || git commit -m "diag sync [skip ci]"
           git push
