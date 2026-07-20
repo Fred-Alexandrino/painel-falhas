@@ -7168,6 +7168,20 @@ Comentários:
 3. Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
 4. Registrar a atividade e as evidências de antes e depois da intervenção.
 
+Exemplo 5 (Visita Técnica Semanal — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "visita técnica semanal", "ronda semanal" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
+Título: Visita Técnica Semanal
+Comentários:
+
+1. Realizar inspeção visual da vegetação na área da usina, avaliando a necessidade de roçagem e proximidade com os módulos e equipamentos.
+2. Inspecionar a sujidade dos módulos fotovoltaicos, registrando o nível de acúmulo e a necessidade de limpeza.
+3. Verificar as condições gerais da usina, incluindo vias de acesso, drenagem e integridade das estruturas.
+4. Conferir o cercamento perimetral, identificando pontos de vulnerabilidade ou danos.
+5. Inspecionar visualmente os inversores, verificando a limpeza externa, funcionamento dos ventiladores e ausência de alarmes no display.
+6. Coletar os dados de geração de cada inversor (potência instantânea, energia acumulada, tensão e corrente CC/CA) registrados no display ou no sistema de monitoramento.
+7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
+8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
+9. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
+
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
