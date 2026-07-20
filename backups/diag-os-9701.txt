@@ -1,0 +1,10 @@
+HTTP/2 200 
+access-control-allow-origin: *
+alt-svc: h3=":443"; ma=2592000
+content-type: application/json
+date: Mon, 20 Jul 2026 11:41:38 GMT
+server: gunicorn
+via: 1.1 Caddy
+content-length: 163
+
+{"id":"182","mudou":true,"numeroOS":"9701","ok":true,"percentualOS":"100","statusGeralOS":"Conclu\u00edda","statusInternoCorrigido":null,"statusOS":"Em Processo"}
