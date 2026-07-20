@@ -1187,6 +1187,7 @@ ZELADORIA_FOTOS_HEADERS = [
     "id", "semanaISO", "grupoId", "clusterProvavel", "usinaCandidataIA", "confiancaIA",
     "justificativaIA", "usinaConfirmada", "qtdSujidade", "qtdVegetacao", "qtdIndefinido",
     "arquivos", "confirmadoFred", "criadoEm", "atualizadoEm", "descartado",
+    "grauSujidadeIA", "grauVegetacaoIA",
 ]
 
 
@@ -3171,18 +3172,52 @@ As fotos são tiradas com um app de georreferenciamento (tipo "Timemark") que gr
 - Ordem de prioridade das evidências: 1º) cidade/endereço/coordenadas lidos na marca d'água da própria foto — 2º) legenda escrita pela equipe — 3º) dica de agenda conhecida (só usa se as duas primeiras não bastarem).
 - Se a marca d'água não estiver visível ou legível em alguma foto, tente pelas outras evidências, mas marque confiança mais baixa.
 
+CLASSIFICAÇÃO DE GRAU/NÍVEL — escalas oficiais de Fred (use com critério técnico, olhando a foto de verdade, não chute):
+Sujidade (só se classificacao="sujidade"):
+  L = Limpeza em execução (dá pra ver alguém limpando ou equipamento de limpeza em uso)
+  1 = Leve (poeira fina, quase imperceptível)
+  2 = Moderada (sujidade visível mas ainda não compromete muito a geração)
+  3 = Elevada (camada de sujidade clara cobrindo boa parte do painel)
+  4 = Severa (sujidade pesada, escurecendo visivelmente os módulos)
+  5 = Crítica (módulo muito sujo, sujidade grossa/acumulada, tipo terra/lama seca)
+Vegetação (só se classificacao="vegetacao"):
+  R = Roçagem em andamento (dá pra ver equipe/máquina roçando)
+  1 = Muito baixa (grama bem baixa, controlada, sem contato com estrutura)
+  2 = Baixa (atenção leve, grama um pouco mais alta mas longe dos módulos)
+  3 = Média (alerta operacional, vegetação já se aproximando da estrutura/trackers)
+  4 = Alta (crítica, vegetação encostando ou próxima de tocar os módulos/equipamentos)
+  5 = Muito alta (emergencial, vegetação tocando/invadindo módulos, cabine ou inversores)
+
 TAREFA — pra CADA foto, na ordem enviada, determine:
 1. Tipo: "sujidade" (foto de perto da face de um módulo, mostrando poeira/sujeira), "vegetacao" (vegetação/mato ao redor dos módulos, cabine primária, inversores ou sala de O&M) ou "indefinido" (não dá pra classificar com confiança).
 2. Usina: qual das candidatas acima essa foto pertence, seguindo a ordem de prioridade de evidências acima. Se só existir 1 candidata, use-a pra todas as fotos. Se não conseguir determinar com nenhuma evidência, deixe em branco (não chute às cegas).
 3. Confiança dessa atribuição de usina pra essa foto: "alta" (cidade/endereço da marca d'água bate claramente com uma candidata), "media" (legenda ou outros indícios razoáveis, sem confirmação clara da marca d'água) ou "baixa" (chute entre candidatas sem evidência clara).
+4. Grau: usando a escala correspondente ao tipo da foto (sujidade ou vegetação) acima. Deixe vazio se o tipo for "indefinido".
 
 Responda APENAS em JSON estrito, neste formato exato (um item por foto, na MESMA ORDEM em que as fotos foram enviadas):
 {{
   "fotos": [
-    {{"classificacao": "sujidade", "usina": "nome da usina ou vazio", "confianca": "alta|media|baixa", "cidade_lida": "cidade/endereço lido na marca d'água, ou vazio se não visível"}}
+    {{"classificacao": "sujidade", "usina": "nome da usina ou vazio", "confianca": "alta|media|baixa", "cidade_lida": "cidade/endereço lido na marca d'água, ou vazio se não visível", "grau": "L|1|2|3|4|5|R|vazio"}}
   ],
   "justificativa_geral": "1-2 frases explicando como você separou as fotos entre as usinas, citando a cidade/endereço lido quando relevante"
 }}"""
+
+
+def _agregar_grau_zeladoria(graus, letra_especial):
+    """Combina os graus individuais das fotos de um mesmo tipo (sujidade
+    ou vegetação) num grau só pra usina — usa a letra especial (L/R) se
+    QUALQUER foto indicar limpeza/roçagem em andamento (é a informação
+    mais acionável), senão usa o PIOR (maior) grau numérico encontrado,
+    já que o card deve refletir o cenário mais urgente visto nas fotos."""
+    graus = [g for g in graus if g]
+    if not graus:
+        return ""
+    if letra_especial in graus:
+        return letra_especial
+    numericos = [int(g) for g in graus if g.isdigit()]
+    if not numericos:
+        return ""
+    return str(max(numericos))
 
 
 def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
@@ -3257,6 +3292,7 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
         usina_bruta = (item_ia.get("usina") or "").strip()
         confianca = item_ia.get("confianca", "baixa")
         cidade_lida = (item_ia.get("cidade_lida") or "").strip()
+        grau = (item_ia.get("grau") or "").strip().upper()
 
         if len(candidatas) == 1:
             usina_final = candidatas[0]
@@ -3265,7 +3301,10 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
 
         chave = usina_final
         if chave not in grupos_por_usina:
-            grupos_por_usina[chave] = {"fotos": [], "sujidade": 0, "vegetacao": 0, "indefinido": 0, "confiancas": [], "cidades": []}
+            grupos_por_usina[chave] = {
+                "fotos": [], "sujidade": 0, "vegetacao": 0, "indefinido": 0,
+                "confiancas": [], "cidades": [], "graus_sujidade": [], "graus_vegetacao": [],
+            }
         g = grupos_por_usina[chave]
         g["fotos"].append(foto)
         g["confiancas"].append(confianca)
@@ -3273,8 +3312,12 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
             g["cidades"].append(cidade_lida)
         if classificacao == "sujidade":
             g["sujidade"] += 1
+            if grau:
+                g["graus_sujidade"].append(grau)
         elif classificacao == "vegetacao":
             g["vegetacao"] += 1
+            if grau:
+                g["graus_vegetacao"].append(grau)
         else:
             g["indefinido"] += 1
 
@@ -3294,6 +3337,8 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
             "qtd_sujidade": g["sujidade"],
             "qtd_vegetacao": g["vegetacao"],
             "qtd_indefinido": g["indefinido"],
+            "grau_sujidade_ia": _agregar_grau_zeladoria(g["graus_sujidade"], "L"),
+            "grau_vegetacao_ia": _agregar_grau_zeladoria(g["graus_vegetacao"], "R"),
         })
     return resultados
 
@@ -3365,7 +3410,8 @@ def zeladoria_processar_fotos_pendentes():
                     r["usina"], r["confianca_ia"],
                     r["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
                     r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
-                    arquivos_str, "nao", agora_str, agora_str,
+                    arquivos_str, "nao", agora_str, agora_str, "",  # descartado
+                    r["grau_sujidade_ia"], r["grau_vegetacao_ia"],
                 ])
                 linhas_criadas += 1
             for f in fotos:
@@ -3385,8 +3431,12 @@ def zeladoria_processar_fotos_pendentes():
 def zeladoria_fotos_status():
     """Retorna o resumo de fotos de zeladoria da semana pedida (ou da
     semana ISO atual, por padrão), pro painel de Zeladoria mostrar o
-    controle de fotos recebidas. Lotes descartados por Fred não entram."""
+    controle de fotos recebidas. Por padrão só mostra o que ainda está
+    pendente de revisão — lotes descartados e lotes já CONFIRMADOS (que
+    já alimentaram a tabela de graus e viraram só arquivo/histórico) não
+    entram, a menos que ?mostrarConfirmadas=1 seja passado."""
     semana = request.args.get("semana") or _semana_iso(agora_br())
+    mostrar_confirmadas = request.args.get("mostrarConfirmadas", "").lower() in ("1", "true", "sim")
 
     ws = get_zeladoria_fotos_sheet()
     linhas = ws.get_all_values()
@@ -3398,6 +3448,9 @@ def zeladoria_fotos_status():
             continue
         if row[15].strip().lower() == "sim":  # descartado
             continue
+        confirmado = row[12].strip().lower() == "sim"
+        if confirmado and not mostrar_confirmadas:
+            continue
         arquivos = [a for a in row[11].split("|") if a]
         resultado.append({
             "id": row[0], "semana": row[1], "grupoId": row[2], "cluster": row[3],
@@ -3405,8 +3458,9 @@ def zeladoria_fotos_status():
             "usinaConfirmada": row[7],
             "qtdSujidade": row[8], "qtdVegetacao": row[9], "qtdIndefinido": row[10],
             "fotos": [f"/zeladoria_fotos/{a}" for a in arquivos],
-            "confirmadoFred": row[12].strip().lower() == "sim",
+            "confirmadoFred": confirmado,
             "criadoEm": row[13], "atualizadoEm": row[14],
+            "grauSujidadeIA": row[16], "grauVegetacaoIA": row[17],
         })
 
     # também informa quantas fotos cruas ainda estão na fila sem processar
@@ -3420,7 +3474,12 @@ def zeladoria_fotos_status():
 @app.route("/zeladoria-fotos-confirmar", methods=["POST"])
 def zeladoria_fotos_confirmar():
     """Fred confirma o recebimento de um lote de fotos de zeladoria e,
-    se necessário, corrige manualmente a usina atribuída pela IA."""
+    se necessário, corrige manualmente a usina atribuída pela IA. Ao
+    confirmar: os graus de sujidade/vegetação que a IA leu nas fotos
+    alimentam automaticamente o Controle de Sujidade e Vegetação da
+    usina (semana atual), e o lote sai da tela principal (arquivado —
+    os arquivos continuam guardados no servidor, só não ficam mais na
+    fila de revisão)."""
     payload = request.get_json(force=True, silent=True) or {}
     lote_id = (payload.get("id") or "").strip()
     usina_confirmada = (payload.get("usinaConfirmada") or "").strip()
@@ -3431,12 +3490,40 @@ def zeladoria_fotos_confirmar():
     linhas = ws.get_all_values()
     for idx, row in enumerate(linhas[1:], start=2):
         if row and row[0].strip() == lote_id:
+            if len(row) < len(ZELADORIA_FOTOS_HEADERS):
+                row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
             agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
             if usina_confirmada:
                 ws.update_cell(idx, 8, usina_confirmada)  # usinaConfirmada
             ws.update_cell(idx, 13, "sim")                # confirmadoFred
             ws.update_cell(idx, 15, agora_str)             # atualizadoEm
-            return jsonify({"ok": True}), 200
+
+            usina_final = usina_confirmada or row[4]  # usinaConfirmada (se veio) ou usinaCandidataIA
+            semana = row[1]
+            grau_sujidade_ia = row[16].strip() if len(row) > 16 else ""
+            grau_vegetacao_ia = row[17].strip() if len(row) > 17 else ""
+            if usina_final:
+                try:
+                    if grau_sujidade_ia:
+                        _upsert_grau_zeladoria(
+                            usina_final, "", "sujidade", grau_sujidade_ia,
+                            f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                            "IA (fotos confirmadas)", semana,
+                        )
+                    if grau_vegetacao_ia:
+                        _upsert_grau_zeladoria(
+                            usina_final, "", "vegetacao", grau_vegetacao_ia,
+                            f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                            "IA (fotos confirmadas)", semana,
+                        )
+                except Exception as e:
+                    log.error(f"[zeladoria-fotos-confirmar] Falha ao alimentar tabela de graus pra {usina_final}: {e}")
+
+            return jsonify({
+                "ok": True,
+                "grauSujidadeAplicado": grau_sujidade_ia or None,
+                "grauVegetacaoAplicado": grau_vegetacao_ia or None,
+            }), 200
 
     return jsonify({"ok": False, "error": "lote não encontrado"}), 404
 
@@ -3507,6 +3594,27 @@ def zeladoria_graus_listar():
     return jsonify({"ok": True, "semanaAtual": _semana_iso(agora_br()), "usinas": resultado}), 200
 
 
+def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, semana=None):
+    """Grava (ou atualiza) o grau de sujidade/vegetação de uma usina pra
+    uma semana — um registro por (usina, tipo, semana). Reaproveitado
+    tanto pelo endpoint manual (Fred editando a tabela direto) quanto
+    pelo preenchimento automático quando um lote de fotos é confirmado."""
+    semana = semana or _semana_iso(agora_br())
+    ws = get_zeladoria_graus_sheet()
+    linhas = ws.get_all_values()
+    linha_alvo = None
+    for idx, row in enumerate(linhas[1:], start=2):
+        if len(row) >= 4 and row[0].strip() == usina and row[2].strip() == tipo and row[3].strip() == semana:
+            linha_alvo = idx
+            break
+
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    if linha_alvo:
+        ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]])
+    else:
+        ws.append_row([usina, cliente, tipo, semana, grau, observacoes, editor, agora_str])
+
+
 @app.route("/zeladoria-grau-atualizar", methods=["POST"])
 def zeladoria_grau_atualizar():
     """Registra o grau de sujidade ou vegetação de uma usina na semana
@@ -3528,20 +3636,7 @@ def zeladoria_grau_atualizar():
         return jsonify({"ok": False, "error": f"grau inválido pra {tipo}. Use: {', '.join(sorted(valores_validos))}"}), 400
 
     cliente = (payload.get("cliente") or "").strip()
-
-    ws = get_zeladoria_graus_sheet()
-    linhas = ws.get_all_values()
-    linha_alvo = None
-    for idx, row in enumerate(linhas[1:], start=2):
-        if len(row) >= 4 and row[0].strip() == usina and row[2].strip() == tipo and row[3].strip() == semana:
-            linha_alvo = idx
-            break
-
-    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-    if linha_alvo:
-        ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, "Fred", agora_str]])
-    else:
-        ws.append_row([usina, cliente, tipo, semana, grau, observacoes, "Fred", agora_str])
+    _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, "Fred", semana)
 
     return jsonify({"ok": True}), 200
 
