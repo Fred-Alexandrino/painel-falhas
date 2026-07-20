@@ -1,0 +1,23 @@
+name: Diagnostico OS 9701
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -i -X POST "https://api.168.138.232.237.sslip.io/verificar-uma-os" \
+            -H "Content-Type: application/json" \
+            -d '{"numeroOS":"9701"}' \
+            -o backups/diag-os-9701.txt \
+            --max-time 40
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-os-9701.txt
+          git diff --quiet --cached || git commit -m "diag os 9701 [skip ci]"
+          git push
