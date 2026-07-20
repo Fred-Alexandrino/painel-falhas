@@ -1217,6 +1217,25 @@ def _semana_iso(dt):
     return f"{ano}-W{semana:02d}"
 
 
+# ── Controle de Zeladoria (grau de sujidade / vegetação, 1-5) ────────────
+# Mesma escala das planilhas STATUS_CONSOLIDADO usadas pela Grid Co.:
+# Sujidade: L=limpeza em execução, 1=leve … 5=crítica
+# Vegetação: R=roçagem em andamento, 1=muito baixa … 5=muito alta
+ZELADORIA_GRAUS_SHEET_NAME = "_ZeladoriaGraus"
+ZELADORIA_GRAUS_HEADERS = ["usina", "cliente", "tipo", "semanaISO", "grau", "observacoes", "editor", "atualizadoEm"]
+
+
+def get_zeladoria_graus_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(ZELADORIA_GRAUS_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=ZELADORIA_GRAUS_SHEET_NAME, rows=2000, cols=len(ZELADORIA_GRAUS_HEADERS))
+        ws.append_row(ZELADORIA_GRAUS_HEADERS)
+    return ws
+
+
 _DIAS_SEMANA_PT = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 
@@ -3001,15 +3020,15 @@ def disparar_comunicado_cluster():
 
 def _montar_texto_comunicado_zeladoria(cluster, usinas, semana):
     """Monta o texto do comunicado quinzenal pedindo as fotos de zeladoria
-    (vegetação e sujidade) das usinas de um cluster. Formato do padrão de
-    fotos alinhado com o modelo já usado por Fred: 3 fotos de sujidade
-    (face do painel) + 3 fotos de vegetação."""
+    (vegetação e sujidade) das usinas de um cluster."""
     lista_usinas = "\n".join(f"• {u}" for u in usinas)
     return (
         f"🌿 *Comunicado de Zeladoria — Semana {semana}*\n\n"
         f"Como de costume, precisamos das fotos de vegetação e sujidade dos módulos das usinas abaixo:\n\n"
         f"{lista_usinas}\n\n"
-        f"📸 Padrão: 3 fotos mostrando a sujidade na face do painel + 3 fotos da vegetação ao redor.\n\n"
+        f"📸 Padrão das fotos:\n"
+        f"• Sujidade: fotos da face do painel mostrando claramente a sujidade, com uma parte limpa ao lado pra comparação (usar pano com água)\n"
+        f"• Vegetação: fotos da vegetação próxima aos módulos, cabine primária, inversores e sala de O&M\n\n"
         f"Por favor, enviem aqui no grupo o quanto antes. Qualquer dúvida, me chamem."
     )
 
@@ -3310,6 +3329,87 @@ def zeladoria_fotos_confirmar():
             return jsonify({"ok": True}), 200
 
     return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+
+
+VALORES_VALIDOS_SUJIDADE = {"L", "1", "2", "3", "4", "5"}
+VALORES_VALIDOS_VEGETACAO = {"R", "1", "2", "3", "4", "5"}
+
+
+@app.route("/zeladoria-graus", methods=["GET"])
+def zeladoria_graus_listar():
+    """Retorna, pra cada usina de Fred (mapeadas em cluster_usina), o
+    último grau registrado de sujidade e de vegetação — pro Controle de
+    Zeladoria no painel. Escala igual à das planilhas STATUS_CONSOLIDADO."""
+    mapa_cluster = _mapa_cluster_usina()
+
+    ws = get_zeladoria_graus_sheet()
+    linhas = ws.get_all_values()
+
+    # último registro por (usina, tipo) — a planilha guarda um histórico
+    # de todas as quinzenas, aqui só queremos o mais recente de cada
+    ultimos = {}
+    for row in linhas[1:]:
+        if len(row) < len(ZELADORIA_GRAUS_HEADERS):
+            row = row + [""] * (len(ZELADORIA_GRAUS_HEADERS) - len(row))
+        usina, cliente, tipo, semana, grau, obs, editor, atualizado = row[:8]
+        if not usina or not tipo:
+            continue
+        chave = (usina.strip(), tipo.strip())
+        # get_all_values já vem em ordem de inserção — a última linha
+        # lida pra essa chave é a mais recente
+        ultimos[chave] = {"semana": semana, "grau": grau, "observacoes": obs, "atualizadoEm": atualizado}
+
+    resultado = []
+    for usina, cluster in sorted(mapa_cluster.items()):
+        sujidade = ultimos.get((usina, "sujidade"), {})
+        vegetacao = ultimos.get((usina, "vegetacao"), {})
+        resultado.append({
+            "usina": usina,
+            "cluster": cluster,
+            "sujidade": sujidade,
+            "vegetacao": vegetacao,
+        })
+
+    return jsonify({"ok": True, "semanaAtual": _semana_iso(agora_br()), "usinas": resultado}), 200
+
+
+@app.route("/zeladoria-grau-atualizar", methods=["POST"])
+def zeladoria_grau_atualizar():
+    """Registra o grau de sujidade ou vegetação de uma usina na semana
+    atual (ou na semana informada). Um registro por (usina, tipo, semana)
+    — se já existir, atualiza; senão, cria uma linha nova, preservando o
+    histórico das quinzenas anteriores."""
+    payload = request.get_json(force=True, silent=True) or {}
+    usina = (payload.get("usina") or "").strip()
+    tipo = (payload.get("tipo") or "").strip().lower()
+    grau = (payload.get("grau") or "").strip().upper()
+    observacoes = (payload.get("observacoes") or "").strip()
+    semana = (payload.get("semana") or "").strip() or _semana_iso(agora_br())
+
+    if not usina or tipo not in ("sujidade", "vegetacao"):
+        return jsonify({"ok": False, "error": "usina e tipo ('sujidade' ou 'vegetacao') são obrigatórios"}), 400
+
+    valores_validos = VALORES_VALIDOS_SUJIDADE if tipo == "sujidade" else VALORES_VALIDOS_VEGETACAO
+    if grau and grau not in valores_validos:
+        return jsonify({"ok": False, "error": f"grau inválido pra {tipo}. Use: {', '.join(sorted(valores_validos))}"}), 400
+
+    cliente = (payload.get("cliente") or "").strip()
+
+    ws = get_zeladoria_graus_sheet()
+    linhas = ws.get_all_values()
+    linha_alvo = None
+    for idx, row in enumerate(linhas[1:], start=2):
+        if len(row) >= 4 and row[0].strip() == usina and row[2].strip() == tipo and row[3].strip() == semana:
+            linha_alvo = idx
+            break
+
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    if linha_alvo:
+        ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, "Fred", agora_str]])
+    else:
+        ws.append_row([usina, cliente, tipo, semana, grau, observacoes, "Fred", agora_str])
+
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/resolver-duplicata-8866", methods=["POST"])
