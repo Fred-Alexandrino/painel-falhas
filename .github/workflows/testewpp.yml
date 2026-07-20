@@ -1,0 +1,20 @@
+name: Teste WPP Oracle
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -m 15 "https://wpp.147.15.66.241.sslip.io/health" -w "\nHTTP_CODE:%{http_code}\n" > backups/teste-wpp-oracle.txt 2>&1 || echo "FALHOU" >> backups/teste-wpp-oracle.txt
+          cat backups/teste-wpp-oracle.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-wpp-oracle.txt
+          git diff --quiet --cached || git commit -m "teste wpp oracle [skip ci]"
+          git push
