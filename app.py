@@ -1186,7 +1186,7 @@ ZELADORIA_FOTOS_SHEET_NAME = "_ZeladoriaFotos"
 ZELADORIA_FOTOS_HEADERS = [
     "id", "semanaISO", "grupoId", "clusterProvavel", "usinaCandidataIA", "confiancaIA",
     "justificativaIA", "usinaConfirmada", "qtdSujidade", "qtdVegetacao", "qtdIndefinido",
-    "arquivos", "confirmadoFred", "criadoEm", "atualizadoEm",
+    "arquivos", "confirmadoFred", "criadoEm", "atualizadoEm", "descartado",
 ]
 
 
@@ -1209,6 +1209,14 @@ def get_zeladoria_fotos_sheet():
     except gspread.WorksheetNotFound:
         ws = ss.add_worksheet(title=ZELADORIA_FOTOS_SHEET_NAME, rows=500, cols=len(ZELADORIA_FOTOS_HEADERS))
         ws.append_row(ZELADORIA_FOTOS_HEADERS)
+        return ws
+    # migração incremental: garante que colunas novas (ex: descartado) existam
+    header = ws.row_values(1)
+    if len(header) < len(ZELADORIA_FOTOS_HEADERS):
+        if ws.col_count < len(ZELADORIA_FOTOS_HEADERS):
+            ws.add_cols(len(ZELADORIA_FOTOS_HEADERS) - ws.col_count)
+        for i in range(len(header), len(ZELADORIA_FOTOS_HEADERS)):
+            ws.update_cell(1, i + 1, ZELADORIA_FOTOS_HEADERS[i])
     return ws
 
 
@@ -3057,6 +3065,22 @@ def gerar_comunicado_zeladoria():
     return jsonify({"ok": True, "semana": semana, "clusters": resultado}), 200
 
 
+@app.route("/grupos-fotos-permitidos", methods=["GET"])
+def grupos_fotos_permitidos():
+    """Lista os IDs de grupo do WhatsApp que são canal de fotos de
+    zeladoria — os mesmos grupos usados nos comunicados (mapeamento
+    grupo_usina da aba _Sistema). O server.js consulta essa rota
+    periodicamente pra saber de quais grupos deve capturar imagens;
+    outros grupos monitorados (ex.: rondas/ocorrências) não devem ter
+    fotos baixadas nem encaminhadas."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    grupos = sorted(set(_mapa_grupo_usina().values()))
+    return jsonify({"ok": True, "grupos": grupos}), 200
+
+
 @app.route("/webhook-foto-zeladoria", methods=["POST"])
 def webhook_foto_zeladoria():
     """Recebe uma foto individual encaminhada pelo server.js (mensagem de
@@ -3078,6 +3102,14 @@ def webhook_foto_zeladoria():
 
     if not grupo_id or not imagem_b64:
         return jsonify({"ok": False, "error": "grupoId e imagemBase64 são obrigatórios"}), 400
+
+    # Só aceita fotos dos grupos usados nos comunicados (mesmo mapeamento
+    # grupo_usina da aba _Sistema) — outros grupos monitorados (ex.:
+    # grupos de ronda/ocorrência que não são canal de fotos de zeladoria)
+    # são ignorados aqui, mesmo que o server.js encaminhe por engano.
+    grupos_permitidos = set(_mapa_grupo_usina().values())
+    if grupo_id not in grupos_permitidos:
+        return jsonify({"ok": True, "ignorado": True, "motivo": "grupo não é canal de fotos de zeladoria"}), 200
 
     try:
         bruto = base64.b64decode(imagem_b64)
@@ -3353,7 +3385,7 @@ def zeladoria_processar_fotos_pendentes():
 def zeladoria_fotos_status():
     """Retorna o resumo de fotos de zeladoria da semana pedida (ou da
     semana ISO atual, por padrão), pro painel de Zeladoria mostrar o
-    controle de fotos recebidas."""
+    controle de fotos recebidas. Lotes descartados por Fred não entram."""
     semana = request.args.get("semana") or _semana_iso(agora_br())
 
     ws = get_zeladoria_fotos_sheet()
@@ -3363,6 +3395,8 @@ def zeladoria_fotos_status():
         if len(row) < len(ZELADORIA_FOTOS_HEADERS):
             row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
         if row[1].strip() != semana:
+            continue
+        if row[15].strip().lower() == "sim":  # descartado
             continue
         arquivos = [a for a in row[11].split("|") if a]
         resultado.append({
@@ -3405,6 +3439,30 @@ def zeladoria_fotos_confirmar():
             return jsonify({"ok": True}), 200
 
     return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+
+
+@app.route("/zeladoria-fotos-descartar", methods=["POST"])
+def zeladoria_fotos_descartar():
+    """Descarta um lote de fotos capturado erroneamente (ex.: veio de um
+    grupo/usina errada, ou não são fotos de zeladoria de verdade). Não
+    apaga a linha — só marca como descartado, pra manter histórico —,
+    e o lote some da tela (/zeladoria-fotos-status já filtra isso)."""
+    payload = request.get_json(force=True, silent=True) or {}
+    lote_id = (payload.get("id") or "").strip()
+    if not lote_id:
+        return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+
+    ws = get_zeladoria_fotos_sheet()
+    linhas = ws.get_all_values()
+    for idx, row in enumerate(linhas[1:], start=2):
+        if row and row[0].strip() == lote_id:
+            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            ws.update_cell(idx, 16, "sim")     # descartado
+            ws.update_cell(idx, 15, agora_str)  # atualizadoEm
+            return jsonify({"ok": True}), 200
+
+    return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+
 
 
 VALORES_VALIDOS_SUJIDADE = {"L", "1", "2", "3", "4", "5"}
