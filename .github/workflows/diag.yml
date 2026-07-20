@@ -12,12 +12,10 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/diag-health.json
-          curl -s "https://api.168.138.232.237.sslip.io/zeladoria-graus" -o backups/diag-graus.json
-          curl -s "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status" -o backups/diag-fotos.json
+          curl -s "https://api.168.138.232.237.sslip.io/grupos-fotos-permitidos?secret=$WEBHOOK_SECRET" -o backups/diag-grupos-fotos.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-health.json backups/diag-graus.json backups/diag-fotos.json
+          git add backups/diag-grupos-fotos.json
           git diff --quiet --cached || git commit -m "diag sync [skip ci]"
           git push
