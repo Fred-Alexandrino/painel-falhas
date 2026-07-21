@@ -7716,6 +7716,116 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     raise ultima_excecao
 
 
+def _montar_prompt_comunicado_livre(tema, observacoes):
+    return f"""Aja como um Supervisor de O&M da Grid Co. escrevendo um comunicado curto e direto pra ser enviado por WhatsApp às equipes técnicas e/ou clientes.
+
+Escreva um comunicado objetivo, com tom profissional mas direto (nada de linguagem robótica ou corporativa exagerada), pronto pra ser colado e enviado no WhatsApp. Use emojis com moderação, só onde ajudam a dar destaque (ex.: ⚠️ pra avisos importantes, 📋 pra instruções, ✅ pra confirmações), sem exagerar.
+
+Regras:
+- Vá direto ao ponto, sem saudação genérica tipo "Prezados" ou assinatura formal no final.
+- Não invente informações que não foram dadas — use só o que está no tema e nas observações.
+- Se as observações já derem detalhes suficientes, estruture em tópicos curtos; se for uma frase só, pode ficar em parágrafo corrido mesmo.
+- Tamanho: curto o bastante pra ler de relance no celular (poucas linhas).
+
+Tema do comunicado: {tema}
+Observações/detalhes: {observacoes or "nenhuma observação adicional"}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"texto": "o comunicado pronto pra enviar"}}"""
+
+
+@app.route("/gerar-comunicado-livre-ia", methods=["POST", "OPTIONS"])
+def gerar_comunicado_livre_ia():
+    """Gera um texto de comunicado livre (tema + observações) usando IA,
+    pra ser enviado manualmente pelos grupos que o Fred escolher — usado
+    pelo campo 'Gerar Comunicado' na sidebar, ao lado do 'Gerar OS'."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    tema = (body.get("tema") or "").strip()
+    observacoes = (body.get("observacoes") or "").strip()
+    if not tema:
+        return jsonify({"ok": False, "error": "informe o tema do comunicado"}), 400
+
+    prompt = _montar_prompt_comunicado_livre(tema, observacoes)
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=20,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        parsed = json.loads(texto_limpo)
+        texto = (parsed.get("texto") or "").strip()
+        if not texto:
+            raise ValueError("A IA não retornou nenhum texto")
+        return jsonify({"ok": True, "texto": texto})
+    except Exception as e:
+        log.error(f"[gerar-comunicado-livre-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@app.route("/grupos-configurados", methods=["GET"])
+def listar_grupos_configurados():
+    """Lista os grupos do WhatsApp configurados (GRUPOS_IDS), com nome
+    amigável quando disponível — usado pra montar a lista de seleção no
+    pop-up de comunicado livre."""
+    itens = []
+    for grupo_id in GRUPOS_FILTRO:
+        grupo_id = grupo_id.strip()
+        if not grupo_id:
+            continue
+        nome = _nome_amigavel_grupo(grupo_id) or f"Grupo {grupo_id[:14]}…"
+        itens.append({"id": grupo_id, "nome": nome})
+    return jsonify({"ok": True, "itens": itens})
+
+
+@app.route("/disparar-comunicado-livre", methods=["POST", "OPTIONS"])
+def disparar_comunicado_livre():
+    """Envia um texto de comunicado livre (já gerado/editado) pra uma
+    lista de grupos escolhida manualmente pelo Fred no pop-up."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    texto = (body.get("texto") or "").strip()
+    grupos = body.get("grupos") or []
+    if not texto:
+        return jsonify({"ok": False, "error": "texto vazio"}), 400
+    if not grupos or not isinstance(grupos, list):
+        return jsonify({"ok": False, "error": "selecione ao menos um grupo"}), 400
+    if not WPP_SERVER_URL:
+        return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 500
+
+    enviados, erros = [], []
+    for grupo_id in grupos:
+        try:
+            r = requests.post(
+                f"{WPP_SERVER_URL}/api/enviar-mensagem",
+                json={"grupoId": grupo_id, "texto": texto},
+                headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+                timeout=20,
+            )
+            if r.ok and r.json().get("ok"):
+                enviados.append(grupo_id)
+            else:
+                erros.append({"grupo": grupo_id, "erro": r.text[:200]})
+        except Exception as e:
+            erros.append({"grupo": grupo_id, "erro": str(e)})
+    return jsonify({"ok": True, "enviados": enviados, "erros": erros})
+
+
 def _montar_prompt_priorizacao(atividades, hoje_str):
     mapa_cluster = _mapa_cluster_usina()
     linhas = []
