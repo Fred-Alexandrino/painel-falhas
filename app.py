@@ -62,6 +62,21 @@ app = Flask(__name__)
 # (o dashboard fica em fred-alexandrino.github.io)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+
+@app.errorhandler(Exception)
+def _tratar_erro_nao_previsto(e):
+    """Rede de segurança global: sem isso, qualquer exceção não tratada
+    em qualquer endpoint vira a página de erro HTML padrão do Flask/
+    Werkzeug — e o frontend, que sempre espera JSON, quebra com
+    'Unexpected token '<'' em vez de mostrar o erro real. Preserva o
+    código HTTP de erros conhecidos (ex.: HTTPException do Werkzeug,
+    como 404) e usa 500 pra qualquer outra coisa inesperada."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return jsonify({"ok": False, "error": e.description or str(e)}), e.code
+    log.error(f"[erro-nao-tratado] {request.method} {request.path}: {e}")
+    return jsonify({"ok": False, "error": f"Erro interno inesperado: {e}"}), 500
+
 # ── Configuração ──────────────────────────────────────────────────────────────
 SHEET_ID       = os.environ.get("SHEET_ID", "1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs")
 SHEET_NAME     = os.environ.get("SHEET_NAME", "Painel de Falhas - Fred Alexandrino")
@@ -106,6 +121,56 @@ def get_gc():
         creds = _Creds.from_service_account_info(creds_dict, scopes=scopes)
         _gc_cache = gspread.authorize(creds)
     return _gc_cache
+
+
+def _gspread_retry(fn, tentativas=3, esperas=(4, 10, 20)):
+    """Executa uma chamada ao Google Sheets com retry exponencial em caso
+    de erro 429 (cota de leitura/escrita por minuto excedida — limite
+    padrão do Google é 60 requisições/min por usuário). Ficou comum
+    depois que as funcionalidades de fotos/graus de Zeladoria passaram a
+    fazer várias chamadas em sequência rápida (uma leitura + escrita por
+    usina, por lote). Sem isso, o erro sobe cru como um 500 genérico pro
+    frontend. `fn` deve ser uma função sem argumentos (lambda ou closure)."""
+    ultima_excecao = None
+    for tentativa in range(tentativas):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as e:
+            ultima_excecao = e
+            corpo = str(e)
+            if ("429" in corpo or "Quota exceeded" in corpo) and tentativa < tentativas - 1:
+                time.sleep(esperas[tentativa])
+                continue
+            raise
+    raise ultima_excecao
+
+
+# ── Trava simples pra operações pesadas de Zeladoria ──────────────────────
+# "Processar fotos" e "Recalcular graus" sozinhos já consomem bastante da
+# cota de leitura do Sheets — rodando ao mesmo tempo (ex.: Fred clicando
+# nos dois botões em sequência), o estouro de cota fica praticamente
+# garantido. Trava simples em memória: evita isso dentro do mesmo worker
+# do Gunicorn (o cenário mais comum — um usuário, um navegador). Libera
+# sozinha se ficar "presa" por tempo demais (ex.: um processo anterior
+# quebrou sem liberar).
+_zeladoria_lock_info = {"em_uso": False, "desde": 0, "operacao": ""}
+
+
+def _zeladoria_tentar_travar(operacao, timeout_max_segundos=280):
+    agora_ts = time.time()
+    if _zeladoria_lock_info["em_uso"] and (agora_ts - _zeladoria_lock_info["desde"]) > timeout_max_segundos:
+        _zeladoria_lock_info["em_uso"] = False
+    if _zeladoria_lock_info["em_uso"]:
+        return False
+    _zeladoria_lock_info["em_uso"] = True
+    _zeladoria_lock_info["desde"] = agora_ts
+    _zeladoria_lock_info["operacao"] = operacao
+    return True
+
+
+def _zeladoria_liberar_trava():
+    _zeladoria_lock_info["em_uso"] = False
+    _zeladoria_lock_info["operacao"] = ""
 
 def get_log_sheet():
     """Retorna a aba 'Log de Mensagens' da planilha."""
@@ -1179,37 +1244,62 @@ def get_zeladoria_sheet():
 ZELADORIA_FOTOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zeladoria_fotos")
 os.makedirs(ZELADORIA_FOTOS_DIR, exist_ok=True)
 
-ZELADORIA_FOTOS_RAW_SHEET_NAME = "_ZeladoriaFotosRaw"
-ZELADORIA_FOTOS_RAW_HEADERS = ["id", "grupoId", "semanaISO", "recebidoEm", "legenda", "arquivo", "processado"]
+# ── Banco local (SQLite) pro controle de fotos/graus de zeladoria ────────
+# Trocado de Google Sheets pra SQLite (21/07/2026) por pedido do Fred: o
+# volume de leitura/escrita das fotos/graus de zeladoria estava
+# competindo pela cota de 60 req/min do Google Sheets com o resto do
+# painel (Atividades, sync do Fracttal), e pedir aumento de cota não foi
+# possível. SQLite roda local no disco do servidor — zero chamada de
+# rede, zero cota, zero limite de requisições por minuto. Os dados
+# continuam persistentes entre reinícios (arquivo em disco, igual as
+# fotos), só não aparecem mais como aba no Google Sheets — o painel web
+# continua mostrando tudo normalmente, só troca a fonte por trás.
+import sqlite3
 
-ZELADORIA_FOTOS_SHEET_NAME = "_ZeladoriaFotos"
-ZELADORIA_FOTOS_HEADERS = [
-    "id", "semanaISO", "grupoId", "clusterProvavel", "usinaCandidataIA", "confiancaIA",
-    "justificativaIA", "usinaConfirmada", "qtdSujidade", "qtdVegetacao", "qtdIndefinido",
-    "arquivos", "confirmadoFred", "criadoEm", "atualizadoEm",
-]
+ZELADORIA_DB_PATH = os.path.join(ZELADORIA_FOTOS_DIR, "zeladoria.db")
 
 
-def get_zeladoria_fotos_raw_sheet():
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
+def _zeladoria_db():
+    conn = sqlite3.connect(ZELADORIA_DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")  # permite leitura concorrente enquanto grava
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _zeladoria_db_iniciar():
+    conn = _zeladoria_db()
     try:
-        ws = ss.worksheet(ZELADORIA_FOTOS_RAW_SHEET_NAME)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=ZELADORIA_FOTOS_RAW_SHEET_NAME, rows=2000, cols=len(ZELADORIA_FOTOS_RAW_HEADERS))
-        ws.append_row(ZELADORIA_FOTOS_RAW_HEADERS)
-    return ws
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fotos_raw (
+                id TEXT PRIMARY KEY,
+                grupoId TEXT, semanaISO TEXT, recebidoEm TEXT,
+                legenda TEXT, arquivo TEXT, processado TEXT DEFAULT 'nao'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fotos_resumo (
+                id TEXT PRIMARY KEY,
+                semanaISO TEXT, grupoId TEXT, clusterProvavel TEXT,
+                usinaCandidataIA TEXT, confiancaIA TEXT, justificativaIA TEXT,
+                usinaConfirmada TEXT, qtdSujidade INTEGER, qtdVegetacao INTEGER,
+                qtdIndefinido INTEGER, arquivos TEXT, confirmadoFred TEXT DEFAULT 'nao',
+                criadoEm TEXT, atualizadoEm TEXT, descartado TEXT DEFAULT '',
+                grauSujidadeIA TEXT DEFAULT '', grauVegetacaoIA TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS graus (
+                usina TEXT, cliente TEXT, tipo TEXT, semanaISO TEXT,
+                grau TEXT, observacoes TEXT, editor TEXT, atualizadoEm TEXT,
+                PRIMARY KEY (usina, tipo, semanaISO)
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
 
 
-def get_zeladoria_fotos_sheet():
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
-    try:
-        ws = ss.worksheet(ZELADORIA_FOTOS_SHEET_NAME)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=ZELADORIA_FOTOS_SHEET_NAME, rows=500, cols=len(ZELADORIA_FOTOS_HEADERS))
-        ws.append_row(ZELADORIA_FOTOS_HEADERS)
-    return ws
+_zeladoria_db_iniciar()
 
 
 def _semana_iso(dt):
@@ -3001,15 +3091,15 @@ def disparar_comunicado_cluster():
 
 def _montar_texto_comunicado_zeladoria(cluster, usinas, semana):
     """Monta o texto do comunicado quinzenal pedindo as fotos de zeladoria
-    (vegetação e sujidade) das usinas de um cluster. Formato do padrão de
-    fotos alinhado com o modelo já usado por Fred: 3 fotos de sujidade
-    (face do painel) + 3 fotos de vegetação."""
+    (vegetação e sujidade) das usinas de um cluster."""
     lista_usinas = "\n".join(f"• {u}" for u in usinas)
     return (
         f"🌿 *Comunicado de Zeladoria — Semana {semana}*\n\n"
         f"Como de costume, precisamos das fotos de vegetação e sujidade dos módulos das usinas abaixo:\n\n"
         f"{lista_usinas}\n\n"
-        f"📸 Padrão: 3 fotos mostrando a sujidade na face do painel + 3 fotos da vegetação ao redor.\n\n"
+        f"📸 Padrão das fotos (por usina):\n"
+        f"• 5 fotos de vegetação: próxima aos módulos, cabine primária, inversores e sala de O&M\n"
+        f"• 3 fotos de sujidade: face do painel mostrando claramente a sujidade, com uma parte limpa ao lado pra comparação (usar pano com água)\n\n"
         f"Por favor, enviem aqui no grupo o quanto antes. Qualquer dúvida, me chamem."
     )
 
@@ -3038,14 +3128,117 @@ def gerar_comunicado_zeladoria():
     return jsonify({"ok": True, "semana": semana, "clusters": resultado}), 200
 
 
+@app.route("/grupos-fotos-permitidos", methods=["GET"])
+def grupos_fotos_permitidos():
+    """Lista os IDs de grupo do WhatsApp que são canal de fotos de
+    zeladoria — os mesmos grupos usados nos comunicados (mapeamento
+    grupo_usina da aba _Sistema). O server.js consulta essa rota
+    periodicamente pra saber de quais grupos deve capturar imagens;
+    outros grupos monitorados (ex.: rondas/ocorrências) não devem ter
+    fotos baixadas nem encaminhadas."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    grupos = sorted(set(_mapa_grupo_usina().values()))
+    return jsonify({"ok": True, "grupos": grupos}), 200
+
+
+@app.route("/zeladoria-debug-raw", methods=["GET"])
+def zeladoria_debug_raw():
+    """Temporário, só pra investigar por que fotos aparecem como
+    pendentes no banner mas o processamento diz que não tem nada pra
+    processar. Mostra o conteúdo cru da tabela fotos_raw."""
+    conn = _zeladoria_db()
+    todas = conn.execute("SELECT rowid, id, grupoId, semanaISO, processado, arquivo FROM fotos_raw ORDER BY rowid").fetchall()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "total": len(todas),
+        "linhas": [dict(r) for r in todas],
+    }), 200
+
+
+@app.route("/zeladoria-migrar-sheets-para-sqlite", methods=["POST"])
+def zeladoria_migrar_sheets_para_sqlite():
+    """Uso único (21/07/2026): puxa o que já existia nas abas antigas do
+    Google Sheets (_ZeladoriaFotosRaw, _ZeladoriaFotos, _ZeladoriaGraus)
+    pro banco SQLite novo, antes delas pararem de ser usadas — só pra não
+    perder nada que já tinha sido processado/confirmado. Idempotente
+    (usa INSERT OR IGNORE / ON CONFLICT), pode rodar mais de uma vez sem
+    duplicar. Depois que confirmar que migrou certo, pode esquecer essa
+    rota — as abas antigas do Sheets não são mais tocadas por nada."""
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    resultado = {"fotos_raw": 0, "fotos_resumo": 0, "graus": 0, "erros": []}
+    conn = _zeladoria_db()
+
+    try:
+        ws = ss.worksheet("_ZeladoriaFotosRaw")
+        linhas = ws.get_all_values()
+        for row in linhas[1:]:
+            if len(row) < 7 or not row[0].strip():
+                continue
+            conn.execute(
+                "INSERT OR IGNORE INTO fotos_raw (id, grupoId, semanaISO, recebidoEm, legenda, arquivo, processado) VALUES (?,?,?,?,?,?,?)",
+                (row[0], row[1], row[2], row[3], row[4], row[5], row[6] or "nao"),
+            )
+            resultado["fotos_raw"] += 1
+        conn.commit()
+    except Exception as e:
+        resultado["erros"].append(f"fotos_raw: {e}")
+
+    try:
+        ws = ss.worksheet("_ZeladoriaFotos")
+        linhas = ws.get_all_values()
+        for row in linhas[1:]:
+            if len(row) < 15 or not row[0].strip():
+                continue
+            row = row + [""] * (18 - len(row))
+            conn.execute(
+                """INSERT OR IGNORE INTO fotos_resumo
+                   (id, semanaISO, grupoId, clusterProvavel, usinaCandidataIA, confiancaIA,
+                    justificativaIA, usinaConfirmada, qtdSujidade, qtdVegetacao, qtdIndefinido,
+                    arquivos, confirmadoFred, criadoEm, atualizadoEm, descartado,
+                    grauSujidadeIA, grauVegetacaoIA)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                tuple(row[:18]),
+            )
+            resultado["fotos_resumo"] += 1
+        conn.commit()
+    except Exception as e:
+        resultado["erros"].append(f"fotos_resumo: {e}")
+
+    try:
+        ws = ss.worksheet("_ZeladoriaGraus")
+        linhas = ws.get_all_values()
+        for row in linhas[1:]:
+            if len(row) < 8 or not row[0].strip():
+                continue
+            conn.execute(
+                """INSERT INTO graus (usina, cliente, tipo, semanaISO, grau, observacoes, editor, atualizadoEm)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(usina, tipo, semanaISO) DO NOTHING""",
+                tuple(row[:8]),
+            )
+            resultado["graus"] += 1
+        conn.commit()
+    except Exception as e:
+        resultado["erros"].append(f"graus: {e}")
+
+    conn.close()
+    return jsonify({"ok": True, "migrados": resultado}), 200
+
+
 @app.route("/webhook-foto-zeladoria", methods=["POST"])
 def webhook_foto_zeladoria():
     """Recebe uma foto individual encaminhada pelo server.js (mensagem de
-    imagem num grupo monitorado). Só salva o arquivo e registra uma linha
-    crua na fila — a classificação por IA roda depois, em lote, via
-    /zeladoria-processar-fotos-pendentes. Isso evita segurar o webhook
-    esperando a IA responder e permite juntar várias fotos da mesma leva
-    antes de classificar em conjunto."""
+    imagem num grupo monitorado). Salva o arquivo em disco e registra
+    uma linha crua na fila — a classificação por IA roda depois, em
+    lote, via /zeladoria-processar-fotos-pendentes. A fila agora vive
+    num banco SQLite local (não mais no Google Sheets — trocado em
+    21/07/2026 porque a cota de leitura/escrita do Sheets estava sendo
+    disputada com o resto do painel; SQLite é local, sem cota nenhuma)."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "")
         if secret != WEBHOOK_SECRET:
@@ -3059,6 +3252,14 @@ def webhook_foto_zeladoria():
 
     if not grupo_id or not imagem_b64:
         return jsonify({"ok": False, "error": "grupoId e imagemBase64 são obrigatórios"}), 400
+
+    # Só aceita fotos dos grupos usados nos comunicados (mesmo mapeamento
+    # grupo_usina da aba _Sistema) — outros grupos monitorados (ex.:
+    # grupos de ronda/ocorrência que não são canal de fotos de zeladoria)
+    # são ignorados aqui, mesmo que o server.js encaminhe por engano.
+    grupos_permitidos = set(_mapa_grupo_usina().values())
+    if grupo_id not in grupos_permitidos:
+        return jsonify({"ok": True, "ignorado": True, "motivo": "grupo não é canal de fotos de zeladoria"}), 200
 
     try:
         bruto = base64.b64decode(imagem_b64)
@@ -3078,16 +3279,18 @@ def webhook_foto_zeladoria():
         log.error(f"[webhook-foto-zeladoria] Erro ao salvar arquivo: {e}")
         return jsonify({"ok": False, "error": "falha ao salvar arquivo no servidor"}), 500
 
+    novo_id = str(uuid.uuid4())[:8]
     try:
-        ws = get_zeladoria_fotos_raw_sheet()
-        novo_id = str(uuid.uuid4())[:8]
-        ws.append_row([
-            novo_id, grupo_id, semana, agora.strftime("%d/%m/%Y %H:%M:%S"),
-            legenda, f"{semana}/{nome_arquivo}", "nao",
-        ])
+        conn = _zeladoria_db()
+        conn.execute(
+            "INSERT INTO fotos_raw (id, grupoId, semanaISO, recebidoEm, legenda, arquivo, processado) VALUES (?,?,?,?,?,?,?)",
+            (novo_id, grupo_id, semana, agora.strftime("%d/%m/%Y %H:%M:%S"), legenda, f"{semana}/{nome_arquivo}", "nao"),
+        )
+        conn.commit()
+        conn.close()
     except Exception as e:
-        log.error(f"[webhook-foto-zeladoria] Erro ao gravar na planilha: {e}")
-        return jsonify({"ok": False, "error": "falha ao registrar na planilha"}), 500
+        log.error(f"[webhook-foto-zeladoria] Erro ao gravar no banco local: {e}")
+        return jsonify({"ok": False, "error": "falha ao registrar a foto"}), 500
 
     return jsonify({"ok": True, "id": novo_id, "semana": semana}), 200
 
@@ -3097,6 +3300,40 @@ def servir_foto_zeladoria(filename):
     return send_from_directory(ZELADORIA_FOTOS_DIR, filename)
 
 
+@app.route("/zeladoria-fotos-exportar-semana", methods=["GET"])
+def zeladoria_fotos_exportar_semana():
+    """Empacota num .zip todas as fotos de zeladoria já recebidas numa
+    semana (pasta zeladoria_fotos/<semana>/ no disco) — pra Fred baixar
+    e processar com o Cowork em vez do pipeline antigo (Sheets/SQLite +
+    Gemini no servidor). Só lê arquivos do disco, sem nenhuma chamada de
+    API externa — não tem cota nem limite de requisição aqui."""
+    import zipfile
+    import io as _io
+
+    semana = request.args.get("semana") or _semana_iso(agora_br())
+    pasta = os.path.join(ZELADORIA_FOTOS_DIR, semana)
+    if not os.path.isdir(pasta):
+        return jsonify({"ok": False, "error": f"nenhuma foto encontrada pra semana {semana}"}), 404
+
+    buffer = _io.BytesIO()
+    total = 0
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for nome_arquivo in sorted(os.listdir(pasta)):
+            caminho = os.path.join(pasta, nome_arquivo)
+            if os.path.isfile(caminho):
+                zf.write(caminho, arcname=nome_arquivo)
+                total += 1
+    buffer.seek(0)
+
+    if total == 0:
+        return jsonify({"ok": False, "error": f"pasta da semana {semana} existe mas está vazia"}), 404
+
+    return send_file(
+        buffer, mimetype="application/zip", as_attachment=True,
+        download_name=f"zeladoria_fotos_{semana}.zip",
+    )
+
+
 def _montar_prompt_classificacao_zeladoria(fotos_info, candidatas_usinas, cluster, dia_semana, dica_agenda):
     candidatas_str = ", ".join(candidatas_usinas) if candidatas_usinas else "não identificado"
     dica = f"\nDica de agenda conhecida: {dica_agenda}" if dica_agenda else ""
@@ -3104,40 +3341,106 @@ def _montar_prompt_classificacao_zeladoria(fotos_info, candidatas_usinas, cluste
         f"- Foto {i + 1}: legenda = \"{f.get('legenda') or '(sem legenda)'}\""
         for i, f in enumerate(fotos_info)
     )
-    return f"""Você é um assistente de O&M de usinas solares fotovoltaicas. Vai analisar um lote de fotos enviadas por uma equipe de campo no WhatsApp, referentes à zeladoria quinzenal (vegetação ao redor da usina e sujidade na face dos módulos).
+    return f"""Você é um assistente de O&M de usinas solares fotovoltaicas. Vai analisar um lote de fotos enviadas por uma equipe de campo no WhatsApp, referentes à zeladoria quinzenal (vegetação ao redor da usina e sujidade na face dos módulos). O lote pode conter fotos de MAIS DE UMA usina misturadas — separe corretamente cada foto pra sua usina, foto por foto.
 
 CONTEXTO:
 - Cluster/equipe responsável pelo grupo: {cluster or 'não identificado'}
 - Usina(s) candidata(s) que esse grupo de WhatsApp costuma atender: {candidatas_str}
 - Dia da semana em que as fotos foram enviadas: {dia_semana}{dica}
-- Cada foto pode ter uma marca d'água (Timemark) com data/hora, endereço, cidade/UF e coordenadas — LEIA esse texto na imagem se estiver visível, é uma pista forte de local.
+- Padrão esperado por usina: 5 fotos de vegetação + 3 fotos de sujidade (mas pode vir diferente na prática — não invente fotos que não existem).
 - Legendas escritas pela equipe (se houver):
 {legendas}
 
-TAREFA:
-1. Para cada foto (na ordem enviada), classifique como um destes tipos:
-   - "sujidade": foto de perto mostrando a face de um módulo fotovoltaico, evidenciando poeira/sujeira acumulada.
-   - "vegetacao": foto mostrando vegetação/mato/grama ao redor dos módulos ou nas fileiras.
-   - "indefinido": não dá pra classificar com confiança em nenhuma das duas.
-2. Considerando TODAS as fotos, o texto das marcas d'água, as legendas e as usinas candidatas acima, determine qual é a usina mais provável desse lote. Se só existir 1 candidata, use-a. Se houver mais de uma candidata, use o endereço/cidade lido nas fotos e a dica de agenda pra decidir.
-3. Dê um nível de confiança: "alta" (endereço na foto bate exatamente com uma candidata), "media" (indícios razoáveis mas não conclusivos) ou "baixa" (chute entre candidatas sem evidência clara).
+IDENTIFICAÇÃO DA USINA — SINAL PRIMÁRIO (leia isso com atenção antes de tudo):
+As fotos são tiradas com um app de georreferenciamento (tipo "Timemark") que grava uma marca d'água NA PRÓPRIA IMAGEM com data/hora, endereço completo, cidade/UF e coordenadas (lat/long). Essa marca d'água é a fonte MAIS CONFIÁVEL de localização — sempre leia e priorize esse texto antes de qualquer outra pista.
+- Muitas usinas de Fred têm o mesmo nome do município onde ficam (ex.: a usina "Araputanga" fica na cidade de Araputanga-MT, a usina "Nobres" fica em Nobres-MT). Ao ler a cidade/município na marca d'água, compare esse texto diretamente com o nome de cada usina candidata — bate na maioria dos casos.
+- Ordem de prioridade das evidências: 1º) cidade/endereço/coordenadas lidos na marca d'água da própria foto — 2º) legenda escrita pela equipe — 3º) dica de agenda conhecida (só usa se as duas primeiras não bastarem).
+- Se a marca d'água não estiver visível ou legível em alguma foto, tente pelas outras evidências, mas marque confiança mais baixa.
 
-Responda APENAS em JSON estrito, neste formato exato:
+CLASSIFICAÇÃO DE GRAU/NÍVEL — escalas oficiais de Fred (use com critério técnico, olhando a foto de verdade, não chute):
+Sujidade (só se classificacao="sujidade"):
+  L = Limpeza em execução (dá pra ver alguém limpando ou equipamento de limpeza em uso)
+  1 = Leve (poeira fina, quase imperceptível)
+  2 = Moderada (sujidade visível mas ainda não compromete muito a geração)
+  3 = Elevada (camada de sujidade clara cobrindo boa parte do painel)
+  4 = Severa (sujidade pesada, escurecendo visivelmente os módulos)
+  5 = Crítica (módulo muito sujo, sujidade grossa/acumulada, tipo terra/lama seca)
+Vegetação (só se classificacao="vegetacao"):
+  R = Roçagem em andamento (dá pra ver equipe/máquina roçando)
+  1 = Muito baixa (grama bem baixa, controlada, sem contato com estrutura)
+  2 = Baixa (atenção leve, grama um pouco mais alta mas longe dos módulos)
+  3 = Média (alerta operacional, vegetação já se aproximando da estrutura/trackers)
+  4 = Alta (crítica, vegetação encostando ou próxima de tocar os módulos/equipamentos)
+  5 = Muito alta (emergencial, vegetação tocando/invadindo módulos, cabine ou inversores)
+
+TAREFA — pra CADA foto, na ordem enviada, determine:
+1. Tipo: "sujidade" (foto de perto da face de um módulo, mostrando poeira/sujeira), "vegetacao" (vegetação/mato ao redor dos módulos, cabine primária, inversores ou sala de O&M) ou "indefinido" (não dá pra classificar com confiança).
+2. Usina: qual das candidatas acima essa foto pertence, seguindo a ordem de prioridade de evidências acima. Se só existir 1 candidata, use-a pra todas as fotos. Se não conseguir determinar com nenhuma evidência, deixe em branco (não chute às cegas).
+3. Confiança dessa atribuição de usina pra essa foto: "alta" (cidade/endereço da marca d'água bate claramente com uma candidata), "media" (legenda ou outros indícios razoáveis, sem confirmação clara da marca d'água) ou "baixa" (chute entre candidatas sem evidência clara).
+4. Grau: usando a escala correspondente ao tipo da foto (sujidade ou vegetação) acima. Deixe vazio se o tipo for "indefinido".
+
+Responda APENAS em JSON estrito, neste formato exato (um item por foto, na MESMA ORDEM em que as fotos foram enviadas):
 {{
-  "classificacoes": ["sujidade", "vegetacao", "..."],
-  "usina_provavel": "nome da usina",
-  "confianca": "alta|media|baixa",
-  "justificativa": "1-2 frases explicando o motivo da escolha"
+  "fotos": [
+    {{"classificacao": "sujidade", "usina": "nome da usina ou vazio", "confianca": "alta|media|baixa", "cidade_lida": "cidade/endereço lido na marca d'água, ou vazio se não visível", "grau": "L|1|2|3|4|5|R|vazio"}}
+  ],
+  "justificativa_geral": "1-2 frases explicando como você separou as fotos entre as usinas, citando a cidade/endereço lido quando relevante"
 }}"""
+
+
+def _agregar_grau_zeladoria(graus, letra_especial):
+    """Combina os graus individuais das fotos de um mesmo tipo (sujidade
+    ou vegetação) num grau só pra usina — usa a letra especial (L/R) se
+    QUALQUER foto indicar limpeza/roçagem em andamento (é a informação
+    mais acionável), senão usa o PIOR (maior) grau numérico encontrado,
+    já que o card deve refletir o cenário mais urgente visto nas fotos."""
+    graus = [g for g in graus if g]
+    if not graus:
+        return ""
+    if letra_especial in graus:
+        return letra_especial
+    numericos = [int(g) for g in graus if g.isdigit()]
+    if not numericos:
+        return ""
+    return str(max(numericos))
+
+
+def _redimensionar_para_ia(caminho_completo, lado_maximo=1024):
+    """Encolhe a imagem só pra mandar pro Gemini classificar — o arquivo
+    original em disco NÃO é alterado (continua no tamanho/qualidade
+    original pro arquivo de armazenamento). Isso reduz bastante o
+    tamanho do payload e o tempo de resposta da IA sem perder a
+    legibilidade da marca d'água (que é texto grande) nem a
+    identificação de sujidade/vegetação. Se der qualquer problema ao
+    reamostrar, cai pro arquivo original sem quebrar o processamento."""
+    try:
+        from PIL import Image
+        import io as _io
+        with Image.open(caminho_completo) as img:
+            img = img.convert("RGB")
+            img.thumbnail((lado_maximo, lado_maximo), Image.LANCZOS)
+            buf = _io.BytesIO()
+            img.save(buf, format="JPEG", quality=80)
+            return base64.b64encode(buf.getvalue()).decode(), "image/jpeg"
+    except Exception as e:
+        log.error(f"[redimensionar-para-ia] Falha ao reamostrar {caminho_completo}, usando original: {e}")
+        with open(caminho_completo, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode()
+        mime = "image/png" if caminho_completo.lower().endswith(".png") else "image/jpeg"
+        return img_b64, mime
 
 
 def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
     """fotos_raw: lista de dicts {id, legenda, arquivo, recebidoEm} da
-    mesma leva (mesmo grupo, ainda não processados)."""
+    mesma leva (mesmo grupo, ainda não processados). Retorna uma LISTA de
+    resultados — um por usina identificada dentro do lote, já que um
+    mesmo grupo de WhatsApp pode cobrir mais de uma usina (ex.: equipe
+    que atende GD Energy e Alves Lima no mesmo grupo). As fotos são
+    classificadas e atribuídas à usina foto a foto, depois agrupadas."""
     mapa_grupo_usina = _mapa_grupo_usina()
     mapa_cluster_usina = _mapa_cluster_usina()
     candidatas = sorted({u for u, g in mapa_grupo_usina.items() if g == grupo_id})
-    cluster = next((mapa_cluster_usina.get(u) for u in candidatas if mapa_cluster_usina.get(u)), None)
+    cluster_padrao = next((mapa_cluster_usina.get(u) for u in candidatas if mapa_cluster_usina.get(u)), None)
 
     dica_agenda = None
     for chave, texto in _AGENDA_EQUIPES_CONHECIDA.items():
@@ -3151,15 +3454,13 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
         dt_ref = agora_br()
     dia_semana = _dia_semana_pt(dt_ref)
 
-    parts = [{"text": _montar_prompt_classificacao_zeladoria(fotos_raw, candidatas, cluster, dia_semana, dica_agenda)}]
+    parts = [{"text": _montar_prompt_classificacao_zeladoria(fotos_raw, candidatas, cluster_padrao, dia_semana, dica_agenda)}]
     fotos_validas = []
     for foto in fotos_raw:
         caminho_completo = os.path.join(ZELADORIA_FOTOS_DIR, foto["arquivo"])
         if not os.path.exists(caminho_completo):
             continue
-        with open(caminho_completo, "rb") as f:
-            img_b64 = base64.b64encode(f.read()).decode()
-        mime = "image/png" if foto["arquivo"].lower().endswith(".png") else "image/jpeg"
+        img_b64, mime = _redimensionar_para_ia(caminho_completo)
         parts.append({"inline_data": {"mime_type": mime, "data": img_b64}})
         fotos_validas.append(foto)
 
@@ -3171,7 +3472,7 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
             "contents": [{"parts": parts}],
             "generationConfig": {
                 "temperature": 0.15,
-                "maxOutputTokens": 2048,
+                "maxOutputTokens": 4096,
                 "responseMimeType": "application/json",
                 "thinkingConfig": {"thinkingBudget": 0},
             },
@@ -3183,107 +3484,214 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
     texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto)
     resultado = json.loads(texto_limpo)
 
-    classificacoes = resultado.get("classificacoes", [])
-    qtd_sujidade = sum(1 for c in classificacoes if c == "sujidade")
-    qtd_vegetacao = sum(1 for c in classificacoes if c == "vegetacao")
-    qtd_indefinido = max(0, len(fotos_validas) - qtd_sujidade - qtd_vegetacao)
+    fotos_ia = resultado.get("fotos", [])
+    justificativa_geral = resultado.get("justificativa_geral", "")
 
-    return {
-        "cluster": cluster or "",
-        "usina_candidata_ia": resultado.get("usina_provavel", ""),
-        "confianca_ia": resultado.get("confianca", "baixa"),
-        "justificativa_ia": resultado.get("justificativa", ""),
-        "qtd_sujidade": qtd_sujidade,
-        "qtd_vegetacao": qtd_vegetacao,
-        "qtd_indefinido": qtd_indefinido,
-    }
+    # casa o nome de usina devolvido pela IA (pode vir sem acento/variado)
+    # com o nome canônico das candidatas, usando o normalizador já
+    # existente no sistema (sem acento, minúsculo, só alfanum)
+    candidatas_norm = {_norm(u): u for u in candidatas}
+
+    ordem_confianca = {"alta": 3, "media": 2, "baixa": 1}
+    grupos_por_usina = {}  # usina canônica ("" = não identificada) -> agregados
+    for i, foto in enumerate(fotos_validas):
+        item_ia = fotos_ia[i] if i < len(fotos_ia) else {}
+        classificacao = item_ia.get("classificacao", "indefinido")
+        usina_bruta = (item_ia.get("usina") or "").strip()
+        confianca = item_ia.get("confianca", "baixa")
+        cidade_lida = (item_ia.get("cidade_lida") or "").strip()
+        grau = (item_ia.get("grau") or "").strip().upper()
+
+        if len(candidatas) == 1:
+            usina_final = candidatas[0]
+        else:
+            usina_final = candidatas_norm.get(_norm(usina_bruta), usina_bruta)
+
+        chave = usina_final
+        if chave not in grupos_por_usina:
+            grupos_por_usina[chave] = {
+                "fotos": [], "sujidade": 0, "vegetacao": 0, "indefinido": 0,
+                "confiancas": [], "cidades": [], "graus_sujidade": [], "graus_vegetacao": [],
+            }
+        g = grupos_por_usina[chave]
+        # Só fotos de sujidade ou vegetação entram na leva que vira card —
+        # fotos fora do padrão (inversor, medição elétrica, etc.) são só
+        # contadas, não aparecem no resumo nem contam nas miniaturas. O
+        # arquivo em si continua salvo em disco (não apaga nada), só não
+        # participa do card de zeladoria.
+        if classificacao == "sujidade":
+            g["fotos"].append(foto)
+            g["confiancas"].append(confianca)
+            if cidade_lida and cidade_lida not in g["cidades"]:
+                g["cidades"].append(cidade_lida)
+            g["sujidade"] += 1
+            if grau:
+                g["graus_sujidade"].append(grau)
+        elif classificacao == "vegetacao":
+            g["fotos"].append(foto)
+            g["confiancas"].append(confianca)
+            if cidade_lida and cidade_lida not in g["cidades"]:
+                g["cidades"].append(cidade_lida)
+            g["vegetacao"] += 1
+            if grau:
+                g["graus_vegetacao"].append(grau)
+        else:
+            g["indefinido"] += 1
+
+    resultados = []
+    for usina, g in grupos_por_usina.items():
+        if not g["fotos"]:
+            # nenhuma foto de sujidade/vegetação nesse grupo — só fotos
+            # fora do padrão (ex.: inversor, medição). Não vira card.
+            if g["indefinido"]:
+                log.info(f"[zeladoria-fotos] {g['indefinido']} foto(s) fora do padrão (não sujidade/vegetação) descartadas do resumo pra usina={usina or '?'}")
+            continue
+        # confiança do lote = a mais baixa entre as fotos atribuídas a essa usina (conservador)
+        confianca_lote = min(g["confiancas"], key=lambda c: ordem_confianca.get(c, 0)) if g["confiancas"] else "baixa"
+        justificativa = justificativa_geral
+        if g["cidades"]:
+            justificativa = (justificativa + f" · Local lido na foto: {', '.join(g['cidades'])}").strip(" ·")
+        if g["indefinido"]:
+            justificativa = (justificativa + f" · {g['indefinido']} foto(s) fora do padrão ignorada(s)").strip(" ·")
+        resultados.append({
+            "usina": usina,
+            "cluster": mapa_cluster_usina.get(usina, cluster_padrao or ""),
+            "fotos": g["fotos"],
+            "confianca_ia": confianca_lote,
+            "justificativa_ia": justificativa,
+            "qtd_sujidade": g["sujidade"],
+            "qtd_vegetacao": g["vegetacao"],
+            "qtd_indefinido": g["indefinido"],
+            "grau_sujidade_ia": _agregar_grau_zeladoria(g["graus_sujidade"], "L"),
+            "grau_vegetacao_ia": _agregar_grau_zeladoria(g["graus_vegetacao"], "R"),
+        })
+    return resultados
 
 
 @app.route("/zeladoria-processar-fotos-pendentes", methods=["POST", "GET"])
 def zeladoria_processar_fotos_pendentes():
     """Agrupa as fotos cruas ainda não processadas por grupo de WhatsApp
-    (tudo que ainda está pendente do mesmo grupo vira 1 leva só) e manda
-    cada leva pra classificação por IA (Gemini Vision), gravando um
-    resumo em _ZeladoriaFotos. Chamado sob demanda (botão no painel de
-    Zeladoria) — não é automático, pra Fred controlar quando gastar cota
-    da IA e evitar rodar em cima de webhooks concorrentes."""
+    (tudo que ainda está pendente do mesmo grupo vira 1 ou mais levas) e
+    manda cada leva pra classificação por IA (Gemini Vision), gravando um
+    resumo na tabela local `fotos_resumo`. Chamado sob demanda (botão no
+    painel de Zeladoria) — não é automático, pra Fred controlar quando
+    gastar cota da IA (Gemini) e evitar rodar em cima de webhooks
+    concorrentes. A fila e o resumo vivem em SQLite local — sem cota de
+    leitura/escrita (isso não é mais o gargalo); o limite de levas por
+    chamada agora existe só por causa do tempo de resposta do Gemini
+    (evitar estourar o timeout de 120s do Gunicorn)."""
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
 
-    ws_raw = get_zeladoria_fotos_raw_sheet()
-    linhas = ws_raw.get_all_values()
-    pendentes = []
-    for idx, row in enumerate(linhas[1:], start=2):
-        if len(row) >= 7 and row[6].strip().lower() != "sim":
-            pendentes.append({
-                "row": idx, "id": row[0], "grupoId": row[1], "semana": row[2],
-                "recebidoEm": row[3], "legenda": row[4], "arquivo": row[5],
-            })
+    if not _zeladoria_tentar_travar("processar fotos"):
+        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro."}), 429
 
-    if not pendentes:
-        return jsonify({"ok": True, "processados": 0, "lotes": 0}), 200
+    try:
+        MAX_FOTOS_POR_LOTE = 10
+        MAX_LOTES_POR_CHAMADA = 5
 
-    lotes = {}
-    for f in pendentes:
-        lotes.setdefault(f["grupoId"], []).append(f)
+        conn = _zeladoria_db()
+        rows = conn.execute("SELECT rowid, * FROM fotos_raw WHERE processado != 'sim'").fetchall()
+        pendentes = [{
+            "rowid": r["rowid"], "id": r["id"], "grupoId": r["grupoId"], "semana": r["semanaISO"],
+            "recebidoEm": r["recebidoEm"], "legenda": r["legenda"], "arquivo": r["arquivo"],
+        } for r in rows]
 
-    ws_resumo = get_zeladoria_fotos_sheet()
-    processados = 0
-    erros = []
-    for grupo_id, fotos in lotes.items():
-        semana = fotos[0]["semana"]
-        try:
-            resultado = _processar_lote_fotos_zeladoria(grupo_id, fotos)
-            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            arquivos_str = "|".join(f["arquivo"] for f in fotos)
-            novo_id = str(uuid.uuid4())[:8]
-            ws_resumo.append_row([
-                novo_id, semana, grupo_id, resultado["cluster"],
-                resultado["usina_candidata_ia"], resultado["confianca_ia"],
-                resultado["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
-                resultado["qtd_sujidade"], resultado["qtd_vegetacao"], resultado["qtd_indefinido"],
-                arquivos_str, "nao", agora_str, agora_str,
-            ])
-            for f in fotos:
-                ws_raw.update_cell(f["row"], 7, "sim")
-            processados += len(fotos)
-        except Exception as e:
-            log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
-            erros.append(f"{grupo_id}/{semana}: {e}")
+        if not pendentes:
+            conn.close()
+            return jsonify({"ok": True, "processados": 0, "lotes": 0, "lotesRestantes": 0}), 200
 
-    return jsonify({"ok": True, "processados": processados, "lotes": len(lotes), "erros": erros}), 200
+        # agrupa por grupo (ordem de chegada preservada) e quebra cada grupo
+        # em pedaços de no máximo MAX_FOTOS_POR_LOTE fotos, pra manter cada
+        # chamada ao Gemini rápida e o payload pequeno
+        por_grupo = {}
+        for f in pendentes:
+            por_grupo.setdefault(f["grupoId"], []).append(f)
+
+        todos_lotes = []  # lista de (grupo_id, [fotos])
+        for grupo_id, fotos in por_grupo.items():
+            for i in range(0, len(fotos), MAX_FOTOS_POR_LOTE):
+                todos_lotes.append((grupo_id, fotos[i:i + MAX_FOTOS_POR_LOTE]))
+
+        lotes_desta_chamada = todos_lotes[:MAX_LOTES_POR_CHAMADA]
+        lotes_restantes = max(0, len(todos_lotes) - len(lotes_desta_chamada))
+
+        processados = 0
+        linhas_criadas = 0
+        erros = []
+        for grupo_id, fotos in lotes_desta_chamada:
+            semana = fotos[0]["semana"]
+            try:
+                resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos)
+                agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+                for r in resultados_por_usina:
+                    arquivos_str = "|".join(f["arquivo"] for f in r["fotos"])
+                    novo_id = str(uuid.uuid4())[:8]
+                    conn.execute(
+                        """INSERT INTO fotos_resumo
+                           (id, semanaISO, grupoId, clusterProvavel, usinaCandidataIA, confiancaIA,
+                            justificativaIA, usinaConfirmada, qtdSujidade, qtdVegetacao, qtdIndefinido,
+                            arquivos, confirmadoFred, criadoEm, atualizadoEm, descartado,
+                            grauSujidadeIA, grauVegetacaoIA)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (novo_id, semana, grupo_id, r["cluster"], r["usina"], r["confianca_ia"],
+                         r["justificativa_ia"], "", r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
+                         arquivos_str, "nao", agora_str, agora_str, "",
+                         r["grau_sujidade_ia"], r["grau_vegetacao_ia"]),
+                    )
+                    linhas_criadas += 1
+                for f in fotos:
+                    conn.execute("UPDATE fotos_raw SET processado='sim' WHERE rowid=?", (f["rowid"],))
+                processados += len(fotos)
+                conn.commit()
+            except Exception as e:
+                log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
+                erros.append(f"{grupo_id}/{semana}: {e}")
+
+        conn.close()
+        return jsonify({
+            "ok": True, "processados": processados, "lotes": linhas_criadas,
+            "lotesRestantes": lotes_restantes, "erros": erros,
+        }), 200
+    finally:
+        _zeladoria_liberar_trava()
 
 
 @app.route("/zeladoria-fotos-status", methods=["GET"])
 def zeladoria_fotos_status():
     """Retorna o resumo de fotos de zeladoria da semana pedida (ou da
     semana ISO atual, por padrão), pro painel de Zeladoria mostrar o
-    controle de fotos recebidas."""
+    controle de fotos recebidas. Por padrão só mostra o que ainda está
+    pendente de revisão — lotes descartados e lotes já CONFIRMADOS (que
+    já alimentaram a tabela de graus e viraram só arquivo/histórico) não
+    entram, a menos que ?mostrarConfirmadas=1 seja passado."""
     semana = request.args.get("semana") or _semana_iso(agora_br())
+    mostrar_confirmadas = request.args.get("mostrarConfirmadas", "").lower() in ("1", "true", "sim")
 
-    ws = get_zeladoria_fotos_sheet()
-    linhas = ws.get_all_values()
+    conn = _zeladoria_db()
+    rows = conn.execute("SELECT * FROM fotos_resumo WHERE semanaISO=?", (semana,)).fetchall()
     resultado = []
-    for row in linhas[1:]:
-        if len(row) < len(ZELADORIA_FOTOS_HEADERS):
-            row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
-        if row[1].strip() != semana:
+    for row in rows:
+        if (row["descartado"] or "").strip().lower() == "sim":
             continue
-        arquivos = [a for a in row[11].split("|") if a]
+        confirmado = (row["confirmadoFred"] or "").strip().lower() == "sim"
+        if confirmado and not mostrar_confirmadas:
+            continue
+        arquivos = [a for a in (row["arquivos"] or "").split("|") if a]
         resultado.append({
-            "id": row[0], "semana": row[1], "grupoId": row[2], "cluster": row[3],
-            "usinaCandidataIA": row[4], "confiancaIA": row[5], "justificativaIA": row[6],
-            "usinaConfirmada": row[7],
-            "qtdSujidade": row[8], "qtdVegetacao": row[9], "qtdIndefinido": row[10],
+            "id": row["id"], "semana": row["semanaISO"], "grupoId": row["grupoId"], "cluster": row["clusterProvavel"],
+            "usinaCandidataIA": row["usinaCandidataIA"], "confiancaIA": row["confiancaIA"], "justificativaIA": row["justificativaIA"],
+            "usinaConfirmada": row["usinaConfirmada"],
+            "qtdSujidade": row["qtdSujidade"], "qtdVegetacao": row["qtdVegetacao"], "qtdIndefinido": row["qtdIndefinido"],
             "fotos": [f"/zeladoria_fotos/{a}" for a in arquivos],
-            "confirmadoFred": row[12].strip().lower() == "sim",
-            "criadoEm": row[13], "atualizadoEm": row[14],
+            "confirmadoFred": confirmado,
+            "criadoEm": row["criadoEm"], "atualizadoEm": row["atualizadoEm"],
+            "grauSujidadeIA": row["grauSujidadeIA"], "grauVegetacaoIA": row["grauVegetacaoIA"],
         })
 
     # também informa quantas fotos cruas ainda estão na fila sem processar
-    ws_raw = get_zeladoria_fotos_raw_sheet()
-    linhas_raw = ws_raw.get_all_values()
-    pendentes = sum(1 for row in linhas_raw[1:] if len(row) >= 7 and row[6].strip().lower() != "sim")
+    pendentes = conn.execute("SELECT COUNT(*) AS c FROM fotos_raw WHERE processado != 'sim'").fetchone()["c"]
+    conn.close()
 
     return jsonify({"ok": True, "semana": semana, "lotes": resultado, "fotosPendentesProcessar": pendentes}), 200
 
@@ -3291,25 +3699,284 @@ def zeladoria_fotos_status():
 @app.route("/zeladoria-fotos-confirmar", methods=["POST"])
 def zeladoria_fotos_confirmar():
     """Fred confirma o recebimento de um lote de fotos de zeladoria e,
-    se necessário, corrige manualmente a usina atribuída pela IA."""
+    se necessário, corrige manualmente a usina atribuída pela IA. Ao
+    confirmar: os graus de sujidade/vegetação que a IA leu nas fotos
+    alimentam automaticamente o Controle de Sujidade e Vegetação da
+    usina (semana atual), e o lote sai da tela principal (arquivado —
+    os arquivos continuam guardados no servidor, só não ficam mais na
+    fila de revisão)."""
     payload = request.get_json(force=True, silent=True) or {}
     lote_id = (payload.get("id") or "").strip()
     usina_confirmada = (payload.get("usinaConfirmada") or "").strip()
     if not lote_id:
         return jsonify({"ok": False, "error": "id é obrigatório"}), 400
 
-    ws = get_zeladoria_fotos_sheet()
-    linhas = ws.get_all_values()
-    for idx, row in enumerate(linhas[1:], start=2):
-        if row and row[0].strip() == lote_id:
-            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            if usina_confirmada:
-                ws.update_cell(idx, 8, usina_confirmada)  # usinaConfirmada
-            ws.update_cell(idx, 13, "sim")                # confirmadoFred
-            ws.update_cell(idx, 15, agora_str)             # atualizadoEm
-            return jsonify({"ok": True}), 200
+    conn = _zeladoria_db()
+    row = conn.execute("SELECT * FROM fotos_resumo WHERE id=?", (lote_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "lote não encontrado"}), 404
 
-    return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    usina_confirmada_final = usina_confirmada or row["usinaConfirmada"] or ""
+    conn.execute(
+        "UPDATE fotos_resumo SET usinaConfirmada=?, confirmadoFred='sim', atualizadoEm=? WHERE id=?",
+        (usina_confirmada_final, agora_str, lote_id),
+    )
+    conn.commit()
+
+    usina_final = usina_confirmada or row["usinaCandidataIA"] or ""  # usinaConfirmada (se veio) ou usinaCandidataIA
+    semana = row["semanaISO"]
+    grau_sujidade_ia = (row["grauSujidadeIA"] or "").strip()
+    grau_vegetacao_ia = (row["grauVegetacaoIA"] or "").strip()
+    if usina_final and (grau_sujidade_ia or grau_vegetacao_ia):
+        try:
+            if grau_sujidade_ia:
+                _upsert_grau_zeladoria(
+                    usina_final, "", "sujidade", grau_sujidade_ia,
+                    f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                    "IA (fotos confirmadas)", semana, conn=conn,
+                )
+            if grau_vegetacao_ia:
+                _upsert_grau_zeladoria(
+                    usina_final, "", "vegetacao", grau_vegetacao_ia,
+                    f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                    "IA (fotos confirmadas)", semana, conn=conn,
+                )
+        except Exception as e:
+            log.error(f"[zeladoria-fotos-confirmar] Falha ao alimentar tabela de graus pra {usina_final}: {e}")
+
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "grauSujidadeAplicado": grau_sujidade_ia or None,
+        "grauVegetacaoAplicado": grau_vegetacao_ia or None,
+    }), 200
+
+
+@app.route("/zeladoria-fotos-reclassificar-grau", methods=["POST"])
+def zeladoria_fotos_reclassificar_grau():
+    """Corrige lotes que já tinham sido confirmados ANTES da classificação
+    de grau (sujidade/vegetação) existir no sistema — essas levas ficaram
+    sem grauSujidadeIA/grauVegetacaoIA e, por já estarem confirmadas,
+    somem da tela principal sem nunca terem alimentado o Controle de
+    Sujidade e Vegetação. Reroda a IA sobre os arquivos já salvos em
+    disco (sem mexer na usina/confirmação, que já estão corretas), grava
+    o grau na linha e alimenta a tabela. O limite de levas por chamada
+    existe só por causa do tempo de resposta do Gemini (evitar estourar
+    o timeout de 120s do Gunicorn) — o SQLite local não tem cota."""
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    if not _zeladoria_tentar_travar("recalcular graus"):
+        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro."}), 429
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        lote_id_unico = (payload.get("id") or "").strip()
+        MAX_LOTES_POR_CHAMADA = 4
+
+        conn = _zeladoria_db()
+        query = "SELECT * FROM fotos_resumo WHERE (descartado IS NULL OR descartado != 'sim') AND confirmadoFred='sim' AND (grauSujidadeIA IS NULL OR grauSujidadeIA='') AND (grauVegetacaoIA IS NULL OR grauVegetacaoIA='')"
+        params = ()
+        if lote_id_unico:
+            query += " AND id=?"
+            params = (lote_id_unico,)
+        candidatos = conn.execute(query, params).fetchall()
+
+        if not candidatos:
+            conn.close()
+            return jsonify({"ok": True, "processados": 0, "restantes": 0, "erros": []}), 200
+
+        lote_desta_chamada = candidatos[:MAX_LOTES_POR_CHAMADA]
+        restantes = max(0, len(candidatos) - len(lote_desta_chamada))
+
+        processados = 0
+        erros = []
+        for row in lote_desta_chamada:
+            lote_id = row["id"]
+            grupo_id = row["grupoId"]
+            usina_final = (row["usinaConfirmada"] or row["usinaCandidataIA"] or "").strip()
+            semana = row["semanaISO"]
+            arquivos = [a for a in (row["arquivos"] or "").split("|") if a]
+            if not usina_final or not arquivos:
+                erros.append(f"{lote_id}: sem usina confirmada ou sem arquivos salvos")
+                continue
+
+            recebido_em = row["criadoEm"] or agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            fotos_raw = [{"id": lote_id, "legenda": "", "arquivo": a, "recebidoEm": recebido_em} for a in arquivos]
+            try:
+                resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos_raw)
+                escolhido = next((r for r in resultados_por_usina if _norm(r["usina"]) == _norm(usina_final)), None)
+                if not escolhido and resultados_por_usina:
+                    escolhido = max(resultados_por_usina, key=lambda r: len(r["fotos"]))
+                if not escolhido:
+                    erros.append(f"{lote_id}: IA não retornou classificação")
+                    continue
+
+                grau_sujidade_ia = escolhido["grau_sujidade_ia"]
+                grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
+                conn.execute(
+                    "UPDATE fotos_resumo SET grauSujidadeIA=?, grauVegetacaoIA=? WHERE id=?",
+                    (grau_sujidade_ia, grau_vegetacao_ia, lote_id),
+                )
+                conn.commit()
+
+                if grau_sujidade_ia:
+                    _upsert_grau_zeladoria(
+                        usina_final, "", "sujidade", grau_sujidade_ia,
+                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "IA (fotos confirmadas)", semana, conn=conn,
+                    )
+                if grau_vegetacao_ia:
+                    _upsert_grau_zeladoria(
+                        usina_final, "", "vegetacao", grau_vegetacao_ia,
+                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "IA (fotos confirmadas)", semana, conn=conn,
+                    )
+                processados += 1
+            except Exception as e:
+                log.error(f"[zeladoria-fotos-reclassificar-grau] Erro no lote {lote_id}: {e}")
+                erros.append(f"{lote_id}: {e}")
+
+        conn.close()
+        return jsonify({"ok": True, "processados": processados, "restantes": restantes, "erros": erros}), 200
+    finally:
+        _zeladoria_liberar_trava()
+
+
+@app.route("/zeladoria-fotos-descartar", methods=["POST"])
+def zeladoria_fotos_descartar():
+    """Descarta um lote de fotos capturado erroneamente (ex.: veio de um
+    grupo/usina errada, ou não são fotos de zeladoria de verdade). Não
+    apaga a linha — só marca como descartado, pra manter histórico —,
+    e o lote some da tela (/zeladoria-fotos-status já filtra isso)."""
+    payload = request.get_json(force=True, silent=True) or {}
+    lote_id = (payload.get("id") or "").strip()
+    if not lote_id:
+        return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+
+    conn = _zeladoria_db()
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    cur = conn.execute("UPDATE fotos_resumo SET descartado='sim', atualizadoEm=? WHERE id=?", (agora_str, lote_id))
+    conn.commit()
+    encontrado = cur.rowcount > 0
+    conn.close()
+
+    if not encontrado:
+        return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+    return jsonify({"ok": True}), 200
+
+
+
+VALORES_VALIDOS_SUJIDADE = {"L", "1", "2", "3", "4", "5"}
+VALORES_VALIDOS_VEGETACAO = {"R", "1", "2", "3", "4", "5"}
+
+
+@app.route("/zeladoria-graus", methods=["GET"])
+def zeladoria_graus_listar():
+    """Retorna, pra cada usina de Fred (mapeadas em cluster_usina), o
+    último grau registrado de sujidade e de vegetação — pro Controle de
+    Zeladoria no painel. Escala igual à das planilhas STATUS_CONSOLIDADO.
+    Também informa se aquele último registro é da semana ATUAL ou ficou
+    "parado" de uma quinzena anterior (pra não parecer que é um valor
+    fresco quando na verdade não foi atualizado ainda), e devolve um
+    histórico curto (últimas 8 quinzenas) por usina/tipo, pra dar pra ver
+    a evolução ao longo do tempo."""
+    mapa_cluster = _mapa_cluster_usina()
+    semana_atual = _semana_iso(agora_br())
+    MAX_HISTORICO = 8
+
+    conn = _zeladoria_db()
+    rows = conn.execute("SELECT * FROM graus ORDER BY rowid ASC").fetchall()
+    conn.close()
+
+    # histórico completo por (usina, tipo) — a tabela guarda uma linha
+    # por quinzena (chave usina+tipo+semana), em ordem de inserção
+    historico_por_chave = {}
+    for row in rows:
+        usina = (row["usina"] or "").strip()
+        tipo = (row["tipo"] or "").strip()
+        if not usina or not tipo:
+            continue
+        chave = (usina, tipo)
+        historico_por_chave.setdefault(chave, []).append({
+            "semana": row["semanaISO"], "grau": row["grau"], "observacoes": row["observacoes"],
+            "editor": row["editor"], "atualizadoEm": row["atualizadoEm"],
+        })
+
+    resultado = []
+    for usina, cluster in sorted(mapa_cluster.items()):
+        info_por_tipo = {}
+        for tipo in ("sujidade", "vegetacao"):
+            hist = historico_por_chave.get((usina, tipo), [])
+            ultimo = hist[-1] if hist else {}
+            info_por_tipo[tipo] = {
+                **ultimo,
+                "atualizadoNaSemanaAtual": bool(ultimo) and (ultimo.get("semana") or "").strip() == semana_atual,
+                # histórico mais recente primeiro, sem o próprio "último" repetido
+                "historico": list(reversed(hist[-MAX_HISTORICO - 1:-1])) if len(hist) > 1 else [],
+            }
+        resultado.append({
+            "usina": usina,
+            "cluster": cluster,
+            "sujidade": info_por_tipo["sujidade"],
+            "vegetacao": info_por_tipo["vegetacao"],
+        })
+
+    return jsonify({"ok": True, "semanaAtual": semana_atual, "usinas": resultado}), 200
+
+
+def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, semana=None, conn=None):
+    """Grava (ou atualiza) o grau de sujidade/vegetação de uma usina pra
+    uma semana — um registro por (usina, tipo, semana), graças à chave
+    primária composta da tabela `graus`. Reaproveitado tanto pelo
+    endpoint manual (Fred editando a tabela direto) quanto pelo
+    preenchimento automático quando um lote de fotos é confirmado. Se
+    `conn` for passado, reaproveita a conexão aberta (evita abrir/fechar
+    o banco várias vezes dentro do mesmo request); senão abre e fecha
+    uma conexão própria."""
+    semana = semana or _semana_iso(agora_br())
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    fechar_ao_final = conn is None
+    conn = conn or _zeladoria_db()
+    conn.execute(
+        """INSERT INTO graus (usina, cliente, tipo, semanaISO, grau, observacoes, editor, atualizadoEm)
+           VALUES (?,?,?,?,?,?,?,?)
+           ON CONFLICT(usina, tipo, semanaISO) DO UPDATE SET
+             cliente=excluded.cliente, grau=excluded.grau, observacoes=excluded.observacoes,
+             editor=excluded.editor, atualizadoEm=excluded.atualizadoEm""",
+        (usina, cliente, tipo, semana, grau, observacoes, editor, agora_str),
+    )
+    conn.commit()
+    if fechar_ao_final:
+        conn.close()
+
+
+@app.route("/zeladoria-grau-atualizar", methods=["POST"])
+def zeladoria_grau_atualizar():
+    """Registra o grau de sujidade ou vegetação de uma usina na semana
+    atual (ou na semana informada). Um registro por (usina, tipo, semana)
+    — se já existir, atualiza; senão, cria uma linha nova, preservando o
+    histórico das quinzenas anteriores."""
+    payload = request.get_json(force=True, silent=True) or {}
+    usina = (payload.get("usina") or "").strip()
+    tipo = (payload.get("tipo") or "").strip().lower()
+    grau = (payload.get("grau") or "").strip().upper()
+    observacoes = (payload.get("observacoes") or "").strip()
+    semana = (payload.get("semana") or "").strip() or _semana_iso(agora_br())
+
+    if not usina or tipo not in ("sujidade", "vegetacao"):
+        return jsonify({"ok": False, "error": "usina e tipo ('sujidade' ou 'vegetacao') são obrigatórios"}), 400
+
+    valores_validos = VALORES_VALIDOS_SUJIDADE if tipo == "sujidade" else VALORES_VALIDOS_VEGETACAO
+    if grau and grau not in valores_validos:
+        return jsonify({"ok": False, "error": f"grau inválido pra {tipo}. Use: {', '.join(sorted(valores_validos))}"}), 400
+
+    cliente = (payload.get("cliente") or "").strip()
+    _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, "Fred", semana)
+
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/resolver-duplicata-8866", methods=["POST"])
@@ -5905,6 +6572,59 @@ def config_ler():
     return jsonify({"ok": True, "pares": pares}), 200
 
 
+@app.route("/config-limpar-cache", methods=["POST"])
+def config_limpar_cache():
+    """Zera o cache em memória de _mapa_grupo_usina/_mapa_cluster_usina —
+    útil depois de editar a aba _Sistema (ex.: corrigir nome de usina)
+    quando não dá pra esperar os 10 minutos do cache normal."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    _mapa_grupo_usina_cache["dados"] = None
+    _mapa_grupo_usina_cache["expira_em"] = 0
+    _mapa_cluster_usina_cache["dados"] = None
+    _mapa_cluster_usina_cache["expira_em"] = 0
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/config-remover", methods=["POST"])
+def config_remover():
+    """Remove uma ou mais chaves da aba _Sistema (linha inteira apagada).
+    Usado pra corrigir duplicatas/erros de cadastro, ex.: uma usina
+    registrada duas vezes com nomes ligeiramente diferentes. Compara
+    normalizando acentuação (NFC) — strings com "ã" podem estar
+    guardadas com codificação Unicode diferente (precomposta vs
+    combinando caracteres) dependendo de como foram digitadas
+    originalmente, e uma comparação direta de string falha nesse caso
+    sem dar nenhum aviso."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dados = request.get_json(force=True, silent=True) or {}
+    chaves = dados.get("chaves", [])
+    if not chaves:
+        return jsonify({"ok": True, "removidos": []}), 200
+
+    import unicodedata
+    chaves_norm = {unicodedata.normalize("NFC", c.strip()) for c in chaves}
+
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    encontradas = []
+    linhas_para_remover = []
+    for i, row in enumerate(valores[1:], start=2):
+        if row and unicodedata.normalize("NFC", row[0].strip()) in chaves_norm:
+            linhas_para_remover.append(i)
+            encontradas.append(row[0])
+    linhas_para_remover.sort(reverse=True)  # de baixo pra cima, pra não bagunçar os índices ao deletar
+    for idx in linhas_para_remover:
+        ws_cfg.delete_rows(idx)
+
+    return jsonify({"ok": True, "removidos": len(linhas_para_remover), "chavesEncontradas": encontradas}), 200
+
+
 @app.route("/config-set-lote", methods=["POST"])
 def config_set_lote():
     """Grava múltiplos pares chave/valor na aba _Sistema de uma vez, numa
@@ -5949,9 +6669,61 @@ def config_set_lote():
 # um novo deploy. Usinas sem grupo configurado são simplesmente ignoradas
 # (não dá erro, só não recebem comunicado).
 
+_MAPA_CACHE_DISCO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zeladoria_fotos")
+
+
+def _mapa_cache_disco_salvar(nome, mapa):
+    try:
+        os.makedirs(_MAPA_CACHE_DISCO_DIR, exist_ok=True)
+        with open(os.path.join(_MAPA_CACHE_DISCO_DIR, f"cache_{nome}.json"), "w", encoding="utf-8") as f:
+            json.dump(mapa, f)
+    except Exception as e:
+        log.error(f"[_mapa_cache_disco_salvar] Falha ao salvar cache '{nome}' em disco: {e}")
+
+
+def _mapa_cache_disco_carregar(nome):
+    caminho = os.path.join(_MAPA_CACHE_DISCO_DIR, f"cache_{nome}.json")
+    if not os.path.exists(caminho):
+        return None
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log.error(f"[_mapa_cache_disco_carregar] Falha ao ler cache '{nome}' do disco: {e}")
+        return None
+
+
+_mapa_grupo_usina_cache = {"dados": None, "expira_em": 0}
+
+
 def _mapa_grupo_usina():
-    ws_cfg = _get_config_sheet()
-    valores = ws_cfg.get_all_values()
+    """Cache de 10 min (era 30s) — essa função é chamada muitas vezes
+    durante o processamento de fotos de zeladoria, e mesmo com cache
+    curto ainda contribuía pra estourar a cota de leitura do Google
+    Sheets, principalmente logo após um restart do servidor (cache
+    vazio, todo mundo pedindo ao mesmo tempo). _Sistema muda raramente
+    (só quando Fred edita manualmente), então 10 min de defasagem não é
+    problema. Se a atualização falhar (ex.: cota momentaneamente
+    esgotada), usa o cache em memória se tiver, senão um cache salvo em
+    disco (sobrevive a restart do servidor) — só levanta erro de
+    verdade se nenhum dos dois existir ainda."""
+    agora_ts = time.time()
+    if _mapa_grupo_usina_cache["dados"] is not None and agora_ts < _mapa_grupo_usina_cache["expira_em"]:
+        return _mapa_grupo_usina_cache["dados"]
+    try:
+        ws_cfg = _get_config_sheet()
+        valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    except Exception as e:
+        if _mapa_grupo_usina_cache["dados"] is not None:
+            log.error(f"[_mapa_grupo_usina] Falha ao atualizar ({e}) — usando cache em memória")
+            return _mapa_grupo_usina_cache["dados"]
+        do_disco = _mapa_cache_disco_carregar("grupo_usina")
+        if do_disco is not None:
+            log.error(f"[_mapa_grupo_usina] Falha ao atualizar ({e}) — usando cache salvo em disco")
+            _mapa_grupo_usina_cache["dados"] = do_disco
+            _mapa_grupo_usina_cache["expira_em"] = agora_ts + 60  # tenta de novo em breve
+            return do_disco
+        raise
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("grupo_usina:"):
@@ -5959,6 +6731,9 @@ def _mapa_grupo_usina():
             grupo_id = row[1].strip() if len(row) > 1 else ""
             if usina and grupo_id:
                 mapa[usina] = grupo_id
+    _mapa_grupo_usina_cache["dados"] = mapa
+    _mapa_grupo_usina_cache["expira_em"] = agora_ts + 600
+    _mapa_cache_disco_salvar("grupo_usina", mapa)
     return mapa
 
 
@@ -6139,11 +6914,32 @@ def migrar_historico_legivel():
 
 
 
+_mapa_cluster_usina_cache = {"dados": None, "expira_em": 0}
+
+
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
-    01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'."""
-    ws_cfg = _get_config_sheet()
-    valores = ws_cfg.get_all_values()
+    01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'.
+    Cache de 10 min com fallback pro cache em memória e depois pro cache
+    salvo em disco (sobrevive a restart) em caso de falha — mesmo motivo
+    do _mapa_grupo_usina."""
+    agora_ts = time.time()
+    if _mapa_cluster_usina_cache["dados"] is not None and agora_ts < _mapa_cluster_usina_cache["expira_em"]:
+        return _mapa_cluster_usina_cache["dados"]
+    try:
+        ws_cfg = _get_config_sheet()
+        valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    except Exception as e:
+        if _mapa_cluster_usina_cache["dados"] is not None:
+            log.error(f"[_mapa_cluster_usina] Falha ao atualizar ({e}) — usando cache em memória")
+            return _mapa_cluster_usina_cache["dados"]
+        do_disco = _mapa_cache_disco_carregar("cluster_usina")
+        if do_disco is not None:
+            log.error(f"[_mapa_cluster_usina] Falha ao atualizar ({e}) — usando cache salvo em disco")
+            _mapa_cluster_usina_cache["dados"] = do_disco
+            _mapa_cluster_usina_cache["expira_em"] = agora_ts + 60
+            return do_disco
+        raise
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("cluster_usina:"):
@@ -6151,6 +6947,9 @@ def _mapa_cluster_usina():
             cluster = row[1].strip() if len(row) > 1 else ""
             if usina and cluster:
                 mapa[usina] = cluster
+    _mapa_cluster_usina_cache["dados"] = mapa
+    _mapa_cluster_usina_cache["expira_em"] = agora_ts + 600
+    _mapa_cache_disco_salvar("cluster_usina", mapa)
     return mapa
 
 
@@ -7481,10 +8280,10 @@ Sua tarefa é redigir Ordens de Serviço (OS) baseadas na solicitação abaixo. 
 
 REGRA DE SEPARAÇÃO EM MÚLTIPLAS OS (MUITO IMPORTANTE, leia antes de tudo):
 A solicitação abaixo pode descrever mais de uma frente de trabalho de uma vez (texto colado direto de anotações de campo, por exemplo). Você deve dividir em OSs SEPARADAS sempre que identificar:
-- **Usinas diferentes** — cada usina distinta vira sua própria OS, SEM EXCEÇÃO (isso vale até pra câmeras/CFTV: se o mesmo assunto de câmera aparecer em duas usinas diferentes, vira duas OSs, uma por usina).
+- **Usinas diferentes** — cada usina distinta vira sua própria OS.
 - **Equipamentos/sistemas diferentes** dentro da mesma usina — ex.: inversor e tracker são frentes diferentes, viram OSs separadas; trafo e string também.
-CÂMERAS/CFTV: dentro de UMA MESMA usina, todo o conteúdo de câmeras (reposicionamento, foco, teste, instalação, várias câmeras diferentes) fica numa OS só — não precisa separar por número de câmera. Mas se o mesmo assunto de câmera envolver mais de uma usina, cada usina vira sua própria OS.
-Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou só câmeras de uma única usina), gere apenas UMA OS normalmente.
+EXCEÇÃO — CÂMERAS/CFTV: todo o conteúdo relacionado a câmeras/CFTV (reposicionamento, foco, teste, instalação, mesmo que em mais de uma usina ou câmera) fica **numa única OS só**, mesmo cruzando usinas — o sistema de CFTV é tratado como uma frente de trabalho só, não se separa por usina.
+Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou só câmeras), gere apenas UMA OS normalmente.
 
 REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente:
 - Esqueça introduções, conclusões, saudações, tabelas, ou seções como "Objetivo", "Descrição", "Responsáveis" ou "Evidências".
@@ -7559,18 +8358,6 @@ Comentários:
 7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
 8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
 9. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
-
-Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
-Título: Inspeção de Inversor para Abertura de Chamado
-Comentários:
-
-1. Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
-2. Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
-3. Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para identificar possíveis anomalias.
-4. Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
-5. Coleta do número de série e posição operacional do inversor.
-6. Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
-7. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
@@ -7694,9 +8481,9 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     Se todas as tentativas na chave principal falharem por 429 (limite
     de taxa esgotado — mais provável agora que várias funcionalidades de
     IA dividem a mesma cota gratuita: gerar OS, priorização, comunicados
-    diários e comunicado livre), tenta UMA VEZ a mais usando
-    GEMINI_API_KEY_TESTE como reserva, já que é um projeto separado no
-    Google AI Studio com cota própria — antes disso só era usada em
+    diários, comunicado livre e fotos de zeladoria), tenta UMA VEZ a mais
+    usando GEMINI_API_KEY_TESTE como reserva, já que é um projeto separado
+    no Google AI Studio com cota própria — antes disso só era usada em
     diagnósticos manuais. Só levanta a exceção se isso também falhar
     (ex.: cota diária de ambas as chaves realmente esgotada).
 
