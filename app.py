@@ -3161,11 +3161,15 @@ def grupos_fotos_permitidos():
 @app.route("/webhook-foto-zeladoria", methods=["POST"])
 def webhook_foto_zeladoria():
     """Recebe uma foto individual encaminhada pelo server.js (mensagem de
-    imagem num grupo monitorado). Só salva o arquivo e registra uma linha
-    crua na fila — a classificação por IA roda depois, em lote, via
-    /zeladoria-processar-fotos-pendentes. Isso evita segurar o webhook
-    esperando a IA responder e permite juntar várias fotos da mesma leva
-    antes de classificar em conjunto."""
+    imagem num grupo monitorado). Salva o arquivo em disco — a parte que
+    registrava uma linha na fila do Google Sheets está PAUSADA por
+    pedido do Fred (20/07-21/07/2026): o volume de leitura/escrita da
+    planilha pra fotos de zeladoria estava contribuindo pro estouro de
+    cota do Sheets. Enquanto isso, as fotos só ficam salvas em disco
+    (pasta zeladoria_fotos/<semana>/), sem entrar na fila de
+    classificação por IA. Amanhã entra um novo esquema de armazenamento
+    (repositório, via Claude Cowork) no lugar do Sheets pra isso — não
+    reverter essa pausa sem consultar o Fred primeiro."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "")
         if secret != WEBHOOK_SECRET:
@@ -3206,18 +3210,12 @@ def webhook_foto_zeladoria():
         log.error(f"[webhook-foto-zeladoria] Erro ao salvar arquivo: {e}")
         return jsonify({"ok": False, "error": "falha ao salvar arquivo no servidor"}), 500
 
-    try:
-        ws = get_zeladoria_fotos_raw_sheet()
-        novo_id = str(uuid.uuid4())[:8]
-        _gspread_retry(lambda: ws.append_row([
-            novo_id, grupo_id, semana, agora.strftime("%d/%m/%Y %H:%M:%S"),
-            legenda, f"{semana}/{nome_arquivo}", "nao",
-        ]))
-    except Exception as e:
-        log.error(f"[webhook-foto-zeladoria] Erro ao gravar na planilha: {e}")
-        return jsonify({"ok": False, "error": "falha ao registrar na planilha"}), 500
-
-    return jsonify({"ok": True, "id": novo_id, "semana": semana}), 200
+    # PAUSADO (ver docstring): não grava mais em _ZeladoriaFotosRaw. A
+    # foto fica só no disco por enquanto, sem entrar na fila de IA.
+    return jsonify({
+        "ok": True, "id": None, "semana": semana,
+        "aviso": "registro em planilha pausado — foto salva só em disco por enquanto",
+    }), 200
 
 
 @app.route("/zeladoria_fotos/<path:filename>")
