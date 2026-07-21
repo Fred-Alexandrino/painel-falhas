@@ -6647,15 +6647,14 @@ def atualizar_observacao_chamado():
     pra não ser apagada quando a planilha do SharePoint for reimportada
     de novo no futuro.
 
+    Endpoint PÚBLICO (sem secret) — chamado direto do navegador pelo
+    popup de detalhe do chamado, igual /atualizar-campo-atividade.
+
     Corpo esperado: {"ticket": "...", "ufv": "...", "equipamento": "...",
     "novaObservacao": "..."}
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     body = request.get_json(force=True, silent=True) or {}
     ticket = (body.get("ticket") or "").strip()
