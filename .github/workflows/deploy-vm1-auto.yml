@@ -5,7 +5,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH (git pull + restart)
+      - name: Deploy via SSH (git pull + pip install + restart)
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 168.138.232.237
@@ -14,6 +14,7 @@ jobs:
           script: |
             cd ~/painel-falhas
             git pull
+            venv/bin/pip install -r requirements.txt
             sudo systemctl restart painel-falhas
             sleep 3
             sudo systemctl status painel-falhas --no-pager
