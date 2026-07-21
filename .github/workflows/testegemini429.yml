@@ -1,0 +1,20 @@
+name: Teste Gemini 429
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -m 40 -X POST "https://api.168.138.232.237.sslip.io/gerar-comunicado-livre-ia" -H "Content-Type: application/json" -d '{"tema":"Teste de resiliencia","observacoes":"apenas um teste"}' -w "\nHTTP_CODE:%{http_code}\n" > backups/teste-429.txt
+          cat backups/teste-429.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-429.txt
+          git diff --quiet --cached || git commit -m "teste 429 [skip ci]"
+          git push
