@@ -123,7 +123,7 @@ def get_gc():
     return _gc_cache
 
 
-def _gspread_retry(fn, tentativas=4, esperas=(3, 6, 12, 20)):
+def _gspread_retry(fn, tentativas=5, esperas=(4, 8, 15, 25, 35)):
     """Executa uma chamada ao Google Sheets com retry exponencial em caso
     de erro 429 (cota de leitura/escrita por minuto excedida — limite
     padrão do Google é 60 requisições/min por usuário). Ficou comum
@@ -143,6 +143,34 @@ def _gspread_retry(fn, tentativas=4, esperas=(3, 6, 12, 20)):
                 continue
             raise
     raise ultima_excecao
+
+
+# ── Trava simples pra operações pesadas de Zeladoria ──────────────────────
+# "Processar fotos" e "Recalcular graus" sozinhos já consomem bastante da
+# cota de leitura do Sheets — rodando ao mesmo tempo (ex.: Fred clicando
+# nos dois botões em sequência), o estouro de cota fica praticamente
+# garantido. Trava simples em memória: evita isso dentro do mesmo worker
+# do Gunicorn (o cenário mais comum — um usuário, um navegador). Libera
+# sozinha se ficar "presa" por tempo demais (ex.: um processo anterior
+# quebrou sem liberar).
+_zeladoria_lock_info = {"em_uso": False, "desde": 0, "operacao": ""}
+
+
+def _zeladoria_tentar_travar(operacao, timeout_max_segundos=280):
+    agora_ts = time.time()
+    if _zeladoria_lock_info["em_uso"] and (agora_ts - _zeladoria_lock_info["desde"]) > timeout_max_segundos:
+        _zeladoria_lock_info["em_uso"] = False
+    if _zeladoria_lock_info["em_uso"]:
+        return False
+    _zeladoria_lock_info["em_uso"] = True
+    _zeladoria_lock_info["desde"] = agora_ts
+    _zeladoria_lock_info["operacao"] = operacao
+    return True
+
+
+def _zeladoria_liberar_trava():
+    _zeladoria_lock_info["em_uso"] = False
+    _zeladoria_lock_info["operacao"] = ""
 
 def get_log_sheet():
     """Retorna a aba 'Log de Mensagens' da planilha."""
@@ -3268,6 +3296,31 @@ def _agregar_grau_zeladoria(graus, letra_especial):
     return str(max(numericos))
 
 
+def _redimensionar_para_ia(caminho_completo, lado_maximo=1024):
+    """Encolhe a imagem só pra mandar pro Gemini classificar — o arquivo
+    original em disco NÃO é alterado (continua no tamanho/qualidade
+    original pro arquivo de armazenamento). Isso reduz bastante o
+    tamanho do payload e o tempo de resposta da IA sem perder a
+    legibilidade da marca d'água (que é texto grande) nem a
+    identificação de sujidade/vegetação. Se der qualquer problema ao
+    reamostrar, cai pro arquivo original sem quebrar o processamento."""
+    try:
+        from PIL import Image
+        import io as _io
+        with Image.open(caminho_completo) as img:
+            img = img.convert("RGB")
+            img.thumbnail((lado_maximo, lado_maximo), Image.LANCZOS)
+            buf = _io.BytesIO()
+            img.save(buf, format="JPEG", quality=80)
+            return base64.b64encode(buf.getvalue()).decode(), "image/jpeg"
+    except Exception as e:
+        log.error(f"[redimensionar-para-ia] Falha ao reamostrar {caminho_completo}, usando original: {e}")
+        with open(caminho_completo, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode()
+        mime = "image/png" if caminho_completo.lower().endswith(".png") else "image/jpeg"
+        return img_b64, mime
+
+
 def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
     """fotos_raw: lista de dicts {id, legenda, arquivo, recebidoEm} da
     mesma leva (mesmo grupo, ainda não processados). Retorna uma LISTA de
@@ -3298,9 +3351,7 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
         caminho_completo = os.path.join(ZELADORIA_FOTOS_DIR, foto["arquivo"])
         if not os.path.exists(caminho_completo):
             continue
-        with open(caminho_completo, "rb") as f:
-            img_b64 = base64.b64encode(f.read()).decode()
-        mime = "image/png" if foto["arquivo"].lower().endswith(".png") else "image/jpeg"
+        img_b64, mime = _redimensionar_para_ia(caminho_completo)
         parts.append({"inline_data": {"mime_type": mime, "data": img_b64}})
         fotos_validas.append(foto)
 
@@ -3354,15 +3405,24 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
                 "confiancas": [], "cidades": [], "graus_sujidade": [], "graus_vegetacao": [],
             }
         g = grupos_por_usina[chave]
-        g["fotos"].append(foto)
-        g["confiancas"].append(confianca)
-        if cidade_lida and cidade_lida not in g["cidades"]:
-            g["cidades"].append(cidade_lida)
+        # Só fotos de sujidade ou vegetação entram na leva que vira card —
+        # fotos fora do padrão (inversor, medição elétrica, etc.) são só
+        # contadas, não aparecem no resumo nem contam nas miniaturas. O
+        # arquivo em si continua salvo em disco (não apaga nada), só não
+        # participa do card de zeladoria.
         if classificacao == "sujidade":
+            g["fotos"].append(foto)
+            g["confiancas"].append(confianca)
+            if cidade_lida and cidade_lida not in g["cidades"]:
+                g["cidades"].append(cidade_lida)
             g["sujidade"] += 1
             if grau:
                 g["graus_sujidade"].append(grau)
         elif classificacao == "vegetacao":
+            g["fotos"].append(foto)
+            g["confiancas"].append(confianca)
+            if cidade_lida and cidade_lida not in g["cidades"]:
+                g["cidades"].append(cidade_lida)
             g["vegetacao"] += 1
             if grau:
                 g["graus_vegetacao"].append(grau)
@@ -3371,11 +3431,19 @@ def _processar_lote_fotos_zeladoria(grupo_id, fotos_raw):
 
     resultados = []
     for usina, g in grupos_por_usina.items():
+        if not g["fotos"]:
+            # nenhuma foto de sujidade/vegetação nesse grupo — só fotos
+            # fora do padrão (ex.: inversor, medição). Não vira card.
+            if g["indefinido"]:
+                log.info(f"[zeladoria-fotos] {g['indefinido']} foto(s) fora do padrão (não sujidade/vegetação) descartadas do resumo pra usina={usina or '?'}")
+            continue
         # confiança do lote = a mais baixa entre as fotos atribuídas a essa usina (conservador)
         confianca_lote = min(g["confiancas"], key=lambda c: ordem_confianca.get(c, 0)) if g["confiancas"] else "baixa"
         justificativa = justificativa_geral
         if g["cidades"]:
             justificativa = (justificativa + f" · Local lido na foto: {', '.join(g['cidades'])}").strip(" ·")
+        if g["indefinido"]:
+            justificativa = (justificativa + f" · {g['indefinido']} foto(s) fora do padrão ignorada(s)").strip(" ·")
         resultados.append({
             "usina": usina,
             "cluster": mapa_cluster_usina.get(usina, cluster_padrao or ""),
@@ -3410,81 +3478,87 @@ def zeladoria_processar_fotos_pendentes():
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
 
-    MAX_FOTOS_POR_LOTE = 10
-    MAX_LOTES_POR_CHAMADA = 2
+    if not _zeladoria_tentar_travar("processar fotos"):
+        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro, pra não estourar a cota do Sheets."}), 429
 
-    ws_raw = get_zeladoria_fotos_raw_sheet()
-    linhas = _gspread_retry(lambda: ws_raw.get_all_values())
-    pendentes = []
-    for idx, row in enumerate(linhas[1:], start=2):
-        if len(row) >= 7 and row[6].strip().lower() != "sim":
-            pendentes.append({
-                "row": idx, "id": row[0], "grupoId": row[1], "semana": row[2],
-                "recebidoEm": row[3], "legenda": row[4], "arquivo": row[5],
-            })
+    try:
+        MAX_FOTOS_POR_LOTE = 10
+        MAX_LOTES_POR_CHAMADA = 2
 
-    if not pendentes:
-        return jsonify({"ok": True, "processados": 0, "lotes": 0, "lotesRestantes": 0}), 200
-
-    # agrupa por grupo (ordem de chegada preservada) e quebra cada grupo
-    # em pedaços de no máximo MAX_FOTOS_POR_LOTE fotos, pra manter cada
-    # chamada ao Gemini rápida e o payload pequeno
-    por_grupo = {}
-    for f in pendentes:
-        por_grupo.setdefault(f["grupoId"], []).append(f)
-
-    todos_lotes = []  # lista de (grupo_id, [fotos])
-    for grupo_id, fotos in por_grupo.items():
-        for i in range(0, len(fotos), MAX_FOTOS_POR_LOTE):
-            todos_lotes.append((grupo_id, fotos[i:i + MAX_FOTOS_POR_LOTE]))
-
-    lotes_desta_chamada = todos_lotes[:MAX_LOTES_POR_CHAMADA]
-    lotes_restantes = max(0, len(todos_lotes) - len(lotes_desta_chamada))
-
-    ws_resumo = get_zeladoria_fotos_sheet()
-    processados = 0
-    linhas_criadas = 0
-    erros = []
-    novas_linhas_resumo = []
-    atualizacoes_processado = []  # (row, "sim") — marcadas como processado em lote no final
-    for grupo_id, fotos in lotes_desta_chamada:
-        semana = fotos[0]["semana"]
-        try:
-            resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos)
-            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            for r in resultados_por_usina:
-                arquivos_str = "|".join(f["arquivo"] for f in r["fotos"])
-                novo_id = str(uuid.uuid4())[:8]
-                novas_linhas_resumo.append([
-                    novo_id, semana, grupo_id, r["cluster"],
-                    r["usina"], r["confianca_ia"],
-                    r["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
-                    r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
-                    arquivos_str, "nao", agora_str, agora_str, "",  # descartado
-                    r["grau_sujidade_ia"], r["grau_vegetacao_ia"],
-                ])
-                linhas_criadas += 1
-            for f in fotos:
-                atualizacoes_processado.append({
-                    "range": gspread.utils.rowcol_to_a1(f["row"], 7),
-                    "values": [["sim"]],
+        ws_raw = get_zeladoria_fotos_raw_sheet()
+        linhas = _gspread_retry(lambda: ws_raw.get_all_values())
+        pendentes = []
+        for idx, row in enumerate(linhas[1:], start=2):
+            if len(row) >= 7 and row[6].strip().lower() != "sim":
+                pendentes.append({
+                    "row": idx, "id": row[0], "grupoId": row[1], "semana": row[2],
+                    "recebidoEm": row[3], "legenda": row[4], "arquivo": row[5],
                 })
-            processados += len(fotos)
-        except Exception as e:
-            log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
-            erros.append(f"{grupo_id}/{semana}: {e}")
 
-    # escreve tudo de uma vez (1-2 chamadas em vez de uma por usina/foto) —
-    # é o maior fator que estava estourando a cota de escrita do Sheets
-    if novas_linhas_resumo:
-        _gspread_retry(lambda: ws_resumo.append_rows(novas_linhas_resumo, value_input_option="RAW"))
-    if atualizacoes_processado:
-        _gspread_retry(lambda: ws_raw.batch_update(atualizacoes_processado, value_input_option="RAW"))
+        if not pendentes:
+            return jsonify({"ok": True, "processados": 0, "lotes": 0, "lotesRestantes": 0}), 200
 
-    return jsonify({
-        "ok": True, "processados": processados, "lotes": linhas_criadas,
-        "lotesRestantes": lotes_restantes, "erros": erros,
-    }), 200
+        # agrupa por grupo (ordem de chegada preservada) e quebra cada grupo
+        # em pedaços de no máximo MAX_FOTOS_POR_LOTE fotos, pra manter cada
+        # chamada ao Gemini rápida e o payload pequeno
+        por_grupo = {}
+        for f in pendentes:
+            por_grupo.setdefault(f["grupoId"], []).append(f)
+
+        todos_lotes = []  # lista de (grupo_id, [fotos])
+        for grupo_id, fotos in por_grupo.items():
+            for i in range(0, len(fotos), MAX_FOTOS_POR_LOTE):
+                todos_lotes.append((grupo_id, fotos[i:i + MAX_FOTOS_POR_LOTE]))
+
+        lotes_desta_chamada = todos_lotes[:MAX_LOTES_POR_CHAMADA]
+        lotes_restantes = max(0, len(todos_lotes) - len(lotes_desta_chamada))
+
+        ws_resumo = get_zeladoria_fotos_sheet()
+        processados = 0
+        linhas_criadas = 0
+        erros = []
+        novas_linhas_resumo = []
+        atualizacoes_processado = []  # (row, "sim") — marcadas como processado em lote no final
+        for grupo_id, fotos in lotes_desta_chamada:
+            semana = fotos[0]["semana"]
+            try:
+                resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos)
+                agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+                for r in resultados_por_usina:
+                    arquivos_str = "|".join(f["arquivo"] for f in r["fotos"])
+                    novo_id = str(uuid.uuid4())[:8]
+                    novas_linhas_resumo.append([
+                        novo_id, semana, grupo_id, r["cluster"],
+                        r["usina"], r["confianca_ia"],
+                        r["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
+                        r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
+                        arquivos_str, "nao", agora_str, agora_str, "",  # descartado
+                        r["grau_sujidade_ia"], r["grau_vegetacao_ia"],
+                    ])
+                    linhas_criadas += 1
+                for f in fotos:
+                    atualizacoes_processado.append({
+                        "range": gspread.utils.rowcol_to_a1(f["row"], 7),
+                        "values": [["sim"]],
+                    })
+                processados += len(fotos)
+            except Exception as e:
+                log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
+                erros.append(f"{grupo_id}/{semana}: {e}")
+
+        # escreve tudo de uma vez (1-2 chamadas em vez de uma por usina/foto) —
+        # é o maior fator que estava estourando a cota de escrita do Sheets
+        if novas_linhas_resumo:
+            _gspread_retry(lambda: ws_resumo.append_rows(novas_linhas_resumo, value_input_option="RAW"))
+        if atualizacoes_processado:
+            _gspread_retry(lambda: ws_raw.batch_update(atualizacoes_processado, value_input_option="RAW"))
+
+        return jsonify({
+            "ok": True, "processados": processados, "lotes": linhas_criadas,
+            "lotesRestantes": lotes_restantes, "erros": erros,
+        }), 200
+    finally:
+        _zeladoria_liberar_trava()
 
 
 @app.route("/zeladoria-fotos-status", methods=["GET"])
@@ -3602,77 +3676,83 @@ def zeladoria_fotos_reclassificar_grau():
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
 
-    payload = request.get_json(force=True, silent=True) or {}
-    lote_id_unico = (payload.get("id") or "").strip()
-    MAX_LOTES_POR_CHAMADA = 2
+    if not _zeladoria_tentar_travar("recalcular graus"):
+        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro, pra não estourar a cota do Sheets."}), 429
 
-    ws = get_zeladoria_fotos_sheet()
-    linhas = _gspread_retry(lambda: ws.get_all_values())
-    candidatos = []
-    for idx, row in enumerate(linhas[1:], start=2):
-        if len(row) < len(ZELADORIA_FOTOS_HEADERS):
-            row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
-        if row[15].strip().lower() == "sim":  # descartado — ignora
-            continue
-        if row[12].strip().lower() != "sim":  # só os já confirmados
-            continue
-        if row[16].strip() or row[17].strip():  # já tem grau — não precisa
-            continue
-        if lote_id_unico and row[0].strip() != lote_id_unico:
-            continue
-        candidatos.append((idx, row))
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        lote_id_unico = (payload.get("id") or "").strip()
+        MAX_LOTES_POR_CHAMADA = 2
 
-    if not candidatos:
-        return jsonify({"ok": True, "processados": 0, "restantes": 0, "erros": []}), 200
+        ws = get_zeladoria_fotos_sheet()
+        linhas = _gspread_retry(lambda: ws.get_all_values())
+        candidatos = []
+        for idx, row in enumerate(linhas[1:], start=2):
+            if len(row) < len(ZELADORIA_FOTOS_HEADERS):
+                row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
+            if row[15].strip().lower() == "sim":  # descartado — ignora
+                continue
+            if row[12].strip().lower() != "sim":  # só os já confirmados
+                continue
+            if row[16].strip() or row[17].strip():  # já tem grau — não precisa
+                continue
+            if lote_id_unico and row[0].strip() != lote_id_unico:
+                continue
+            candidatos.append((idx, row))
 
-    lote_desta_chamada = candidatos[:MAX_LOTES_POR_CHAMADA]
-    restantes = max(0, len(candidatos) - len(lote_desta_chamada))
+        if not candidatos:
+            return jsonify({"ok": True, "processados": 0, "restantes": 0, "erros": []}), 200
 
-    processados = 0
-    erros = []
-    for idx, row in lote_desta_chamada:
-        lote_id = row[0]
-        grupo_id = row[2]
-        usina_final = (row[7] or row[4]).strip()  # usinaConfirmada ou usinaCandidataIA
-        semana = row[1]
-        arquivos = [a for a in row[11].split("|") if a]
-        if not usina_final or not arquivos:
-            erros.append(f"{lote_id}: sem usina confirmada ou sem arquivos salvos")
-            continue
+        lote_desta_chamada = candidatos[:MAX_LOTES_POR_CHAMADA]
+        restantes = max(0, len(candidatos) - len(lote_desta_chamada))
 
-        recebido_em = row[13] or agora_br().strftime("%d/%m/%Y %H:%M:%S")
-        fotos_raw = [{"id": lote_id, "legenda": "", "arquivo": a, "recebidoEm": recebido_em} for a in arquivos]
-        try:
-            resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos_raw)
-            escolhido = next((r for r in resultados_por_usina if _norm(r["usina"]) == _norm(usina_final)), None)
-            if not escolhido and resultados_por_usina:
-                escolhido = max(resultados_por_usina, key=lambda r: len(r["fotos"]))
-            if not escolhido:
-                erros.append(f"{lote_id}: IA não retornou classificação")
+        processados = 0
+        erros = []
+        for idx, row in lote_desta_chamada:
+            lote_id = row[0]
+            grupo_id = row[2]
+            usina_final = (row[7] or row[4]).strip()  # usinaConfirmada ou usinaCandidataIA
+            semana = row[1]
+            arquivos = [a for a in row[11].split("|") if a]
+            if not usina_final or not arquivos:
+                erros.append(f"{lote_id}: sem usina confirmada ou sem arquivos salvos")
                 continue
 
-            grau_sujidade_ia = escolhido["grau_sujidade_ia"]
-            grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
-            _gspread_retry(lambda: ws.update(f"Q{idx}:R{idx}", [[grau_sujidade_ia, grau_vegetacao_ia]]))
+            recebido_em = row[13] or agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            fotos_raw = [{"id": lote_id, "legenda": "", "arquivo": a, "recebidoEm": recebido_em} for a in arquivos]
+            try:
+                resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos_raw)
+                escolhido = next((r for r in resultados_por_usina if _norm(r["usina"]) == _norm(usina_final)), None)
+                if not escolhido and resultados_por_usina:
+                    escolhido = max(resultados_por_usina, key=lambda r: len(r["fotos"]))
+                if not escolhido:
+                    erros.append(f"{lote_id}: IA não retornou classificação")
+                    continue
 
-            if grau_sujidade_ia:
-                _upsert_grau_zeladoria(
-                    usina_final, "", "sujidade", grau_sujidade_ia,
-                    f"Preenchido automaticamente (reclassificação — lote {lote_id})",
-                    "IA (fotos confirmadas)", semana,
-                )
-            if grau_vegetacao_ia:
-                _upsert_grau_zeladoria(
-                    usina_final, "", "vegetacao", grau_vegetacao_ia,
-                    f"Preenchido automaticamente (reclassificação — lote {lote_id})",
-                    "IA (fotos confirmadas)", semana,
-                )
-            processados += 1
-        except Exception as e:
-            log.error(f"[zeladoria-fotos-reclassificar-grau] Erro no lote {lote_id}: {e}")
-            erros.append(f"{lote_id}: {e}")
+                grau_sujidade_ia = escolhido["grau_sujidade_ia"]
+                grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
+                _gspread_retry(lambda: ws.update(f"Q{idx}:R{idx}", [[grau_sujidade_ia, grau_vegetacao_ia]]))
 
-    return jsonify({"ok": True, "processados": processados, "restantes": restantes, "erros": erros}), 200
+                if grau_sujidade_ia:
+                    _upsert_grau_zeladoria(
+                        usina_final, "", "sujidade", grau_sujidade_ia,
+                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "IA (fotos confirmadas)", semana,
+                    )
+                if grau_vegetacao_ia:
+                    _upsert_grau_zeladoria(
+                        usina_final, "", "vegetacao", grau_vegetacao_ia,
+                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "IA (fotos confirmadas)", semana,
+                    )
+                processados += 1
+            except Exception as e:
+                log.error(f"[zeladoria-fotos-reclassificar-grau] Erro no lote {lote_id}: {e}")
+                erros.append(f"{lote_id}: {e}")
+
+        return jsonify({"ok": True, "processados": processados, "restantes": restantes, "erros": erros}), 200
+    finally:
+        _zeladoria_liberar_trava()
 
 
 @app.route("/zeladoria-fotos-descartar", methods=["POST"])
