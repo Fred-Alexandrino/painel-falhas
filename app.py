@@ -7727,6 +7727,8 @@ Regras:
 - Se as observações já derem detalhes suficientes, estruture em tópicos curtos; se for uma frase só, pode ficar em parágrafo corrido mesmo.
 - Tamanho: curto o bastante pra ler de relance no celular (poucas linhas).
 
+REGRA CRÍTICA — PRESERVAR O GRAU DE CERTEZA DO TEXTO ORIGINAL: preste muita atenção em palavras que indicam incerteza ou expectativa, como "acredito que", "acho que", "acho possível", "acredito", "acho provável", "talvez", "devemos", "devemos conseguir". NUNCA transforme uma expectativa/crença em uma confirmação ou promessa de prazo. Se o autor disse que "acredita" que algo vai acontecer, sem data confirmada, o comunicado deve deixar claro que ainda NÃO há data definida (ex.: "ainda não temos data para retorno", "sem previsão confirmada", "assim que tivermos confirmação, avisamos") — em vez de anunciar como certo ou "em breve". Errar pra mais confiança do que o texto original tem é pior do que errar pra menos — na dúvida, seja mais conservador, não mais otimista.
+
 Tema do comunicado: {tema}
 Observações/detalhes: {observacoes or "nenhuma observação adicional"}
 
