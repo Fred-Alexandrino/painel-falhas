@@ -7777,6 +7777,31 @@ def gerar_comunicado_livre_ia():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
+_NOMES_GRUPOS_CONHECIDOS = {
+    "120363423233716775": "[O&M] - Grid Co. | Renogrid",
+    "120363423427343356": "[O&M] - Grid Co. | Thopen",
+    "120363402559504115": "[O&M] - Grid Co. | 2C",
+    "120363426381032089": "[O&M] - Grid Co. | Alves Lima",
+    "120363423844956611": "[O&M] - Grid Co. | GD Energy",
+    "120363421162420788": "COS — Técnicos O&M Centro-Oeste",
+    "120363425837962709": "COS — Técnicos O&M Sul",
+    "120363402176878100": "COS — Técnicos O&M Nordeste",
+    "120363423533840348": "COS — Técnicos O&M Sudeste",
+    "120363421052607450": "COS — Técnicos O&M Norte",
+    "120363406919935108": "Equipe Nova Xavantina 1 e 2",
+    "120363405111083249": "Equipe Crateús",
+    "120363405244065477": "O&M CE Sítio Bonfim - Grid/Thopen",
+    "120363427839577268": "Equipe Elias Fausto",
+    "120363428268426406": "Equipe Matão/Topázio",
+    "120363422795399103": "Equipe Ibaté/Boa Esperança",
+    "120363403858325184": "Equipe Sete Lagoas",
+    "120363426700120222": "Equipe Colíder - Grid Co.",
+    "120363426886851537": "Equipe Nova Xavantina",
+    "120363425342949474": "Equipe Araputanga/Poconé",
+    "120363406329162612": "Equipe Nobres",
+}
+
+
 @app.route("/grupos-configurados", methods=["GET"])
 def listar_grupos_configurados():
     """Lista os grupos do WhatsApp configurados (GRUPOS_IDS), com nome
@@ -7787,8 +7812,10 @@ def listar_grupos_configurados():
         grupo_id = grupo_id.strip()
         if not grupo_id:
             continue
-        nome = _nome_amigavel_grupo(grupo_id) or f"Grupo {grupo_id[:14]}…"
+        id_numerico = grupo_id.replace("@g.us", "")
+        nome = _NOMES_GRUPOS_CONHECIDOS.get(id_numerico) or _nome_amigavel_grupo(grupo_id) or f"Grupo {grupo_id[:14]}…"
         itens.append({"id": grupo_id, "nome": nome})
+    itens.sort(key=lambda x: x["nome"])
     return jsonify({"ok": True, "itens": itens})
 
 
