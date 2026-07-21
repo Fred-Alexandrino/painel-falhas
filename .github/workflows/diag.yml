@@ -8,21 +8,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - env:
-          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
-        run: |
+      - run: |
           mkdir -p backups
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/health" -o backups/diag-s1-health.json
-          curl -s --max-time 60 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-migrar-sheets-para-sqlite" -o backups/diag-s2-migracao.json
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status" -o backups/diag-s3-status.json
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-graus" -o backups/diag-s4-graus.json
+          curl -s --max-time 100 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-p1.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-s1-health.json backups/diag-s2-migracao.json backups/diag-s3-status.json backups/diag-s4-graus.json
+          git add backups/diag-p1.json
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-s1-health.json backups/diag-s2-migracao.json backups/diag-s3-status.json backups/diag-s4-graus.json
+          git add backups/diag-p1.json
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
