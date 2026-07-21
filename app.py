@@ -6572,6 +6572,32 @@ def config_ler():
     return jsonify({"ok": True, "pares": pares}), 200
 
 
+@app.route("/config-remover", methods=["POST"])
+def config_remover():
+    """Remove uma ou mais chaves da aba _Sistema (linha inteira apagada).
+    Usado pra corrigir duplicatas/erros de cadastro, ex.: uma usina
+    registrada duas vezes com nomes ligeiramente diferentes."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dados = request.get_json(force=True, silent=True) or {}
+    chaves = dados.get("chaves", [])
+    if not chaves:
+        return jsonify({"ok": True, "removidos": []}), 200
+
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    linhas_para_remover = sorted(
+        (i for i, row in enumerate(valores[1:], start=2) if row and row[0].strip() in chaves),
+        reverse=True,  # de baixo pra cima, pra não bagunçar os índices ao deletar
+    )
+    for idx in linhas_para_remover:
+        ws_cfg.delete_rows(idx)
+
+    return jsonify({"ok": True, "removidos": len(linhas_para_remover)}), 200
+
+
 @app.route("/config-set-lote", methods=["POST"])
 def config_set_lote():
     """Grava múltiplos pares chave/valor na aba _Sistema de uma vez, numa
