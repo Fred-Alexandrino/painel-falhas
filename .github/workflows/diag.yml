@@ -18,5 +18,9 @@ jobs:
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
           git add backups/diag-r1.json backups/diag-r2.json
-          git diff --quiet --cached || git commit -m "diag sync [skip ci]"
-          git push
+          git commit -m "diag sync [skip ci]" || echo "nothing to commit"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-r1.json backups/diag-r2.json
+          git commit -m "diag sync [skip ci]" || echo "nothing to commit 2"
+          git push origin HEAD:main
