@@ -11,11 +11,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -s --max-time 100 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o /tmp/result.json
+          echo "=== RESULT ==="
           cat /tmp/result.json
           base64 -w0 /tmp/result.json > /tmp/result.b64
           jq -n --arg msg "diag via api [skip ci]" --rawfile content /tmp/result.b64 '{message:$msg, content:$content}' > /tmp/payload.json
-          curl -s -X PUT \
+          echo "=== PUT RESPONSE ==="
+          curl -s -w "\nHTTP_CODE:%{http_code}\n" -X PUT \
             -H "Authorization: token $GH_TOKEN" \
             -H "Content-Type: application/json" \
-            "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-api-result2.json" \
+            "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-api-result3.json" \
             -d @/tmp/payload.json
