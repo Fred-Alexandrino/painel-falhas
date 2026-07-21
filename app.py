@@ -3300,6 +3300,40 @@ def servir_foto_zeladoria(filename):
     return send_from_directory(ZELADORIA_FOTOS_DIR, filename)
 
 
+@app.route("/zeladoria-fotos-exportar-semana", methods=["GET"])
+def zeladoria_fotos_exportar_semana():
+    """Empacota num .zip todas as fotos de zeladoria já recebidas numa
+    semana (pasta zeladoria_fotos/<semana>/ no disco) — pra Fred baixar
+    e processar com o Cowork em vez do pipeline antigo (Sheets/SQLite +
+    Gemini no servidor). Só lê arquivos do disco, sem nenhuma chamada de
+    API externa — não tem cota nem limite de requisição aqui."""
+    import zipfile
+    import io as _io
+
+    semana = request.args.get("semana") or _semana_iso(agora_br())
+    pasta = os.path.join(ZELADORIA_FOTOS_DIR, semana)
+    if not os.path.isdir(pasta):
+        return jsonify({"ok": False, "error": f"nenhuma foto encontrada pra semana {semana}"}), 404
+
+    buffer = _io.BytesIO()
+    total = 0
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for nome_arquivo in sorted(os.listdir(pasta)):
+            caminho = os.path.join(pasta, nome_arquivo)
+            if os.path.isfile(caminho):
+                zf.write(caminho, arcname=nome_arquivo)
+                total += 1
+    buffer.seek(0)
+
+    if total == 0:
+        return jsonify({"ok": False, "error": f"pasta da semana {semana} existe mas está vazia"}), 404
+
+    return send_file(
+        buffer, mimetype="application/zip", as_attachment=True,
+        download_name=f"zeladoria_fotos_{semana}.zip",
+    )
+
+
 def _montar_prompt_classificacao_zeladoria(fotos_info, candidatas_usinas, cluster, dia_semana, dica_agenda):
     candidatas_str = ", ".join(candidatas_usinas) if candidatas_usinas else "não identificado"
     dica = f"\nDica de agenda conhecida: {dica_agenda}" if dica_agenda else ""
