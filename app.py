@@ -3144,6 +3144,21 @@ def grupos_fotos_permitidos():
     return jsonify({"ok": True, "grupos": grupos}), 200
 
 
+@app.route("/zeladoria-debug-raw", methods=["GET"])
+def zeladoria_debug_raw():
+    """Temporário, só pra investigar por que fotos aparecem como
+    pendentes no banner mas o processamento diz que não tem nada pra
+    processar. Mostra o conteúdo cru da tabela fotos_raw."""
+    conn = _zeladoria_db()
+    todas = conn.execute("SELECT rowid, id, grupoId, semanaISO, processado, arquivo FROM fotos_raw ORDER BY rowid").fetchall()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "total": len(todas),
+        "linhas": [dict(r) for r in todas],
+    }), 200
+
+
 @app.route("/zeladoria-migrar-sheets-para-sqlite", methods=["POST"])
 def zeladoria_migrar_sheets_para_sqlite():
     """Uso único (21/07/2026): puxa o que já existia nas abas antigas do
