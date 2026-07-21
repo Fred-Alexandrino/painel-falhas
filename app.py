@@ -6572,6 +6572,22 @@ def config_ler():
     return jsonify({"ok": True, "pares": pares}), 200
 
 
+@app.route("/config-limpar-cache", methods=["POST"])
+def config_limpar_cache():
+    """Zera o cache em memória de _mapa_grupo_usina/_mapa_cluster_usina —
+    útil depois de editar a aba _Sistema (ex.: corrigir nome de usina)
+    quando não dá pra esperar os 10 minutos do cache normal."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    _mapa_grupo_usina_cache["dados"] = None
+    _mapa_grupo_usina_cache["expira_em"] = 0
+    _mapa_cluster_usina_cache["dados"] = None
+    _mapa_cluster_usina_cache["expira_em"] = 0
+    return jsonify({"ok": True}), 200
+
+
 @app.route("/config-remover", methods=["POST"])
 def config_remover():
     """Remove uma ou mais chaves da aba _Sistema (linha inteira apagada).
