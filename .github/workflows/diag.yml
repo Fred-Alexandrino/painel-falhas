@@ -10,14 +10,18 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p backups
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" --max-time 110 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-fotos-reclassificar-grau" -H "Content-Type: application/json" -d '{}' -o backups/diag-verify-recalc.json
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" --max-time 110 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-14fotos-r1.json
+          sleep 2
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" --max-time 110 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-14fotos-r2.json
+          sleep 2
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" --max-time 110 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-14fotos-r3.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-verify-recalc.json
+          git add backups/diag-14fotos-r1.json backups/diag-14fotos-r2.json backups/diag-14fotos-r3.json
           git commit -m "diag sync [skip ci]" || echo "nothing to commit"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-verify-recalc.json
+          git add backups/diag-14fotos-r1.json backups/diag-14fotos-r2.json backups/diag-14fotos-r3.json
           git commit -m "diag sync [skip ci]" || echo "nothing to commit 2"
           git push origin HEAD:main
