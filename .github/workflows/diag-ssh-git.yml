@@ -8,16 +8,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Check git state on VM1
-        id: check
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: 168.138.232.237
-          username: ubuntu
-          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
-          script_stop: false
-          command_timeout: 60s
-          script: |
+      - name: SSH and capture output
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm1_key
+          chmod 600 ~/.ssh/vm1_key
+          mkdir -p backups
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm1_key ubuntu@168.138.232.237 '
             cd ~/painel-falhas
             echo "=== git status ==="
             git status
@@ -33,22 +32,17 @@ jobs:
             grep -c "zeladoria-fotos-exportar-semana" app.py || echo "NOT FOUND"
             echo "=== service status ==="
             sudo systemctl status painel-falhas --no-pager | head -15
-      - name: Save output to file
-        if: always()
-        run: |
-          mkdir -p backups
-          cat > backups/diag-git-live3.txt << 'DIAGEOF'
-          ${{ steps.check.outputs.stdout }}
-          DIAGEOF
+          ' > backups/diag-git-live4.txt 2>&1
+          cat backups/diag-git-live4.txt
       - name: Commit and push
         if: always()
         run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-git-live3.txt
+          git add backups/diag-git-live4.txt
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-git-live3.txt
+          git add backups/diag-git-live4.txt
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
