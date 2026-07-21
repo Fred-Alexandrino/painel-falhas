@@ -7689,19 +7689,27 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     de taxa) — espera crescente entre tentativas (2s, 5s, 10s). Um pico
     passageiro de uso (ex.: várias chamadas em sequência rápida) costuma
     se resolver sozinho em poucos segundos; isso evita expor esse erro
-    direto pro usuário na maioria dos casos. Levanta a exceção normalmente
-    se todas as tentativas falharem (ex.: cota diária realmente esgotada,
-    que não se resolve só esperando).
+    direto pro usuário na maioria dos casos.
 
-    usar_chave_teste=True usa GEMINI_API_KEY_TESTE (projeto separado no
-    Google AI Studio) em vez da chave de produção — só pra diagnósticos,
-    nunca no fluxo normal do dashboard."""
+    Se todas as tentativas na chave principal falharem por 429 (limite
+    de taxa esgotado — mais provável agora que várias funcionalidades de
+    IA dividem a mesma cota gratuita: gerar OS, priorização, comunicados
+    diários e comunicado livre), tenta UMA VEZ a mais usando
+    GEMINI_API_KEY_TESTE como reserva, já que é um projeto separado no
+    Google AI Studio com cota própria — antes disso só era usada em
+    diagnósticos manuais. Só levanta a exceção se isso também falhar
+    (ex.: cota diária de ambas as chaves realmente esgotada).
+
+    usar_chave_teste=True força usar direto a chave de teste (comportamento
+    original, usado em diagnósticos manuais)."""
     chave = (GEMINI_API_KEY_TESTE if usar_chave_teste and GEMINI_API_KEY_TESTE else GEMINI_API_KEY)
     esperas = [2, 5, 10]
     ultima_excecao = None
+    ultimo_status = None
     for tentativa in range(tentativas):
         try:
             resp = requests.post(f"{GEMINI_URL}?key={chave}", json=payload, timeout=timeout)
+            ultimo_status = resp.status_code
             if resp.status_code == 429 and tentativa < tentativas - 1:
                 time.sleep(esperas[tentativa])
                 continue
@@ -7712,7 +7720,18 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
             if resp.status_code == 429 and tentativa < tentativas - 1:
                 time.sleep(esperas[tentativa])
                 continue
-            raise
+
+    # esgotou as tentativas na chave principal por limite de taxa — tenta
+    # a chave de teste como reserva, uma única vez, antes de desistir
+    if ultimo_status == 429 and not usar_chave_teste and GEMINI_API_KEY_TESTE:
+        try:
+            log.warning("[Gemini] Chave principal esgotou tentativas por limite de taxa — usando chave de teste como reserva")
+            resp = requests.post(f"{GEMINI_URL}?key={GEMINI_API_KEY_TESTE}", json=payload, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except requests.exceptions.HTTPError as e:
+            ultima_excecao = e
+
     raise ultima_excecao
 
 
