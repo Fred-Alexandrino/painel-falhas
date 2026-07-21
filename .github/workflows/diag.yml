@@ -8,18 +8,25 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
           mkdir -p backups
-          curl -s -w "\nHTTP_STATUS:%{http_code}\nCONTENT_TYPE:%{content_type}\n" --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-exportar-semana" -o backups/diag-export-body.bin
-          curl -s -w "\nHTTP_STATUS:%{http_code}\nCONTENT_TYPE:%{content_type}\n" --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-exportar-semana" > backups/diag-export-meta.txt
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/health" -o backups/diag-export-health.json
+          echo "=== exportar-semana ===" > backups/diag-routes.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-exportar-semana" >> backups/diag-routes.txt
+          echo "=== config-limpar-cache ===" >> backups/diag-routes.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" -X POST --max-time 15 "https://api.168.138.232.237.sslip.io/config-limpar-cache?secret=$WEBHOOK_SECRET" >> backups/diag-routes.txt
+          echo "=== zeladoria-debug-raw ===" >> backups/diag-routes.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/zeladoria-debug-raw" >> backups/diag-routes.txt
+          echo "=== zeladoria-fotos-status ===" >> backups/diag-routes.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status" >> backups/diag-routes.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-export-body.bin backups/diag-export-meta.txt backups/diag-export-health.json
+          git add backups/diag-routes.txt
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-export-body.bin backups/diag-export-meta.txt backups/diag-export-health.json
+          git add backups/diag-routes.txt
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
