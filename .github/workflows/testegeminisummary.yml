@@ -1,9 +1,0 @@
-name: Teste Gemini Summary
-on:
-  workflow_dispatch: {}
-jobs:
-  t:
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          curl -s -m 30 -X POST "https://api.168.138.232.237.sslip.io/gerar-comunicado-livre-ia" -H "Content-Type: application/json" -d '{"tema":"Teste de disponibilidade","observacoes":""}' >> $GITHUB_STEP_SUMMARY
