@@ -123,7 +123,7 @@ def get_gc():
     return _gc_cache
 
 
-def _gspread_retry(fn, tentativas=5, esperas=(4, 8, 15, 25, 35)):
+def _gspread_retry(fn, tentativas=3, esperas=(4, 10, 20)):
     """Executa uma chamada ao Google Sheets com retry exponencial em caso
     de erro 429 (cota de leitura/escrita por minuto excedida — limite
     padrão do Google é 60 requisições/min por usuário). Ficou comum
