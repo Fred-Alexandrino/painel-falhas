@@ -8,22 +8,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - env:
-          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
-        run: |
+      - run: |
           mkdir -p backups
-          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-remover" \
-            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
-            -H "Content-Type: application/json" \
-            -d '{"chaves": ["cluster_usina:Matão 1", "grupo_usina:Matão 1"]}' \
-            -o backups/diag-fix-matao3.json
+          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-graus" -o backups/diag-graus-matao.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-fix-matao3.json
+          git add backups/diag-graus-matao.json
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-fix-matao3.json
+          git add backups/diag-graus-matao.json
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
