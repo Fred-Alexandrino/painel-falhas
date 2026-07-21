@@ -1,0 +1,53 @@
+Warning: Permanently added '168.138.232.237' (ED25519) to the list of known hosts.
+=== git status ===
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.env
+	__pycache__/
+	venv/
+	zeladoria_fotos/
+
+nothing added to commit but untracked files present (use "git add" to track)
+=== git log -3 ===
+b48af6b diag: direct ssh with proper output redirection
+944fba9 diag sync [skip ci]
+07b978a diag: capture ssh output properly via step outputs
+=== git remote -v ===
+origin	https://github.com/Fred-Alexandrino/painel-falhas.git (fetch)
+origin	https://github.com/Fred-Alexandrino/painel-falhas.git (push)
+=== git pull output ===
+From https://github.com/Fred-Alexandrino/painel-falhas
+   b48af6b..6d97bd2  main       -> origin/main
+Updating b48af6b..6d97bd2
+Fast-forward
+ .github/workflows/testegemini429.yml  | 20 --------------------
+ .github/workflows/testegemini429c.yml | 10 ++++++++++
+ 2 files changed, 10 insertions(+), 20 deletions(-)
+ delete mode 100644 .github/workflows/testegemini429.yml
+ create mode 100644 .github/workflows/testegemini429c.yml
+=== git log -3 after pull ===
+6d97bd2 Add testegemini429c
+d3df9fd Remove workflow temporario
+8d5e770 Remove workflow temporario
+=== grep for exportar-semana ===
+0
+NOT FOUND
+=== service status ===
+● painel-falhas.service - Painel Falhas - Backend Flask
+     Loaded: loaded (/etc/systemd/system/painel-falhas.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-07-21 15:59:16 UTC; 5min ago
+   Main PID: 83127 (gunicorn)
+      Tasks: 3 (limit: 1035)
+     Memory: 121.9M (peak: 127.9M)
+        CPU: 16.348s
+     CGroup: /system.slice/painel-falhas.service
+             ├─83127 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
+             ├─83130 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
+             └─83131 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
+
+Jul 21 16:02:29 vnic-painel-om gunicorn[83130]: 2026-07-21 16:02:29,337 INFO Usina não reconhecida (formato original): '☀️ RONDA DE TRACKERS PARADOS — NORDESTE — 21/07/2026 13:01'
+Jul 21 16:02:29 vnic-painel-om gunicorn[83130]: 2026-07-21 16:02:29,337 INFO Usina não reconhecida (formato original): '═══ NORDESTE · 3 parados ═══'
+Jul 21 16:03:04 vnic-painel-om gunicorn[83130]: 2026-07-21 16:03:04,383 WARNING [Gemini] Chave principal esgotou tentativas por limite de taxa — usando chave de teste como reserva
