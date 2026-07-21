@@ -8,16 +8,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
           mkdir -p backups
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/config-ler" -o backups/diag-matao-config.json
+          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/config-ler?secret=$WEBHOOK_SECRET" -o backups/diag-matao-config2.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-matao-config.json
+          git add backups/diag-matao-config2.json
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-matao-config.json
+          git add backups/diag-matao-config2.json
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
