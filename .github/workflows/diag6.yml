@@ -1,0 +1,45 @@
+name: Diag6
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO_FULL: ${{ github.repository }}
+    steps:
+      - name: Rodar testes
+        run: |
+          {
+            echo "=== forcando chave de teste ==="
+            curl -s -m 30 -X POST "https://api.168.138.232.237.sslip.io/gerar-texto-os-ia?diagnostico=true" -H "Content-Type: application/json" -d '{"falha":"teste"}'
+            echo ""
+            echo "=== chamada normal ==="
+            curl -s -m 40 -X POST "https://api.168.138.232.237.sslip.io/gerar-comunicado-livre-ia" -H "Content-Type: application/json" -d '{"tema":"teste diagnostico"}'
+          } > resultado.txt
+          cat resultado.txt
+      - name: Gravar via API
+        run: |
+          python3 << 'PYEOF'
+          import base64, json, urllib.request, os
+
+          content = open('resultado.txt', 'rb').read()
+          content_b64 = base64.b64encode(content).decode()
+          payload = json.dumps({'message': 'diag6 result [skip ci]', 'content': content_b64, 'branch': 'main'}).encode()
+
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO_FULL']}/contents/backups/diag6.txt",
+              data=payload, method='PUT',
+              headers={'Authorization': f"token {os.environ['GH_TOKEN']}", 'Content-Type': 'application/json'}
+          )
+          try:
+              resp = urllib.request.urlopen(req)
+              print('STATUS:', resp.status)
+              print(resp.read().decode()[:300])
+          except Exception as e:
+              print('ERRO:', e)
+              if hasattr(e, 'read'):
+                  print(e.read().decode()[:500])
+          PYEOF
