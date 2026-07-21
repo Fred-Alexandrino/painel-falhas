@@ -12,17 +12,18 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s --max-time 30 -X POST "https://api.168.138.232.237.sslip.io/config-remover" \
-            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" \
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-remover" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -H "Content-Type: application/json" \
             -d '{"chaves": ["cluster_usina:Matão I", "grupo_usina:Matão I"]}' \
-            -o backups/diag-remove-matao.json
+            -o backups/diag-fix-matao.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-remove-matao.json
+          git add backups/diag-fix-matao.json
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-remove-matao.json
+          git add backups/diag-fix-matao.json
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
