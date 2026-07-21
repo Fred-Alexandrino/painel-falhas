@@ -6582,20 +6582,61 @@ def config_set_lote():
 # um novo deploy. Usinas sem grupo configurado são simplesmente ignoradas
 # (não dá erro, só não recebem comunicado).
 
+_MAPA_CACHE_DISCO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zeladoria_fotos")
+
+
+def _mapa_cache_disco_salvar(nome, mapa):
+    try:
+        os.makedirs(_MAPA_CACHE_DISCO_DIR, exist_ok=True)
+        with open(os.path.join(_MAPA_CACHE_DISCO_DIR, f"cache_{nome}.json"), "w", encoding="utf-8") as f:
+            json.dump(mapa, f)
+    except Exception as e:
+        log.error(f"[_mapa_cache_disco_salvar] Falha ao salvar cache '{nome}' em disco: {e}")
+
+
+def _mapa_cache_disco_carregar(nome):
+    caminho = os.path.join(_MAPA_CACHE_DISCO_DIR, f"cache_{nome}.json")
+    if not os.path.exists(caminho):
+        return None
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log.error(f"[_mapa_cache_disco_carregar] Falha ao ler cache '{nome}' do disco: {e}")
+        return None
+
+
 _mapa_grupo_usina_cache = {"dados": None, "expira_em": 0}
 
 
 def _mapa_grupo_usina():
-    """Cache curto (30s) porque essa função é chamada MUITAS vezes em
-    sequência durante o processamento de fotos de zeladoria (uma vez por
-    lote) — sem cache, isso sozinho já contribuía bastante pra estourar a
-    cota de leitura do Google Sheets. _Sistema muda raramente, então 30s
-    de defasagem não é problema."""
+    """Cache de 10 min (era 30s) — essa função é chamada muitas vezes
+    durante o processamento de fotos de zeladoria, e mesmo com cache
+    curto ainda contribuía pra estourar a cota de leitura do Google
+    Sheets, principalmente logo após um restart do servidor (cache
+    vazio, todo mundo pedindo ao mesmo tempo). _Sistema muda raramente
+    (só quando Fred edita manualmente), então 10 min de defasagem não é
+    problema. Se a atualização falhar (ex.: cota momentaneamente
+    esgotada), usa o cache em memória se tiver, senão um cache salvo em
+    disco (sobrevive a restart do servidor) — só levanta erro de
+    verdade se nenhum dos dois existir ainda."""
     agora_ts = time.time()
     if _mapa_grupo_usina_cache["dados"] is not None and agora_ts < _mapa_grupo_usina_cache["expira_em"]:
         return _mapa_grupo_usina_cache["dados"]
-    ws_cfg = _get_config_sheet()
-    valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    try:
+        ws_cfg = _get_config_sheet()
+        valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    except Exception as e:
+        if _mapa_grupo_usina_cache["dados"] is not None:
+            log.error(f"[_mapa_grupo_usina] Falha ao atualizar ({e}) — usando cache em memória")
+            return _mapa_grupo_usina_cache["dados"]
+        do_disco = _mapa_cache_disco_carregar("grupo_usina")
+        if do_disco is not None:
+            log.error(f"[_mapa_grupo_usina] Falha ao atualizar ({e}) — usando cache salvo em disco")
+            _mapa_grupo_usina_cache["dados"] = do_disco
+            _mapa_grupo_usina_cache["expira_em"] = agora_ts + 60  # tenta de novo em breve
+            return do_disco
+        raise
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("grupo_usina:"):
@@ -6604,7 +6645,8 @@ def _mapa_grupo_usina():
             if usina and grupo_id:
                 mapa[usina] = grupo_id
     _mapa_grupo_usina_cache["dados"] = mapa
-    _mapa_grupo_usina_cache["expira_em"] = agora_ts + 30
+    _mapa_grupo_usina_cache["expira_em"] = agora_ts + 600
+    _mapa_cache_disco_salvar("grupo_usina", mapa)
     return mapa
 
 
@@ -6791,12 +6833,26 @@ _mapa_cluster_usina_cache = {"dados": None, "expira_em": 0}
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
     01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'.
-    Cache curto (30s) pelo mesmo motivo do _mapa_grupo_usina."""
+    Cache de 10 min com fallback pro cache em memória e depois pro cache
+    salvo em disco (sobrevive a restart) em caso de falha — mesmo motivo
+    do _mapa_grupo_usina."""
     agora_ts = time.time()
     if _mapa_cluster_usina_cache["dados"] is not None and agora_ts < _mapa_cluster_usina_cache["expira_em"]:
         return _mapa_cluster_usina_cache["dados"]
-    ws_cfg = _get_config_sheet()
-    valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    try:
+        ws_cfg = _get_config_sheet()
+        valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    except Exception as e:
+        if _mapa_cluster_usina_cache["dados"] is not None:
+            log.error(f"[_mapa_cluster_usina] Falha ao atualizar ({e}) — usando cache em memória")
+            return _mapa_cluster_usina_cache["dados"]
+        do_disco = _mapa_cache_disco_carregar("cluster_usina")
+        if do_disco is not None:
+            log.error(f"[_mapa_cluster_usina] Falha ao atualizar ({e}) — usando cache salvo em disco")
+            _mapa_cluster_usina_cache["dados"] = do_disco
+            _mapa_cluster_usina_cache["expira_em"] = agora_ts + 60
+            return do_disco
+        raise
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("cluster_usina:"):
@@ -6805,7 +6861,8 @@ def _mapa_cluster_usina():
             if usina and cluster:
                 mapa[usina] = cluster
     _mapa_cluster_usina_cache["dados"] = mapa
-    _mapa_cluster_usina_cache["expira_em"] = agora_ts + 30
+    _mapa_cluster_usina_cache["expira_em"] = agora_ts + 600
+    _mapa_cache_disco_salvar("cluster_usina", mapa)
     return mapa
 
 
