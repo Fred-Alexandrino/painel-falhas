@@ -1244,81 +1244,67 @@ def get_zeladoria_sheet():
 ZELADORIA_FOTOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zeladoria_fotos")
 os.makedirs(ZELADORIA_FOTOS_DIR, exist_ok=True)
 
-ZELADORIA_FOTOS_RAW_SHEET_NAME = "_ZeladoriaFotosRaw"
-ZELADORIA_FOTOS_RAW_HEADERS = ["id", "grupoId", "semanaISO", "recebidoEm", "legenda", "arquivo", "processado"]
+# ── Banco local (SQLite) pro controle de fotos/graus de zeladoria ────────
+# Trocado de Google Sheets pra SQLite (21/07/2026) por pedido do Fred: o
+# volume de leitura/escrita das fotos/graus de zeladoria estava
+# competindo pela cota de 60 req/min do Google Sheets com o resto do
+# painel (Atividades, sync do Fracttal), e pedir aumento de cota não foi
+# possível. SQLite roda local no disco do servidor — zero chamada de
+# rede, zero cota, zero limite de requisições por minuto. Os dados
+# continuam persistentes entre reinícios (arquivo em disco, igual as
+# fotos), só não aparecem mais como aba no Google Sheets — o painel web
+# continua mostrando tudo normalmente, só troca a fonte por trás.
+import sqlite3
 
-ZELADORIA_FOTOS_SHEET_NAME = "_ZeladoriaFotos"
-ZELADORIA_FOTOS_HEADERS = [
-    "id", "semanaISO", "grupoId", "clusterProvavel", "usinaCandidataIA", "confiancaIA",
-    "justificativaIA", "usinaConfirmada", "qtdSujidade", "qtdVegetacao", "qtdIndefinido",
-    "arquivos", "confirmadoFred", "criadoEm", "atualizadoEm", "descartado",
-    "grauSujidadeIA", "grauVegetacaoIA",
-]
+ZELADORIA_DB_PATH = os.path.join(ZELADORIA_FOTOS_DIR, "zeladoria.db")
 
 
-def get_zeladoria_fotos_raw_sheet():
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
+def _zeladoria_db():
+    conn = sqlite3.connect(ZELADORIA_DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")  # permite leitura concorrente enquanto grava
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _zeladoria_db_iniciar():
+    conn = _zeladoria_db()
     try:
-        ws = ss.worksheet(ZELADORIA_FOTOS_RAW_SHEET_NAME)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=ZELADORIA_FOTOS_RAW_SHEET_NAME, rows=2000, cols=len(ZELADORIA_FOTOS_RAW_HEADERS))
-        ws.append_row(ZELADORIA_FOTOS_RAW_HEADERS)
-    return ws
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fotos_raw (
+                id TEXT PRIMARY KEY,
+                grupoId TEXT, semanaISO TEXT, recebidoEm TEXT,
+                legenda TEXT, arquivo TEXT, processado TEXT DEFAULT 'nao'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fotos_resumo (
+                id TEXT PRIMARY KEY,
+                semanaISO TEXT, grupoId TEXT, clusterProvavel TEXT,
+                usinaCandidataIA TEXT, confiancaIA TEXT, justificativaIA TEXT,
+                usinaConfirmada TEXT, qtdSujidade INTEGER, qtdVegetacao INTEGER,
+                qtdIndefinido INTEGER, arquivos TEXT, confirmadoFred TEXT DEFAULT 'nao',
+                criadoEm TEXT, atualizadoEm TEXT, descartado TEXT DEFAULT '',
+                grauSujidadeIA TEXT DEFAULT '', grauVegetacaoIA TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS graus (
+                usina TEXT, cliente TEXT, tipo TEXT, semanaISO TEXT,
+                grau TEXT, observacoes TEXT, editor TEXT, atualizadoEm TEXT,
+                PRIMARY KEY (usina, tipo, semanaISO)
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
 
 
-_zeladoria_fotos_sheet_migrada = False
-
-
-def get_zeladoria_fotos_sheet():
-    global _zeladoria_fotos_sheet_migrada
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
-    try:
-        ws = ss.worksheet(ZELADORIA_FOTOS_SHEET_NAME)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=ZELADORIA_FOTOS_SHEET_NAME, rows=500, cols=len(ZELADORIA_FOTOS_HEADERS))
-        ws.append_row(ZELADORIA_FOTOS_HEADERS)
-        _zeladoria_fotos_sheet_migrada = True
-        return ws
-    # migração incremental: garante que colunas novas (ex: descartado)
-    # existam. Só checa uma vez por ciclo de vida do processo (variável
-    # global) — não a cada chamada, que é o que estava sobrecarregando a
-    # cota de leitura do Sheets em fluxos que abrem essa planilha várias
-    # vezes seguidas (processar fotos, confirmar, status, etc.).
-    if not _zeladoria_fotos_sheet_migrada:
-        header = _gspread_retry(lambda: ws.row_values(1))
-        if len(header) < len(ZELADORIA_FOTOS_HEADERS):
-            if ws.col_count < len(ZELADORIA_FOTOS_HEADERS):
-                ws.add_cols(len(ZELADORIA_FOTOS_HEADERS) - ws.col_count)
-            for i in range(len(header), len(ZELADORIA_FOTOS_HEADERS)):
-                ws.update_cell(1, i + 1, ZELADORIA_FOTOS_HEADERS[i])
-        _zeladoria_fotos_sheet_migrada = True
-    return ws
+_zeladoria_db_iniciar()
 
 
 def _semana_iso(dt):
     ano, semana, _ = dt.isocalendar()
     return f"{ano}-W{semana:02d}"
-
-
-# ── Controle de Zeladoria (grau de sujidade / vegetação, 1-5) ────────────
-# Mesma escala das planilhas STATUS_CONSOLIDADO usadas pela Grid Co.:
-# Sujidade: L=limpeza em execução, 1=leve … 5=crítica
-# Vegetação: R=roçagem em andamento, 1=muito baixa … 5=muito alta
-ZELADORIA_GRAUS_SHEET_NAME = "_ZeladoriaGraus"
-ZELADORIA_GRAUS_HEADERS = ["usina", "cliente", "tipo", "semanaISO", "grau", "observacoes", "editor", "atualizadoEm"]
-
-
-def get_zeladoria_graus_sheet():
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
-    try:
-        ws = ss.worksheet(ZELADORIA_GRAUS_SHEET_NAME)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=ZELADORIA_GRAUS_SHEET_NAME, rows=2000, cols=len(ZELADORIA_GRAUS_HEADERS))
-        ws.append_row(ZELADORIA_GRAUS_HEADERS)
-    return ws
 
 
 _DIAS_SEMANA_PT = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
@@ -3158,18 +3144,86 @@ def grupos_fotos_permitidos():
     return jsonify({"ok": True, "grupos": grupos}), 200
 
 
+@app.route("/zeladoria-migrar-sheets-para-sqlite", methods=["POST"])
+def zeladoria_migrar_sheets_para_sqlite():
+    """Uso único (21/07/2026): puxa o que já existia nas abas antigas do
+    Google Sheets (_ZeladoriaFotosRaw, _ZeladoriaFotos, _ZeladoriaGraus)
+    pro banco SQLite novo, antes delas pararem de ser usadas — só pra não
+    perder nada que já tinha sido processado/confirmado. Idempotente
+    (usa INSERT OR IGNORE / ON CONFLICT), pode rodar mais de uma vez sem
+    duplicar. Depois que confirmar que migrou certo, pode esquecer essa
+    rota — as abas antigas do Sheets não são mais tocadas por nada."""
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    resultado = {"fotos_raw": 0, "fotos_resumo": 0, "graus": 0, "erros": []}
+    conn = _zeladoria_db()
+
+    try:
+        ws = ss.worksheet("_ZeladoriaFotosRaw")
+        linhas = ws.get_all_values()
+        for row in linhas[1:]:
+            if len(row) < 7 or not row[0].strip():
+                continue
+            conn.execute(
+                "INSERT OR IGNORE INTO fotos_raw (id, grupoId, semanaISO, recebidoEm, legenda, arquivo, processado) VALUES (?,?,?,?,?,?,?)",
+                (row[0], row[1], row[2], row[3], row[4], row[5], row[6] or "nao"),
+            )
+            resultado["fotos_raw"] += 1
+        conn.commit()
+    except Exception as e:
+        resultado["erros"].append(f"fotos_raw: {e}")
+
+    try:
+        ws = ss.worksheet("_ZeladoriaFotos")
+        linhas = ws.get_all_values()
+        for row in linhas[1:]:
+            if len(row) < 15 or not row[0].strip():
+                continue
+            row = row + [""] * (18 - len(row))
+            conn.execute(
+                """INSERT OR IGNORE INTO fotos_resumo
+                   (id, semanaISO, grupoId, clusterProvavel, usinaCandidataIA, confiancaIA,
+                    justificativaIA, usinaConfirmada, qtdSujidade, qtdVegetacao, qtdIndefinido,
+                    arquivos, confirmadoFred, criadoEm, atualizadoEm, descartado,
+                    grauSujidadeIA, grauVegetacaoIA)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                tuple(row[:18]),
+            )
+            resultado["fotos_resumo"] += 1
+        conn.commit()
+    except Exception as e:
+        resultado["erros"].append(f"fotos_resumo: {e}")
+
+    try:
+        ws = ss.worksheet("_ZeladoriaGraus")
+        linhas = ws.get_all_values()
+        for row in linhas[1:]:
+            if len(row) < 8 or not row[0].strip():
+                continue
+            conn.execute(
+                """INSERT INTO graus (usina, cliente, tipo, semanaISO, grau, observacoes, editor, atualizadoEm)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(usina, tipo, semanaISO) DO NOTHING""",
+                tuple(row[:8]),
+            )
+            resultado["graus"] += 1
+        conn.commit()
+    except Exception as e:
+        resultado["erros"].append(f"graus: {e}")
+
+    conn.close()
+    return jsonify({"ok": True, "migrados": resultado}), 200
+
+
 @app.route("/webhook-foto-zeladoria", methods=["POST"])
 def webhook_foto_zeladoria():
     """Recebe uma foto individual encaminhada pelo server.js (mensagem de
-    imagem num grupo monitorado). Salva o arquivo em disco — a parte que
-    registrava uma linha na fila do Google Sheets está PAUSADA por
-    pedido do Fred (20/07-21/07/2026): o volume de leitura/escrita da
-    planilha pra fotos de zeladoria estava contribuindo pro estouro de
-    cota do Sheets. Enquanto isso, as fotos só ficam salvas em disco
-    (pasta zeladoria_fotos/<semana>/), sem entrar na fila de
-    classificação por IA. Amanhã entra um novo esquema de armazenamento
-    (repositório, via Claude Cowork) no lugar do Sheets pra isso — não
-    reverter essa pausa sem consultar o Fred primeiro."""
+    imagem num grupo monitorado). Salva o arquivo em disco e registra
+    uma linha crua na fila — a classificação por IA roda depois, em
+    lote, via /zeladoria-processar-fotos-pendentes. A fila agora vive
+    num banco SQLite local (não mais no Google Sheets — trocado em
+    21/07/2026 porque a cota de leitura/escrita do Sheets estava sendo
+    disputada com o resto do painel; SQLite é local, sem cota nenhuma)."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "")
         if secret != WEBHOOK_SECRET:
@@ -3210,12 +3264,20 @@ def webhook_foto_zeladoria():
         log.error(f"[webhook-foto-zeladoria] Erro ao salvar arquivo: {e}")
         return jsonify({"ok": False, "error": "falha ao salvar arquivo no servidor"}), 500
 
-    # PAUSADO (ver docstring): não grava mais em _ZeladoriaFotosRaw. A
-    # foto fica só no disco por enquanto, sem entrar na fila de IA.
-    return jsonify({
-        "ok": True, "id": None, "semana": semana,
-        "aviso": "registro em planilha pausado — foto salva só em disco por enquanto",
-    }), 200
+    novo_id = str(uuid.uuid4())[:8]
+    try:
+        conn = _zeladoria_db()
+        conn.execute(
+            "INSERT INTO fotos_raw (id, grupoId, semanaISO, recebidoEm, legenda, arquivo, processado) VALUES (?,?,?,?,?,?,?)",
+            (novo_id, grupo_id, semana, agora.strftime("%d/%m/%Y %H:%M:%S"), legenda, f"{semana}/{nome_arquivo}", "nao"),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.error(f"[webhook-foto-zeladoria] Erro ao gravar no banco local: {e}")
+        return jsonify({"ok": False, "error": "falha ao registrar a foto"}), 500
+
+    return jsonify({"ok": True, "id": novo_id, "semana": semana}), 200
 
 
 @app.route("/zeladoria_fotos/<path:filename>")
@@ -3462,38 +3524,32 @@ def zeladoria_processar_fotos_pendentes():
     """Agrupa as fotos cruas ainda não processadas por grupo de WhatsApp
     (tudo que ainda está pendente do mesmo grupo vira 1 ou mais levas) e
     manda cada leva pra classificação por IA (Gemini Vision), gravando um
-    resumo em _ZeladoriaFotos. Chamado sob demanda (botão no painel de
-    Zeladoria) — não é automático, pra Fred controlar quando gastar cota
-    da IA e evitar rodar em cima de webhooks concorrentes.
-
-    Processa só um número limitado de levas por chamada (cada leva também
-    limitada em quantidade de fotos) — um volume grande de fotos
-    pendentes (ex.: acúmulo de vários dias) levava o Gemini Vision a
-    demorar demais numa única requisição e estourava o timeout do
-    Gunicorn/Caddy, devolvendo uma página de erro HTML em vez de JSON pro
-    frontend. O frontend chama essa rota em rounds sucessivos (mesmo
-    padrão do "Atualizar OS") até `lotesRestantes` zerar."""
+    resumo na tabela local `fotos_resumo`. Chamado sob demanda (botão no
+    painel de Zeladoria) — não é automático, pra Fred controlar quando
+    gastar cota da IA (Gemini) e evitar rodar em cima de webhooks
+    concorrentes. A fila e o resumo vivem em SQLite local — sem cota de
+    leitura/escrita (isso não é mais o gargalo); o limite de levas por
+    chamada agora existe só por causa do tempo de resposta do Gemini
+    (evitar estourar o timeout de 120s do Gunicorn)."""
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
 
     if not _zeladoria_tentar_travar("processar fotos"):
-        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro, pra não estourar a cota do Sheets."}), 429
+        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro."}), 429
 
     try:
         MAX_FOTOS_POR_LOTE = 10
-        MAX_LOTES_POR_CHAMADA = 2
+        MAX_LOTES_POR_CHAMADA = 5
 
-        ws_raw = get_zeladoria_fotos_raw_sheet()
-        linhas = _gspread_retry(lambda: ws_raw.get_all_values())
-        pendentes = []
-        for idx, row in enumerate(linhas[1:], start=2):
-            if len(row) >= 7 and row[6].strip().lower() != "sim":
-                pendentes.append({
-                    "row": idx, "id": row[0], "grupoId": row[1], "semana": row[2],
-                    "recebidoEm": row[3], "legenda": row[4], "arquivo": row[5],
-                })
+        conn = _zeladoria_db()
+        rows = conn.execute("SELECT rowid, * FROM fotos_raw WHERE processado != 'sim'").fetchall()
+        pendentes = [{
+            "rowid": r["rowid"], "id": r["id"], "grupoId": r["grupoId"], "semana": r["semanaISO"],
+            "recebidoEm": r["recebidoEm"], "legenda": r["legenda"], "arquivo": r["arquivo"],
+        } for r in rows]
 
         if not pendentes:
+            conn.close()
             return jsonify({"ok": True, "processados": 0, "lotes": 0, "lotesRestantes": 0}), 200
 
         # agrupa por grupo (ordem de chegada preservada) e quebra cada grupo
@@ -3511,12 +3567,9 @@ def zeladoria_processar_fotos_pendentes():
         lotes_desta_chamada = todos_lotes[:MAX_LOTES_POR_CHAMADA]
         lotes_restantes = max(0, len(todos_lotes) - len(lotes_desta_chamada))
 
-        ws_resumo = get_zeladoria_fotos_sheet()
         processados = 0
         linhas_criadas = 0
         erros = []
-        novas_linhas_resumo = []
-        atualizacoes_processado = []  # (row, "sim") — marcadas como processado em lote no final
         for grupo_id, fotos in lotes_desta_chamada:
             semana = fotos[0]["semana"]
             try:
@@ -3525,32 +3578,28 @@ def zeladoria_processar_fotos_pendentes():
                 for r in resultados_por_usina:
                     arquivos_str = "|".join(f["arquivo"] for f in r["fotos"])
                     novo_id = str(uuid.uuid4())[:8]
-                    novas_linhas_resumo.append([
-                        novo_id, semana, grupo_id, r["cluster"],
-                        r["usina"], r["confianca_ia"],
-                        r["justificativa_ia"], "",  # usinaConfirmada — em branco até Fred confirmar
-                        r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
-                        arquivos_str, "nao", agora_str, agora_str, "",  # descartado
-                        r["grau_sujidade_ia"], r["grau_vegetacao_ia"],
-                    ])
+                    conn.execute(
+                        """INSERT INTO fotos_resumo
+                           (id, semanaISO, grupoId, clusterProvavel, usinaCandidataIA, confiancaIA,
+                            justificativaIA, usinaConfirmada, qtdSujidade, qtdVegetacao, qtdIndefinido,
+                            arquivos, confirmadoFred, criadoEm, atualizadoEm, descartado,
+                            grauSujidadeIA, grauVegetacaoIA)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (novo_id, semana, grupo_id, r["cluster"], r["usina"], r["confianca_ia"],
+                         r["justificativa_ia"], "", r["qtd_sujidade"], r["qtd_vegetacao"], r["qtd_indefinido"],
+                         arquivos_str, "nao", agora_str, agora_str, "",
+                         r["grau_sujidade_ia"], r["grau_vegetacao_ia"]),
+                    )
                     linhas_criadas += 1
                 for f in fotos:
-                    atualizacoes_processado.append({
-                        "range": gspread.utils.rowcol_to_a1(f["row"], 7),
-                        "values": [["sim"]],
-                    })
+                    conn.execute("UPDATE fotos_raw SET processado='sim' WHERE rowid=?", (f["rowid"],))
                 processados += len(fotos)
+                conn.commit()
             except Exception as e:
                 log.error(f"[zeladoria-processar-fotos] Erro no lote grupo={grupo_id} semana={semana}: {e}")
                 erros.append(f"{grupo_id}/{semana}: {e}")
 
-        # escreve tudo de uma vez (1-2 chamadas em vez de uma por usina/foto) —
-        # é o maior fator que estava estourando a cota de escrita do Sheets
-        if novas_linhas_resumo:
-            _gspread_retry(lambda: ws_resumo.append_rows(novas_linhas_resumo, value_input_option="RAW"))
-        if atualizacoes_processado:
-            _gspread_retry(lambda: ws_raw.batch_update(atualizacoes_processado, value_input_option="RAW"))
-
+        conn.close()
         return jsonify({
             "ok": True, "processados": processados, "lotes": linhas_criadas,
             "lotesRestantes": lotes_restantes, "erros": erros,
@@ -3570,35 +3619,30 @@ def zeladoria_fotos_status():
     semana = request.args.get("semana") or _semana_iso(agora_br())
     mostrar_confirmadas = request.args.get("mostrarConfirmadas", "").lower() in ("1", "true", "sim")
 
-    ws = get_zeladoria_fotos_sheet()
-    linhas = _gspread_retry(lambda: ws.get_all_values())
+    conn = _zeladoria_db()
+    rows = conn.execute("SELECT * FROM fotos_resumo WHERE semanaISO=?", (semana,)).fetchall()
     resultado = []
-    for row in linhas[1:]:
-        if len(row) < len(ZELADORIA_FOTOS_HEADERS):
-            row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
-        if row[1].strip() != semana:
+    for row in rows:
+        if (row["descartado"] or "").strip().lower() == "sim":
             continue
-        if row[15].strip().lower() == "sim":  # descartado
-            continue
-        confirmado = row[12].strip().lower() == "sim"
+        confirmado = (row["confirmadoFred"] or "").strip().lower() == "sim"
         if confirmado and not mostrar_confirmadas:
             continue
-        arquivos = [a for a in row[11].split("|") if a]
+        arquivos = [a for a in (row["arquivos"] or "").split("|") if a]
         resultado.append({
-            "id": row[0], "semana": row[1], "grupoId": row[2], "cluster": row[3],
-            "usinaCandidataIA": row[4], "confiancaIA": row[5], "justificativaIA": row[6],
-            "usinaConfirmada": row[7],
-            "qtdSujidade": row[8], "qtdVegetacao": row[9], "qtdIndefinido": row[10],
+            "id": row["id"], "semana": row["semanaISO"], "grupoId": row["grupoId"], "cluster": row["clusterProvavel"],
+            "usinaCandidataIA": row["usinaCandidataIA"], "confiancaIA": row["confiancaIA"], "justificativaIA": row["justificativaIA"],
+            "usinaConfirmada": row["usinaConfirmada"],
+            "qtdSujidade": row["qtdSujidade"], "qtdVegetacao": row["qtdVegetacao"], "qtdIndefinido": row["qtdIndefinido"],
             "fotos": [f"/zeladoria_fotos/{a}" for a in arquivos],
             "confirmadoFred": confirmado,
-            "criadoEm": row[13], "atualizadoEm": row[14],
-            "grauSujidadeIA": row[16], "grauVegetacaoIA": row[17],
+            "criadoEm": row["criadoEm"], "atualizadoEm": row["atualizadoEm"],
+            "grauSujidadeIA": row["grauSujidadeIA"], "grauVegetacaoIA": row["grauVegetacaoIA"],
         })
 
     # também informa quantas fotos cruas ainda estão na fila sem processar
-    ws_raw = get_zeladoria_fotos_raw_sheet()
-    linhas_raw = _gspread_retry(lambda: ws_raw.get_all_values())
-    pendentes = sum(1 for row in linhas_raw[1:] if len(row) >= 7 and row[6].strip().lower() != "sim")
+    pendentes = conn.execute("SELECT COUNT(*) AS c FROM fotos_raw WHERE processado != 'sim'").fetchone()["c"]
+    conn.close()
 
     return jsonify({"ok": True, "semana": semana, "lotes": resultado, "fotosPendentesProcessar": pendentes}), 200
 
@@ -3618,54 +3662,47 @@ def zeladoria_fotos_confirmar():
     if not lote_id:
         return jsonify({"ok": False, "error": "id é obrigatório"}), 400
 
-    ws = get_zeladoria_fotos_sheet()
-    linhas = _gspread_retry(lambda: ws.get_all_values())
-    for idx, row in enumerate(linhas[1:], start=2):
-        if row and row[0].strip() == lote_id:
-            if len(row) < len(ZELADORIA_FOTOS_HEADERS):
-                row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
-            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            usina_confirmada_final = usina_confirmada or row[7]
-            _gspread_retry(lambda: ws.update(f"H{idx}:O{idx}", [[
-                usina_confirmada_final, row[8], row[9], row[10], row[11], "sim", row[13], agora_str,
-            ]]))
+    conn = _zeladoria_db()
+    row = conn.execute("SELECT * FROM fotos_resumo WHERE id=?", (lote_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "lote não encontrado"}), 404
 
-            usina_final = usina_confirmada or row[4]  # usinaConfirmada (se veio) ou usinaCandidataIA
-            semana = row[1]
-            grau_sujidade_ia = row[16].strip() if len(row) > 16 else ""
-            grau_vegetacao_ia = row[17].strip() if len(row) > 17 else ""
-            if usina_final and (grau_sujidade_ia or grau_vegetacao_ia):
-                try:
-                    pedidos_graus = []
-                    if grau_sujidade_ia:
-                        pedidos_graus.append({
-                            "usina": usina_final, "cliente": "", "tipo": "sujidade", "grau": grau_sujidade_ia,
-                            "observacoes": f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
-                            "editor": "IA (fotos confirmadas)", "semana": semana,
-                        })
-                    if grau_vegetacao_ia:
-                        pedidos_graus.append({
-                            "usina": usina_final, "cliente": "", "tipo": "vegetacao", "grau": grau_vegetacao_ia,
-                            "observacoes": f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
-                            "editor": "IA (fotos confirmadas)", "semana": semana,
-                        })
-                    ws_graus = get_zeladoria_graus_sheet()
-                    linhas_graus = _gspread_retry(lambda: ws_graus.get_all_values())
-                    atualiza_graus, novas_graus = _preparar_upserts_graus_em_lote(linhas_graus, pedidos_graus)
-                    if atualiza_graus:
-                        _gspread_retry(lambda: ws_graus.batch_update(atualiza_graus, value_input_option="RAW"))
-                    if novas_graus:
-                        _gspread_retry(lambda: ws_graus.append_rows(novas_graus, value_input_option="RAW"))
-                except Exception as e:
-                    log.error(f"[zeladoria-fotos-confirmar] Falha ao alimentar tabela de graus pra {usina_final}: {e}")
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    usina_confirmada_final = usina_confirmada or row["usinaConfirmada"] or ""
+    conn.execute(
+        "UPDATE fotos_resumo SET usinaConfirmada=?, confirmadoFred='sim', atualizadoEm=? WHERE id=?",
+        (usina_confirmada_final, agora_str, lote_id),
+    )
+    conn.commit()
 
-            return jsonify({
-                "ok": True,
-                "grauSujidadeAplicado": grau_sujidade_ia or None,
-                "grauVegetacaoAplicado": grau_vegetacao_ia or None,
-            }), 200
+    usina_final = usina_confirmada or row["usinaCandidataIA"] or ""  # usinaConfirmada (se veio) ou usinaCandidataIA
+    semana = row["semanaISO"]
+    grau_sujidade_ia = (row["grauSujidadeIA"] or "").strip()
+    grau_vegetacao_ia = (row["grauVegetacaoIA"] or "").strip()
+    if usina_final and (grau_sujidade_ia or grau_vegetacao_ia):
+        try:
+            if grau_sujidade_ia:
+                _upsert_grau_zeladoria(
+                    usina_final, "", "sujidade", grau_sujidade_ia,
+                    f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                    "IA (fotos confirmadas)", semana, conn=conn,
+                )
+            if grau_vegetacao_ia:
+                _upsert_grau_zeladoria(
+                    usina_final, "", "vegetacao", grau_vegetacao_ia,
+                    f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                    "IA (fotos confirmadas)", semana, conn=conn,
+                )
+        except Exception as e:
+            log.error(f"[zeladoria-fotos-confirmar] Falha ao alimentar tabela de graus pra {usina_final}: {e}")
 
-    return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "grauSujidadeAplicado": grau_sujidade_ia or None,
+        "grauVegetacaoAplicado": grau_vegetacao_ia or None,
+    }), 200
 
 
 @app.route("/zeladoria-fotos-reclassificar-grau", methods=["POST"])
@@ -3676,37 +3713,30 @@ def zeladoria_fotos_reclassificar_grau():
     somem da tela principal sem nunca terem alimentado o Controle de
     Sujidade e Vegetação. Reroda a IA sobre os arquivos já salvos em
     disco (sem mexer na usina/confirmação, que já estão corretas), grava
-    o grau na linha e alimenta a tabela, do mesmo jeito que o fluxo
-    normal de confirmação já faz. Processa em rounds limitados (mesmo
-    motivo do /zeladoria-processar-fotos-pendentes: evitar timeout)."""
+    o grau na linha e alimenta a tabela. O limite de levas por chamada
+    existe só por causa do tempo de resposta do Gemini (evitar estourar
+    o timeout de 120s do Gunicorn) — o SQLite local não tem cota."""
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
 
     if not _zeladoria_tentar_travar("recalcular graus"):
-        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro, pra não estourar a cota do Sheets."}), 429
+        return jsonify({"ok": False, "error": "Já tem um processamento de zeladoria rodando (fotos ou graus) — espera ele terminar antes de rodar outro."}), 429
 
     try:
         payload = request.get_json(force=True, silent=True) or {}
         lote_id_unico = (payload.get("id") or "").strip()
-        MAX_LOTES_POR_CHAMADA = 1  # reduzido — cada lote já pode envolver Gemini + varias escritas; mais que 1 por chamada estourava o timeout de 120s do Gunicorn quando a cota do Sheets tava apertada
+        MAX_LOTES_POR_CHAMADA = 4
 
-        ws = get_zeladoria_fotos_sheet()
-        linhas = _gspread_retry(lambda: ws.get_all_values())
-        candidatos = []
-        for idx, row in enumerate(linhas[1:], start=2):
-            if len(row) < len(ZELADORIA_FOTOS_HEADERS):
-                row = row + [""] * (len(ZELADORIA_FOTOS_HEADERS) - len(row))
-            if row[15].strip().lower() == "sim":  # descartado — ignora
-                continue
-            if row[12].strip().lower() != "sim":  # só os já confirmados
-                continue
-            if row[16].strip() or row[17].strip():  # já tem grau — não precisa
-                continue
-            if lote_id_unico and row[0].strip() != lote_id_unico:
-                continue
-            candidatos.append((idx, row))
+        conn = _zeladoria_db()
+        query = "SELECT * FROM fotos_resumo WHERE (descartado IS NULL OR descartado != 'sim') AND confirmadoFred='sim' AND (grauSujidadeIA IS NULL OR grauSujidadeIA='') AND (grauVegetacaoIA IS NULL OR grauVegetacaoIA='')"
+        params = ()
+        if lote_id_unico:
+            query += " AND id=?"
+            params = (lote_id_unico,)
+        candidatos = conn.execute(query, params).fetchall()
 
         if not candidatos:
+            conn.close()
             return jsonify({"ok": True, "processados": 0, "restantes": 0, "erros": []}), 200
 
         lote_desta_chamada = candidatos[:MAX_LOTES_POR_CHAMADA]
@@ -3714,19 +3744,17 @@ def zeladoria_fotos_reclassificar_grau():
 
         processados = 0
         erros = []
-        atualizacoes_fotos = []       # colunas Q:R (grau) em _ZeladoriaFotos, em lote
-        pedidos_graus = []            # upserts pra _ZeladoriaGraus, resolvidos em lote no final
-        for idx, row in lote_desta_chamada:
-            lote_id = row[0]
-            grupo_id = row[2]
-            usina_final = (row[7] or row[4]).strip()  # usinaConfirmada ou usinaCandidataIA
-            semana = row[1]
-            arquivos = [a for a in row[11].split("|") if a]
+        for row in lote_desta_chamada:
+            lote_id = row["id"]
+            grupo_id = row["grupoId"]
+            usina_final = (row["usinaConfirmada"] or row["usinaCandidataIA"] or "").strip()
+            semana = row["semanaISO"]
+            arquivos = [a for a in (row["arquivos"] or "").split("|") if a]
             if not usina_final or not arquivos:
                 erros.append(f"{lote_id}: sem usina confirmada ou sem arquivos salvos")
                 continue
 
-            recebido_em = row[13] or agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            recebido_em = row["criadoEm"] or agora_br().strftime("%d/%m/%Y %H:%M:%S")
             fotos_raw = [{"id": lote_id, "legenda": "", "arquivo": a, "recebidoEm": recebido_em} for a in arquivos]
             try:
                 resultados_por_usina = _processar_lote_fotos_zeladoria(grupo_id, fotos_raw)
@@ -3739,38 +3767,30 @@ def zeladoria_fotos_reclassificar_grau():
 
                 grau_sujidade_ia = escolhido["grau_sujidade_ia"]
                 grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
-                atualizacoes_fotos.append({"range": f"Q{idx}:R{idx}", "values": [[grau_sujidade_ia, grau_vegetacao_ia]]})
+                conn.execute(
+                    "UPDATE fotos_resumo SET grauSujidadeIA=?, grauVegetacaoIA=? WHERE id=?",
+                    (grau_sujidade_ia, grau_vegetacao_ia, lote_id),
+                )
+                conn.commit()
 
                 if grau_sujidade_ia:
-                    pedidos_graus.append({
-                        "usina": usina_final, "cliente": "", "tipo": "sujidade", "grau": grau_sujidade_ia,
-                        "observacoes": f"Preenchido automaticamente (reclassificação — lote {lote_id})",
-                        "editor": "IA (fotos confirmadas)", "semana": semana,
-                    })
+                    _upsert_grau_zeladoria(
+                        usina_final, "", "sujidade", grau_sujidade_ia,
+                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "IA (fotos confirmadas)", semana, conn=conn,
+                    )
                 if grau_vegetacao_ia:
-                    pedidos_graus.append({
-                        "usina": usina_final, "cliente": "", "tipo": "vegetacao", "grau": grau_vegetacao_ia,
-                        "observacoes": f"Preenchido automaticamente (reclassificação — lote {lote_id})",
-                        "editor": "IA (fotos confirmadas)", "semana": semana,
-                    })
+                    _upsert_grau_zeladoria(
+                        usina_final, "", "vegetacao", grau_vegetacao_ia,
+                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "IA (fotos confirmadas)", semana, conn=conn,
+                    )
                 processados += 1
             except Exception as e:
                 log.error(f"[zeladoria-fotos-reclassificar-grau] Erro no lote {lote_id}: {e}")
                 erros.append(f"{lote_id}: {e}")
 
-        # escreve tudo de uma vez só — 1 leitura + 1 escrita em cada planilha,
-        # em vez de uma leitura+escrita por usina/tipo
-        if atualizacoes_fotos:
-            _gspread_retry(lambda: ws.batch_update(atualizacoes_fotos, value_input_option="RAW"))
-        if pedidos_graus:
-            ws_graus = get_zeladoria_graus_sheet()
-            linhas_graus = _gspread_retry(lambda: ws_graus.get_all_values())
-            atualiza_graus, novas_graus = _preparar_upserts_graus_em_lote(linhas_graus, pedidos_graus)
-            if atualiza_graus:
-                _gspread_retry(lambda: ws_graus.batch_update(atualiza_graus, value_input_option="RAW"))
-            if novas_graus:
-                _gspread_retry(lambda: ws_graus.append_rows(novas_graus, value_input_option="RAW"))
-
+        conn.close()
         return jsonify({"ok": True, "processados": processados, "restantes": restantes, "erros": erros}), 200
     finally:
         _zeladoria_liberar_trava()
@@ -3787,15 +3807,16 @@ def zeladoria_fotos_descartar():
     if not lote_id:
         return jsonify({"ok": False, "error": "id é obrigatório"}), 400
 
-    ws = get_zeladoria_fotos_sheet()
-    linhas = _gspread_retry(lambda: ws.get_all_values())
-    for idx, row in enumerate(linhas[1:], start=2):
-        if row and row[0].strip() == lote_id:
-            agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-            _gspread_retry(lambda: ws.update(f"O{idx}:P{idx}", [[agora_str, "sim"]]))  # atualizadoEm, descartado
-            return jsonify({"ok": True}), 200
+    conn = _zeladoria_db()
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    cur = conn.execute("UPDATE fotos_resumo SET descartado='sim', atualizadoEm=? WHERE id=?", (agora_str, lote_id))
+    conn.commit()
+    encontrado = cur.rowcount > 0
+    conn.close()
 
-    return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+    if not encontrado:
+        return jsonify({"ok": False, "error": "lote não encontrado"}), 404
+    return jsonify({"ok": True}), 200
 
 
 
@@ -3817,22 +3838,22 @@ def zeladoria_graus_listar():
     semana_atual = _semana_iso(agora_br())
     MAX_HISTORICO = 8
 
-    ws = get_zeladoria_graus_sheet()
-    linhas = _gspread_retry(lambda: ws.get_all_values())
+    conn = _zeladoria_db()
+    rows = conn.execute("SELECT * FROM graus ORDER BY rowid ASC").fetchall()
+    conn.close()
 
-    # histórico completo por (usina, tipo) — a planilha guarda uma linha
-    # por quinzena, em ordem de inserção
+    # histórico completo por (usina, tipo) — a tabela guarda uma linha
+    # por quinzena (chave usina+tipo+semana), em ordem de inserção
     historico_por_chave = {}
-    for row in linhas[1:]:
-        if len(row) < len(ZELADORIA_GRAUS_HEADERS):
-            row = row + [""] * (len(ZELADORIA_GRAUS_HEADERS) - len(row))
-        usina, cliente, tipo, semana, grau, obs, editor, atualizado = row[:8]
+    for row in rows:
+        usina = (row["usina"] or "").strip()
+        tipo = (row["tipo"] or "").strip()
         if not usina or not tipo:
             continue
-        chave = (usina.strip(), tipo.strip())
+        chave = (usina, tipo)
         historico_por_chave.setdefault(chave, []).append({
-            "semana": semana, "grau": grau, "observacoes": obs,
-            "editor": editor, "atualizadoEm": atualizado,
+            "semana": row["semanaISO"], "grau": row["grau"], "observacoes": row["observacoes"],
+            "editor": row["editor"], "atualizadoEm": row["atualizadoEm"],
         })
 
     resultado = []
@@ -3843,7 +3864,7 @@ def zeladoria_graus_listar():
             ultimo = hist[-1] if hist else {}
             info_por_tipo[tipo] = {
                 **ultimo,
-                "atualizadoNaSemanaAtual": bool(ultimo) and ultimo.get("semana", "").strip() == semana_atual,
+                "atualizadoNaSemanaAtual": bool(ultimo) and (ultimo.get("semana") or "").strip() == semana_atual,
                 # histórico mais recente primeiro, sem o próprio "último" repetido
                 "historico": list(reversed(hist[-MAX_HISTORICO - 1:-1])) if len(hist) > 1 else [],
             }
@@ -3857,58 +3878,30 @@ def zeladoria_graus_listar():
     return jsonify({"ok": True, "semanaAtual": semana_atual, "usinas": resultado}), 200
 
 
-def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, semana=None):
+def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, semana=None, conn=None):
     """Grava (ou atualiza) o grau de sujidade/vegetação de uma usina pra
-    uma semana — um registro por (usina, tipo, semana). Reaproveitado
-    tanto pelo endpoint manual (Fred editando a tabela direto) quanto
-    pelo preenchimento automático quando um lote de fotos é confirmado."""
+    uma semana — um registro por (usina, tipo, semana), graças à chave
+    primária composta da tabela `graus`. Reaproveitado tanto pelo
+    endpoint manual (Fred editando a tabela direto) quanto pelo
+    preenchimento automático quando um lote de fotos é confirmado. Se
+    `conn` for passado, reaproveita a conexão aberta (evita abrir/fechar
+    o banco várias vezes dentro do mesmo request); senão abre e fecha
+    uma conexão própria."""
     semana = semana or _semana_iso(agora_br())
-    ws = get_zeladoria_graus_sheet()
-    linhas = _gspread_retry(lambda: ws.get_all_values())
-    linha_alvo = None
-    for idx, row in enumerate(linhas[1:], start=2):
-        if len(row) >= 4 and row[0].strip() == usina and row[2].strip() == tipo and row[3].strip() == semana:
-            linha_alvo = idx
-            break
-
     agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-    if linha_alvo:
-        _gspread_retry(lambda: ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]]))
-    else:
-        _gspread_retry(lambda: ws.append_row([usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]))
-
-
-def _preparar_upserts_graus_em_lote(linhas_graus_cache, pedidos):
-    """Versão em lote do upsert de graus — usada quando é preciso gravar
-    vários (usina, tipo, grau) numa tacada só, sem reabrir a planilha a
-    cada um (isso sozinho já causava várias leituras/escritas por
-    requisição e contribuía pro estouro de cota). `linhas_graus_cache` é
-    o retorno de ws.get_all_values() lido UMA vez por fora; `pedidos` é
-    uma lista de dicts {usina, cliente, tipo, grau, observacoes, editor,
-    semana}. Retorna (atualizacoes_batch_update, linhas_novas_append)."""
-    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
-    atualizacoes = []
-    novas_linhas = []
-    # índice das linhas existentes, pra não reprocessar a lista inteira a cada pedido
-    indice = {}
-    for idx, row in enumerate(linhas_graus_cache[1:], start=2):
-        if len(row) >= 4:
-            indice[(row[0].strip(), row[2].strip(), row[3].strip())] = idx
-
-    for p in pedidos:
-        semana = p.get("semana") or _semana_iso(agora_br())
-        chave = (p["usina"], p["tipo"], semana)
-        linha_valores = [p["usina"], p.get("cliente", ""), p["tipo"], semana, p["grau"], p.get("observacoes", ""), p["editor"], agora_str]
-        idx_existente = indice.get(chave)
-        if idx_existente:
-            atualizacoes.append({"range": f"A{idx_existente}:H{idx_existente}", "values": [linha_valores]})
-        else:
-            novas_linhas.append(linha_valores)
-            # registra no índice em memória pra evitar duplicar se o mesmo
-            # (usina,tipo,semana) aparecer de novo dentro do mesmo lote
-            indice[chave] = -1
-
-    return atualizacoes, novas_linhas
+    fechar_ao_final = conn is None
+    conn = conn or _zeladoria_db()
+    conn.execute(
+        """INSERT INTO graus (usina, cliente, tipo, semanaISO, grau, observacoes, editor, atualizadoEm)
+           VALUES (?,?,?,?,?,?,?,?)
+           ON CONFLICT(usina, tipo, semanaISO) DO UPDATE SET
+             cliente=excluded.cliente, grau=excluded.grau, observacoes=excluded.observacoes,
+             editor=excluded.editor, atualizadoEm=excluded.atualizadoEm""",
+        (usina, cliente, tipo, semana, grau, observacoes, editor, agora_str),
+    )
+    conn.commit()
+    if fechar_ao_final:
+        conn.close()
 
 
 @app.route("/zeladoria-grau-atualizar", methods=["POST"])
