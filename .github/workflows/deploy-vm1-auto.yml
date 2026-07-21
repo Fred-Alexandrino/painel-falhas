@@ -4,50 +4,17 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Check git state via SSH
+      - name: Deploy via SSH (git pull + pip install + restart)
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 168.138.232.237
           username: ubuntu
           key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
-          script_stop: false
           script: |
             cd ~/painel-falhas
-            echo "=== git status ===" > /tmp/diag_output.txt
-            git status >> /tmp/diag_output.txt 2>&1
-            echo "=== git log -3 ===" >> /tmp/diag_output.txt
-            git log --oneline -3 >> /tmp/diag_output.txt 2>&1
-            echo "=== git pull output ===" >> /tmp/diag_output.txt
-            git pull >> /tmp/diag_output.txt 2>&1
-            echo "=== git log -3 after pull ===" >> /tmp/diag_output.txt
-            git log --oneline -3 >> /tmp/diag_output.txt 2>&1
-            echo "=== grep for exportar-semana ===" >> /tmp/diag_output.txt
-            grep -c "zeladoria-fotos-exportar-semana" app.py >> /tmp/diag_output.txt 2>&1
-            echo "=== service status ===" >> /tmp/diag_output.txt
-            sudo systemctl status painel-falhas --no-pager 2>&1 | head -15 >> /tmp/diag_output.txt
-            cat /tmp/diag_output.txt
-      - name: Fetch output via scp
-        uses: appleboy/scp-action@master
-        with:
-          host: 168.138.232.237
-          username: ubuntu
-          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
-          source: "/tmp/diag_output.txt"
-          target: "/home/runner/work/_temp/"
-          strip_components: 2
-      - run: |
-          mkdir -p backups
-          cp /home/runner/work/_temp/tmp/diag_output.txt backups/diag-git-state.txt || cp /tmp/diag_output.txt backups/diag-git-state.txt || echo "copy failed" > backups/diag-git-state.txt
-          git config user.name "sync-fracttal-bot"
-          git config user.email "actions@github.com"
-          git add backups/diag-git-state.txt
-          git commit -m "diag sync [skip ci]" || echo "nothing"
-          git fetch origin main
-          git reset --soft origin/main
-          git add backups/diag-git-state.txt
-          git commit -m "diag sync [skip ci]" || echo "nothing2"
-          git push origin HEAD:main
+            git pull
+            venv/bin/pip install -r requirements.txt
+            sudo systemctl restart painel-falhas
+            sleep 3
+            sudo systemctl status painel-falhas --no-pager
