@@ -6576,7 +6576,12 @@ def config_ler():
 def config_remover():
     """Remove uma ou mais chaves da aba _Sistema (linha inteira apagada).
     Usado pra corrigir duplicatas/erros de cadastro, ex.: uma usina
-    registrada duas vezes com nomes ligeiramente diferentes."""
+    registrada duas vezes com nomes ligeiramente diferentes. Compara
+    normalizando acentuação (NFC) — strings com "ã" podem estar
+    guardadas com codificação Unicode diferente (precomposta vs
+    combinando caracteres) dependendo de como foram digitadas
+    originalmente, e uma comparação direta de string falha nesse caso
+    sem dar nenhum aviso."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
@@ -6586,16 +6591,22 @@ def config_remover():
     if not chaves:
         return jsonify({"ok": True, "removidos": []}), 200
 
+    import unicodedata
+    chaves_norm = {unicodedata.normalize("NFC", c.strip()) for c in chaves}
+
     ws_cfg = _get_config_sheet()
     valores = ws_cfg.get_all_values()
-    linhas_para_remover = sorted(
-        (i for i, row in enumerate(valores[1:], start=2) if row and row[0].strip() in chaves),
-        reverse=True,  # de baixo pra cima, pra não bagunçar os índices ao deletar
-    )
+    encontradas = []
+    linhas_para_remover = []
+    for i, row in enumerate(valores[1:], start=2):
+        if row and unicodedata.normalize("NFC", row[0].strip()) in chaves_norm:
+            linhas_para_remover.append(i)
+            encontradas.append(row[0])
+    linhas_para_remover.sort(reverse=True)  # de baixo pra cima, pra não bagunçar os índices ao deletar
     for idx in linhas_para_remover:
         ws_cfg.delete_rows(idx)
 
-    return jsonify({"ok": True, "removidos": len(linhas_para_remover)}), 200
+    return jsonify({"ok": True, "removidos": len(linhas_para_remover), "chavesEncontradas": encontradas}), 200
 
 
 @app.route("/config-set-lote", methods=["POST"])
