@@ -1,0 +1,36 @@
+name: Diagnostico Gemini 2
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          echo "=== gerar-texto-os-ia com diagnostico=true (forca chave de teste) ===" > backups/diag-gemini2.txt
+          curl -s -m 30 -X POST "https://api.168.138.232.237.sslip.io/gerar-texto-os-ia?diagnostico=true" -H "Content-Type: application/json" -d '{"falha":"teste"}' >> backups/diag-gemini2.txt
+          echo "" >> backups/diag-gemini2.txt
+          echo "=== gerar-comunicado-livre-ia normal ===" >> backups/diag-gemini2.txt
+          curl -s -m 40 -X POST "https://api.168.138.232.237.sslip.io/gerar-comunicado-livre-ia" -H "Content-Type: application/json" -d '{"tema":"teste diagnostico"}' >> backups/diag-gemini2.txt
+          cat backups/diag-gemini2.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            mkdir -p backups
+            cp /tmp/diag-gemini2.txt backups/diag-gemini2.txt 2>/dev/null || true
+          done
+      - run: |
+          cp backups/diag-gemini2.txt /tmp/diag-gemini2.txt || true
+          git add backups/diag-gemini2.txt
+          git commit -m "diag gemini2 [skip ci]" || true
+          for i in 1 2 3 4 5; do
+            if git push; then break; fi
+            sleep 3
+            git pull --rebase origin main
+          done
