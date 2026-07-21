@@ -3706,15 +3706,22 @@ VALORES_VALIDOS_VEGETACAO = {"R", "1", "2", "3", "4", "5"}
 def zeladoria_graus_listar():
     """Retorna, pra cada usina de Fred (mapeadas em cluster_usina), o
     último grau registrado de sujidade e de vegetação — pro Controle de
-    Zeladoria no painel. Escala igual à das planilhas STATUS_CONSOLIDADO."""
+    Zeladoria no painel. Escala igual à das planilhas STATUS_CONSOLIDADO.
+    Também informa se aquele último registro é da semana ATUAL ou ficou
+    "parado" de uma quinzena anterior (pra não parecer que é um valor
+    fresco quando na verdade não foi atualizado ainda), e devolve um
+    histórico curto (últimas 8 quinzenas) por usina/tipo, pra dar pra ver
+    a evolução ao longo do tempo."""
     mapa_cluster = _mapa_cluster_usina()
+    semana_atual = _semana_iso(agora_br())
+    MAX_HISTORICO = 8
 
     ws = get_zeladoria_graus_sheet()
     linhas = _gspread_retry(lambda: ws.get_all_values())
 
-    # último registro por (usina, tipo) — a planilha guarda um histórico
-    # de todas as quinzenas, aqui só queremos o mais recente de cada
-    ultimos = {}
+    # histórico completo por (usina, tipo) — a planilha guarda uma linha
+    # por quinzena, em ordem de inserção
+    historico_por_chave = {}
     for row in linhas[1:]:
         if len(row) < len(ZELADORIA_GRAUS_HEADERS):
             row = row + [""] * (len(ZELADORIA_GRAUS_HEADERS) - len(row))
@@ -3722,22 +3729,31 @@ def zeladoria_graus_listar():
         if not usina or not tipo:
             continue
         chave = (usina.strip(), tipo.strip())
-        # get_all_values já vem em ordem de inserção — a última linha
-        # lida pra essa chave é a mais recente
-        ultimos[chave] = {"semana": semana, "grau": grau, "observacoes": obs, "atualizadoEm": atualizado}
+        historico_por_chave.setdefault(chave, []).append({
+            "semana": semana, "grau": grau, "observacoes": obs,
+            "editor": editor, "atualizadoEm": atualizado,
+        })
 
     resultado = []
     for usina, cluster in sorted(mapa_cluster.items()):
-        sujidade = ultimos.get((usina, "sujidade"), {})
-        vegetacao = ultimos.get((usina, "vegetacao"), {})
+        info_por_tipo = {}
+        for tipo in ("sujidade", "vegetacao"):
+            hist = historico_por_chave.get((usina, tipo), [])
+            ultimo = hist[-1] if hist else {}
+            info_por_tipo[tipo] = {
+                **ultimo,
+                "atualizadoNaSemanaAtual": bool(ultimo) and ultimo.get("semana", "").strip() == semana_atual,
+                # histórico mais recente primeiro, sem o próprio "último" repetido
+                "historico": list(reversed(hist[-MAX_HISTORICO - 1:-1])) if len(hist) > 1 else [],
+            }
         resultado.append({
             "usina": usina,
             "cluster": cluster,
-            "sujidade": sujidade,
-            "vegetacao": vegetacao,
+            "sujidade": info_por_tipo["sujidade"],
+            "vegetacao": info_por_tipo["vegetacao"],
         })
 
-    return jsonify({"ok": True, "semanaAtual": _semana_iso(agora_br()), "usinas": resultado}), 200
+    return jsonify({"ok": True, "semanaAtual": semana_atual, "usinas": resultado}), 200
 
 
 def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, semana=None):
