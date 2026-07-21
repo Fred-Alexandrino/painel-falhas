@@ -4,21 +4,15 @@ on:
 jobs:
   d:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - run: |
-          mkdir -p backups
-          curl -s --max-time 100 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-pn1.json
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-debug-raw" -o backups/diag-pn2.json
-      - run: |
-          git config user.name "sync-fracttal-bot"
-          git config user.email "actions@github.com"
-          git add backups/diag-pn1.json backups/diag-pn2.json
-          git commit -m "diag sync [skip ci]" || echo "nothing"
-          git fetch origin main
-          git reset --soft origin/main
-          git add backups/diag-pn1.json backups/diag-pn2.json
-          git commit -m "diag sync [skip ci]" || echo "nothing2"
-          git push origin HEAD:main
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESULT=$(curl -s --max-time 100 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes")
+          echo "$RESULT" | base64 -w0 > /tmp/encoded.txt
+          CONTENT=$(cat /tmp/encoded.txt)
+          curl -s -X PUT \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-api-result.json" \
+            -d "{\"message\":\"diag via api [skip ci]\",\"content\":\"$CONTENT\"}"
