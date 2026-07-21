@@ -12,16 +12,11 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" \
-            --max-time 150 -o backups/diag-stuck-round1.json || echo "curl round1 failed rc=$?" > backups/diag-stuck-round1.json
-          curl -s --max-time 30 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status?mostrarConfirmadas=1" -o backups/diag-stuck-status.json || echo "curl status failed" > backups/diag-stuck-status.json
-      - if: always()
-        run: |
+          curl -s --max-time 150 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-r1.json
+          curl -s --max-time 30 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status?mostrarConfirmadas=1" -o backups/diag-r2.json
+      - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add -A backups/
+          git add backups/diag-r1.json backups/diag-r2.json
           git diff --quiet --cached || git commit -m "diag sync [skip ci]"
-          for i in 1 2 3 4 5; do
-            git pull --rebase --strategy-option=ours origin main && git push && break
-            sleep 3
-          done
+          git push
