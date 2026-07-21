@@ -8,19 +8,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - env:
-          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
-        run: |
+      - run: |
           mkdir -p backups
-          curl -s --max-time 150 -X POST "https://api.168.138.232.237.sslip.io/zeladoria-processar-fotos-pendentes" -o backups/diag-r1.json
-          curl -s --max-time 30 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status?mostrarConfirmadas=1" -o backups/diag-r2.json
+          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-fotos-status?mostrarConfirmadas=1" -o backups/diag-progress.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-r1.json backups/diag-r2.json
+          git add backups/diag-progress.json
           git commit -m "diag sync [skip ci]" || echo "nothing to commit"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-r1.json backups/diag-r2.json
+          git add backups/diag-progress.json
           git commit -m "diag sync [skip ci]" || echo "nothing to commit 2"
           git push origin HEAD:main
