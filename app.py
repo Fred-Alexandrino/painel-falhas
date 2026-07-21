@@ -7314,10 +7314,10 @@ Sua tarefa é redigir Ordens de Serviço (OS) baseadas na solicitação abaixo. 
 
 REGRA DE SEPARAÇÃO EM MÚLTIPLAS OS (MUITO IMPORTANTE, leia antes de tudo):
 A solicitação abaixo pode descrever mais de uma frente de trabalho de uma vez (texto colado direto de anotações de campo, por exemplo). Você deve dividir em OSs SEPARADAS sempre que identificar:
-- **Usinas diferentes** — cada usina distinta vira sua própria OS.
+- **Usinas diferentes** — cada usina distinta vira sua própria OS, SEM EXCEÇÃO (isso vale até pra câmeras/CFTV: se o mesmo assunto de câmera aparecer em duas usinas diferentes, vira duas OSs, uma por usina).
 - **Equipamentos/sistemas diferentes** dentro da mesma usina — ex.: inversor e tracker são frentes diferentes, viram OSs separadas; trafo e string também.
-EXCEÇÃO — CÂMERAS/CFTV: todo o conteúdo relacionado a câmeras/CFTV (reposicionamento, foco, teste, instalação, mesmo que em mais de uma usina ou câmera) fica **numa única OS só**, mesmo cruzando usinas — o sistema de CFTV é tratado como uma frente de trabalho só, não se separa por usina.
-Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou só câmeras), gere apenas UMA OS normalmente.
+CÂMERAS/CFTV: dentro de UMA MESMA usina, todo o conteúdo de câmeras (reposicionamento, foco, teste, instalação, várias câmeras diferentes) fica numa OS só — não precisa separar por número de câmera. Mas se o mesmo assunto de câmera envolver mais de uma usina, cada usina vira sua própria OS.
+Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou só câmeras de uma única usina), gere apenas UMA OS normalmente.
 
 REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente:
 - Esqueça introduções, conclusões, saudações, tabelas, ou seções como "Objetivo", "Descrição", "Responsáveis" ou "Evidências".
@@ -7370,7 +7370,7 @@ Comentários:
 3. Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
 4. Registrar o andamento com evidências fotográficas e anotar eventuais pendências para correção.
 
-Exemplo 4 (Atividade de Ajuste — CFTV, várias câmeras/usinas ficam JUNTAS numa OS só)
+Exemplo 4 (Atividade de Ajuste — CFTV, várias câmeras da MESMA usina ficam JUNTAS numa OS só)
 Título: Reposicionamento de câmeras de CFTV
 Comentários:
 
@@ -7392,6 +7392,18 @@ Comentários:
 7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
 8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
 9. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
+
+Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
+Título: Inspeção de Inversor para Abertura de Chamado
+Comentários:
+
+1. Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
+2. Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
+3. Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para identificar possíveis anomalias.
+4. Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
+5. Coleta do número de série e posição operacional do inversor.
+6. Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
+7. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
