@@ -3634,20 +3634,28 @@ def zeladoria_fotos_confirmar():
             semana = row[1]
             grau_sujidade_ia = row[16].strip() if len(row) > 16 else ""
             grau_vegetacao_ia = row[17].strip() if len(row) > 17 else ""
-            if usina_final:
+            if usina_final and (grau_sujidade_ia or grau_vegetacao_ia):
                 try:
+                    pedidos_graus = []
                     if grau_sujidade_ia:
-                        _upsert_grau_zeladoria(
-                            usina_final, "", "sujidade", grau_sujidade_ia,
-                            f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
-                            "IA (fotos confirmadas)", semana,
-                        )
+                        pedidos_graus.append({
+                            "usina": usina_final, "cliente": "", "tipo": "sujidade", "grau": grau_sujidade_ia,
+                            "observacoes": f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                            "editor": "IA (fotos confirmadas)", "semana": semana,
+                        })
                     if grau_vegetacao_ia:
-                        _upsert_grau_zeladoria(
-                            usina_final, "", "vegetacao", grau_vegetacao_ia,
-                            f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
-                            "IA (fotos confirmadas)", semana,
-                        )
+                        pedidos_graus.append({
+                            "usina": usina_final, "cliente": "", "tipo": "vegetacao", "grau": grau_vegetacao_ia,
+                            "observacoes": f"Preenchido automaticamente pelas fotos confirmadas (lote {lote_id})",
+                            "editor": "IA (fotos confirmadas)", "semana": semana,
+                        })
+                    ws_graus = get_zeladoria_graus_sheet()
+                    linhas_graus = _gspread_retry(lambda: ws_graus.get_all_values())
+                    atualiza_graus, novas_graus = _preparar_upserts_graus_em_lote(linhas_graus, pedidos_graus)
+                    if atualiza_graus:
+                        _gspread_retry(lambda: ws_graus.batch_update(atualiza_graus, value_input_option="RAW"))
+                    if novas_graus:
+                        _gspread_retry(lambda: ws_graus.append_rows(novas_graus, value_input_option="RAW"))
                 except Exception as e:
                     log.error(f"[zeladoria-fotos-confirmar] Falha ao alimentar tabela de graus pra {usina_final}: {e}")
 
@@ -3680,7 +3688,7 @@ def zeladoria_fotos_reclassificar_grau():
     try:
         payload = request.get_json(force=True, silent=True) or {}
         lote_id_unico = (payload.get("id") or "").strip()
-        MAX_LOTES_POR_CHAMADA = 2
+        MAX_LOTES_POR_CHAMADA = 1  # reduzido — cada lote já pode envolver Gemini + varias escritas; mais que 1 por chamada estourava o timeout de 120s do Gunicorn quando a cota do Sheets tava apertada
 
         ws = get_zeladoria_fotos_sheet()
         linhas = _gspread_retry(lambda: ws.get_all_values())
@@ -3706,6 +3714,8 @@ def zeladoria_fotos_reclassificar_grau():
 
         processados = 0
         erros = []
+        atualizacoes_fotos = []       # colunas Q:R (grau) em _ZeladoriaFotos, em lote
+        pedidos_graus = []            # upserts pra _ZeladoriaGraus, resolvidos em lote no final
         for idx, row in lote_desta_chamada:
             lote_id = row[0]
             grupo_id = row[2]
@@ -3729,24 +3739,37 @@ def zeladoria_fotos_reclassificar_grau():
 
                 grau_sujidade_ia = escolhido["grau_sujidade_ia"]
                 grau_vegetacao_ia = escolhido["grau_vegetacao_ia"]
-                _gspread_retry(lambda: ws.update(f"Q{idx}:R{idx}", [[grau_sujidade_ia, grau_vegetacao_ia]]))
+                atualizacoes_fotos.append({"range": f"Q{idx}:R{idx}", "values": [[grau_sujidade_ia, grau_vegetacao_ia]]})
 
                 if grau_sujidade_ia:
-                    _upsert_grau_zeladoria(
-                        usina_final, "", "sujidade", grau_sujidade_ia,
-                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
-                        "IA (fotos confirmadas)", semana,
-                    )
+                    pedidos_graus.append({
+                        "usina": usina_final, "cliente": "", "tipo": "sujidade", "grau": grau_sujidade_ia,
+                        "observacoes": f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "editor": "IA (fotos confirmadas)", "semana": semana,
+                    })
                 if grau_vegetacao_ia:
-                    _upsert_grau_zeladoria(
-                        usina_final, "", "vegetacao", grau_vegetacao_ia,
-                        f"Preenchido automaticamente (reclassificação — lote {lote_id})",
-                        "IA (fotos confirmadas)", semana,
-                    )
+                    pedidos_graus.append({
+                        "usina": usina_final, "cliente": "", "tipo": "vegetacao", "grau": grau_vegetacao_ia,
+                        "observacoes": f"Preenchido automaticamente (reclassificação — lote {lote_id})",
+                        "editor": "IA (fotos confirmadas)", "semana": semana,
+                    })
                 processados += 1
             except Exception as e:
                 log.error(f"[zeladoria-fotos-reclassificar-grau] Erro no lote {lote_id}: {e}")
                 erros.append(f"{lote_id}: {e}")
+
+        # escreve tudo de uma vez só — 1 leitura + 1 escrita em cada planilha,
+        # em vez de uma leitura+escrita por usina/tipo
+        if atualizacoes_fotos:
+            _gspread_retry(lambda: ws.batch_update(atualizacoes_fotos, value_input_option="RAW"))
+        if pedidos_graus:
+            ws_graus = get_zeladoria_graus_sheet()
+            linhas_graus = _gspread_retry(lambda: ws_graus.get_all_values())
+            atualiza_graus, novas_graus = _preparar_upserts_graus_em_lote(linhas_graus, pedidos_graus)
+            if atualiza_graus:
+                _gspread_retry(lambda: ws_graus.batch_update(atualiza_graus, value_input_option="RAW"))
+            if novas_graus:
+                _gspread_retry(lambda: ws_graus.append_rows(novas_graus, value_input_option="RAW"))
 
         return jsonify({"ok": True, "processados": processados, "restantes": restantes, "erros": erros}), 200
     finally:
@@ -3853,6 +3876,39 @@ def _upsert_grau_zeladoria(usina, cliente, tipo, grau, observacoes, editor, sema
         _gspread_retry(lambda: ws.update(f"A{linha_alvo}:H{linha_alvo}", [[usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]]))
     else:
         _gspread_retry(lambda: ws.append_row([usina, cliente, tipo, semana, grau, observacoes, editor, agora_str]))
+
+
+def _preparar_upserts_graus_em_lote(linhas_graus_cache, pedidos):
+    """Versão em lote do upsert de graus — usada quando é preciso gravar
+    vários (usina, tipo, grau) numa tacada só, sem reabrir a planilha a
+    cada um (isso sozinho já causava várias leituras/escritas por
+    requisição e contribuía pro estouro de cota). `linhas_graus_cache` é
+    o retorno de ws.get_all_values() lido UMA vez por fora; `pedidos` é
+    uma lista de dicts {usina, cliente, tipo, grau, observacoes, editor,
+    semana}. Retorna (atualizacoes_batch_update, linhas_novas_append)."""
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    atualizacoes = []
+    novas_linhas = []
+    # índice das linhas existentes, pra não reprocessar a lista inteira a cada pedido
+    indice = {}
+    for idx, row in enumerate(linhas_graus_cache[1:], start=2):
+        if len(row) >= 4:
+            indice[(row[0].strip(), row[2].strip(), row[3].strip())] = idx
+
+    for p in pedidos:
+        semana = p.get("semana") or _semana_iso(agora_br())
+        chave = (p["usina"], p["tipo"], semana)
+        linha_valores = [p["usina"], p.get("cliente", ""), p["tipo"], semana, p["grau"], p.get("observacoes", ""), p["editor"], agora_str]
+        idx_existente = indice.get(chave)
+        if idx_existente:
+            atualizacoes.append({"range": f"A{idx_existente}:H{idx_existente}", "values": [linha_valores]})
+        else:
+            novas_linhas.append(linha_valores)
+            # registra no índice em memória pra evitar duplicar se o mesmo
+            # (usina,tipo,semana) aparecer de novo dentro do mesmo lote
+            indice[chave] = -1
+
+    return atualizacoes, novas_linhas
 
 
 @app.route("/zeladoria-grau-atualizar", methods=["POST"])
