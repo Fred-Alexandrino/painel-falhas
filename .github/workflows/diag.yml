@@ -12,15 +12,22 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/config-ler?secret=$WEBHOOK_SECRET" -o backups/diag-recheck-config.json
-          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/zeladoria-graus" -o backups/diag-recheck-graus.json
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-set-lote" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"pares": {"cluster_usina:Matão I": "SP Centro 02", "grupo_usina:Matão I": "120363428268426406@g.us"}}' \
+            -o backups/diag-restore-matao.json
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/zeladoria-grau-atualizar" \
+            -H "Content-Type: application/json" \
+            -d '{"usina": "Matão I", "cliente": "", "tipo": "vegetacao", "grau": "3", "observacoes": "Migrado de Matão 1 (correcao de nomenclatura)"}' \
+            -o backups/diag-restore-grau.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-recheck-config.json backups/diag-recheck-graus.json
+          git add backups/diag-restore-matao.json backups/diag-restore-grau.json
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-recheck-config.json backups/diag-recheck-graus.json
+          git add backups/diag-restore-matao.json backups/diag-restore-grau.json
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
