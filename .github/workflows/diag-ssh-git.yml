@@ -16,35 +16,39 @@ jobs:
           username: ubuntu
           key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
           script_stop: false
+          command_timeout: 60s
           script: |
             cd ~/painel-falhas
-            OUT="/tmp/diag_output.txt"
-            {
-              echo "=== git status ==="
-              git status
-              echo "=== git log -3 ==="
-              git log --oneline -3
-              echo "=== git remote -v ==="
-              git remote -v
-              echo "=== git pull output ==="
-              git pull 2>&1
-              echo "=== git log -3 after pull ==="
-              git log --oneline -3
-              echo "=== grep for exportar-semana ==="
-              grep -c "zeladoria-fotos-exportar-semana" app.py || echo "NOT FOUND"
-              echo "=== service status ==="
-              sudo systemctl status painel-falhas --no-pager | head -15
-            } > $OUT 2>&1
-            cat $OUT
-      - run: |
+            echo "=== git status ==="
+            git status
+            echo "=== git log -3 ==="
+            git log --oneline -3
+            echo "=== git remote -v ==="
+            git remote -v
+            echo "=== git pull output ==="
+            git pull 2>&1
+            echo "=== git log -3 after pull ==="
+            git log --oneline -3
+            echo "=== grep for exportar-semana ==="
+            grep -c "zeladoria-fotos-exportar-semana" app.py || echo "NOT FOUND"
+            echo "=== service status ==="
+            sudo systemctl status painel-falhas --no-pager | head -15
+      - name: Save output to file
+        if: always()
+        run: |
           mkdir -p backups
-          echo "placeholder" > backups/diag-git-live2.txt
+          cat > backups/diag-git-live3.txt << 'DIAGEOF'
+          ${{ steps.check.outputs.stdout }}
+          DIAGEOF
+      - name: Commit and push
+        if: always()
+        run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-git-live2.txt
+          git add backups/diag-git-live3.txt
           git commit -m "diag sync [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-git-live2.txt
+          git add backups/diag-git-live3.txt
           git commit -m "diag sync [skip ci]" || echo "nothing2"
           git push origin HEAD:main
