@@ -153,33 +153,48 @@ def _parse_data(txt):
 
 
 _RE_DATA_HISTORICO = re.compile(r"(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)")
+_RE_MARCA_CONCLUSAO_HISTORICO = re.compile(r"100%|para [\"']em revis|para [\"']finalizad", re.IGNORECASE)
 
 
 def _ultima_data_historico(historico_texto):
     """
-    Extrai a data/hora da ÚLTIMA linha com timestamp no Histórico da OS
-    (formato "dd/mm/aaaa HH:MM - ..."). Corrigido 22/07/2026: a Data de
-    Conclusão gravada pelo nosso sistema reflete quando a AUDITORIA
-    detectou o "Finalizada" na Fracttal — não quando isso realmente
-    aconteceu. Uma OS com trabalho concluído em 10/07 mas só confirmada
-    pela auditoria dias depois (dentro da janela do relatório seguinte)
-    aparecia como "concluída nesta semana" mesmo sendo antiga (caso
-    relatado pelo Fred: OS 9173). O Histórico, gravado a cada mudança real
-    de status na Fracttal, é a fonte mais confiável da data verdadeira —
-    por isso tem prioridade sobre a Data de Conclusão ao decidir se algo
-    pertence ao período do relatório.
+    Extrai do Histórico da OS a data/hora em que o trabalho de fato foi
+    concluído — a PRIMEIRA linha que menciona "100%" ou uma transição de
+    status para "Em Revisão"/"Finalizada" (o marco real de "terminei o
+    trabalho em campo"). NÃO usa a última linha do histórico: linhas
+    posteriores costumam ser só confirmações administrativas tardias (ex.:
+    a Fracttal só oficializar "Finalizada" dias depois), que têm a mesma
+    armadilha da Data de Conclusão original — refletem quando ALGUÉM
+    confirmou, não quando o trabalho realmente terminou.
+
+    Caso relatado pelo Fred: OS 9173 chegou a 100% em 10/07 (linha do
+    histórico: "...progresso da tarefa foi de 0% para 100%."), mas seguiu
+    aparecendo em relatórios de semanas seguintes porque uma versão
+    anterior desta função pegava a última data do histórico (que podia ser
+    uma confirmação tardia), e antes disso porque a Data de Conclusão era
+    carimbada só quando a auditoria detectava a mudança. Corrigido em
+    22/07/2026 (ver histórico de correções — este é o segundo ajuste para
+    o mesmo caso).
+
+    Se nenhuma linha com esses marcadores existir, cai para a última data
+    encontrada no histórico (comportamento anterior, como fallback).
     """
     if not historico_texto:
         return None
-    melhor = None
+    primeira_marca = None
+    ultima_qualquer = None
     for linha in historico_texto.splitlines():
         m = _RE_DATA_HISTORICO.search(linha)
         if not m:
             continue
         dt = _parse_data(f"{m.group(1)} {m.group(2)}")
-        if dt and (melhor is None or dt > melhor):
-            melhor = dt
-    return melhor
+        if not dt:
+            continue
+        if ultima_qualquer is None or dt > ultima_qualquer:
+            ultima_qualquer = dt
+        if _RE_MARCA_CONCLUSAO_HISTORICO.search(linha) and (primeira_marca is None or dt < primeira_marca):
+            primeira_marca = dt
+    return primeira_marca or ultima_qualquer
 
 
 def _fmt_data_hora(dt):
