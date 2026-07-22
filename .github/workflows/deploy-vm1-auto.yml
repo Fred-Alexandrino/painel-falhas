@@ -12,9 +12,17 @@ jobs:
           username: ubuntu
           key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
           script: |
+            set -e
             cd ~/painel-falhas
-            git pull
+            echo "=== commit ANTES do pull ==="
+            git log -1 --format='%H %ci'
+            git fetch --all
+            git reset --hard origin/main
+            echo "=== commit DEPOIS do pull (deve ser igual ao HEAD do GitHub) ==="
+            git log -1 --format='%H %ci'
             venv/bin/pip install -r requirements.txt
             sudo systemctl restart painel-falhas
             sleep 3
             sudo systemctl status painel-falhas --no-pager
+            echo "=== verificacao pos-restart ==="
+            sudo systemctl is-active painel-falhas
