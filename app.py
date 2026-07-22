@@ -8302,7 +8302,7 @@ def gerar_relatorio_semanal_route():
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label, grupos,
                                     chamados=chamados, zeladoria_usinas=zeladoria_usinas)
 
-        nome_arquivo = f"Relatorio_{cliente}_{data_inicio.strftime('%Y%m%d')}.pptx".replace(" ", "_")
+        nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
             buf,
             as_attachment=True,
