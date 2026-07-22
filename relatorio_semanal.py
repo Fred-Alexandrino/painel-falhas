@@ -66,6 +66,14 @@ STATUS_FALHA_EXCLUIR_RELATORIO = ["convertida em atividade", "convertido em ativ
 CAT_COMUNICACOES = "COMUNICAÇÕES / SCADA / CCTV"
 CAT_DESLIGAMENTOS = "DESLIGAMENTOS"
 
+# Pauta padrão da "Ata da reunião" (slide 2) — combinado com Fred em
+# 22/07/2026: para todo cliente, EXCETO RenoGrid, a pauta é sempre esta
+# lista fixa, independente das categorias que de fato tiveram ocorrência
+# na semana. RenoGrid mantém a pauta dinâmica (montada a partir do que
+# realmente aparece no relatório daquela semana).
+PAUTA_PADRAO_ATA = ["ATIVIDADES SEMANAIS", CAT_DESLIGAMENTOS, "PCM"]
+CLIENTES_PAUTA_DINAMICA = ["renogrid"]
+
 # Categorias "bonitas" para exibir no relatório (padrões regex, avaliados em ordem —
 # o primeiro que bater define a categoria). Casa tanto nomes por extenso ("Inversor")
 # quanto códigos curtos usados em campo ("Inv-18", "NVR", "Chave Seccionadora Skid 1").
@@ -546,12 +554,20 @@ ZEL_GRUPOS = [
 ]
 
 
+# Clientes onde uma célula de Zeladoria vazia deve exibir "Acompanhamento"
+# em vez de "Sem informação" — combinado com Fred em 22/07/2026: ele ajusta
+# manualmente quando necessário, mas o padrão nesses dois clientes deve
+# partir de "Acompanhamento".
+CLIENTES_ZELADORIA_DEFAULT_ACOMPANHAMENTO = ["gd energy", "alves lima"]
+
+
 def coletar_zeladoria(zeladoria_valores, cliente):
     """
     zeladoria_valores: ws.get_all_values() da aba Zeladoria (linhas 1-2 = cabeçalho).
     Retorna lista de dicts: [{"usina": ..., "grupos": [{"nome":, "status":, "ultima_data":}, ...]}, ...]
     """
     cliente_norm = _norm(cliente)
+    usa_default_acompanhamento = any(c in cliente_norm for c in CLIENTES_ZELADORIA_DEFAULT_ACOMPANHAMENTO)
     resultado = []
     for row in zeladoria_valores[2:]:
         if len(row) <= ZEL_GRUPOS[-1][1] + 3:
@@ -565,6 +581,8 @@ def coletar_zeladoria(zeladoria_valores, cliente):
         for nome, col_ini in ZEL_GRUPOS:
             ultima_data = row[col_ini].strip()
             status = row[col_ini + 3].strip()
+            if not status and usa_default_acompanhamento:
+                status = "Acompanhamento"
             grupos_usina.append({"nome": nome, "status": status, "ultima_data": ultima_data})
 
         resultado.append({"usina": row[ZEL_COL_USINA].strip(), "grupos": grupos_usina})
@@ -893,7 +911,7 @@ def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
     return novo
 
 
-def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None, zeladoria_usinas=None):
+def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None, zeladoria_usinas=None, usinas_cliente=None):
     """
     grupos: dict categoria -> {"concluidas": [dict,...], "abertas": [dict,...]}
             (normalmente o resultado de mesclar_grupos(coletar_ocorrencias_semana(...),
@@ -904,6 +922,10 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
                 de assinatura, não é mais exibido na capa (padrão Grid Co.).
     chamados: lista de linhas (Painel de Falhas) com chamado/ticket válido em aberto (opcional)
     zeladoria_usinas: retorno de coletar_zeladoria() (opcional)
+    usinas_cliente: lista de nomes de usinas do cliente (ex.: listar_usinas_cliente()) —
+                     usada para montar a página "OUTROS TEMAS" (uma seção em branco por
+                     usina, pronta para o Fred preencher manualmente). Opcional; se omitida
+                     ou vazia, a página "OUTROS TEMAS" não é criada.
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
@@ -928,18 +950,23 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     if shp_titulo:
         _set_text_preservando_estilo(shp_titulo, f"O&M – {cliente}\nSemana {semana_num}")
 
-    # --- Slide 2: Ata da reunião — tópicos padronizados e fixos, nesta ordem
-    topicos = []
-    if dados_comunicacoes:
-        topicos.append(CAT_COMUNICACOES)
-    if outras_categorias:
-        topicos.append("OCORRÊNCIAS SEMANAIS")
-    if dados_desligamentos:
-        topicos.append(CAT_DESLIGAMENTOS)
-    if chamados:
-        topicos.append("CHAMADOS EM ABERTO")
-    if zeladoria_usinas:
-        topicos.append("ZELADORIA")
+    # --- Slide 2: Ata da reunião ---------------------------------------------
+    # Pauta padrão fixa para todos os clientes, exceto RenoGrid (que mantém a
+    # pauta dinâmica, montada a partir do que realmente aparece na semana).
+    if _norm(cliente) in CLIENTES_PAUTA_DINAMICA:
+        topicos = []
+        if dados_comunicacoes:
+            topicos.append(CAT_COMUNICACOES)
+        if outras_categorias:
+            topicos.append("OCORRÊNCIAS SEMANAIS")
+        if dados_desligamentos:
+            topicos.append(CAT_DESLIGAMENTOS)
+        if chamados:
+            topicos.append("CHAMADOS EM ABERTO")
+        if zeladoria_usinas:
+            topicos.append("ZELADORIA")
+    else:
+        topicos = list(PAUTA_PADRAO_ATA)
     ata = _duplicate_slide(prs, 1)
     shp_lista = _find_shape(ata, "Desligamentos")
     if shp_lista:
@@ -983,6 +1010,16 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
         for i, pagina in enumerate(paginar_zeladoria(zeladoria_usinas)):
             titulo = "ZELADORIA" if i == 0 else "ZELADORIA (cont.)"
             _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina)
+
+    # --- Página: Outros Temas — em branco, uma seção em negrito por usina do
+    #     cliente, para o Fred preencher manualmente depois (ex.: pendências
+    #     com seguradora, PV Operation etc.). Combinado 22/07/2026: sempre
+    #     gerada (não depende de nenhuma fonte de dados automática).
+    if usinas_cliente:
+        corpo_outros_temas = []
+        for usina in usinas_cliente:
+            corpo_outros_temas.append({"texto": usina, "bold": True})
+        _renderizar_pagina_categoria(prs, "OUTROS TEMAS", corpo_outros_temas)
 
     # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
     xml_slides = prs.slides._sldIdLst
