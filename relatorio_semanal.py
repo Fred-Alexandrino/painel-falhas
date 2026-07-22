@@ -653,7 +653,14 @@ def coletar_zeladoria(zeladoria_valores, cliente):
         for nome, col_ini in ZEL_GRUPOS:
             ultima_data = row[col_ini].strip()
             status = row[col_ini + 3].strip()
-            if not status and usa_default_acompanhamento:
+            # A célula pode estar vazia OU conter literalmente o texto
+            # "Sem informação(ões)" já gravado como dado na planilha (por
+            # uma rodada anterior do relatório, ou por preenchimento
+            # manual) — nesse caso "if not status" nunca disparava, porque
+            # a célula não está tecnicamente vazia. Tratamos esse texto
+            # como equivalente a vazio pra aplicar o padrão "Acompanhamento"
+            # do mesmo jeito. Corrigido 22/07/2026.
+            if _norm(status) in ("", "sem informacao", "sem informacoes") and usa_default_acompanhamento:
                 status = "Acompanhamento"
             grupos_usina.append({"nome": nome, "status": status, "ultima_data": ultima_data})
 
