@@ -42,11 +42,26 @@ ATIV_COL_EDITOR, ATIV_COL_NUMEROOS, ATIV_COL_STATUSOS = 12, 13, 14
 
 STATUS_CONCLUIDO = ["concluído", "concluido", "resolvido", "fechado", "resolved", "closed"]
 
-# Uma atividade/OS só é considerada concluída quando o statusOS chega em
-# "Em Revisão" ou "Finalizada" — nunca pelo percentual de tarefas (ver
-# regra registrada em memória: 100% das tarefas em "Em Processo" ainda é
-# aguardando submissão, não conclusão).
-STATUS_OS_CONCLUIDO = ["em revisão", "em revisao", "finalizada"]
+# CORRIGIDO 22/07/2026: uma atividade/OS só conta como "realizada" no
+# RELATÓRIO SEMANAL (cliente-facing) quando o statusOS chega em
+# "Finalizada" — igual à aba "Concluídas" do próprio Painel de Atividades
+# (statusOS=="Finalizada"; "Em Revisão" é a aba separada "Em Verificação").
+# A versão anterior também tratava "Em Revisão" como concluída aqui, o que
+# fazia o relatório mostrar como pronta uma atividade ainda em validação
+# (a fallback de "abriu E já está 'concluída'" pegava OSs criadas na
+# semana que só tinham chegado em Em Revisão) — Fred precisou corrigir
+# manualmente o relatório da Alves Lima (Semana 30) por causa disso.
+# Esta definição é local a este módulo — não afeta as abas/KPIs do
+# dashboard em app.py (que usam sua própria lógica de Em Verificação).
+STATUS_OS_CONCLUIDO = ["finalizada"]
+
+# Falhas já convertidas em Atividade não devem aparecer de novo como
+# ocorrência "em aberto" no relatório — o trabalho já é reportado (com o
+# número de OS) através de coletar_atividades_semana(). Sem esta exclusão,
+# como "Convertida em Atividade" nunca bate em STATUS_CONCLUIDO, a
+# ocorrência cai perpetuamente em "aberta"/backlog e aparece em toda
+# semana seguinte, duplicando a mesma informação. Corrigido 22/07/2026.
+STATUS_FALHA_EXCLUIR_RELATORIO = ["convertida em atividade", "convertido em atividade"]
 
 CAT_COMUNICACOES = "COMUNICAÇÕES / SCADA / CCTV"
 CAT_DESLIGAMENTOS = "DESLIGAMENTOS"
@@ -143,6 +158,21 @@ def _atividade_concluida(status_os):
     return (status_os or "").strip().lower() in STATUS_OS_CONCLUIDO
 
 
+def _status_exibicao(status_raw):
+    """Traduz o status bruto (statusOS do Fracttal / status de Falha) para
+    o rótulo mostrado no relatório do cliente — evita imprimir jargão
+    interno como 'Finalizada'/'Em Revisão' sem contexto. Corrigido
+    22/07/2026 (ver ajuste manual do Fred no relatório Alves Lima Semana 30)."""
+    s = (status_raw or "").strip().lower()
+    if s == "finalizada":
+        return "Concluída"
+    if s in ("em revisão", "em revisao"):
+        return "Em verificação"
+    if s in STATUS_CONCLUIDO:
+        return "Concluído"
+    return (status_raw or "Em aberto").strip()
+
+
 def _ticket_valido(ticket):
     """Só considera 'chamado real' se houver um número/identificador de verdade."""
     t = (ticket or "").strip().lower()
@@ -186,6 +216,10 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
         if cliente_norm not in _norm(row[COL_CLIENTE]):
             continue
 
+        if _norm(row[COL_STATUS]) in STATUS_FALHA_EXCLUIR_RELATORIO:
+            # já reportada como Atividade (com número de OS) — evita duplicar
+            continue
+
         dt_abertura = _parse_data(row[COL_DATA_ABERTURA])
         dt_fecham = _parse_data(row[COL_DATA_FECHAMENTO])
         concluida = _is_concluido(row[COL_STATUS])
@@ -202,6 +236,7 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
         d = {
             "usina": row[COL_USINA].strip() or "Usina não informada",
             "equipamento": row[COL_EQUIP].strip() or "Equipamento não informado",
+            "numero_os": row[COL_OS].strip() or None,
             "falha": row[COL_FALHA].strip() or "Falha não especificada",
             "status": row[COL_STATUS].strip() or "Em aberto",
             "dt_abertura": dt_abertura,
@@ -273,6 +308,7 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
         d = {
             "usina": row[ATIV_COL_USINA].strip() or "Usina não informada",
             "equipamento": row[ATIV_COL_EQUIP].strip() or "Equipamento não informado",
+            "numero_os": row[ATIV_COL_NUMEROOS].strip() or None,
             "falha": row[ATIV_COL_DESCRICAO].strip() or "Sem descrição",
             "status": status_display,
             "dt_abertura": dt_abertura,
@@ -349,12 +385,18 @@ def coletar_chamados_abertos(todos_valores, cliente):
 # ── Geração de conteúdo (offline, sem IA) — parágrafos com negrito por usina ─
 
 def _linha_ocorrencia(d):
-    """Linha resumida: Equipamento – Falha. Status: X. (sem despejar causa/ação/histórico)"""
-    equip = d["equipamento"]
+    """Linha resumida: Descrição – OS nº (quando houver). Status: X.
+    (sem despejar causa/ação/histórico). Corrigido 22/07/2026: usar o
+    número da OS (legível pro cliente) em vez do código interno do
+    equipamento sempre que disponível, e traduzir o status bruto."""
     falha = d["falha"]
     if len(falha) > 180:
         falha = falha[:177].rstrip() + "..."
-    status = d["status"]
+    status = _status_exibicao(d["status"])
+    numero_os = d.get("numero_os")
+    if numero_os:
+        return f"{falha} – OS {numero_os}. Status: {status}."
+    equip = d["equipamento"]
     return f"{equip} – {falha}. Status: {status}."
 
 
@@ -390,7 +432,7 @@ def _linha_desligamento_runs(d):
     """
     equip = d["equipamento"]
     falha = d["falha"]
-    status = d["status"]
+    status = _status_exibicao(d["status"])
     concluida = d["concluida"]
     dt_abertura = d["dt_abertura"]
     dt_fecham = d["dt_fechamento"]
