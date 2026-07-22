@@ -8283,6 +8283,7 @@ def gerar_relatorio_semanal_route():
             grupos_atividades = coletar_atividades_semana(todos_atividades, cliente, data_inicio, data_fim)
         except Exception as e:
             log.error(f"[Relatorio Semanal] Erro ao ler Painel de Atividades: {e}")
+            todos_atividades = []
             grupos_atividades = {}
 
         grupos = mesclar_grupos(grupos_falhas, grupos_atividades)
@@ -8299,8 +8300,17 @@ def gerar_relatorio_semanal_route():
 
         semana_num = data_fim.isocalendar()[1]
         data_label = data_fim.strftime('%d/%m/%Y')
+
+        try:
+            usinas_cliente = sorted(set(listar_usinas_cliente(todos, cliente))
+                                     | set(listar_usinas_cliente(todos_atividades, cliente)))
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao listar usinas do cliente: {e}")
+            usinas_cliente = []
+
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label, grupos,
-                                    chamados=chamados, zeladoria_usinas=zeladoria_usinas)
+                                    chamados=chamados, zeladoria_usinas=zeladoria_usinas,
+                                    usinas_cliente=usinas_cliente)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
