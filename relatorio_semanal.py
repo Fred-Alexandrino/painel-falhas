@@ -152,6 +152,36 @@ def _parse_data(txt):
     return None
 
 
+_RE_DATA_HISTORICO = re.compile(r"(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)")
+
+
+def _ultima_data_historico(historico_texto):
+    """
+    Extrai a data/hora da ÚLTIMA linha com timestamp no Histórico da OS
+    (formato "dd/mm/aaaa HH:MM - ..."). Corrigido 22/07/2026: a Data de
+    Conclusão gravada pelo nosso sistema reflete quando a AUDITORIA
+    detectou o "Finalizada" na Fracttal — não quando isso realmente
+    aconteceu. Uma OS com trabalho concluído em 10/07 mas só confirmada
+    pela auditoria dias depois (dentro da janela do relatório seguinte)
+    aparecia como "concluída nesta semana" mesmo sendo antiga (caso
+    relatado pelo Fred: OS 9173). O Histórico, gravado a cada mudança real
+    de status na Fracttal, é a fonte mais confiável da data verdadeira —
+    por isso tem prioridade sobre a Data de Conclusão ao decidir se algo
+    pertence ao período do relatório.
+    """
+    if not historico_texto:
+        return None
+    melhor = None
+    for linha in historico_texto.splitlines():
+        m = _RE_DATA_HISTORICO.search(linha)
+        if not m:
+            continue
+        dt = _parse_data(f"{m.group(1)} {m.group(2)}")
+        if dt and (melhor is None or dt > melhor):
+            melhor = dt
+    return melhor
+
+
 def _fmt_data_hora(dt):
     """datetime -> 'dd/mm/aaaa às HH:MM'."""
     return dt.strftime("%d/%m/%Y às %H:%M")
@@ -234,8 +264,16 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
             continue
 
         dt_abertura = _parse_data(row[COL_DATA_ABERTURA])
-        dt_fecham = _parse_data(row[COL_DATA_FECHAMENTO])
         concluida = _is_concluido(row[COL_STATUS])
+        if concluida:
+            # mesmo raciocínio de coletar_atividades_semana: prioriza a
+            # última data real do Histórico sobre a Data de Fechamento
+            # (que pode ter sido gravada só quando alguém confirmou o
+            # fechamento no painel, não quando o problema foi resolvido
+            # de fato).
+            dt_fecham = _ultima_data_historico(row[COL_HISTORICO]) or _parse_data(row[COL_DATA_FECHAMENTO])
+        else:
+            dt_fecham = None
 
         fechou_na_semana = dt_fecham and data_inicio <= dt_fecham <= data_fim
         abriu_na_semana = dt_abertura and data_inicio <= dt_abertura <= data_fim
@@ -304,8 +342,19 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
             continue
 
         dt_abertura = _parse_data(row[ATIV_COL_DATA_CRIACAO])
-        dt_fecham = _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
         concluida = _atividade_concluida(row[ATIV_COL_STATUSOS])
+        if concluida:
+            # Prioriza a data real do Histórico sobre a Data de Conclusão
+            # carimbada pela auditoria (que reflete quando NÓS detectamos o
+            # "Finalizada", não quando aconteceu de fato — ver
+            # _ultima_data_historico). Só cai para a Data de Conclusão se
+            # não houver nada de útil no Histórico. Só faz sentido calcular
+            # isso quando a OS está de fato concluída — senão qualquer
+            # atualização recente de uma OS ainda em andamento poderia ser
+            # confundida com um "fechamento" (bug evitado aqui de propósito).
+            dt_fecham = _ultima_data_historico(row[ATIV_COL_HISTORICO]) or _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
+        else:
+            dt_fecham = None
 
         fechou_na_semana = dt_fecham and data_inicio <= dt_fecham <= data_fim
         abriu_na_semana = dt_abertura and data_inicio <= dt_abertura <= data_fim
