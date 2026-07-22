@@ -819,6 +819,45 @@ def _linhas_totais(paragrafos, chars_por_linha):
     return sum(_linhas_ocupadas(p, chars_por_linha) for p in paragrafos)
 
 
+def gerar_paragrafos_multi_categoria(dados_por_categoria):
+    """Igual a gerar_paragrafos_categoria, mas mesclando várias categorias
+    (ex.: Comunicações + Controle de Vegetação + Outras Ocorrências) numa
+    única lista agrupada só por usina, sem subtítulo de categoria — usado
+    quando a pauta do relatório não distingue esses sub-tópicos e tudo cai
+    sob um único tópico "ATIVIDADES SEMANAIS" (combinado 22/07/2026: a
+    pauta fixa não tem "Controle de Vegetação" nem "Outras Ocorrências"
+    como itens separados, então o conteúdo não pode ficar em páginas com
+    esses títulos)."""
+    por_usina = {}
+    for dados in dados_por_categoria.values():
+        todas = list(dados["concluidas"]) + list(dados["abertas"])
+        for d in todas:
+            por_usina.setdefault(d["usina"], []).append(d)
+
+    paragrafos = []
+    for usina in sorted(por_usina.keys()):
+        paragrafos.append({"texto": usina, "bold": True})
+        for d in por_usina[usina]:
+            paragrafos.append({"texto": "• " + _linha_ocorrencia(d), "bold": False})
+    return paragrafos
+
+
+def paginar_paragrafos_simples(paragrafos, max_linhas, chars_por_linha):
+    """Pagina uma lista plana de parágrafos (sem cabeçalho de categoria) por
+    orçamento de linhas — usado pela seção mesclada ATIVIDADES SEMANAIS."""
+    paginas, atual, atual_linhas = [], [], 0
+    for p in paragrafos:
+        linhas = _linhas_ocupadas(p, chars_por_linha)
+        if atual and (atual_linhas + linhas > max_linhas):
+            paginas.append(atual)
+            atual, atual_linhas = [], 0
+        atual.append(p)
+        atual_linhas += linhas
+    if atual:
+        paginas.append(atual)
+    return paginas or [[]]
+
+
 def agrupar_em_paginas(grupos, max_linhas, chars_por_linha, ordem=None):
     """
     Agrupa categorias em páginas por orçamento de LINHAS (estimadas a partir
@@ -980,33 +1019,58 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     if shp_lista:
         _set_text_preservando_estilo(shp_lista, "\n".join(topicos))
 
+    pauta_fixa = _norm(cliente) not in CLIENTES_PAUTA_DINAMICA
+
     # --- Página(s): Comunicações / SCADA / CCTV — sempre primeiro, própria(s)
     #     página(s), separada de Inversores/Strings/demais equipamentos -------
-    if dados_comunicacoes:
+    #     (só nos clientes com pauta dinâmica — RenoGrid; nos demais, entra
+    #     mesclada em ATIVIDADES SEMANAIS mais abaixo)
+    if dados_comunicacoes and not pauta_fixa:
         for pagina in agrupar_em_paginas({CAT_COMUNICACOES: dados_comunicacoes}, max_linhas, chars_por_linha):
             cat, paragrafos = pagina[0]
             _renderizar_pagina_categoria(prs, cat, paragrafos)
 
-    # --- Página(s): "Ocorrências da Semana" — Inversores, Strings/Módulos e
-    #     demais equipamentos, já com Painel de Falhas + Painel de Atividades
-    #     combinados por categoria (empacotadas por orçamento de linhas) -----
-    for pagina in agrupar_em_paginas(outras_categorias, max_linhas, chars_por_linha):
-        if len(pagina) == 1:
-            categoria, paragrafos = pagina[0]
-            _renderizar_pagina_categoria(prs, categoria, paragrafos)
-        else:
-            combinados = []
-            for cat, paragrafos in pagina:
-                combinados.append({"texto": cat, "bold": True})
-                combinados.extend(paragrafos)
-            _renderizar_pagina_categoria(prs, "OCORRÊNCIAS DA SEMANA", combinados)
+    if pauta_fixa:
+        # --- Página(s): ATIVIDADES SEMANAIS — mescla Comunicações + todas as
+        #     demais categorias (vegetação, ocorrências etc.) num único
+        #     tópico, já que a pauta fixa não distingue esses sub-tópicos.
+        dados_mesclados = dict(outras_categorias)
+        if dados_comunicacoes:
+            dados_mesclados[CAT_COMUNICACOES] = dados_comunicacoes
+        if dados_mesclados:
+            paragrafos_mesclados = gerar_paragrafos_multi_categoria(dados_mesclados)
+            paginas_ativ = paginar_paragrafos_simples(paragrafos_mesclados, max_linhas, chars_por_linha)
+            for i, pagina in enumerate(paginas_ativ):
+                titulo = "ATIVIDADES SEMANAIS" if i == 0 else "ATIVIDADES SEMANAIS (cont.)"
+                _renderizar_pagina_categoria(prs, titulo, pagina)
+    else:
+        # --- Página(s): "Ocorrências da Semana" — Inversores, Strings/Módulos e
+        #     demais equipamentos, já com Painel de Falhas + Painel de Atividades
+        #     combinados por categoria (empacotadas por orçamento de linhas) -----
+        for pagina in agrupar_em_paginas(outras_categorias, max_linhas, chars_por_linha):
+            if len(pagina) == 1:
+                categoria, paragrafos = pagina[0]
+                _renderizar_pagina_categoria(prs, categoria, paragrafos)
+            else:
+                combinados = []
+                for cat, paragrafos in pagina:
+                    combinados.append({"texto": cat, "bold": True})
+                    combinados.extend(paragrafos)
+                _renderizar_pagina_categoria(prs, "OCORRÊNCIAS DA SEMANA", combinados)
 
-    # --- Página(s): Desligamentos — com data/hora real de abertura/conclusão
+    # --- Página(s): Desligamentos — com data/hora real de abertura/conclusão.
+    #     Nos clientes de pauta fixa, "DESLIGAMENTOS" é sempre um item da
+    #     pauta — a página é sempre gerada, mesmo sem nenhum desligamento no
+    #     período (mesmo padrão da página OUTROS TEMAS: em branco, por
+    #     usina, pronta pra preenchimento manual se necessário).
     if dados_desligamentos:
         paginas_deslig = agrupar_desligamentos_em_paginas(dados_desligamentos, max_linhas, chars_por_linha)
         for i, pagina in enumerate(paginas_deslig):
             titulo = CAT_DESLIGAMENTOS if i == 0 else f"{CAT_DESLIGAMENTOS} (cont.)"
             _renderizar_pagina_categoria(prs, titulo, pagina)
+    elif pauta_fixa and usinas_cliente:
+        corpo_deslig_vazio = [{"texto": usina, "bold": True} for usina in usinas_cliente]
+        _renderizar_pagina_categoria(prs, CAT_DESLIGAMENTOS, corpo_deslig_vazio)
 
     # --- Página: Chamados em aberto (aba ChamadosFabricante, dashboard) ----
     if chamados:
