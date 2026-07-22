@@ -212,6 +212,11 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
     cliente: nome do cliente (comparação por 'contains', case-insensitive)
     data_inicio / data_fim: datetime (00:00 do dia inicial até 23:59 do dia final)
 
+    CORRIGIDO 22/07/2026: só entra o que abriu OU fechou dentro do período
+    selecionado (mesma correção aplicada em coletar_atividades_semana) —
+    uma ocorrência aberta há muito tempo não deve reaparecer em todo
+    relatório seguinte só por continuar sem status de concluído.
+
     Retorna dict: {"categoria": {"concluidas": [dict,...], "abertas": [dict,...]}, ...}
     """
     cliente_norm = _norm(cliente)
@@ -234,9 +239,8 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
 
         fechou_na_semana = dt_fecham and data_inicio <= dt_fecham <= data_fim
         abriu_na_semana = dt_abertura and data_inicio <= dt_abertura <= data_fim
-        em_aberto_backlog = not concluida
 
-        if not (fechou_na_semana or abriu_na_semana or em_aberto_backlog):
+        if not (fechou_na_semana or abriu_na_semana):
             continue
 
         texto_categoria = f"{row[COL_EQUIP]} {row[COL_FALHA]}"
@@ -254,16 +258,15 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
         }
         grupos.setdefault(categoria, {"concluidas": [], "abertas": []})
 
-        if fechou_na_semana:
+        if fechou_na_semana or (concluida and abriu_na_semana):
+            # fechou dentro da semana, OU abriu e já está concluída mas sem
+            # Data de Fechamento gravada corretamente (mesmo fallback usado
+            # em coletar_atividades_semana).
             grupos[categoria]["concluidas"].append(d)
-        elif em_aberto_backlog:
+        else:
+            # abriu dentro da semana e ainda está em aberto — mostra como
+            # aberta só nesta janela (não perpetuamente).
             grupos[categoria]["abertas"].append(d)
-        elif concluida and abriu_na_semana:
-            # mesmo fallback aplicado em coletar_atividades_semana: evita
-            # que uma ocorrência que abriu e fechou dentro da semana, mas
-            # sem Data de Fechamento gravada corretamente, suma do
-            # relatório sem aparecer em lugar nenhum.
-            grupos[categoria]["concluidas"].append(d)
 
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
 
@@ -273,11 +276,18 @@ def coletar_ocorrencias_semana(todos_valores, cliente, data_inicio, data_fim):
 def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
     """
     todos_valores: retorno de ws.get_all_values() do Painel de Atividades
-    (linha 0 = cabeçalho). Mesma lógica de janela/backlog de
-    coletar_ocorrencias_semana, mas a data de abertura é a Data de Criação
-    da OS/atividade e a de fechamento é a Data de Conclusão; e "concluída"
-    é definido pelo statusOS (Em Revisão / Finalizada) — nunca por
-    percentual de tarefas.
+    (linha 0 = cabeçalho). A data de abertura é a Data de Criação da
+    OS/atividade e a de fechamento é a Data de Conclusão; "concluída" é
+    definido pelo statusOS (só "Finalizada" — ver STATUS_OS_CONCLUIDO).
+
+    CORRIGIDO 22/07/2026: o relatório semanal só deve trazer o que
+    realmente aconteceu (abriu OU fechou) DENTRO do período selecionado —
+    uma atividade ainda aberta (ex.: presa em "Em Revisão" há semanas,
+    criada bem antes do período) não deve reaparecer em todo relatório
+    seguinte só por continuar sem "Finalizada". O caso relatado pelo Fred:
+    OS 9173 (ABC Morada Nova), criada em 08/07 e parada em "Em Revisão" a
+    100% desde então, aparecia num relatório de 16/07 a 22/07 mesmo sem
+    nenhum evento dela ter ocorrido nessa janela.
 
     Retorna dict no mesmo formato de coletar_ocorrencias_semana, pronto
     para ser mesclado com mesclar_grupos().
@@ -299,9 +309,8 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
 
         fechou_na_semana = dt_fecham and data_inicio <= dt_fecham <= data_fim
         abriu_na_semana = dt_abertura and data_inicio <= dt_abertura <= data_fim
-        em_aberto_backlog = not concluida
 
-        if not (fechou_na_semana or abriu_na_semana or em_aberto_backlog):
+        if not (fechou_na_semana or abriu_na_semana):
             continue
 
         # categoriza pela descrição (onde aparecem palavras como "desligada",
@@ -326,18 +335,17 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
         }
         grupos.setdefault(categoria, {"concluidas": [], "abertas": []})
 
-        if fechou_na_semana:
+        if fechou_na_semana or (concluida and abriu_na_semana):
+            # fechou dentro da semana, OU abriu E já está "Finalizada" mas
+            # a Data de Conclusão ficou vazia/fora da janela (bug histórico
+            # corrigido em 13/07/2026 — atividades concluídas não gravavam
+            # essa data). Sem este fallback, a atividade some do relatório
+            # sem deixar rastro.
             grupos[categoria]["concluidas"].append(d)
-        elif em_aberto_backlog:
+        else:
+            # abriu dentro da semana mas ainda não fechou — mostra como
+            # aberta/em andamento, só nesta janela (não perpetuamente).
             grupos[categoria]["abertas"].append(d)
-        elif concluida and abriu_na_semana:
-            # abriu E fechou dentro da semana, mas a Data de Conclusão
-            # ficou vazia/fora da janela (bug histórico corrigido em
-            # 13/07/2026 — atividades concluídas não gravavam essa data).
-            # Sem este fallback, a atividade não entra nem em "abertas"
-            # (já está concluída) nem em "concluídas" (falha o teste de
-            # data), e some do relatório inteiro sem deixar rastro.
-            grupos[categoria]["concluidas"].append(d)
 
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
 
