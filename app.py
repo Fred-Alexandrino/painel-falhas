@@ -24,10 +24,8 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
-from relatorio_semanal import (coletar_ocorrencias_semana, coletar_atividades_semana,
-                                mesclar_grupos, gerar_relatorio_pptx,
-                                listar_usinas_cliente,
-                                coletar_zeladoria)
+from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
+                                listar_usinas_cliente)
 
 # Push notifications (pywebpush)
 try:
@@ -8312,56 +8310,26 @@ def gerar_relatorio_semanal_route():
         if not cliente:
             return jsonify({"ok": False, "error": "cliente e obrigatorio"}), 400
 
-        ws = get_sheet()
-        todos = carregar_planilha(ws)
-        grupos_falhas = coletar_ocorrencias_semana(todos, cliente, data_inicio, data_fim)
+        ws_atividades = get_atividades_sheet()
+        todos_atividades = carregar_planilha(ws_atividades)
+
+        atividades_por_usina, desligamentos_por_usina = coletar_atividades_e_desligamentos_por_usina(
+            todos_atividades, cliente, data_inicio, data_fim)
 
         try:
-            cliente_norm = _norm(cliente)
-            todos_chamados = _chamados_fabricante_itens()
-            chamados = [
-                c for c in todos_chamados
-                if cliente_norm in _norm(c.get("Cliente", ""))
-                and _norm(c.get("Status", "")) != "concluido"
-            ]
+            usinas_cliente = sorted(set(listar_usinas_cliente(todos_atividades, cliente)))
         except Exception as e:
-            log.error(f"[Relatorio Semanal] Erro ao ler ChamadosFabricante: {e}")
-            chamados = []
+            log.error(f"[Relatorio Semanal] Erro ao listar usinas do cliente: {e}")
+            usinas_cliente = sorted(set(atividades_por_usina) | set(desligamentos_por_usina))
 
-        try:
-            ws_atividades = get_atividades_sheet()
-            todos_atividades = carregar_planilha(ws_atividades)
-            grupos_atividades = coletar_atividades_semana(todos_atividades, cliente, data_inicio, data_fim)
-        except Exception as e:
-            log.error(f"[Relatorio Semanal] Erro ao ler Painel de Atividades: {e}")
-            todos_atividades = []
-            grupos_atividades = {}
-
-        grupos = mesclar_grupos(grupos_falhas, grupos_atividades)
-
-        try:
-            zeladoria_valores = carregar_planilha(get_zeladoria_sheet())
-            zeladoria_usinas = coletar_zeladoria(zeladoria_valores, cliente)
-        except Exception as e:
-            log.error(f"[Relatorio Semanal] Erro ao ler aba de Zeladoria: {e}")
-            zeladoria_usinas = []
-
-        if not grupos and not chamados:
-            return jsonify({"ok": False, "error": "Nenhuma ocorrencia encontrada no periodo"}), 404
+        if not usinas_cliente:
+            return jsonify({"ok": False, "error": "Nenhuma usina encontrada para esse cliente"}), 404
 
         semana_num = data_fim.isocalendar()[1]
         data_label = data_fim.strftime('%d/%m/%Y')
 
-        try:
-            usinas_cliente = sorted(set(listar_usinas_cliente(todos, cliente))
-                                     | set(listar_usinas_cliente(todos_atividades, cliente)))
-        except Exception as e:
-            log.error(f"[Relatorio Semanal] Erro ao listar usinas do cliente: {e}")
-            usinas_cliente = []
-
-        buf = gerar_relatorio_pptx(cliente, semana_num, data_label, grupos,
-                                    chamados=chamados, zeladoria_usinas=zeladoria_usinas,
-                                    usinas_cliente=usinas_cliente)
+        buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
+                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
