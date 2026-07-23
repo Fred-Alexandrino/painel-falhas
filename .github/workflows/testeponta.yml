@@ -1,0 +1,17 @@
+name: Teste Ponta a Ponta
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          R1=$(curl -s -m 40 -X POST "https://api.168.138.232.237.sslip.io/gerar-comunicado-livre-ia" -H "Content-Type: application/json" -d '{"tema":"Teste final do modelo novo","observacoes":""}')
+          R2=$(curl -s -m 40 -X POST "https://api.168.138.232.237.sslip.io/gerar-texto-os-ia" -H "Content-Type: application/json" -d '{"falha":"Inversor com falha de comunicacao"}')
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git commit --allow-empty -m "PONTAAPONTA_comunicado=[${R1:0:300}] os=[${R2:0:300}]"
+          git push
