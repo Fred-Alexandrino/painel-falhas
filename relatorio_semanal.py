@@ -429,6 +429,51 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
 # Histórico (marca de "100%"/mudança de status), com fallback pra Data de
 # Conclusão — decisão explícita do Fred (23/07/2026): usar só dado que já
 # está salvo na planilha, sem consulta ao vivo à Fracttal por OS.
+# ── Classificação de desligamento — PORTADA de isDesligamentoAtividade()
+#    (index.html do painel, linhas ~2709-2747). Usa os mesmos padrões e a
+#    mesma lógica de negação (_clauseTemNegacao/_matchSemNegacao) do
+#    dashboard, pra este relatório classificar desligamento exatamente
+#    como o painel classifica — a tentativa anterior reaproveitava
+#    _rotulo_categoria (feita pra CATEGORIZAR EQUIPAMENTO, não pra
+#    detectar desligamento) e deixava passar casos reais como
+#    "Religamento de usina" (23/07/2026: corrigido após comparar a saída
+#    real do endpoint com o relatório de referência do Fred — OS 9701,
+#    9750, 9666, 9591, 9396 apareciam em ATIVIDADES DA SEMANA quando
+#    deveriam estar em DESLIGAMENTOS).
+
+def _clausula_tem_negacao(texto, indice_match):
+    inicio = indice_match
+    while inicio > 0 and texto[inicio - 1] not in ".!?\n":
+        inicio -= 1
+    clausula = texto[inicio:indice_match]
+    return bool(re.search(r"\b(não|nao|sem|dispensad[ao]|descartad[ao]|nunca)\b", clausula, re.IGNORECASE))
+
+
+def _match_sem_negacao(padrao, texto):
+    for m in re.finditer(padrao, texto, re.IGNORECASE):
+        if not _clausula_tem_negacao(texto, m.start()):
+            return True
+    return False
+
+
+_PADROES_DESLIGAMENTO_ATIVIDADE = [
+    r"(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao]|sem\s+energia|desenergizad[ao]|offline)",
+    r"(?:desligad[ao]|parad[ao]|offline)\s+(?:\w+\s+){0,3}(?:usina|ufv)",
+    r"sem\s+possibilidade\s+de\s+(?:monitoramento|religamento)",
+    r"(?:usina|ufv)\s+(?:\w+\s+){0,3}sem\s+comunica[cç][ãa]o",
+    r"sem\s+comunica[cç][ãa]o\s+(?:\w+\s+){0,3}(?:usina|ufv)",
+    r"desligamento\s+(?:total\s+)?(?:da|de)\s+(?:usina|ufv)",
+    r"religamento\s+(?:da|de)\s+(?:usina|ufv)",
+    r"transformador\s+(?:\w+\s+){0,3}(?:da|de)\s+(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao])",
+    r"trafo\s+(?:\w+\s+){0,3}(?:da|de)\s+(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao])",
+]
+
+
+def _e_desligamento_atividade(descricao, equipamento):
+    dc = f"{descricao} {equipamento}"
+    return any(_match_sem_negacao(p, dc) for p in _PADROES_DESLIGAMENTO_ATIVIDADE)
+
+
 STATUS_OS_ELEGIVEIS_RELATORIO = ["finalizada", "em revisão", "em revisao"]
 
 VERDE_STATUS = "00B050"  # verde do relatório PPTX de cliente — não é o A1CA40 da marca
@@ -477,7 +522,7 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
 
         item = {"descricao": descricao, "numero_os": numero_os}
 
-        if _rotulo_categoria(f"{equipamento} {descricao}") == CAT_DESLIGAMENTOS:
+        if _e_desligamento_atividade(descricao, equipamento):
             desligamentos.setdefault(usina, []).append(item)
         else:
             atividades.setdefault(usina, []).append(item)
