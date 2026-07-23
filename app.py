@@ -5265,7 +5265,7 @@ def _get_compromissos_regras_sheet():
         # Seed inicial — só os clientes já mapeados no painel, regra de BM
         # tirada do calendário de emissão enviado pelo Fred (13/07/2026).
         seed = [
-            ["1", "BM", "RENOGRID", "", "diaAoUltimoUtil", "30", "TRUE"],
+            ["1", "BM", "RENOGRID", "", "diaFixo", "25", "TRUE"],
             ["2", "BM", "THOPEN", "", "diaFixo", "15", "TRUE"],
             ["3", "BM", "2C Energia", "", "nDiaUtil", "5", "TRUE"],
             ["4", "BM", "GD Energy", "", "nDiaUtil", "5", "TRUE"],
@@ -5404,6 +5404,80 @@ def listar_compromissos():
         return jsonify({"ok": True, "compromissos": _listar_compromissos_core()}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro ao listar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/compromissos/regras", methods=["GET"])
+def listar_regras_compromissos():
+    try:
+        ws_regras = _get_compromissos_regras_sheet()
+        valores = ws_regras.get_all_values()
+        cabecalho = valores[0] if valores else []
+        regras = [dict(zip(cabecalho, row)) for row in valores[1:] if row and row[0].strip()]
+        return jsonify({"ok": True, "regras": regras}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao listar regras: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/compromissos/regras/atualizar", methods=["POST"])
+def atualizar_regra_compromisso():
+    """Atualiza RegraTipo/RegraValor de uma regra em _ComprometimentosRegras
+    e, se já existir um card gerado pra competência atual com essa regra
+    (ainda não concluído), recalcula o DataLimite dele também — porque
+    _gerar_compromissos_mes_atual é idempotente e não regeneraria um card
+    já existente só porque a regra mudou."""
+    try:
+        body = request.get_json(force=True) or {}
+        regra_id = str(body.get("id", "")).strip()
+        novo_tipo = str(body.get("regraTipo", "")).strip()
+        novo_valor = str(body.get("regraValor", "")).strip()
+        editor = body.get("editor", "desconhecido")
+        if not regra_id or not novo_tipo or not novo_valor:
+            return jsonify({"ok": False, "error": "id, regraTipo e regraValor são obrigatórios"}), 400
+        if novo_tipo not in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil"):
+            return jsonify({"ok": False, "error": f"regraTipo desconhecido: {novo_tipo}"}), 400
+
+        ws_regras = _get_compromissos_regras_sheet()
+        valores = ws_regras.get_all_values()
+        linha_idx, linha = None, None
+        for i, row in enumerate(valores[1:], start=2):
+            if row and row[0].strip() == regra_id:
+                linha_idx, linha = i, row
+                break
+        if not linha_idx:
+            return jsonify({"ok": False, "error": f"regra {regra_id} não encontrada"}), 404
+
+        tipo, cliente, usina = linha[1], linha[2], linha[3]
+        ws_regras.update_cell(linha_idx, 5, novo_tipo)   # RegraTipo
+        ws_regras.update_cell(linha_idx, 6, novo_valor)  # RegraValor
+
+        agora = agora_br()
+        competencia = agora.strftime("%m/%Y")
+        card_atualizado = None
+        try:
+            novo_prazo = _calcular_prazo_compromisso(novo_tipo, novo_valor, agora.year, agora.month)
+        except Exception as e:
+            return jsonify({"ok": True, "regraAtualizada": True,
+                             "aviso": f"regra salva, mas não foi possível recalcular o card do mês: {e}"}), 200
+
+        ws_comp = _get_compromissos_sheet()
+        todos = ws_comp.get_all_values()
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < 12:
+                continue
+            if row[1] == tipo and row[2] == cliente and row[3] == usina and row[4] == competencia and row[8] != "Concluído":
+                data_antiga = row[5]
+                nova_data_str = novo_prazo.strftime("%d/%m/%Y")
+                ws_comp.update_cell(i, 6, nova_data_str)  # DataLimite
+                historico_novo = row[11] + f"\n{agora.strftime('%d/%m/%Y %H:%M')} - Prazo corrigido de {data_antiga} para {nova_data_str} (regra ajustada por {editor})."
+                ws_comp.update_cell(i, 12, historico_novo)
+                card_atualizado = {"id": row[0], "dataLimiteAnterior": data_antiga, "dataLimiteNova": nova_data_str}
+                break
+
+        return jsonify({"ok": True, "regraAtualizada": True, "cardAtualizado": card_atualizado}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao atualizar regra: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
