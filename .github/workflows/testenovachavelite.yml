@@ -1,0 +1,18 @@
+name: Teste Nova Chave Lite
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CHAVE: ${{ secrets.GEMINI_TESTE_NOVA_CHAVE }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          R=$(curl -s -m 30 -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$CHAVE" -H "Content-Type: application/json" -d '{"contents":[{"parts":[{"text":"Responda so a palavra OK"}]}]}')
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git commit --allow-empty -m "TESTELITE=[$(echo "$R" | head -c 400 | tr '\n' ' ')]"
+          git push
