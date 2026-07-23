@@ -1,0 +1,25 @@
+name: Verify Temp (via Claude)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/compromissos/regras" -o backups/verify-regras.json
+          curl -s "https://api.168.138.232.237.sslip.io/compromissos" -o backups/verify-compromissos.json
+          cat backups/verify-regras.json
+          echo
+          cat backups/verify-compromissos.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/verify-regras.json backups/verify-compromissos.json
+          git commit -m "verify temp [skip ci]" || echo nothing
+          git push
