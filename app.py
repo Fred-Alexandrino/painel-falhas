@@ -7571,11 +7571,15 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
                 time.sleep(esperas[tentativa])
                 continue
 
-    # esgotou as tentativas na chave principal por limite de taxa — tenta
-    # a chave de teste como reserva, uma única vez, antes de desistir
-    if ultimo_status == 429 and not usar_chave_teste and GEMINI_API_KEY_TESTE:
+    # esgotou as tentativas na chave principal — tenta a chave de teste
+    # como reserva, uma única vez, antes de desistir. Cobre tanto 429
+    # (cota esgotada) quanto 401/403 (chave principal inválida, revogada
+    # ou expirada) — esse segundo caso foi identificado em 23/07/2026,
+    # quando a chave principal parou de autenticar do nada (mesmo com o
+    # modelo correto) mas a chave de teste continuou funcionando normal.
+    if ultimo_status in (429, 401, 403) and not usar_chave_teste and GEMINI_API_KEY_TESTE:
         try:
-            log.warning("[Gemini] Chave principal esgotou tentativas por limite de taxa — usando chave de teste como reserva")
+            log.warning(f"[Gemini] Chave principal falhou (status {ultimo_status}) — usando chave de teste como reserva")
             resp = requests.post(f"{GEMINI_URL}?key={GEMINI_API_KEY_TESTE}", json=payload, timeout=timeout)
             resp.raise_for_status()
             return resp
