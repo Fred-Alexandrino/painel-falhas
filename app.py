@@ -7613,6 +7613,31 @@ FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markd
 {{"texto": "o comunicado pronto pra enviar"}}"""
 
 
+@app.route("/diag-testar-modelo-gemini", methods=["GET"])
+def diag_testar_modelo_gemini():
+    """Ferramenta de diagnóstico temporária: testa se um modelo Gemini
+    específico funciona com a autenticação simples por chave que este
+    sistema usa. Uso: ?modelo=gemini-3.1-flash-lite&chave=teste (ou
+    &chave=principal). Não faz parte do fluxo normal do app."""
+    modelo = request.args.get("modelo", "").strip()
+    usar_teste = request.args.get("chave", "principal") == "teste"
+    if not modelo:
+        return jsonify({"ok": False, "error": "informe ?modelo=nome-do-modelo"}), 400
+    chave = GEMINI_API_KEY_TESTE if usar_teste else GEMINI_API_KEY
+    if not chave:
+        return jsonify({"ok": False, "error": "chave não configurada"}), 400
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
+    try:
+        resp = requests.post(
+            f"{url}?key={chave}",
+            json={"contents": [{"parts": [{"text": "responda só a palavra: ok"}]}]},
+            timeout=25,
+        )
+        return jsonify({"ok": resp.ok, "status": resp.status_code, "corpo": resp.text[:600]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/gerar-comunicado-livre-ia", methods=["POST", "OPTIONS"])
 def gerar_comunicado_livre_ia():
     """Gera um texto de comunicado livre (tema + observações) usando IA,
