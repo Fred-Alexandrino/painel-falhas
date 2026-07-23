@@ -7554,7 +7554,16 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
             resp.raise_for_status()
             return resp
         except requests.exceptions.HTTPError as e:
-            ultima_excecao = e
+            # inclui o corpo da resposta do Google na mensagem — o texto
+            # padrão do HTTPError ("400 Client Error: Bad Request for
+            # url: ...") não mostra o motivo real, só o código. Isso é
+            # essencial pra diagnosticar erros que não são de cota (ex.:
+            # parâmetro inválido, modelo não encontrado).
+            try:
+                detalhe = resp.text[:500]
+            except Exception:
+                detalhe = ""
+            ultima_excecao = requests.exceptions.HTTPError(f"{e} | corpo: {detalhe}", response=resp)
             if resp.status_code == 429 and tentativa < tentativas - 1:
                 time.sleep(esperas[tentativa])
                 continue
@@ -7568,7 +7577,11 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
             resp.raise_for_status()
             return resp
         except requests.exceptions.HTTPError as e:
-            ultima_excecao = e
+            try:
+                detalhe = resp.text[:500]
+            except Exception:
+                detalhe = ""
+            ultima_excecao = requests.exceptions.HTTPError(f"{e} | corpo: {detalhe}", response=resp)
 
     raise ultima_excecao
 
