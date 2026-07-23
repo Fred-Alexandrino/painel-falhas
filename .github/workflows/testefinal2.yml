@@ -1,0 +1,16 @@
+name: Teste Final 2
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          R=$(curl -s -m 40 -X POST "https://api.168.138.232.237.sslip.io/gerar-comunicado-livre-ia" -H "Content-Type: application/json" -d '{"tema":"Teste com fallback automatico","observacoes":""}')
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git commit --allow-empty -m "FINAL2=[${R:0:400}]"
+          git push
