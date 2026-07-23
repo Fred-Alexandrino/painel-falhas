@@ -7302,16 +7302,16 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # Fred. Só entra em ação quando explicitamente pedido (?diagnostico=true
 # ou header X-Usar-Chave-Teste), nunca no fluxo normal do dashboard.
 GEMINI_API_KEY_TESTE = os.environ.get("GEMINI_API_KEY_TESTE", "")
-GEMINI_MODEL = "gemini-2.5-flash"
-# REVERTIDO em 23/07/2026: tentei migrar pro gemini-3.5-flash-lite, mas
-# esse modelo (e a geração 3.x em geral) não aceita autenticação simples
-# via "?key=" — a API retorna 401 UNAUTHENTICATED, pedindo OAuth2/token
-# de acesso via a "Interactions API" nova do Google, não a REST
-# generateContent clássica que este código usa. Migrar de verdade pra
-# geração 3.x exigiria trocar o método de autenticação inteiro (OAuth2
-# em vez de chave simples), não só o nome do modelo — mudança bem maior
-# do que uma troca de linha. Adiado até termos um plano específico pra
-# essa migração de autenticação (ver conversa de 23/07/2026).
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+# Migrado de gemini-2.5-flash em 23/07/2026 (2ª tentativa, dessa vez
+# testada e confirmada antes de aplicar): o Gemini 3.5/3.6 Flash exigem
+# OAuth2 via a Interactions API nova do Google — incompatíveis com nossa
+# autenticação simples por chave, então ficam fora de cogitação por
+# enquanto. Já o Gemini 3.1 Flash Lite FUNCIONA normalmente com "?key=",
+# confirmado via /diag-testar-modelo-gemini, e tem cota gratuita muito
+# mais generosa (500 RPD / 15 RPM / 250K TPM, conferido pelo Fred direto
+# no AI Studio) do que o 2.5 Flash — e não está na lista de aposentadoria
+# de 16/10/2026 (só 2.5 Flash e 2.5 Flash-Lite estão).
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
