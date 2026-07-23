@@ -20,6 +20,9 @@ from datetime import datetime
 
 from pptx import Presentation
 from pptx.oxml.ns import qn
+from pptx.oxml import parse_xml
+from pptx.util import Pt
+from pptx.dml.color import RGBColor
 
 # ── Configuração ───────────────────────────────────────────────────────────
 
@@ -412,6 +415,243 @@ def coletar_atividades_semana(todos_valores, cliente, data_inicio, data_fim):
             grupos[categoria]["abertas"].append(d)
 
     return {k: v for k, v in grupos.items() if v["concluidas"] or v["abertas"]}
+
+
+# ── NOVO PADRÃO DE RELATÓRIO (confirmado com Fred 23/07/2026) ──────────────
+#
+# Agrupamento por USINA (não por categoria de equipamento). Só entram OSs
+# vinculadas à Fracttal (numeroOS preenchido) cujo statusOS esteja em
+# "Em Revisão" (= aba "Em Verificação" do painel) ou "Finalizada"
+# (= aba "Concluídas") — nunca "Em Processo"/"Cancelada". Ambas aparecem
+# no relatório com o rótulo "Concluída" (mesmo padrão do relatório de
+# referência corrigido manualmente pelo Fred). A data usada para decidir
+# se a OS pertence à semana do relatório é a mesma já extraída do
+# Histórico (marca de "100%"/mudança de status), com fallback pra Data de
+# Conclusão — decisão explícita do Fred (23/07/2026): usar só dado que já
+# está salvo na planilha, sem consulta ao vivo à Fracttal por OS.
+STATUS_OS_ELEGIVEIS_RELATORIO = ["finalizada", "em revisão", "em revisao"]
+
+VERDE_STATUS = "00B050"  # verde do relatório PPTX de cliente — não é o A1CA40 da marca
+
+
+def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_inicio, data_fim):
+    """
+    todos_valores: ws.get_all_values() do Painel de Atividades (linha 0 = cabeçalho).
+
+    Retorna (atividades_por_usina, desligamentos_por_usina), cada um um
+    dict {usina: [{"descricao":, "numero_os":}, ...]}. Itens cuja
+    categoria (equipamento+descrição) bate no padrão de desligamento vão
+    para o segundo dict em vez do primeiro — nunca duplicados.
+    """
+    cliente_norm = _norm(cliente)
+    atividades, desligamentos = {}, {}
+    min_cols = ATIV_COL_STATUSOS + 1
+
+    for row in todos_valores[1:]:
+        if len(row) <= min_cols:
+            row = row + [""] * (min_cols + 1 - len(row))
+
+        # Campo Cliente da própria OS manda — nunca o nome da usina/site.
+        # Isso já exclui automaticamente OS de outro cliente na mesma usina
+        # física (ex.: OS da GreenYellow numa usina RENOGRID).
+        if cliente_norm not in _norm(row[ATIV_COL_CLIENTE]):
+            continue
+
+        numero_os = row[ATIV_COL_NUMEROOS].strip()
+        if not numero_os:
+            continue  # relatório só traz OS vinculada à Fracttal
+
+        status_os = row[ATIV_COL_STATUSOS].strip().lower()
+        if status_os not in STATUS_OS_ELEGIVEIS_RELATORIO:
+            continue
+
+        dt_marco = _ultima_data_historico(row[ATIV_COL_HISTORICO]) or _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
+        if not dt_marco or not (data_inicio <= dt_marco <= data_fim):
+            continue
+
+        usina = row[ATIV_COL_USINA].strip() or "Usina não informada"
+        descricao = row[ATIV_COL_DESCRICAO].strip() or "Sem descrição"
+        equipamento = row[ATIV_COL_EQUIP].strip()
+        if len(descricao) > 140:
+            descricao = descricao[:137].rstrip() + "..."
+
+        item = {"descricao": descricao, "numero_os": numero_os}
+
+        if _rotulo_categoria(f"{equipamento} {descricao}") == CAT_DESLIGAMENTOS:
+            desligamentos.setdefault(usina, []).append(item)
+        else:
+            atividades.setdefault(usina, []).append(item)
+
+    return atividades, desligamentos
+
+
+def _formatar_item_atividade(it):
+    return [
+        {"texto": f'{it["descricao"]} – ', "bold": False},
+        {"texto": f'OS {it["numero_os"]}', "bold": True},
+        {"texto": " – ", "bold": False},
+        {"texto": "Concluída", "bold": False, "color": VERDE_STATUS},
+    ]
+
+
+def _formatar_item_desligamento(it):
+    return [
+        {"texto": "Desligamento - ", "bold": False},
+        {"texto": f'OS {it["numero_os"]}', "bold": True},
+        {"texto": " – ", "bold": False},
+        {"texto": "Concluída.", "bold": False, "color": VERDE_STATUS},
+    ]
+
+
+# ── Formatação explícita (Poppins 20pt, numeração automática) ──────────────
+# Não depende de herdar a formatação do modelo (o .pptx-base usa marcador
+# "Ø" avulso, sem numeração) — reproduz explicitamente o padrão exato do
+# relatório de referência corrigido manualmente pelo Fred (23/07/2026):
+# título numerado (arábico), usina numerada (romano maiúsculo), item com
+# marcador "•", tudo Poppins 20pt, 6pt de espaço antes de cada parágrafo.
+
+def _pPr_xml(nivel, start_at=None, bullet_char="•"):
+    ns = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    spc = '<a:spcBef><a:spcPts val="600"/></a:spcBef>'
+    sa = f' startAt="{start_at}"' if start_at else ""
+    if nivel == "titulo":
+        corpo = f'<a:buFont typeface="+mj-lt"/><a:buAutoNum type="arabicPeriod"{sa}/>'
+        attrs = 'marL="756920" marR="347980" indent="-457200" algn="l"'
+    elif nivel == "usina":
+        corpo = f'<a:buFont typeface="+mj-lt"/><a:buAutoNum type="romanUcPeriod"{sa}/>'
+        attrs = 'marL="814070" marR="347980" indent="-514350" algn="l"'
+    elif nivel == "item":
+        fonte_bullet = "Arial" if bullet_char == "•" else "+mn-lt"
+        corpo = f'<a:buFont typeface="{fonte_bullet}" pitchFamily="34" charset="0"/><a:buChar char="{bullet_char}"/>'
+        attrs = 'marL="642620" marR="347980" indent="-342900" algn="l"'
+    elif nivel == "subtitulo":
+        corpo = "<a:buNone/>"
+        attrs = 'marL="299720" marR="347980" algn="l"'
+    else:  # blank — linha em branco entre blocos de usina
+        corpo = ""
+        attrs = 'marL="299720" marR="347980" algn="l"'
+    return parse_xml(f"<a:pPr {ns} {attrs}>{spc}{corpo}</a:pPr>")
+
+
+def _add_paragrafo(tf, nivel, runs, first=False, start_at=None, bullet_char="•"):
+    p = tf.paragraphs[0] if first else tf.add_paragraph()
+    p_el = p._p
+    velho_pPr = p_el.find(qn("a:pPr"))
+    if velho_pPr is not None:
+        p_el.remove(velho_pPr)
+    p_el.insert(0, _pPr_xml(nivel, start_at=start_at, bullet_char=bullet_char))
+    for r in runs:
+        run = p.add_run()
+        run.text = r.get("texto", "")
+        run.font.name = "Poppins"
+        run.font.size = Pt(20)
+        run.font.bold = bool(r.get("bold", False))
+        if r.get("italic"):
+            run.font.italic = True
+        if r.get("color"):
+            run.font.color.rgb = RGBColor.from_string(r["color"])
+    return p
+
+
+def _gerar_blocos_usina(usinas_ordenadas, dados_por_usina, formatar_item, texto_vazio, bullet_char):
+    blocos = []
+    for usina in usinas_ordenadas:
+        itens = dados_por_usina.get(usina, [])
+        paragrafos = [{"nivel": "usina", "runs": [{"texto": usina, "bold": True}]}]
+        if itens:
+            for it in itens:
+                paragrafos.append({"nivel": "item", "runs": formatar_item(it), "bullet_char": bullet_char})
+        else:
+            paragrafos.append({"nivel": "item",
+                                "runs": [{"texto": texto_vazio, "italic": True}],
+                                "bullet_char": bullet_char})
+        blocos.append({"usina": usina, "paragrafos": paragrafos, "linhas": 2 + len(itens)})
+    return blocos
+
+
+def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas, dados_por_usina,
+                               formatar_item, texto_vazio, bullet_char, max_linhas):
+    blocos = _gerar_blocos_usina(usinas_ordenadas, dados_por_usina, formatar_item, texto_vazio, bullet_char)
+
+    paginas, atual, linhas_atual = [], [], 0
+    for b in blocos:
+        if atual and linhas_atual + b["linhas"] > max_linhas:
+            paginas.append(atual)
+            atual, linhas_atual = [], 0
+        atual.append(b)
+        linhas_atual += b["linhas"]
+    if atual:
+        paginas.append(atual)
+    if not paginas:
+        paginas = [[]]
+
+    numero_romano = 1
+    for i, pagina_blocos in enumerate(paginas):
+        titulo = titulo_base if i == 0 else f"{titulo_base} – CONTINUAÇÃO"
+        novo = _duplicate_slide(prs, 2)
+        _remover_fotos(novo)
+        shp_titulo_secao = _find_shape(novo, "DESLIGAMENTOS")
+        shp_corpo = _find_shape(novo, "Foram registradas")
+        if shp_titulo_secao:
+            tf_t = shp_titulo_secao.text_frame
+            tf_t.clear()
+            _add_paragrafo(tf_t, "titulo", [{"texto": titulo, "bold": True}], first=True, start_at=numero_topico)
+        if shp_corpo:
+            tf = shp_corpo.text_frame
+            tf.clear()
+            primeiro = True
+            for b in pagina_blocos:
+                for par in b["paragrafos"]:
+                    if par["nivel"] == "usina":
+                        _add_paragrafo(tf, "usina", par["runs"], first=primeiro, start_at=numero_romano)
+                        numero_romano += 1
+                    else:
+                        _add_paragrafo(tf, "item", par["runs"], first=primeiro,
+                                        bullet_char=par.get("bullet_char", "•"))
+                    primeiro = False
+                _add_paragrafo(tf, "blank", [{"texto": ""}], first=False)
+    return novo
+
+
+PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "DESLIGAMENTOS", "CHAMADOS E PROTOCOLOS",
+                       "OUTRAS ATIVIDADES", "ZELADORIA"]
+
+
+def _renderizar_pautas_gerais(prs):
+    """Slide 2 — pauta fixa e universal (vale para todos os clientes,
+    confirmado com Fred 23/07/2026), substitui a antiga 'Ata da reunião'
+    com pauta variável por cliente."""
+    ata = _duplicate_slide(prs, 1)
+    shp_titulo = _find_shape(ata, "Ata da reuni")
+    if shp_titulo:
+        _set_text_preservando_estilo(shp_titulo, "Gestão e Operação de Ativos\nPautas Gerais")
+    shp_corpo = _find_shape(ata, "Desligamentos")
+    if shp_corpo:
+        tf = shp_corpo.text_frame
+        tf.clear()
+        for i, topico in enumerate(PAUTAS_GERAIS_FIXAS):
+            _add_paragrafo(tf, "titulo", [{"texto": f"{topico};", "bold": False}], first=(i == 0), start_at=i + 1)
+    return ata
+
+
+def _renderizar_secao_placeholder(prs, numero_topico, titulo, corpo_callback=None):
+    """Slide só com o título numerado — usado em CHAMADOS E PROTOCOLOS,
+    OUTRAS ATIVIDADES e ZELADORIA, onde o conteúdo é preenchido manualmente
+    pelo Fred (não vem do dashboard)."""
+    novo = _duplicate_slide(prs, 2)
+    _remover_fotos(novo)
+    shp_titulo_secao = _find_shape(novo, "DESLIGAMENTOS")
+    shp_corpo = _find_shape(novo, "Foram registradas")
+    if shp_titulo_secao:
+        tf_t = shp_titulo_secao.text_frame
+        tf_t.clear()
+        _add_paragrafo(tf_t, "titulo", [{"texto": titulo, "bold": True}], first=True, start_at=numero_topico)
+    if shp_corpo:
+        tf = shp_corpo.text_frame
+        tf.clear()
+        if corpo_callback:
+            corpo_callback(tf)
+    return novo
 
 
 def mesclar_grupos(*grupos_varios):
@@ -1029,38 +1269,39 @@ def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
     return novo
 
 
-def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None, zeladoria_usinas=None, usinas_cliente=None):
+def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
+                          desligamentos_por_usina, usinas_cliente):
     """
-    grupos: dict categoria -> {"concluidas": [dict,...], "abertas": [dict,...]}
-            (normalmente o resultado de mesclar_grupos(coletar_ocorrencias_semana(...),
-             coletar_atividades_semana(...)) — ocorrências do Painel de Falhas E
-             OSs do Painel de Atividades, já combinadas por categoria).
-    semana_num: número da semana do ano (baseado na data final do período)
-    data_label: data final formatada (dd/mm/aaaa) — mantido por compatibilidade
-                de assinatura, não é mais exibido na capa (padrão Grid Co.).
-    chamados: lista de linhas (Painel de Falhas) com chamado/ticket válido em aberto (opcional)
-    zeladoria_usinas: retorno de coletar_zeladoria() (opcional)
-    usinas_cliente: lista de nomes de usinas do cliente (ex.: listar_usinas_cliente()) —
-                     usada para montar a página "OUTROS TEMAS" (uma seção em branco por
-                     usina, pronta para o Fred preencher manualmente). Opcional; se omitida
-                     ou vazia, a página "OUTROS TEMAS" não é criada.
+    PADRÃO DEFINITIVO confirmado com Fred em 23/07/2026 (revisão meticulosa
+    do relatório RENOGRID Semana 30, vale para todos os clientes):
+
+    (1) Capa; (2) Pautas Gerais (5 tópicos fixos); (3-4) ATIVIDADES DA
+    SEMANA por usina em ordem alfabética; (5-6) DESLIGAMENTOS, mesma
+    lógica; (7) CHAMADOS E PROTOCOLOS (só título — Fred preenche);
+    (8) OUTRAS ATIVIDADES (só título); (9) ZELADORIA (estrutura de usinas
+    pronta, Fred preenche os valores); (10) contato (slide original do
+    template, não gerado).
+
+    atividades_por_usina / desligamentos_por_usina: retorno de
+    coletar_atividades_e_desligamentos_por_usina().
+    usinas_cliente: lista de usinas do cliente (define a ordem alfabética
+    e a estrutura da Zeladoria).
+    data_label: mantido por compatibilidade de assinatura (não exibido).
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
 
-    # Orçamento de paginação calculado UMA VEZ a partir das dimensões reais
-    # do placeholder de corpo do modelo (slide 2), pra nunca estourar a página.
-    _corpo_modelo = _find_shape(prs.slides[2], "Foram registradas")
-    if _corpo_modelo is not None:
-        _fmt_corpo_modelo = _extrair_formato_base(_corpo_modelo)
-        max_linhas, chars_por_linha = _extrair_orcamento_linhas(_corpo_modelo, _fmt_corpo_modelo)
-    else:
-        max_linhas, chars_por_linha = 18, 70  # fallback conservador
+    # Orçamento de paginação: FIXO, calibrado contra o relatório de
+    # referência corrigido pelo Fred (RENOGRID Semana 30 — 5 usinas simples
+    # coube confortavelmente numa página). A extração dinâmica a partir do
+    # placeholder do modelo (_extrair_orcamento_linhas) foi tentada, mas o
+    # placeholder "Foram registradas..." do modelo antigo é baixo (dimensionado
+    # para um parágrafo curto + fotos ao lado, removidas por _remover_fotos),
+    # o que gerava um orçamento de ~4 linhas — 1 usina por slide. Não usar.
+    max_linhas = 16
 
-    grupos = dict(grupos)  # não alterar o dict do chamador
-    dados_comunicacoes = grupos.pop(CAT_COMUNICACOES, None)
-    dados_desligamentos = grupos.pop(CAT_DESLIGAMENTOS, None)
-    outras_categorias = grupos  # Inversores, Strings/Módulos, etc. — ocorrências E OSs
+    usinas_ordenadas = sorted(set(usinas_cliente or []) | set(atividades_por_usina) | set(desligamentos_por_usina),
+                               key=_norm)
 
     # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
     capa = _duplicate_slide(prs, 0)
@@ -1068,113 +1309,45 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, grupos, chamados=None,
     if shp_titulo:
         _set_text_preservando_estilo(shp_titulo, f"O&M – {cliente}\nSemana {semana_num}")
 
-    # --- Slide 2: Ata da reunião ---------------------------------------------
-    # Pauta padrão fixa para todos os clientes, exceto RenoGrid (que mantém a
-    # pauta dinâmica, montada a partir do que realmente aparece na semana).
-    if _norm(cliente) in CLIENTES_PAUTA_DINAMICA:
-        topicos = []
-        if dados_comunicacoes:
-            topicos.append(CAT_COMUNICACOES)
-        if outras_categorias:
-            topicos.append("OCORRÊNCIAS SEMANAIS")
-        if dados_desligamentos:
-            topicos.append(CAT_DESLIGAMENTOS)
-        if chamados:
-            topicos.append("CHAMADOS EM ABERTO")
-        if zeladoria_usinas:
-            topicos.append("ZELADORIA")
-    else:
-        topicos = list(PAUTA_PADRAO_ATA)
-    ata = _duplicate_slide(prs, 1)
-    shp_lista = _find_shape(ata, "Desligamentos")
-    if shp_lista:
-        _set_text_preservando_estilo(shp_lista, "\n".join(topicos))
+    # --- Slide 2: Pautas Gerais — fixo, igual para todos os clientes -------
+    _renderizar_pautas_gerais(prs)
 
-    pauta_fixa = _norm(cliente) not in CLIENTES_PAUTA_DINAMICA
+    # --- Slides 3-4: ATIVIDADES DA SEMANA (tópico 1) ------------------------
+    _renderizar_topico_usinas(prs, 1, "ATIVIDADES DA SEMANA", usinas_ordenadas, atividades_por_usina,
+                               _formatar_item_atividade, "Sem atividades realizadas no período.",
+                               "•", max_linhas)
 
-    # --- Página(s): Comunicações / SCADA / CCTV — sempre primeiro, própria(s)
-    #     página(s), separada de Inversores/Strings/demais equipamentos -------
-    #     (só nos clientes com pauta dinâmica — RenoGrid; nos demais, entra
-    #     mesclada em ATIVIDADES SEMANAIS mais abaixo)
-    if dados_comunicacoes and not pauta_fixa:
-        for pagina in agrupar_em_paginas({CAT_COMUNICACOES: dados_comunicacoes}, max_linhas, chars_por_linha):
-            cat, paragrafos = pagina[0]
-            _renderizar_pagina_categoria(prs, cat, paragrafos)
+    # --- Slides 5-6: DESLIGAMENTOS (tópico 2) -------------------------------
+    _renderizar_topico_usinas(prs, 2, "DESLIGAMENTOS", usinas_ordenadas, desligamentos_por_usina,
+                               _formatar_item_desligamento, "Sem desligamentos registrados no período.",
+                               "•", max_linhas)
 
-    if pauta_fixa:
-        # --- Página(s): ATIVIDADES SEMANAIS — mescla Comunicações + todas as
-        #     demais categorias (vegetação, ocorrências etc.) num único
-        #     tópico, já que a pauta fixa não distingue esses sub-tópicos.
-        dados_mesclados = dict(outras_categorias)
-        if dados_comunicacoes:
-            dados_mesclados[CAT_COMUNICACOES] = dados_comunicacoes
-        if dados_mesclados:
-            paragrafos_mesclados = gerar_paragrafos_multi_categoria(dados_mesclados)
-            paginas_ativ = paginar_paragrafos_simples(paragrafos_mesclados, max_linhas, chars_por_linha)
-            for i, pagina in enumerate(paginas_ativ):
-                titulo = "ATIVIDADES SEMANAIS" if i == 0 else "ATIVIDADES SEMANAIS (cont.)"
-                _renderizar_pagina_categoria(prs, titulo, pagina)
-    else:
-        # --- Página(s): "Ocorrências da Semana" — Inversores, Strings/Módulos e
-        #     demais equipamentos, já com Painel de Falhas + Painel de Atividades
-        #     combinados por categoria (empacotadas por orçamento de linhas) -----
-        for pagina in agrupar_em_paginas(outras_categorias, max_linhas, chars_por_linha):
-            if len(pagina) == 1:
-                categoria, paragrafos = pagina[0]
-                _renderizar_pagina_categoria(prs, categoria, paragrafos)
-            else:
-                combinados = []
-                for cat, paragrafos in pagina:
-                    combinados.append({"texto": cat, "bold": True})
-                    combinados.extend(paragrafos)
-                _renderizar_pagina_categoria(prs, "OCORRÊNCIAS DA SEMANA", combinados)
+    # --- Slide 7: CHAMADOS E PROTOCOLOS — só título, Fred preenche ---------
+    def _corpo_chamados(tf):
+        _add_paragrafo(tf, "subtitulo", [{"texto": "PROTOCOLOS CONCESSIONÁRIAS", "bold": True}], first=True)
+    _renderizar_secao_placeholder(prs, 3, "CHAMADOS E PROTOCOLOS", _corpo_chamados)
 
-    # --- Página(s): Desligamentos — com data/hora real de abertura/conclusão.
-    #     Nos clientes de pauta fixa, "DESLIGAMENTOS" é sempre um item da
-    #     pauta — a página é sempre gerada, mesmo sem nenhum desligamento no
-    #     período (mesmo padrão da página OUTROS TEMAS: em branco, por
-    #     usina, pronta pra preenchimento manual se necessário).
-    if dados_desligamentos:
-        paginas_deslig = agrupar_desligamentos_em_paginas(dados_desligamentos, max_linhas, chars_por_linha)
-        for i, pagina in enumerate(paginas_deslig):
-            titulo = CAT_DESLIGAMENTOS if i == 0 else f"{CAT_DESLIGAMENTOS} (cont.)"
-            _renderizar_pagina_categoria(prs, titulo, pagina)
-    elif pauta_fixa and usinas_cliente:
-        corpo_deslig_vazio = [{"texto": usina, "bold": True} for usina in usinas_cliente]
-        _renderizar_pagina_categoria(prs, CAT_DESLIGAMENTOS, corpo_deslig_vazio)
+    # --- Slide 8: OUTRAS ATIVIDADES — só título, Fred preenche --------------
+    _renderizar_secao_placeholder(prs, 4, "OUTRAS ATIVIDADES", None)
 
-    # --- Página: Chamados em aberto (aba ChamadosFabricante, dashboard) ----
-    if chamados:
-        _renderizar_pagina_categoria(prs, "CHAMADOS EM ABERTO", gerar_paragrafos_chamados_fabricante(chamados))
+    # --- Slide 9: ZELADORIA — estrutura de usinas pronta, Fred preenche ----
+    def _corpo_zeladoria(tf):
+        primeiro = True
+        for i, usina in enumerate(usinas_ordenadas, start=1):
+            _add_paragrafo(tf, "usina", [{"texto": usina, "bold": True}], first=primeiro, start_at=i)
+            primeiro = False
+            _add_paragrafo(tf, "item", [{"texto": "", "bold": False}], first=False, bullet_char="•")
+    _renderizar_secao_placeholder(prs, 5, "ZELADORIA", _corpo_zeladoria)
 
-    # --- Página(s): Zeladoria — tabela real (Usina | Roçagem | Poda Química |
-    #     Limpeza dos Módulos), paginada para nunca estourar o slide ---------
-    if zeladoria_usinas:
-        for i, pagina in enumerate(paginar_zeladoria(zeladoria_usinas)):
-            titulo = "ZELADORIA" if i == 0 else "ZELADORIA (cont.)"
-            _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina)
-
-    # --- Página: Outros Temas — em branco, uma seção em negrito por usina do
-    #     cliente, para o Fred preencher manualmente depois (ex.: pendências
-    #     com seguradora, PV Operation etc.). Combinado 22/07/2026: sempre
-    #     gerada (não depende de nenhuma fonte de dados automática).
-    if usinas_cliente:
-        corpo_outros_temas = []
-        for usina in usinas_cliente:
-            corpo_outros_temas.append({"texto": usina, "bold": True})
-        _renderizar_pagina_categoria(prs, "OUTROS TEMAS", corpo_outros_temas)
-
-    # --- Reordena o deck: capa nova -> ata nova -> conteúdo -> contato -----
+    # --- Reordena o deck: capa nova -> pautas nova -> conteúdo -> contato --
     xml_slides = prs.slides._sldIdLst
     todos_els = list(xml_slides)
-    contato_el = todos_els[6]
-    capa_el = todos_els[7]
-    ata_el = todos_els[8]
-    conteudo_els = todos_els[9:]
+    contato_el = todos_els[6]        # slide de contato original do template
+    novos_els = todos_els[7:]        # tudo que foi duplicado nesta chamada, já na ordem certa
 
     for e in todos_els:
         xml_slides.remove(e)
-    for e in [capa_el, ata_el] + conteudo_els + [contato_el]:
+    for e in novos_els + [contato_el]:
         xml_slides.append(e)
 
     buf = BytesIO()
