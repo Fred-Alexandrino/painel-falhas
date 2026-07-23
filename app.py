@@ -7302,7 +7302,13 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # Fred. Só entra em ação quando explicitamente pedido (?diagnostico=true
 # ou header X-Usar-Chave-Teste), nunca no fluxo normal do dashboard.
 GEMINI_API_KEY_TESTE = os.environ.get("GEMINI_API_KEY_TESTE", "")
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+# Trocado de gemini-2.5-flash em 23/07/2026: o 2.5 Flash tem aposentadoria
+# anunciada pelo Google pra 16/10/2026, e o 3.5 Flash-Lite é o modelo
+# estável mais novo e mais barato/generoso em cota gratuita dentro da
+# geração 3.x (mesmo padrão histórico: a versão "Lite" de cada geração
+# sempre vem com o limite gratuito mais folgado). Decisão do Fred, que
+# não quer ativar cobrança — ver conversa de 23/07/2026 pra contexto.
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
