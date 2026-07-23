@@ -1,0 +1,27 @@
+name: Atualizar Regra Compromisso (via Claude)
+
+on:
+  repository_dispatch:
+    types: [atualizar_regra_compromisso]
+
+jobs:
+  atualizar-regra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Atualizar RegraTipo/RegraValor de uma regra de compromisso
+        env:
+          P_ID: ${{ github.event.client_payload.id }}
+          P_TIPO: ${{ github.event.client_payload.regraTipo }}
+          P_VALOR: ${{ github.event.client_payload.regraValor }}
+        run: |
+          BASE="https://api.168.138.232.237.sslip.io"
+          PAYLOAD=$(jq -n --arg id "$P_ID" --arg regraTipo "$P_TIPO" --arg regraValor "$P_VALOR" \
+            '{id:$id,regraTipo:$regraTipo,regraValor:$regraValor,editor:"claude-chat"}')
+          echo "Payload: $PAYLOAD"
+          RESPONSE=$(curl -s -X POST "$BASE/compromissos/regras/atualizar" -H "Content-Type: application/json" -d "$PAYLOAD")
+          echo "Resposta: $RESPONSE"
+          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
+          if [ "$OK" != "true" ]; then
+            echo "Falha ao atualizar regra"
+            exit 1
+          fi
