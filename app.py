@@ -1247,6 +1247,59 @@ def get_desligamento_manual_sheet():
     return ws
 
 
+LOCALIZACOES_SHEET_NAME = "Localizacoes"
+LOCALIZACOES_HEADERS = ["Cliente", "Usina", "Endereco", "MapsLink", "Lat", "Lng"]
+
+# Seed inicial (planilha "Localizações e Endereços" enviada pelo Fred,
+# versão corrigida de 24/07/2026 — Matão I renomeado, Embu Guaçu removido,
+# Sal Energia com coordenadas já convertidas de DMS pra decimal). Só é usado
+# na primeira vez que a aba "Localizacoes" é criada; depois disso o Fred
+# edita direto na planilha ou via /localizacoes-atualizar-coords.
+LOCALIZACOES_SEED = [
+    ('Renogrid', 'Nova Xavantina I', 'Rua Sete de Setembro, Nova Xavantina, MT, 78690-000', 'https://maps.app.goo.gl/ZrLXCvacAEfdmLG49', "", ""),
+    ('Renogrid', 'Nova Xavantina II', 'Projeto Xavantina, Setor Nova Brasília, Gleba B, Nova Xavantina – MT, CEP: 78690-000', 'https://maps.app.goo.gl/qvLsNF1xkcoJHk1d7', "", ""),
+    ('Renogrid', 'Colíder I', 'Estrada de Santa Luzia, Colíder - MT, 78500-000', 'https://maps.app.goo.gl/d1N8znU5FBrBh1FZ7', "", ""),
+    ('Renogrid', 'Colíder II', 'Sítio Nossa Senhora Salete, Estrada Vicinal R, Colíder – MT, CEP: 78.500-000', 'https://maps.app.goo.gl/4CjanaMerTJYCDBs5', "", ""),
+    ('Renogrid', 'Nobres', 'Fazenda Lavrinha, S/N, Nobres - MT, 78470-000', 'https://maps.app.goo.gl/ndrKoLEk3aDyroLJ9', "", ""),
+    ('Renogrid', 'Elias Fausto', 'Sítio Santa Izabel, Gleba B, Elias Fausto – SP, CEP: 13.358-899', 'https://maps.app.goo.gl/uy57XM69H3ejTENJ6', "", ""),
+    ('Renogrid', 'Crateús', 'Fazenda São Luiz, Crateús - CE, CEP: 63.709-899', 'https://maps.app.goo.gl/W9VS4Jdcd57rqCgC9', "", ""),
+    ('Thopen', 'Boa Esperança do Sul I', 'Rua Sete de Setembro, Boa Esperança do Sul - SP, 14930-000', 'https://maps.app.goo.gl/T74pDLBrsd3yGDPP6', "", ""),
+    ('Thopen', 'Boa Esperança do Sul II', 'Rua Sete de Setembro, Boa Esperança do Sul - SP, 14930-000', 'https://maps.app.goo.gl/T74pDLBrsd3yGDPP6', "", ""),
+    ('Thopen', 'Ibaté I', 'R. Júlio Gonzaga, Ibaté - SP, 14815-000', 'https://maps.app.goo.gl/8fPjE3dNwtgZucqF8', "", ""),
+    ('Thopen', 'Ibaté II', 'BR-267, 292-1040 - Jardim Nosso Teto, Ibaté - SP, 14815-000', 'https://maps.app.goo.gl/2m6UqXNHHhtr4zsb9', "", ""),
+    ('Thopen', 'Matão I', 'Via Luís Gonzaga da Silva Leite - Pedreira, Matão - SP', 'https://maps.app.goo.gl/CFsFFwniYJffJH9w9', "", ""),
+    ('Thopen', 'Matão II - Topázio', 'Via Carl Fisher, 5600 - Matão, SP, 15995-054', 'https://maps.app.goo.gl/MJnvbaMm3Ar2nUxF7', "", ""),
+    ('Thopen', 'Sítio Bonfim', 'Sítio Morros, Limoeiro do Norte - CE, 62930-000', 'https://maps.app.goo.gl/7bc56bH8vXEAWAu18', "", ""),
+    ('Thopen', 'Poconé', 'Assentamento Beija Flor, Lote 04, Zona Rural, Poconé - MT, 78175-000', 'https://maps.app.goo.gl/y3weGpiKFnVAGMHz8', "", ""),
+    ('Thopen', 'Canarana I', 'MT-110, Canarana - MT, 78640-000', 'https://maps.app.goo.gl/2WeCCv27u1KSQXjs9', "", ""),
+    ('Thopen', 'Canarana II', 'FPPJ+996 Canarana, MT', 'https://maps.app.goo.gl/rTLEK4FVzrRz4UNA7', "", ""),
+    ('Thopen', 'Ribeirão Cascalheira', '35HX+8PR Ribeirão Cascalheira, MT', 'https://maps.app.goo.gl/BL8xuoi7hy5w4yev6', "", ""),
+    ('2C Energia', 'Araputanga', 'Rodovia MT 175, Araputanga - MT', 'https://maps.app.goo.gl/AzpfpHjkqxyqBwAV7', "", ""),
+    ('2C Energia', 'Sete Lagoas', 'Zona Rural, Sete Lagoas - MG, 35702-087', 'https://maps.app.goo.gl/mCoLpWAobk6K2qLG7', "", ""),
+    ('GD Energy', 'Guajirú', 'Sítio Ilha, s/n - Vassouras, Trairi - CE, 62690-000', 'https://maps.app.goo.gl/rv2uhbD7o37ANCdSA', "", ""),
+    ('GD Energy', 'Sol do Norte I', 'Sítio Ilha, s/n - Vassouras, Trairi - CE, 62690-000', 'https://maps.app.goo.gl/rv2uhbD7o37ANCdSA', "", ""),
+    ('GD Energy', 'Sol do Norte II', 'Sítio Ilha, s/n - Vassouras, Trairi - CE, 62690-000', 'https://maps.app.goo.gl/rv2uhbD7o37ANCdSA', "", ""),
+    ('Alves Lima', 'ABC Morada Nova', 'Estr. Tigre A Dourado, 2 - Pedras, Morada Nova - CE, 62940-000', 'https://maps.app.goo.gl/GPmb3Ea9JMGnHXBB6', "", ""),
+    ('Sal Energia', 'SunPower (Cascavel)', 'Zona Rural, s/n – Cascavel - CE', 'https://maps.app.goo.gl/gogYXrktX8D3TfFPA', -4.105639, -38.319028),
+    ('Sal Energia', 'Hortina (Quixadá I)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
+    ('Sal Energia', 'Vitesse (Quixadá II)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
+    ('Sal Energia', 'Carosa (Aquiraz I)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
+    ('Sal Energia', 'Salvales (Aquiraz II)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
+]
+
+
+def get_localizacoes_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(LOCALIZACOES_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=LOCALIZACOES_SHEET_NAME, rows=200, cols=len(LOCALIZACOES_HEADERS))
+        ws.append_row(LOCALIZACOES_HEADERS)
+        ws.append_rows([list(r) for r in LOCALIZACOES_SEED])
+    return ws
+
+
 def get_atividades_sheet():
     gc = get_gc()
     ss = gc.open_by_key(SHEET_ID)
@@ -6588,6 +6641,79 @@ def marcar_desligamento_manual():
             ws.update(f"A{linha_existente}:E{linha_existente}", [[origem, item_id, valor, editor, agora]])
         else:
             ws.append_row([origem, item_id, valor, editor, agora])
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/localizacoes", methods=["GET"])
+def listar_localizacoes():
+    """Lista as localizações (endereço + link do Maps + lat/lng já
+    geocodificados, quando disponíveis) de todas as usinas cadastradas na
+    aba 'Localizacoes'. Usado pela seção 'Localização' do painel (Mapa +
+    Lista). Lat/Lng em branco significa que o frontend ainda não
+    geocodificou aquele endereço — nesse caso a usina some do Mapa até ser
+    geocodificada (ver /localizacoes-atualizar-coords) mas continua
+    aparecendo na Lista com o link do Google Maps."""
+    try:
+        ws = get_localizacoes_sheet()
+        todos = ws.get_all_values()
+        itens = []
+        for row in todos[1:]:
+            if len(row) < 2 or not row[1].strip():
+                continue
+            lat = row[4].strip() if len(row) > 4 else ""
+            lng = row[5].strip() if len(row) > 5 else ""
+            def _num(v):
+                # a planilha está em locale pt-BR: números podem vir com
+                # vírgula decimal (ex: "-4,105639") em vez de ponto
+                if not v:
+                    return None
+                try:
+                    return float(v.replace(".", "").replace(",", ".")) if "," in v else float(v)
+                except ValueError:
+                    return None
+            itens.append({
+                "cliente": row[0].strip() if len(row) > 0 else "",
+                "usina": row[1].strip(),
+                "endereco": row[2].strip() if len(row) > 2 else "",
+                "mapsLink": row[3].strip() if len(row) > 3 else "",
+                "lat": _num(lat),
+                "lng": _num(lng),
+            })
+        return jsonify({"ok": True, "itens": itens}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/localizacoes-atualizar-coords", methods=["POST", "OPTIONS"])
+def atualizar_coords_localizacao():
+    """Grava lat/lng geocodificados no navegador (via Nominatim/OSM,
+    client-side) de volta na planilha, pra não precisar geocodificar de
+    novo a cada carregamento da página. Casamento por cliente+usina
+    (case-insensitive, ignorando espaços nas pontas)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    cliente = str(body.get("cliente", "")).strip()
+    usina = str(body.get("usina", "")).strip()
+    lat = body.get("lat")
+    lng = body.get("lng")
+    if not usina or lat is None or lng is None:
+        return jsonify({"ok": False, "error": "usina, lat e lng são obrigatórios"}), 400
+    try:
+        ws = get_localizacoes_sheet()
+        todos = ws.get_all_values()
+        linha = None
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) >= 2 and row[1].strip().lower() == usina.lower() and (
+                not cliente or row[0].strip().lower() == cliente.lower()
+            ):
+                linha = i
+                break
+        if not linha:
+            return jsonify({"ok": False, "error": "usina não encontrada"}), 404
+        ws.update(f"E{linha}:F{linha}", [[lat, lng]])
         return jsonify({"ok": True}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
