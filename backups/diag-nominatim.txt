@@ -1,0 +1,5 @@
+[{"place_id":11870008,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","osm_type":"way","osm_id":223785456,"lat":"-21.9910467","lon":"-48.3830371","class":"highway","type":"tertiary","place_rank":26,"importance":0.05339191653315019,"addresstype":"road","name":"Rua Sete de Setembro","display_name":"Rua Sete de Setembro, Centro, Boa Esperança do Sul, São Paulo, Região Sudeste, 14930-000, Brasil","boundingbox":["-21.9912653","-21.9909007","-48.3857866","-48.3803871"]}]
+HTTP_STATUS:200
+---SEM USER AGENT CUSTOM---
+[{"place_id":11870008,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","osm_type":"way","osm_id":223785456,"lat":"-21.9910467","lon":"-48.3830371","class":"highway","type":"tertiary","place_rank":26,"importance":0.05339191653315019,"addresstype":"road","name":"Rua Sete de Setembro","display_name":"Rua Sete de Setembro, Centro, Boa Esperança do Sul, São Paulo, Região Sudeste, 14930-000, Brasil","boundingbox":["-21.9912653","-21.9909007","-48.3857866","-48.3803871"]}]
+HTTP_STATUS:200

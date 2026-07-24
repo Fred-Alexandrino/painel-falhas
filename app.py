@@ -22,7 +22,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
 import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
@@ -7085,113 +7084,6 @@ def listar_chamados_fabricante():
     try:
         itens = _chamados_fabricante_itens()
         return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-FOTOS_ATIVIDADES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fotos_atividades")
-EXTENSOES_FOTO_PERMITIDAS = {"jpg", "jpeg", "png", "webp", "heic", "heif"}
-
-
-def _extensao_permitida(nome_arquivo):
-    return "." in nome_arquivo and nome_arquivo.rsplit(".", 1)[1].lower() in EXTENSOES_FOTO_PERMITIDAS
-
-
-def _atividade_por_id(atividade_id):
-    """Busca uma linha da aba Painel de Atividades pelo id. Retorna
-    (linha_idx, row) ou (None, None) se não encontrar."""
-    ws = get_atividades_sheet()
-    todos = ws.get_all_values()
-    for i, row in enumerate(todos[1:], start=2):
-        if row and row[0].strip() == str(atividade_id).strip():
-            if len(row) < ATIV_TOTAL_COLUNAS:
-                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
-            return i, row
-    return None, None
-
-
-@app.route("/atividade-anexar-foto", methods=["POST", "OPTIONS"])
-def atividade_anexar_foto():
-    """
-    Anexa uma foto a uma atividade — SOMENTE atividades criadas
-    manualmente (sem numeroOS, ou seja, não vinculadas à Fracttal).
-    Fica guardada localmente no disco do servidor, ao lado de "Minhas
-    anotações" no drawer — não sincroniza com a Fracttal, mesma lógica
-    das anotações pessoais (implementado 24/07/2026, a pedido do Fred).
-    """
-    if request.method == "OPTIONS":
-        return ("", 204)
-
-    atividade_id = (request.form.get("id") or "").strip()
-    if not atividade_id:
-        return jsonify({"ok": False, "error": "id da atividade é obrigatório"}), 400
-    if "foto" not in request.files:
-        return jsonify({"ok": False, "error": "nenhuma foto enviada"}), 400
-
-    arquivo = request.files["foto"]
-    if not arquivo.filename or not _extensao_permitida(arquivo.filename):
-        return jsonify({"ok": False, "error": "formato de arquivo não suportado (use jpg, png, webp ou heic)"}), 400
-
-    _, row = _atividade_por_id(atividade_id)
-    if row is None:
-        return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
-    numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
-    if numero_os:
-        return jsonify({"ok": False, "error": "essa atividade veio da Fracttal (tem OS vinculada) — anexo de fotos por enquanto só é permitido em atividades criadas manualmente"}), 403
-
-    try:
-        pasta = os.path.join(FOTOS_ATIVIDADES_DIR, secure_filename(atividade_id))
-        os.makedirs(pasta, exist_ok=True)
-        ext = arquivo.filename.rsplit(".", 1)[1].lower()
-        nome_seguro = f"{uuid.uuid4().hex}.{ext}"
-        caminho = os.path.join(pasta, nome_seguro)
-        arquivo.save(caminho)
-        return jsonify({"ok": True, "arquivo": nome_seguro}), 200
-    except Exception as e:
-        log.error(f"[Fotos Atividade] Erro ao salvar foto da atividade {atividade_id}: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/atividade-fotos/<atividade_id>", methods=["GET"])
-def atividade_listar_fotos(atividade_id):
-    """Lista as fotos já anexadas a uma atividade."""
-    pasta = os.path.join(FOTOS_ATIVIDADES_DIR, secure_filename(atividade_id))
-    if not os.path.isdir(pasta):
-        return jsonify({"ok": True, "fotos": []}), 200
-    try:
-        arquivos = sorted(os.listdir(pasta))
-        return jsonify({"ok": True, "fotos": arquivos}), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/foto-atividade/<atividade_id>/<nome_arquivo>", methods=["GET"])
-def atividade_servir_foto(atividade_id, nome_arquivo):
-    """Serve o arquivo de imagem em si. secure_filename nos dois
-    parâmetros previne path traversal (ex.: id="../../etc")."""
-    pasta = os.path.join(FOTOS_ATIVIDADES_DIR, secure_filename(atividade_id))
-    nome_seguro = secure_filename(nome_arquivo)
-    caminho = os.path.join(pasta, nome_seguro)
-    if not os.path.isfile(caminho):
-        return jsonify({"ok": False, "error": "foto não encontrada"}), 404
-    return send_file(caminho)
-
-
-@app.route("/atividade-remover-foto", methods=["POST", "OPTIONS"])
-def atividade_remover_foto():
-    """Remove uma foto anexada a uma atividade."""
-    if request.method == "OPTIONS":
-        return ("", 204)
-    body = request.get_json(force=True, silent=True) or {}
-    atividade_id = (body.get("id") or "").strip()
-    nome_arquivo = (body.get("arquivo") or "").strip()
-    if not atividade_id or not nome_arquivo:
-        return jsonify({"ok": False, "error": "id e arquivo são obrigatórios"}), 400
-    caminho = os.path.join(FOTOS_ATIVIDADES_DIR, secure_filename(atividade_id), secure_filename(nome_arquivo))
-    try:
-        if os.path.isfile(caminho):
-            os.remove(caminho)
-        return jsonify({"ok": True}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
