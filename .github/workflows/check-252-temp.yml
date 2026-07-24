@@ -1,0 +1,33 @@
+name: Checar Atividade 252 v2
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s --max-time 30 "https://api.168.138.232.237.sslip.io/atividades" -o /tmp/ativ.json
+          python3 -c "
+import json
+d = json.load(open('/tmp/ativ.json'))
+itens = d.get('itens', d if isinstance(d, list) else [])
+achou = [i for i in itens if 'Castelo do Piau' in json.dumps(i, ensure_ascii=False) or str(i.get('id'))=='252']
+print('total atividades:', len(itens))
+print('encontrou Castelo do Piaui ou id 252:', len(achou))
+for a in achou:
+    print(a)
+" > backups/check-252.txt 2>&1
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-252.txt
+          git commit -m "check 252 v2 [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/check-252.txt
+          git commit -m "check 252 v2 [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
