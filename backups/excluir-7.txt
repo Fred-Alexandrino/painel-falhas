@@ -1,0 +1,28 @@
+=== excluindo id 54 ===
+{"ok":true}
+
+STATUS:200
+=== excluindo id 55 ===
+{"ok":true}
+
+STATUS:200
+=== excluindo id 69 ===
+{"ok":true}
+
+STATUS:200
+=== excluindo id 155 ===
+{"ok":true}
+
+STATUS:200
+=== excluindo id 178 ===
+{"ok":true}
+
+STATUS:200
+=== excluindo id 202 ===
+{"ok":true}
+
+STATUS:200
+=== excluindo id 249 ===
+{"ok":true}
+
+STATUS:200
