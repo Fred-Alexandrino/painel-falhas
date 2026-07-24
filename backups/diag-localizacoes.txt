@@ -1,0 +1,1 @@
+{"error":"could not convert string to float: '-4,105639'","ok":false}
