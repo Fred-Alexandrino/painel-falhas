@@ -1,0 +1,30 @@
+name: Diagnostico SSH VM1
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnostico via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          script: |
+            echo "=== commit atual no disco ==="
+            cd ~/painel-falhas
+            git log -1 --format='%H %ci'
+            echo "=== git status ==="
+            git status --short
+            echo "=== grep localizacoes no app.py do disco ==="
+            grep -n "def listar_localizacoes\|/localizacoes" app.py || echo "NAO ENCONTRADO NO ARQUIVO"
+            echo "=== status do serviço ==="
+            sudo systemctl status painel-falhas --no-pager | head -20
+            echo "=== ultimas linhas do log do serviço ==="
+            sudo journalctl -u painel-falhas -n 60 --no-pager
+      - run: |
+          echo "diagnostico rodado" > /tmp/x
