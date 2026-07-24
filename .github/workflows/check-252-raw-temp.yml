@@ -1,0 +1,24 @@
+name: Checar Atividade 252 v5 raw
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s --max-time 30 "https://api.168.138.232.237.sslip.io/atividades" -o backups/ativ-raw.txt
+          head -c 800 backups/ativ-raw.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/ativ-raw.txt
+          git commit -m "check 252 raw [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/ativ-raw.txt
+          git commit -m "check 252 raw [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
