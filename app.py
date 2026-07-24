@@ -6656,6 +6656,38 @@ def marcar_desligamento_manual():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/excluir-atividade", methods=["POST", "OPTIONS"])
+def excluir_atividade():
+    """Remove definitivamente uma atividade do Painel de Atividades pelo
+    id interno (coluna A da planilha). Uso: correção manual de atividades
+    criadas incorretamente (ex: OS de outro cliente/site que entrou por
+    engano). Não existia endpoint de exclusão até 24/07/2026 — o painel só
+    tinha edição de campos."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    ativ_id = str(body.get("id", "")).strip()
+    if not ativ_id:
+        return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        linha = None
+        for i, row in enumerate(todos[1:], start=2):
+            if row and str(row[0]).strip() == ativ_id:
+                linha = i
+                break
+        if not linha:
+            return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
+        removida = todos[linha - 1]
+        ws.delete_rows(linha)
+        log.info(f"[excluir-atividade] id={ativ_id} removido. cliente={removida[1] if len(removida)>1 else '?'} "
+                 f"usina={removida[2] if len(removida)>2 else '?'} numeroOS={removida[13] if len(removida)>13 else '?'}")
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/localizacoes", methods=["GET"])
 def listar_localizacoes():
     """Lista as localizações (endereço + link do Maps + lat/lng já
