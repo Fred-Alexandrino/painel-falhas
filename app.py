@@ -6719,6 +6719,59 @@ def atualizar_coords_localizacao():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+NOMINATIM_USER_AGENT = "PainelOM-GridCo/1.0 (contato: fred@gridco.com.br)"
+
+
+@app.route("/localizacoes-geocodificar-servidor", methods=["POST", "OPTIONS"])
+def geocodificar_localizacoes_servidor():
+    """Geocodifica no SERVIDOR (não no navegador do Fred) os endereços que
+    ainda não têm lat/lng na aba 'Localizacoes', usando Nominatim/OSM.
+    Mais confiável que geocodificar no navegador: o Nominatim é rígido com
+    chamadas client-side sem um User-Agent de aplicação identificável
+    (headers custom não são permitidos no fetch do browser), o que fazia
+    boa parte das usinas ficarem travadas sem coordenada mesmo recarregando
+    a página. Aqui a gente identifica a aplicação corretamente e respeita
+    1 req/s, dentro do timeout de 160s do Gunicorn (dá pra ~140 endereços)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        ws = get_localizacoes_sheet()
+        todos = ws.get_all_values()
+        atualizados, falhas = [], []
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < 3 or not row[1].strip():
+                continue
+            lat_atual = row[4].strip() if len(row) > 4 else ""
+            lng_atual = row[5].strip() if len(row) > 5 else ""
+            if lat_atual and lng_atual:
+                continue
+            endereco = row[2].strip() if len(row) > 2 else ""
+            usina = row[1].strip()
+            if not endereco:
+                falhas.append(usina + " (sem endereço)")
+                continue
+            try:
+                resp = requests.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": endereco + ", Brasil", "format": "json", "limit": 1},
+                    headers={"User-Agent": NOMINATIM_USER_AGENT, "Accept-Language": "pt-BR"},
+                    timeout=10,
+                )
+                arr = resp.json() if resp.ok else []
+                if arr:
+                    lat, lng = float(arr[0]["lat"]), float(arr[0]["lon"])
+                    ws.update(f"E{i}:F{i}", [[lat, lng]])
+                    atualizados.append(usina)
+                else:
+                    falhas.append(usina + " (endereço não encontrado)")
+            except Exception as e:
+                falhas.append(usina + f" (erro: {e})")
+            time.sleep(1.1)  # respeita 1 req/s da política de uso do Nominatim
+        return jsonify({"ok": True, "atualizados": atualizados, "falhas": falhas}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/sincronizar-chamados", methods=["POST", "OPTIONS"])
 def sincronizar_chamados():
     """
