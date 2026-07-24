@@ -1,0 +1,12 @@
+STATUS: 200
+URL: https://nominatim.openstreetmap.org/search?q=Projeto+Xavantina%2C+Setor+Nova+Brasilia%2C+Gleba+B%2C+Nova+Xavantina+-+MT%2C+CEP%3A+78690-000%2C+Brasil&format=json&limit=1
+BODY: []
+---
+STATUS: 200
+URL: https://nominatim.openstreetmap.org/search?q=Estrada+de+Santa+Luzia%2C+Colider+-+MT%2C+78500-000%2C+Brasil&format=json&limit=1
+BODY: []
+---
+STATUS: 200
+URL: https://nominatim.openstreetmap.org/search?q=Fazenda+Lavrinha%2C+S%2FN%2C+Nobres+-+MT%2C+78470-000%2C+Brasil&format=json&limit=1
+BODY: []
+---
