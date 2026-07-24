@@ -7915,7 +7915,8 @@ def _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis):
     for a in atividades:
         linhas.append(
             f"- id={a['id']} | OS={a.get('numeroOS') or '—'} | Cliente={a['cliente']} | Usina={a['usina']} | "
-            f"Equipamento={a.get('equipamento') or '—'} | Responsável/Equipe={a.get('responsavel') or 'não informado'} | "
+            f"Ativo/Equipamento={a.get('equipamento') or '—'} | Ação/Tarefa={a.get('descricao') or '—'} | "
+            f"Responsável/Equipe={a.get('responsavel') or 'não informado'} | "
             f"Prioridade={a.get('prioridade') or 'Média'} | Prazo atual={a.get('prazo') or 'sem prazo definido'} | "
             f"Status={a.get('status')}"
         )
@@ -7952,6 +7953,8 @@ OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 5. Preencha os dias úteis mais próximos primeiro, na ordem em que aparecem na lista — não pule um dia disponível pra frente sem necessidade. Só avance pra um dia mais distante da lista quando os turnos dos dias mais próximos já estiverem no limite do critério 3.
 6. Para cada atividade, defina também um TURNO (manhã ou tarde) dentro do dia sugerido, respeitando o limite de 1-2 atividades por turno do critério 3.
 
+CAMPO "tarefa" NA SAÍDA (regra crítica, corrigida em 24/07/2026): cada atividade da lista abaixo tem dois campos distintos — "Ativo/Equipamento" é só o código fixo do equipamento na Fracttal (ex.: "IBT100-INVR1.8", "THPN-TPZ100-SSEG1-CMRA") e NÃO diz o que precisa ser feito; "Ação/Tarefa" é a descrição real do que deve ser executado naquele ativo. O campo "tarefa" da sua resposta deve vir do "Ação/Tarefa", reescrito em português claro e natural (curto, sem jargão de código) — NUNCA copie o código bruto do "Ativo/Equipamento" pra esse campo. O MESMO código de ativo pode aparecer em duas OSs diferentes com ações completamente diferentes (ex.: uma é "recomposição de câmera", outra é "instalação de câmera") — é normal, reflita a ação real de cada OS individualmente, não generalize pelo ativo. Se "Ação/Tarefa" vier vazio ou não fizer sentido, use algo genérico como "Verificação/manutenção conforme OS" em vez de inventar detalhes.
+
 ATIVIDADES A REPROGRAMAR:
 {lista_atividades}
 
@@ -7964,8 +7967,10 @@ Responda APENAS com um JSON válido (sem markdown, sem blocos de código com cra
     {{
       "id": "<id da atividade, exatamente como veio na lista>",
       "numeroOS": "<número da OS, exatamente como veio na lista>",
+      "cliente": "<cliente, exatamente como veio na lista>",
       "usina": "<usina>",
-      "equipamento": "<equipamento/atividade, exatamente como veio na lista>",
+      "equipamento": "<código do Ativo/Equipamento, exatamente como veio na lista — mantido só como referência>",
+      "tarefa": "<descrição da ação/tarefa em português legível, baseada no campo Ação/Tarefa — NUNCA o código bruto do ativo; ver regra acima>",
       "responsavel": "<responsável/equipe>",
       "dataAtual": "<prazo atual, ou 'sem prazo definido'>",
       "dataSugerida": "<nova data sugerida, formato dd/mm/aaaa, OBRIGATORIAMENTE um dia de segunda a sexta-feira>",
