@@ -1,0 +1,42 @@
+name: Diagnostico SSH VM1 v2
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ORACLE_VM1_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 168.138.232.237 >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Run diagnostics and save output
+        run: |
+          mkdir -p backups
+          ssh -i ~/.ssh/id_rsa ubuntu@168.138.232.237 '
+            echo "=== commit atual no disco ===";
+            cd ~/painel-falhas;
+            git log -1 --format="%H %ci";
+            echo "=== git status ===";
+            git status --short;
+            echo "=== grep localizacoes no app.py do disco ===";
+            grep -n "def listar_localizacoes\|/localizacoes" app.py || echo "NAO ENCONTRADO NO ARQUIVO";
+            echo "=== status do servico ===";
+            sudo systemctl status painel-falhas --no-pager | head -20;
+            echo "=== ultimas linhas do log ===";
+            sudo journalctl -u painel-falhas -n 80 --no-pager;
+          ' > backups/diag-ssh-output.txt 2>&1 || echo "SSH_FALHOU" >> backups/diag-ssh-output.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-ssh-output.txt
+          git commit -m "diag ssh output [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-ssh-output.txt
+          git commit -m "diag ssh output [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
