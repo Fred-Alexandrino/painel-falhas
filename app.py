@@ -6664,13 +6664,22 @@ def listar_localizacoes():
                 continue
             lat = row[4].strip() if len(row) > 4 else ""
             lng = row[5].strip() if len(row) > 5 else ""
+            def _num(v):
+                # a planilha está em locale pt-BR: números podem vir com
+                # vírgula decimal (ex: "-4,105639") em vez de ponto
+                if not v:
+                    return None
+                try:
+                    return float(v.replace(".", "").replace(",", ".")) if "," in v else float(v)
+                except ValueError:
+                    return None
             itens.append({
                 "cliente": row[0].strip() if len(row) > 0 else "",
                 "usina": row[1].strip(),
                 "endereco": row[2].strip() if len(row) > 2 else "",
                 "mapsLink": row[3].strip() if len(row) > 3 else "",
-                "lat": float(lat) if lat else None,
-                "lng": float(lng) if lng else None,
+                "lat": _num(lat),
+                "lng": _num(lng),
             })
         return jsonify({"ok": True, "itens": itens}), 200
     except Exception as e:
