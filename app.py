@@ -7619,6 +7619,7 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     esperas = [2, 5, 10]
     ultima_excecao = None
     ultimo_status = None
+    teve_timeout_ou_conexao = False
     for tentativa in range(tentativas):
         try:
             resp = requests.post(f"{GEMINI_URL}?key={chave}", json=payload, timeout=timeout)
@@ -7642,16 +7643,29 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
             if resp.status_code == 429 and tentativa < tentativas - 1:
                 time.sleep(esperas[tentativa])
                 continue
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            # BUG CORRIGIDO (24/07/2026): timeout de leitura/erro de conexão
+            # com a API do Gemini não era pego por nenhum except anterior
+            # (só HTTPError/429 tinham retry), então a exceção crua (ex.:
+            # "Read timed out") vazava direto pro usuário sem nenhuma nova
+            # tentativa. Agora trata igual às outras falhas: reretenta com
+            # o mesmo backoff crescente e, se esgotar, cai no fallback pra
+            # chave de teste como qualquer outro tipo de falha.
+            ultima_excecao = e
+            teve_timeout_ou_conexao = True
+            log.warning(f"[Gemini] Timeout/erro de conexão na tentativa {tentativa + 1}/{tentativas}: {e}")
+            if tentativa < tentativas - 1:
+                time.sleep(esperas[tentativa])
+                continue
 
     # esgotou as tentativas na chave principal — tenta a chave de teste
-    # como reserva, uma única vez, antes de desistir. Cobre tanto 429
-    # (cota esgotada) quanto 401/403 (chave principal inválida, revogada
-    # ou expirada) — esse segundo caso foi identificado em 23/07/2026,
-    # quando a chave principal parou de autenticar do nada (mesmo com o
-    # modelo correto) mas a chave de teste continuou funcionando normal.
-    if ultimo_status in (429, 401, 403) and not usar_chave_teste and GEMINI_API_KEY_TESTE:
+    # como reserva, uma única vez, antes de desistir. Cobre 429 (cota
+    # esgotada), 401/403 (chave principal inválida, revogada ou expirada
+    # — identificado 23/07/2026) e agora também timeout/erro de conexão
+    # (identificado 24/07/2026).
+    if (ultimo_status in (429, 401, 403) or teve_timeout_ou_conexao) and not usar_chave_teste and GEMINI_API_KEY_TESTE:
         try:
-            log.warning(f"[Gemini] Chave principal falhou (status {ultimo_status}) — usando chave de teste como reserva")
+            log.warning(f"[Gemini] Chave principal falhou (status={ultimo_status}, timeout={teve_timeout_ou_conexao}) — usando chave de teste como reserva")
             resp = requests.post(f"{GEMINI_URL}?key={GEMINI_API_KEY_TESTE}", json=payload, timeout=timeout)
             resp.raise_for_status()
             return resp
@@ -7661,6 +7675,8 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
             except Exception:
                 detalhe = ""
             ultima_excecao = requests.exceptions.HTTPError(f"{e} | corpo: {detalhe}", response=resp)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            ultima_excecao = e
 
     raise ultima_excecao
 
@@ -8096,6 +8112,10 @@ def sugerir_priorizacao_diaria():
     except (KeyError, IndexError, json.JSONDecodeError) as e:
         log.error(f"[sugerir-priorizacao] Erro ao processar resposta do Gemini: {e}")
         return jsonify({"ok": False, "error": "A IA retornou uma resposta em formato inesperado. Tente novamente."}), 502
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        log.error(f"[sugerir-priorizacao] Timeout/erro de conexão com a IA mesmo após retries: {e}")
+        return jsonify({"ok": False, "error": ("A IA demorou demais para responder. Tente novamente em instantes "
+                        "ou com menos atividades de uma vez.")}), 504
     except Exception as e:
         log.error(f"[sugerir-priorizacao] Erro inesperado: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -8215,6 +8235,10 @@ def sugerir_reprogramacao():
                             "excessivo em pouco tempo). Aguarde alguns minutos e tente de novo.")}), 429
         log.error(f"[sugerir-reprogramacao] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        log.error(f"[sugerir-reprogramacao] Timeout/erro de conexão com a IA mesmo após retries: {e}")
+        return jsonify({"ok": False, "error": ("A IA demorou demais para responder. Tente novamente em instantes "
+                        "ou com menos atividades de uma vez (filtre por cliente/usina).")}), 504
     except Exception as e:
         log.error(f"[sugerir-reprogramacao] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
