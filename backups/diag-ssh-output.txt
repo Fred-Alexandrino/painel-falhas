@@ -1,5 +1,5 @@
 === commit atual no disco ===
-4bd77f21269b46469272af3f5a1866f7adcc382a 2026-07-24 11:53:49 -0300
+19f6706720535ef89137b0dd46bae44b5006fbba 2026-07-24 12:11:46 -0300
 === git status ===
 ?? .env
 ?? .env.bak-20260723-125706
@@ -7,66 +7,33 @@
 ?? venv/
 ?? zeladoria_fotos/
 === grep localizacoes no app.py do disco ===
-NAO ENCONTRADO NO ARQUIVO
+1257:# edita direto na planilha ou via /localizacoes-atualizar-coords.
+6649:@app.route("/localizacoes", methods=["GET"])
+6650:def listar_localizacoes():
+6656:    geocodificada (ver /localizacoes-atualizar-coords) mas continua
+6689:@app.route("/localizacoes-atualizar-coords", methods=["POST", "OPTIONS"])
 === status do servico ===
 ● painel-falhas.service - Painel Falhas - Backend Flask
      Loaded: loaded (/etc/systemd/system/painel-falhas.service; enabled; preset: enabled)
-     Active: active (running) since Fri 2026-07-24 14:54:32 UTC; 14min ago
-   Main PID: 124434 (gunicorn)
+     Active: active (running) since Fri 2026-07-24 15:12:11 UTC; 31s ago
+   Main PID: 124858 (gunicorn)
       Tasks: 3 (limit: 1035)
-     Memory: 114.8M (peak: 115.9M)
-        CPU: 12.364s
+     Memory: 126.0M (peak: 126.3M)
+        CPU: 8.162s
      CGroup: /system.slice/painel-falhas.service
-             ├─124434 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
-             ├─124437 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
-             └─124438 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
+             ├─124858 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
+             ├─124860 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
+             └─124861 /home/ubuntu/painel-falhas/venv/bin/python3 /home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 160 app:app
 
-Jul 24 14:54:32 vnic-painel-om systemd[1]: Started painel-falhas.service - Painel Falhas - Backend Flask.
-Jul 24 14:54:32 vnic-painel-om gunicorn[124434]: [2026-07-24 14:54:32 +0000] [124434] [INFO] Starting gunicorn 22.0.0
-Jul 24 14:54:32 vnic-painel-om gunicorn[124434]: [2026-07-24 14:54:32 +0000] [124434] [INFO] Listening at: http://127.0.0.1:5000 (124434)
-Jul 24 14:54:32 vnic-painel-om gunicorn[124434]: [2026-07-24 14:54:32 +0000] [124434] [INFO] Using worker: sync
-Jul 24 14:54:32 vnic-painel-om gunicorn[124437]: [2026-07-24 14:54:32 +0000] [124437] [INFO] Booting worker with pid: 124437
-Jul 24 14:54:32 vnic-painel-om gunicorn[124438]: [2026-07-24 14:54:32 +0000] [124438] [INFO] Booting worker with pid: 124438
-Jul 24 14:54:38 vnic-painel-om gunicorn[124438]: 2026-07-24 14:54:38,495 INFO [Push] 2 subscription(ões) carregada(s) da planilha
-Jul 24 14:54:38 vnic-painel-om gunicorn[124437]: 2026-07-24 14:54:38,529 INFO [Push] 2 subscription(ões) carregada(s) da planilha
+Jul 24 15:12:11 vnic-painel-om systemd[1]: Started painel-falhas.service - Painel Falhas - Backend Flask.
+Jul 24 15:12:12 vnic-painel-om gunicorn[124858]: [2026-07-24 15:12:12 +0000] [124858] [INFO] Starting gunicorn 22.0.0
+Jul 24 15:12:12 vnic-painel-om gunicorn[124858]: [2026-07-24 15:12:12 +0000] [124858] [INFO] Listening at: http://127.0.0.1:5000 (124858)
+Jul 24 15:12:12 vnic-painel-om gunicorn[124858]: [2026-07-24 15:12:12 +0000] [124858] [INFO] Using worker: sync
+Jul 24 15:12:12 vnic-painel-om gunicorn[124860]: [2026-07-24 15:12:12 +0000] [124860] [INFO] Booting worker with pid: 124860
+Jul 24 15:12:12 vnic-painel-om gunicorn[124861]: [2026-07-24 15:12:12 +0000] [124861] [INFO] Booting worker with pid: 124861
+Jul 24 15:12:17 vnic-painel-om gunicorn[124860]: 2026-07-24 15:12:17,909 INFO [Push] 2 subscription(ões) carregada(s) da planilha
+Jul 24 15:12:17 vnic-painel-om gunicorn[124861]: 2026-07-24 15:12:17,947 INFO [Push] 2 subscription(ões) carregada(s) da planilha
 === ultimas linhas do log ===
-Jul 24 13:59:03 vnic-painel-om gunicorn[122696]: 2026-07-24 13:59:03,111 INFO [Push] 2 notificação(ões) enviada(s)
-Jul 24 13:59:03 vnic-painel-om gunicorn[122696]: 2026-07-24 13:59:03,111 INFO [sync-fracttal] criadas=5 revisao_manual=54 erros=0
-Jul 24 13:59:05 vnic-painel-om gunicorn[122695]: 2026-07-24 13:59:05,937 INFO [Push] Subscription registrada (já existia): https://fcm.googleapis.com/fcm/send/f2PAhuTBaVI:APA91bFVWnp1...
-Jul 24 13:59:05 vnic-painel-om gunicorn[122695]: 2026-07-24 13:59:05,937 INFO [Push] Total de dispositivos: 2
-Jul 24 14:12:49 vnic-painel-om gunicorn[122695]: 2026-07-24 14:12:49,649 ERROR [Fracttal] Erro ao checar/atualizar OS 10018: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:553683822566'.
-Jul 24 14:13:35 vnic-painel-om gunicorn[122695]: 2026-07-24 14:13:35,521 ERROR [Fracttal] Erro ao checar/atualizar OS 6622/7854: 404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854
-Jul 24 14:13:49 vnic-painel-om gunicorn[122695]: 2026-07-24 14:13:49,757 WARNING [Auditoria] Orçamento de 60s esgotado — 68/135 revalidadas nesta rodada, restante fica pro próximo ciclo automático (5min).
-Jul 24 14:13:49 vnic-painel-om gunicorn[122695]: 2026-07-24 14:13:49,758 WARNING [Auditoria] 135 OS(s) sem verificação recente na Fracttal (>0min), 68 revalidada(s) ao vivo agora: ['10018', '10017', '10016', '10014', '9857', '9856', '9852', '9106', '9854', '9359', '9547', '9543', '9540', '8867', '9853', '9720', '9851', '9719', '8855', '9780', '9984', '9849', '8861', '9100', '9097', '9110', '9841', '9250', '9840', '9839', '9577', '9997', '9525', '9838', '9995', '8914', '8626', '9837', '9023', '9552', '9836', '9551', '8918', '9548', '8916', '8903', '9835', '7904', '9109', '9362', '9723', '8908', '9895', '6622/7854', '8665', '8661', '9735', '9746', '8657', '9119', '9114', '9358', '9781', '7084', '9113', '9802', '9112', '8907', '8906', '9725', '9108', '9578', '9574', '8865', '9879', '8663', '9115', '9107', '9105', '9855', '9118', '9104', '9103', '9991', '9101', '9148', '9252', '9850', '9098', '9249', '9541', '10010', '8812', '9357', '9449', '8860', '9542', '9722', '9778', '9738', '9877', '8917', '9099', '9096', '8915', '9579', '8905', '8605', '9777', '8685', '9432', '9491', '9550', '9715', '9776', '9117', '9575', '9549', '9641', '8864', '9716', '8508', '9545', '9544', '8664', '9718', '8604', '9717', '9771', '8532', '9546', '9747', '8904', '9779', '8483']
-Jul 24 14:25:22 vnic-painel-om gunicorn[122696]: 2026-07-24 14:25:22,489 WARNING [Auditoria] Orçamento de 60s esgotado — 60/135 revalidadas nesta rodada, restante fica pro próximo ciclo automático (5min).
-Jul 24 14:25:22 vnic-painel-om gunicorn[122696]: 2026-07-24 14:25:22,489 WARNING [Auditoria] 135 OS(s) sem verificação recente na Fracttal (>0min), 60 revalidada(s) ao vivo agora: ['10018', '9108', '9578', '9574', '8865', '9879', '8663', '9115', '9107', '9105', '9855', '9118', '9104', '9103', '9991', '9101', '9148', '9252', '9850', '9098', '9249', '9541', '10010', '8812', '9357', '9449', '8860', '9542', '9722', '9778', '9738', '9877', '8917', '9099', '9096', '8915', '9579', '8905', '8605', '9777', '8685', '9432', '9491', '9550', '9715', '9776', '9117', '9575', '9549', '9641', '8864', '9716', '8508', '9545', '9544', '8664', '9718', '8604', '9717', '9771', '8532', '9546', '9747', '8904', '9779', '8483', '10017', '10016', '10014', '9857', '9856', '9852', '9106', '9359', '9854', '9547', '9543', '9540', '8867', '9853', '9720', '9851', '9719', '8855', '9780', '9984', '8861', '9849', '9100', '9097', '9110', '9841', '9250', '9840', '9839', '9577', '9997', '9525', '9838', '9995', '8914', '8626', '9837', '9023', '9552', '9836', '9551', '8918', '9548', '8916', '8903', '9835', '7904', '9109', '9362', '9723', '8908', '9895', '6622/7854', '8665', '8661', '9735', '9746', '8657', '9119', '9114', '9358', '9781', '7084', '9113', '9802', '9112', '8907', '8906', '9725']
-Jul 24 14:38:44 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:44,127 ERROR [Fracttal] Erro ao checar/atualizar OS 6622/7854: 404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854
-Jul 24 14:38:52 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:52,262 ERROR [Fracttal] Erro ao checar/atualizar OS 9358: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:553683822566'.
-Jul 24 14:38:53 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:53,039 ERROR [Fracttal] Erro ao checar/atualizar OS 9781: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:553683822566'.
-Jul 24 14:38:53 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:53,791 ERROR [Fracttal] Erro ao checar/atualizar OS 7084: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:553683822566'.
-Jul 24 14:38:54 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:54,664 ERROR [Fracttal] Erro ao checar/atualizar OS 9113: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:553683822566'.
-Jul 24 14:38:55 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:55,015 WARNING [Auditoria] Orçamento de 60s esgotado — 65/135 revalidadas nesta rodada, restante fica pro próximo ciclo automático (5min).
-Jul 24 14:38:55 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:55,016 WARNING [Auditoria] 135 OS(s) sem verificação recente na Fracttal (>0min), 65 revalidada(s) ao vivo agora: ['8532', '9546', '9747', '8904', '9779', '8483', '10017', '10016', '10014', '9857', '9856', '9852', '9106', '9359', '9854', '9547', '9543', '9540', '8867', '9853', '9720', '9851', '9719', '8855', '9780', '9984', '8861', '9849', '9100', '9097', '9110', '9841', '9250', '9840', '9839', '9577', '9997', '9525', '9838', '9995', '8914', '8626', '9837', '9023', '9552', '9836', '9551', '8918', '9548', '8916', '8903', '9835', '7904', '9109', '9362', '9723', '8908', '9895', '6622/7854', '8665', '8661', '9735', '9746', '8657', '9119', '9114', '9358', '9781', '7084', '9113', '9802', '9112', '8907', '8906', '9725', '10018', '9108', '9578', '9574', '8865', '9879', '8663', '9115', '9107', '9105', '9855', '9118', '9104', '9103', '9991', '9101', '9148', '9252', '9850', '9098', '9249', '9541', '10010', '8812', '9357', '9449', '8860', '9542', '9722', '9778', '9738', '9877', '8917', '9099', '9096', '8915', '9579', '8905', '8605', '9777', '8685', '9432', '9491', '9550', '9715', '9776', '9117', '9575', '9549', '9641', '8864', '9716', '8508', '9545', '9544', '8664', '9718', '8604', '9717', '9771']
-Jul 24 14:38:57 vnic-painel-om gunicorn[122696]: 2026-07-24 14:38:57,592 ERROR [DescobertaRapida] Erro na verificação/disparo: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:553683822566'.
-Jul 24 14:43:02 vnic-painel-om gunicorn[122696]: 2026-07-24 14:43:02,035 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/fWru...
-Jul 24 14:43:02 vnic-painel-om gunicorn[122696]: 2026-07-24 14:43:02,364 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/f2PA...
-Jul 24 14:43:02 vnic-painel-om gunicorn[122696]: 2026-07-24 14:43:02,364 INFO [Push] 2 notificação(ões) enviada(s)
-Jul 24 14:47:24 vnic-painel-om gunicorn[122695]: [2026-07-24 14:47:24 +0000] [122695] [INFO] Worker exiting (pid: 122695)
-Jul 24 14:47:24 vnic-painel-om gunicorn[122693]: [2026-07-24 14:47:24 +0000] [122693] [INFO] Handling signal: term
-Jul 24 14:47:24 vnic-painel-om systemd[1]: Stopping painel-falhas.service - Painel Falhas - Backend Flask...
-Jul 24 14:47:24 vnic-painel-om gunicorn[122696]: [2026-07-24 14:47:24 +0000] [122696] [INFO] Worker exiting (pid: 122696)
-Jul 24 14:47:24 vnic-painel-om gunicorn[122693]: [2026-07-24 14:47:24 +0000] [122693] [INFO] Shutting down: Master
-Jul 24 14:47:25 vnic-painel-om systemd[1]: painel-falhas.service: Deactivated successfully.
-Jul 24 14:47:25 vnic-painel-om systemd[1]: Stopped painel-falhas.service - Painel Falhas - Backend Flask.
-Jul 24 14:47:25 vnic-painel-om systemd[1]: painel-falhas.service: Consumed 57.621s CPU time, 95.5M memory peak, 0B memory swap peak.
-Jul 24 14:47:25 vnic-painel-om systemd[1]: Started painel-falhas.service - Painel Falhas - Backend Flask.
-Jul 24 14:47:25 vnic-painel-om gunicorn[124152]: [2026-07-24 14:47:25 +0000] [124152] [INFO] Starting gunicorn 22.0.0
-Jul 24 14:47:25 vnic-painel-om gunicorn[124152]: [2026-07-24 14:47:25 +0000] [124152] [INFO] Listening at: http://127.0.0.1:5000 (124152)
-Jul 24 14:47:25 vnic-painel-om gunicorn[124152]: [2026-07-24 14:47:25 +0000] [124152] [INFO] Using worker: sync
-Jul 24 14:47:25 vnic-painel-om gunicorn[124154]: [2026-07-24 14:47:25 +0000] [124154] [INFO] Booting worker with pid: 124154
-Jul 24 14:47:25 vnic-painel-om gunicorn[124155]: [2026-07-24 14:47:25 +0000] [124155] [INFO] Booting worker with pid: 124155
-Jul 24 14:47:31 vnic-painel-om gunicorn[124155]: 2026-07-24 14:47:31,116 INFO [Push] 2 subscription(ões) carregada(s) da planilha
-Jul 24 14:47:31 vnic-painel-om gunicorn[124154]: 2026-07-24 14:47:31,119 INFO [Push] 2 subscription(ões) carregada(s) da planilha
 Jul 24 14:48:06 vnic-painel-om gunicorn[124154]: 2026-07-24 14:48:06,642 INFO [Push] Subscription registrada (já existia): https://fcm.googleapis.com/fcm/send/fWruQ0Aqwkg:APA91bGjtzea...
 Jul 24 14:48:06 vnic-painel-om gunicorn[124154]: 2026-07-24 14:48:06,642 INFO [Push] Total de dispositivos: 2
 Jul 24 14:49:43 vnic-painel-om gunicorn[124152]: [2026-07-24 14:49:43 +0000] [124152] [INFO] Handling signal: term
@@ -110,3 +77,40 @@ Jul 24 14:54:38 vnic-painel-om gunicorn[124438]: 2026-07-24 14:54:38,495 INFO [P
 Jul 24 14:54:38 vnic-painel-om gunicorn[124437]: 2026-07-24 14:54:38,529 INFO [Push] 2 subscription(ões) carregada(s) da planilha
 Jul 24 15:03:58 vnic-painel-om gunicorn[124437]: 2026-07-24 15:03:58,898 INFO [Push] Subscription registrada (já existia): https://fcm.googleapis.com/fcm/send/fWruQ0Aqwkg:APA91bGjtzea...
 Jul 24 15:03:58 vnic-painel-om gunicorn[124437]: 2026-07-24 15:03:58,898 INFO [Push] Total de dispositivos: 2
+Jul 24 15:09:18 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:18,485 ERROR [Fracttal] Erro ao checar/atualizar OS 6622/7854: 404 Client Error: Not Found for url: https://app.fracttal.com/api/work_orders/6622/7854
+Jul 24 15:09:21 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:21,532 WARNING [Auditoria] Orçamento de 60s esgotado — 63/135 revalidadas nesta rodada, restante fica pro próximo ciclo automático (5min).
+Jul 24 15:09:22 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:22,446 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/fWru...
+Jul 24 15:09:23 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:23,364 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/f2PA...
+Jul 24 15:09:23 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:23,364 INFO [Push] 2 notificação(ões) enviada(s)
+Jul 24 15:09:23 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:23,364 WARNING [Auditoria] 135 OS(s) sem verificação recente na Fracttal (>0min), 63 revalidada(s) ao vivo agora: ['8604', '9717', '9771', '8532', '9546', '9747', '8904', '9779', '8483', '10017', '10016', '10014', '9857', '9856', '9106', '9852', '9359', '9854', '9547', '9543', '8867', '9540', '9853', '9720', '9851', '9719', '8855', '9780', '9984', '8861', '9849', '9100', '9097', '9110', '9250', '9841', '9840', '9839', '9577', '9997', '9525', '9838', '9995', '8914', '8626', '9837', '9023', '9552', '9551', '9836', '8918', '9548', '8916', '8903', '7904', '9835', '9109', '9362', '9723', '8908', '6622/7854', '9895', '8665', '8661', '9735', '9746', '8657', '9119', '9114', '9358', '9781', '7084', '9113', '9802', '9112', '8907', '8906', '9725', '10018', '9108', '9578', '9574', '8865', '9879', '8663', '9115', '9107', '9105', '9855', '9118', '9104', '9103', '9991', '9101', '9148', '9252', '9850', '9098', '9249', '9541', '10010', '8812', '9357', '9449', '8860', '9542', '9722', '9778', '9738', '9877', '8917', '9099', '9096', '8915', '9579', '8905', '8605', '9777', '8685', '9432', '9491', '9550', '9715', '9776', '9117', '9575', '9549', '9641', '8864', '9716', '8508', '9545', '9544', '8664', '9718']
+Jul 24 15:09:28 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:28,034 INFO [atividade] #246 THOPEN/Boa Esperança do Sul I — Acompanhamento - Supressão Vegetal | editor=fracttal-sync
+Jul 24 15:09:28 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:28,910 INFO [atividade] #247 THOPEN/Matão I — Acompanhamento - Limpeza de Módulos (Termografia se aplicáve | editor=fracttal-sync
+Jul 24 15:09:29 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:29,414 INFO [atividade] #248 THOPEN/Matão II - Topázio — Acompanhamento - Limpeza de Módulos (Termografia se aplicáve | editor=fracttal-sync
+Jul 24 15:09:29 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:29,883 INFO [atividade] #249 RENOGRID/Crateús — [Greenyellow] - Inspeção/Relatório fotográfico UFV | editor=fracttal-sync
+Jul 24 15:09:31 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:31,105 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/fWru...
+Jul 24 15:09:31 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:31,577 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/f2PA...
+Jul 24 15:09:31 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:31,577 INFO [Push] 2 notificação(ões) enviada(s)
+Jul 24 15:09:31 vnic-painel-om gunicorn[124437]: 2026-07-24 15:09:31,577 INFO [sync-fracttal] criadas=4 revisao_manual=51 erros=0
+Jul 24 15:10:32 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:32,874 WARNING [Auditoria] Orçamento de 60s esgotado — 64/139 revalidadas nesta rodada, restante fica pro próximo ciclo automático (5min).
+Jul 24 15:10:32 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:32,875 WARNING [Auditoria] 139 OS(s) sem verificação recente na Fracttal (>0min), 64 revalidada(s) ao vivo agora: ['10032', '10030', '10029', '10022', '9735', '9746', '8657', '9119', '9114', '9358', '9781', '7084', '9113', '9802', '9112', '8907', '8906', '9725', '10018', '9108', '9578', '9574', '8865', '9879', '8663', '9115', '9107', '9105', '9855', '9118', '9104', '9103', '9991', '9101', '9148', '9252', '9850', '9098', '9249', '9541', '10010', '8812', '9357', '9449', '8860', '9542', '9722', '9778', '9738', '9877', '8917', '9099', '9096', '8915', '9579', '8905', '8605', '9777', '8685', '9432', '9491', '9550', '9715', '9776', '9117', '9575', '9549', '9641', '8864', '9716', '8508', '9545', '9544', '8664', '9718', '8604', '9717', '9771', '8532', '9546', '8904', '9747', '9779', '8483', '10017', '10016', '9857', '10014', '9856', '9106', '9852', '9359', '9854', '9547', '9543', '8867', '9540', '9853', '9720', '9719', '9851', '8855', '9780', '9984', '8861', '9849', '9100', '9097', '9110', '9250', '9841', '9840', '9839', '9577', '9997', '9525', '9838', '8914', '9995', '8626', '9837', '9023', '9552', '9551', '9836', '8918', '9548', '8916', '8903', '7904', '9835', '9109', '9362', '9723', '8908', '6622/7854', '8665', '9895', '8661']
+Jul 24 15:10:34 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:34,562 WARNING [ValidacaoRelatorios] 7 problema(s) de integridade encontrado(s) (clientes: ['2C', 'RENOGRID', 'THOPEN'], aplicado=True)
+Jul 24 15:10:35 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:35,592 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/fWru...
+Jul 24 15:10:36 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:36,622 INFO [Push] Enviado para https://fcm.googleapis.com/fcm/send/f2PA...
+Jul 24 15:10:36 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:36,623 INFO [Push] 2 notificação(ões) enviada(s)
+Jul 24 15:10:40 vnic-painel-om gunicorn[124437]: 2026-07-24 15:10:40,502 INFO [sync-fracttal] criadas=0 revisao_manual=51 erros=0
+Jul 24 15:12:10 vnic-painel-om gunicorn[124434]: [2026-07-24 15:12:10 +0000] [124434] [INFO] Handling signal: term
+Jul 24 15:12:10 vnic-painel-om gunicorn[124437]: [2026-07-24 15:12:10 +0000] [124437] [INFO] Worker exiting (pid: 124437)
+Jul 24 15:12:10 vnic-painel-om systemd[1]: Stopping painel-falhas.service - Painel Falhas - Backend Flask...
+Jul 24 15:12:11 vnic-painel-om gunicorn[124438]: [2026-07-24 15:12:10 +0000] [124438] [INFO] Worker exiting (pid: 124438)
+Jul 24 15:12:11 vnic-painel-om gunicorn[124434]: [2026-07-24 15:12:11 +0000] [124434] [INFO] Shutting down: Master
+Jul 24 15:12:11 vnic-painel-om systemd[1]: painel-falhas.service: Deactivated successfully.
+Jul 24 15:12:11 vnic-painel-om systemd[1]: Stopped painel-falhas.service - Painel Falhas - Backend Flask.
+Jul 24 15:12:11 vnic-painel-om systemd[1]: painel-falhas.service: Consumed 19.479s CPU time, 115.9M memory peak, 0B memory swap peak.
+Jul 24 15:12:11 vnic-painel-om systemd[1]: Started painel-falhas.service - Painel Falhas - Backend Flask.
+Jul 24 15:12:12 vnic-painel-om gunicorn[124858]: [2026-07-24 15:12:12 +0000] [124858] [INFO] Starting gunicorn 22.0.0
+Jul 24 15:12:12 vnic-painel-om gunicorn[124858]: [2026-07-24 15:12:12 +0000] [124858] [INFO] Listening at: http://127.0.0.1:5000 (124858)
+Jul 24 15:12:12 vnic-painel-om gunicorn[124858]: [2026-07-24 15:12:12 +0000] [124858] [INFO] Using worker: sync
+Jul 24 15:12:12 vnic-painel-om gunicorn[124860]: [2026-07-24 15:12:12 +0000] [124860] [INFO] Booting worker with pid: 124860
+Jul 24 15:12:12 vnic-painel-om gunicorn[124861]: [2026-07-24 15:12:12 +0000] [124861] [INFO] Booting worker with pid: 124861
+Jul 24 15:12:17 vnic-painel-om gunicorn[124860]: 2026-07-24 15:12:17,909 INFO [Push] 2 subscription(ões) carregada(s) da planilha
+Jul 24 15:12:17 vnic-painel-om gunicorn[124861]: 2026-07-24 15:12:17,947 INFO [Push] 2 subscription(ões) carregada(s) da planilha
