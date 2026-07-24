@@ -1,0 +1,25 @@
+name: Diag Atividades Temp3
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar atividades
+        run: |
+          mkdir -p backups
+          curl -s --max-time 25 "https://api.168.138.232.237.sslip.io/atividades" -o backups/diag-atividades-full.json
+      - name: Commit
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-atividades-full.json
+          git diff --quiet --cached || git commit -m "diag atividades full temp"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-atividades-full.json
+          git commit -m "diag atividades full temp" || echo nothing
+          git push origin HEAD:main
