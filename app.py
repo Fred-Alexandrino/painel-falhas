@@ -4284,10 +4284,19 @@ def _fracttal_mapear_grupo(tasks):
         if usinas_do_tecnico and usina not in usinas_do_tecnico:
             alerta = (f"⚠️ Cruzamento: técnico \"{tecnico_raw}\" não está mapeado para {usina} "
                       f"(usinas esperadas dele: {', '.join(usinas_do_tecnico)}). Confira se a usina está certa.")
-    elif len(usinas_do_tecnico) == 1:
+    elif len(usinas_do_tecnico) == 1 and not texto_usado.strip():
+        # Só confia no fallback "técnico só atende 1 usina do catálogo" quando
+        # a Fracttal NÃO informou nome de grupo/ativo nenhum (texto_usado
+        # vazio). Se veio um nome e ele só não bateu com o catálogo (ex:
+        # "Castelo do Piauí 1" pro técnico Railson Gomes, que também atende
+        # a GreenYellow fora do catálogo do Fred), é sinal forte de outro
+        # site/cliente — não é o mesmo caso de "Fracttal não informou nada".
+        # Isso já causou um erro grave: OS da GreenYellow/Castelo do Piauí
+        # entrando no painel como Crateús/Renogrid (24/07/2026). Vai pra
+        # revisão manual em vez de assumir.
         usina = usinas_do_tecnico[0]
-        alerta = (f"⚠️ Usina inferida pelo técnico responsável (\"{tecnico_raw}\"), pois nem o grupo "
-                  f"(\"{texto_grupo}\") nem o ativo (\"{texto_ativo}\") bateram com o catálogo. Confira se está correto.")
+        alerta = (f"⚠️ Usina inferida pelo técnico responsável (\"{tecnico_raw}\"), pois a Fracttal não "
+                  f"informou grupo nem ativo. Confira se está correto.")
     else:
         if usinas_do_tecnico:
             motivo = (f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
