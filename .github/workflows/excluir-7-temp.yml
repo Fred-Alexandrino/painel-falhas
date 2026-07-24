@@ -1,0 +1,27 @@
+name: Excluir 7 Atividades Castelo do Piaui
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          for id in 54 55 69 155 178 202 249; do
+            echo "=== excluindo id $id ===" >> backups/excluir-7.txt
+            curl -s -w "\nSTATUS:%{http_code}\n" -X POST "https://api.168.138.232.237.sslip.io/excluir-atividade" -H "Content-Type: application/json" -d "{\"id\":\"$id\"}" >> backups/excluir-7.txt
+            sleep 1
+          done
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/excluir-7.txt
+          git commit -m "excluir 7 atividades castelo do piaui [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/excluir-7.txt
+          git commit -m "excluir 7 atividades castelo do piaui [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
