@@ -1,0 +1,29 @@
+name: Diag Config Ler Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ler config
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 20 \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            "https://api.168.138.232.237.sslip.io/config-ler" -o backups/diag-config-ler.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-config-ler.json
+          git diff --quiet --cached || git commit -m "diag config-ler temp [skip ci]"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-config-ler.json
+          git commit -m "diag config-ler temp [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
