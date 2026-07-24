@@ -1,0 +1,31 @@
+name: Fix Matao Cluster Cleanup2
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remover chaves Matao 1 (digito) e limpar cache
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-remover" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" \
+            -d '{"chaves":["cluster_usina:Matão 1","grupo_usina:Matão 1"]}' -o backups/diag-remover2-result.json
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-limpar-cache" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/diag-limpar-cache2-result.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-remover2-result.json backups/diag-limpar-cache2-result.json
+          git diff --quiet --cached || git commit -m "cleanup matao 1 digito temp"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-remover2-result.json backups/diag-limpar-cache2-result.json
+          git commit -m "cleanup matao 1 digito temp" || echo nothing
+          git push origin HEAD:main
