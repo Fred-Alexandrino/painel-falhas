@@ -406,7 +406,7 @@ CATALOGO_USINAS = {
             "ibaté ii", "ibaté 2", "ibaté 1b", "ibaté ib", "ibaté b",
         ],
     },
-    "Matão 1": {
+    "Matão I": {
         "cliente": "THOPEN",
         "aliases": [
             "matao 1", "matao i", "matao 1a", "matao ia", "matao a",
@@ -3956,7 +3956,7 @@ TECNICO_USINAS = {
     "valmir junior":     ["Nobres"],
     "lucas lima":        ["Nobres"],
     "gabriel oliveira":  ["Nova Xavantina I", "Nova Xavantina II"],
-    "eduardo souza":     ["Matão 1", "Matão II - Topázio"],
+    "eduardo souza":     ["Matão I", "Matão II - Topázio"],
     "aniel rocha":       ["Araputanga", "Poconé"],
     "adriano moraes":    ["Araputanga", "Poconé"],
     "claudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú"],
