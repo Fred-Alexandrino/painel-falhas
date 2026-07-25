@@ -6761,6 +6761,52 @@ def atualizar_coords_localizacao():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+_MAPS_PIN_REGEX = re.compile(r"!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)")
+
+
+@app.route("/localizacoes-resolver-links-servidor", methods=["POST", "OPTIONS"])
+def resolver_links_maps_servidor():
+    """Pega a coordenada EXATA que o Fred já pinou no Google Maps,
+    resolvendo o link curto (maps.app.goo.gl) que ele mandou pra cada
+    usina — em vez de adivinhar a partir do texto do endereço (que falha
+    pra fazenda/sítio rural não mapeado no OSM). Isso é definitivo: uma
+    vez resolvido e gravado na planilha, nunca mais precisa rodar de novo
+    pra essa usina, mesmo que o Nominatim nunca ache o endereço dela."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        ws = get_localizacoes_sheet()
+        todos = ws.get_all_values()
+        resolvidos, falhas = [], []
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < 4 or not row[1].strip():
+                continue
+            lat_atual = row[4].strip() if len(row) > 4 else ""
+            lng_atual = row[5].strip() if len(row) > 5 else ""
+            if lat_atual and lng_atual:
+                continue
+            link = row[3].strip() if len(row) > 3 else ""
+            usina = row[1].strip()
+            if not link:
+                falhas.append(usina + " (sem link do Maps)")
+                continue
+            try:
+                resp = requests.get(link, allow_redirects=True, timeout=12,
+                                     headers={"User-Agent": "Mozilla/5.0 (compatible; PainelOM-GridCo/1.0)"})
+                m = _MAPS_PIN_REGEX.search(resp.url)
+                if m:
+                    lat, lng = float(m.group(1)), float(m.group(2))
+                    ws.update(f"E{i}:F{i}", [[lat, lng]])
+                    resolvidos.append(usina)
+                else:
+                    falhas.append(usina + " (não achou coordenada na URL resolvida)")
+            except Exception as e:
+                falhas.append(usina + f" (erro: {e})")
+        return jsonify({"ok": True, "resolvidos": resolvidos, "falhas": falhas}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 NOMINATIM_USER_AGENT = "PainelOM-GridCo/1.0 (contato: fred@gridco.com.br)"
 
 
