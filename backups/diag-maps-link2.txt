@@ -1,0 +1,9 @@
+=== https://maps.app.goo.gl/qvLsNF1xkcoJHk1d7 ===
+URL_FINAL:https://www.google.com/maps/place/14%C2%B039'17.4%22S+52%C2%B022'16.5%22W/@-14.6553139,-52.3752402,2221m/data=!3m1!1e3!4m4!3m3!8m2!3d-14.6548333!4d-52.37125?entry=tts&g_ep=EgoyMDI1MTAxNC4wIPu8ASoASAFQAw%3D%3D&skid=1c4ebe7c-572c-45e8-9887-676ab7e8d0f0
+HTTP_STATUS:200
+=== https://maps.app.goo.gl/ndrKoLEk3aDyroLJ9 ===
+URL_FINAL:https://www.google.com.br/maps/place/14%C2%B043'56.3%22S+56%C2%B021'20.6%22W/@-14.7323126,-56.3582922,1110m/data=!3m2!1e3!4b1!4m4!3m3!8m2!3d-14.7323126!4d-56.3557173?entry=tts&g_ep=EgoyMDI1MTAxNC4wIPu8ASoASAFQAw%3D%3D&skid=396e7a82-1688-4642-8ea0-dbe0b0a3f807
+HTTP_STATUS:200
+=== https://maps.app.goo.gl/W9VS4Jdcd57rqCgC9 ===
+URL_FINAL:https://www.google.com/maps/place/5%C2%B011'39.1%22S+40%C2%B038'29.4%22W/@-5.1821549,-40.6420483,14181m/data=!3m1!1e3!4m4!3m3!8m2!3d-5.1942!4d-40.6415?entry=tts&g_ep=EgoyMDI1MTAxNC4wIPu8ASoASAFQAw%3D%3D&skid=7e6f2cd4-25f4-48ed-8da5-a7a84fd7165b
+HTTP_STATUS:200
