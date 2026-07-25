@@ -1,0 +1,3 @@
+total: 29
+com coordenada: 29
+sem coordenada: []
