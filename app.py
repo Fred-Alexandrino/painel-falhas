@@ -3214,7 +3214,10 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         return {"numeroOS": numero_os, "id": row[0] if row else "", "mudou": mudou,
                 "statusOS": status_novo or status_os_atual,
                 "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo,
-                "statusInternoCorrigido": novo_status_interno}
+                "statusInternoCorrigido": novo_status_interno,
+                "usina": row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else "",
+                "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else "",
+                "descricao": row[ATIV_CAMPO_COL["descricao"] - 1] if len(row) >= ATIV_CAMPO_COL["descricao"] else ""}
     except Exception as e:
         log.error(f"[Fracttal] Erro ao checar/atualizar OS {numero_os}: {e}")
         return None
@@ -3346,17 +3349,21 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
         try:
             if len(mudaram) == 1:
                 r = mudaram[0]
+                usina_r = r.get("usina") or "Usina não informada"
+                equip_r = r.get("equipamento") or r.get("descricao") or "Equipamento não informado"
                 enviar_push(
-                    titulo=f"🔄 OS {r['numeroOS']} atualizada",
-                    corpo=f"{r.get('statusGeralOS','')} — {r.get('percentualOS','0')}% concluído",
+                    titulo=f"🔄 OS {r['numeroOS']} — {usina_r}",
+                    corpo=f"{equip_r} · {r.get('statusGeralOS','')} — {r.get('percentualOS','0')}% concluído",
                     tipo="fracttal_status",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={r.get('id','')}",
                 )
             else:
-                numeros = ", ".join(r["numeroOS"] for r in mudaram[:8])
+                linhas = ", ".join(
+                    f"{r['numeroOS']} ({r.get('usina') or 'usina não informada'})" for r in mudaram[:8]
+                )
                 enviar_push(
                     titulo=f"🔄 {len(mudaram)} OSs atualizadas",
-                    corpo=f"OS: {numeros}{'...' if len(mudaram) > 8 else ''}",
+                    corpo=f"{linhas}{'...' if len(mudaram) > 8 else ''}",
                     tipo="fracttal_status",
                 )
         except Exception as e:
