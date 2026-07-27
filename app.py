@@ -3140,17 +3140,14 @@ def _zel_montar_indice_colunas(ws):
 
 @app.route("/zeladoria-atualizar-lote", methods=["POST"])
 def zeladoria_atualizar_lote():
-    """Uso único (ou reaproveitável): recebe uma lista de atualizações
-    {usina, grupo, proximaData, fornecedor, status} e grava direto nas
-    células correspondentes da aba Zeladoria, localizando a linha pela
-    usina (coluna B) e as colunas pelo cabeçalho (grupo + subcoluna).
-    Usina não encontrada na planilha é reportada em 'nao_encontradas',
-    sem interromper o restante do lote."""
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-
+    """Recebe uma lista de atualizações {usina, grupo, proximaData,
+    fornecedor, status} e grava direto nas células correspondentes da
+    aba Zeladoria, localizando a linha pela usina (coluna B) e as
+    colunas pelo cabeçalho (grupo + subcoluna). Usina não encontrada na
+    planilha é reportada em 'nao_encontradas', sem interromper o
+    restante do lote. Chamado tanto pelo botão 'Enviar Print/Observação'
+    do frontend (sem auth — mesmo padrão de outros endpoints de escrita
+    chamados direto do dashboard) quanto por scripts administrativos."""
     body = request.get_json(force=True, silent=True) or {}
     itens = body.get("itens") or []
     if not itens:
@@ -3201,7 +3198,12 @@ def zeladoria_atualizar_lote():
 
 def _montar_prompt_extrair_zeladoria(texto_observacoes, usinas_validas):
     lista_usinas = "\n".join(f"- {u}" for u in usinas_validas)
+    hoje = agora_br()
+    data_hoje_fmt = hoje.strftime("%d/%m/%Y")
+    ano_atual = hoje.year
     return f"""Você é um assistente que ajuda a extrair informações de controle de zeladoria (roçada/supressão vegetal, poda química, lavagem/limpeza de módulos fotovoltaicos, controle de pragas) de usinas solares, a partir de prints de conversas, cronogramas de fornecedores terceirizados ou anotações de reunião.
+
+CONTEXTO DE DATA — a data de hoje é {data_hoje_fmt}. Datas mencionadas no texto/imagem SEM ano explícito (ex: "28/07", "dia 30/08") são sempre do ano corrente ({ano_atual}) ou, se o dia/mês já passou este ano, do próximo ano civil que fizer sentido — NUNCA de anos passados como 2024 ou 2025. Se o texto/imagem já trouxer o ano explicitamente, use o que foi informado.
 
 USINAS VÁLIDAS (use exatamente esse nome no campo "usina" quando reconhecer a usina — se a informação for de uma usina que NÃO está nessa lista, ainda inclua no resultado, copie o nome como veio no texto/imagem, e marque "usina_reconhecida": false):
 {lista_usinas}
@@ -3230,7 +3232,7 @@ Extraia do texto/imagem abaixo todas as atualizações de zeladoria que consegui
 - "status": um dos status válidos acima
 - "observacao": nota curta livre só se houver algo relevante que não caiba nos campos acima (ex.: "previsão sujeita a confirmação pós-assinatura"), ou "" caso contrário
 
-REGRA CRÍTICA — não invente informação que não está no texto/imagem. Se uma usina for citada mas sem detalhes suficientes pra decidir o status, use "Sem informações" e deixe proximaData/fornecedor vazios em vez de supor.
+REGRA CRÍTICA — não invente informação que não está no texto/imagem. Se uma usina for citada mas sem detalhes suficientes pra decidir o status, use "Sem informações" e deixe proximaData/fornecedor vazios em vez de supor. Isso vale especialmente pro ANO da data — siga a regra de contexto de data acima, nunca invente um ano aleatório.
 
 Texto/observações fornecidas pelo usuário: {texto_observacoes or "(nenhuma observação em texto — considere só a imagem)"}
 
