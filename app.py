@@ -8532,6 +8532,115 @@ def disparar_comunicado_livre():
     return jsonify({"ok": True, "enviados": enviados, "erros": erros})
 
 
+def _montar_saudacao_cliente():
+    """Saudação por horário (Brasília), calculada no momento em que o texto
+    é gerado — usado no resumo pro cliente final (Gestão Cliente). Bom dia
+    até 12h, boa tarde até 18h, boa noite depois disso."""
+    hora = agora_br().hour
+    if hora < 12:
+        return "Bom dia"
+    if hora < 18:
+        return "Boa tarde"
+    return "Boa noite"
+
+
+def _montar_prompt_resumo_cliente(cliente, atividades, saudacao):
+    """Monta o prompt pra gerar o resumo de atividades 'Em Processo'
+    selecionadas manualmente pelo Fred, em linguagem polida e voltada ao
+    cliente final (não ao técnico de campo) — usado pelo painel 'Gestão
+    Cliente'. Diferente do comunicado técnico (objetivo/seco), aqui o tom é
+    consultivo: saudação, contexto, e assinatura pessoal do Fred."""
+    mapa_cluster = _mapa_cluster_usina()
+    por_usina = {}
+    for a in atividades:
+        usina = (a.get("usina") or "").strip() or "não informado"
+        descricao = (a.get("descricao") or "").strip()
+        if not descricao:
+            continue
+        por_usina.setdefault(usina, []).append(descricao)
+
+    blocos = []
+    for usina, descricoes in por_usina.items():
+        cluster = mapa_cluster.get(usina, "")
+        linhas_usina = "\n".join(f"  - {d}" for d in descricoes)
+        blocos.append(f"Usina: {usina}" + (f" (cluster {cluster})" if cluster else "") + f"\n{linhas_usina}")
+    lista_atividades = "\n\n".join(blocos)
+
+    return f"""Aja como Fred Alexandrino, Supervisor de O&M da Grid Co., escrevendo uma mensagem de WhatsApp pro cliente final ({cliente}) com o panorama de atividades programadas para hoje.
+
+Esta mensagem é PRA CLIENTE, não pra equipe técnica interna — o tom deve ser polido, profissional, amigável e direto, como uma comunicação de relacionamento com cliente (não uma ordem de serviço interna).
+
+Regras obrigatórias de formato:
+- Comece com a saudação "{saudacao}" seguida de uma referência cordial ao cliente (ex.: "{saudacao}, equipe {cliente}!"). Pode usar um emoji simples e discreto na saudação (ex.: 👋), sem exagerar em emojis no resto do texto.
+- Uma frase curta de abertura contextualizando que segue o panorama de atividades programadas para hoje.
+- Liste as atividades agrupadas por usina (use o nome da usina como pequeno destaque, ex. em negrito ou seguido de dois pontos), com marcador "•" para cada atividade daquela usina.
+- Reescreva cada descrição de atividade em linguagem clara e acessível pro cliente — SEM número de OS, SEM código de ativo/equipamento cru, SEM jargão técnico interno de sistema (nada de "statusOS", "Fracttal", etc). Mantenha o conteúdo técnico real (o que será feito), só troque a forma como é dito.
+- Não invente atividades nem detalhes que não estejam na lista fornecida.
+- Termine com uma frase curta de disponibilidade/cordialidade (ex. equipe de campo mobilizada, à disposição para dúvidas).
+- Assine ao final com:
+Atenciosamente,
+Fred Alexandrino
+Supervisor de O&M — Grid Co.
+- Não use fontes de negrito/asterisco no WhatsApp além do já convencional (*texto* vira negrito no WhatsApp, pode usar com moderação pro nome da usina e pro nome do Fred na assinatura).
+
+Cliente: {cliente}
+Atividades selecionadas (agrupadas por usina):
+{lista_atividades}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"texto": "a mensagem pronta pra enviar, com quebras de linha \\n"}}"""
+
+
+@app.route("/gerar-resumo-cliente", methods=["POST", "OPTIONS"])
+def gerar_resumo_cliente():
+    """Gera o texto do resumo de atividades 'Em Processo' selecionadas
+    manualmente pelo Fred pra um cliente específico (painel 'Gestão
+    Cliente'). Diferente dos comunicados técnicos/automáticos: a seleção
+    de quais atividades entram é 100% manual (Fred marca cada uma), pra
+    evitar que atividades antigas esquecidas apareçam pro cliente sem
+    controle. O envio em si é feito depois via /disparar-comunicado-livre
+    (mesma infraestrutura de grupos já existente), reaproveitado aqui."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    cliente = (body.get("cliente") or "").strip()
+    atividades = body.get("atividades") or []
+    if not cliente:
+        return jsonify({"ok": False, "error": "informe o cliente"}), 400
+    if not atividades or not isinstance(atividades, list):
+        return jsonify({"ok": False, "error": "selecione ao menos uma atividade"}), 400
+
+    saudacao = _montar_saudacao_cliente()
+    prompt = _montar_prompt_resumo_cliente(cliente, atividades, saudacao)
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=20,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        parsed = json.loads(texto_limpo)
+        texto = (parsed.get("texto") or "").strip()
+        if not texto:
+            raise ValueError("A IA não retornou nenhum texto")
+        return jsonify({"ok": True, "texto": texto})
+    except Exception as e:
+        log.error(f"[gerar-resumo-cliente] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
 def _montar_prompt_priorizacao(atividades, hoje_str):
     mapa_cluster = _mapa_cluster_usina()
     linhas = []
