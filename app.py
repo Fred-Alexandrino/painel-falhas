@@ -8641,6 +8641,107 @@ def gerar_resumo_cliente():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
+def _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao):
+    """Monta o prompt pra gerar o resumo de chamados de fabricante (status
+    diferente de 'Finalizado') selecionados manualmente pelo Fred, em
+    linguagem polida voltada ao cliente final — botão 'Gestão Cliente'
+    dentro do Painel de Chamados. Mesmo princípio do resumo de atividades:
+    seleção 100% manual, sem número de ticket/RMA ou código de série cru,
+    linguagem acessível."""
+    por_usina = {}
+    for c in chamados:
+        usina = (c.get("usina") or "").strip() or "não informado"
+        motivo = (c.get("motivo") or "").strip()
+        status = (c.get("status") or "").strip()
+        dias = (c.get("diasCorridos") or "").strip()
+        if not motivo:
+            continue
+        linha = motivo
+        if status:
+            linha += f" — status atual: {status}"
+        if dias:
+            linha += f" (em aberto há {dias} dia(s))"
+        por_usina.setdefault(usina, []).append(linha)
+
+    blocos = []
+    for usina, linhas in por_usina.items():
+        linhas_usina = "\n".join(f"  - {l}" for l in linhas)
+        blocos.append(f"Usina: {usina}\n{linhas_usina}")
+    lista_chamados = "\n\n".join(blocos)
+
+    return f"""Aja como Fred Alexandrino, Supervisor de O&M da Grid Co., escrevendo uma mensagem de WhatsApp pro cliente final ({cliente}) com o panorama dos chamados de fabricante (garantia/assistência técnica) em aberto.
+
+Esta mensagem é PRA CLIENTE, não pra equipe técnica interna — o tom deve ser polido, profissional, amigável e direto, como uma comunicação de relacionamento com cliente (não um controle interno de ticket).
+
+Regras obrigatórias de formato:
+- Comece com a saudação "{saudacao}" seguida de uma referência cordial ao cliente (ex.: "{saudacao}, equipe {cliente}!"). Pode usar um emoji simples e discreto na saudação (ex.: 👋), sem exagerar em emojis no resto do texto.
+- Uma frase curta de abertura contextualizando que segue o panorama dos chamados de fabricante em andamento.
+- Liste os chamados agrupados por usina (destaque o nome da usina), com marcador "•" para cada chamado daquela usina.
+- Reescreva cada chamado em linguagem clara pro cliente — SEM número de ticket/RMA, SEM serial number, SEM código de identificação de equipamento cru, SEM jargão interno. Mantenha o conteúdo real (o que motivou o chamado e o status/andamento atual), só troque a forma como é dito.
+- Não invente informações que não estejam na lista fornecida — se o status não estiver claro, diga algo como "em andamento com o fabricante", sem inventar prazo ou solução.
+- Não invente prazo de solução nem prometa data — se não houver data confirmada na informação fornecida, deixe claro que ainda está em acompanhamento.
+- Termine com uma frase curta de disponibilidade/cordialidade.
+- Assine ao final com:
+Atenciosamente,
+Fred Alexandrino
+Supervisor de O&M — Grid Co.
+- Pode usar *negrito* do WhatsApp com moderação (nome da usina, nome do Fred na assinatura).
+
+Cliente: {cliente}
+Chamados selecionados (agrupados por usina):
+{lista_chamados}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"texto": "a mensagem pronta pra enviar, com quebras de linha \\n"}}"""
+
+
+@app.route("/gerar-resumo-chamados-cliente", methods=["POST", "OPTIONS"])
+def gerar_resumo_chamados_cliente():
+    """Gera o texto do resumo de chamados de fabricante (status != Finalizado)
+    selecionados manualmente pelo Fred pra um cliente específico — botão
+    'Gestão Cliente' dentro do Painel de Chamados. Envio feito depois via
+    /disparar-comunicado-livre (mesma infraestrutura já existente)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    cliente = (body.get("cliente") or "").strip()
+    chamados = body.get("chamados") or []
+    if not cliente:
+        return jsonify({"ok": False, "error": "informe o cliente"}), 400
+    if not chamados or not isinstance(chamados, list):
+        return jsonify({"ok": False, "error": "selecione ao menos um chamado"}), 400
+
+    saudacao = _montar_saudacao_cliente()
+    prompt = _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao)
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=20,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        parsed = json.loads(texto_limpo)
+        texto = (parsed.get("texto") or "").strip()
+        if not texto:
+            raise ValueError("A IA não retornou nenhum texto")
+        return jsonify({"ok": True, "texto": texto})
+    except Exception as e:
+        log.error(f"[gerar-resumo-chamados-cliente] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
 def _montar_prompt_priorizacao(atividades, hoje_str):
     mapa_cluster = _mapa_cluster_usina()
     linhas = []
