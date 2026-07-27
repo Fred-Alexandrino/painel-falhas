@@ -8143,7 +8143,8 @@ def gerar_comunicado_livre_ia():
     if not tema:
         return jsonify({"ok": False, "error": "informe o tema do comunicado"}), 400
 
-    preset = _COMUNICADOS_PRESET.get(_normalizar_tema_comunicado(tema))
+    preset = _COMUNICADOS_PRESET.get(_normalizar_tema_comunicado(tema)) or \
+             _COMUNICADOS_PRESET.get(_normalizar_tema_comunicado(observacoes))
     if preset:
         return jsonify({"ok": True, "texto": preset})
 
