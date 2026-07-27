@@ -9005,6 +9005,135 @@ def gerar_texto_os_ia():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _montar_prompt_controle_ponto(textos_extraidos):
+    """Monta o prompt de auditoria de ponto (setor Controle de Ponto,
+    dentro do Painel Gerencial). textos_extraidos: lista de strings, uma
+    por PDF enviado (cada PDF do Pontomais pode conter 1 ou vários
+    colaboradores, um por página/bloco 'Colaborador: NOME')."""
+    corpo = "\n\n=== NOVO ARQUIVO ===\n\n".join(textos_extraidos)
+    instrucoes = (
+        "Aja como um auditor técnico de Departamento Pessoal especializado em controle de jornada. "
+        "Analise o(s) espelho(s) de ponto fornecido(s) abaixo, aplicando estritamente as regras de "
+        "negócio descritas. Estruture seu raciocínio de forma sequencial e entregue um diagnóstico "
+        "direto, sem introduções, apenas as pendências reais.\n\n"
+        "Etapa 1 - Verificação de dias úteis: analise as marcações de segunda a sexta-feira. Identifique "
+        "todas as jornadas incompletas, ou seja, dias que contêm apenas marcações ímpares ou falta de "
+        "registro de intervalo sem o respectivo ajuste. Registre a data e a lacuna encontrada.\n"
+        "Etapa 2 - Auditoria de justificativas de ajuste: faça a varredura das anotações de correções "
+        "manuais. Isole e liste os casos em que \"esquecimento\" ou expressões correlatas (ex.: "
+        "\"esqueci de bater o ponto\") foram usadas como justificativa do ajuste — isso configura "
+        "violação de diretriz e deve ser evidenciado com as datas.\n"
+        "Etapa 3 - Validação de sobreaviso em finais de semana e feriados: a ausência total de "
+        "marcações em sábados, domingos e feriados indica que o colaborador não foi acionado e "
+        "DISPENSA o registro de ponto — NÃO reporte isso como pendência. Aponte anomalias nesses dias "
+        "exclusivamente se houver início de jornada sem a respectiva conclusão (marcação em aberto).\n"
+        "Etapa 4 - Mapeamento de falhas sistêmicas: agrupe os colaboradores que registraram "
+        "inconsistências técnicas (falha de aplicativo, travamento, falta de internet, bateria "
+        "descarregada), indicando a frequência desses eventos.\n"
+        "Etapa 5 - Para cada colaborador que tenha AO MENOS UMA pendência real (de qualquer etapa "
+        "1 a 4), gere também um texto de comunicado individual pronto para ser copiado e enviado por "
+        "WhatsApp diretamente a esse colaborador — tom profissional, direto e respeitoso, citando as "
+        "datas e pendências específicas dele (sem citar os demais colaboradores) e solicitando a "
+        "regularização. Colaboradores sem nenhuma pendência real não precisam de comunicado (deixe o "
+        "campo comunicado_individual como string vazia).\n\n"
+        "Responda ESTRITAMENTE em JSON, sem nenhum texto fora do JSON, no formato:\n"
+        "{\"colaboradores\": [{"
+        "\"nome\": string, "
+        "\"tem_pendencia\": boolean, "
+        "\"jornadas_incompletas\": [{\"data\": string, \"descricao\": string}], "
+        "\"ajustes_indevidos\": [{\"data\": string, \"motivo\": string}], "
+        "\"anomalias_sobreaviso\": [{\"data\": string, \"descricao\": string}], "
+        "\"falhas_sistemicas\": {\"frequencia\": number, \"descricao\": string}, "
+        "\"resumo_tecnico\": string, "
+        "\"comunicado_individual\": string"
+        "}]}\n\n"
+        "Linguagem técnica, concisa e estruturada por colaborador, evidenciando apenas pendências "
+        "reais que demandam ação do setor de Recursos Humanos.\n\n"
+        f"ESPELHOS DE PONTO:\n{corpo}"
+    )
+    return instrucoes
+
+
+@app.route("/analisar-controle-ponto", methods=["POST", "OPTIONS"])
+def analisar_controle_ponto():
+    """Setor 'Controle de Ponto' do Painel Gerencial: recebe um ou mais
+    PDFs de espelho de ponto (Pontomais), extrai o texto e manda pra IA
+    auditar conforme as regras de negócio, retornando pendências por
+    colaborador + texto de comunicado individual pronto pra copiar."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    arquivos = request.files.getlist("arquivos")
+    if not arquivos:
+        return jsonify({"ok": False, "error": "Nenhum arquivo enviado (campo 'arquivos')"}), 400
+
+    try:
+        import pdfplumber
+    except ImportError:
+        log.error("[analisar-controle-ponto] pdfplumber não instalado")
+        return jsonify({"ok": False, "error": "Dependência pdfplumber não instalada no servidor"}), 500
+
+    textos = []
+    for f in arquivos:
+        nome_arquivo = secure_filename(f.filename or "arquivo.pdf")
+        try:
+            with pdfplumber.open(f.stream) as pdf:
+                paginas = [(p.extract_text() or "") for p in pdf.pages]
+            textos.append(f"[Arquivo: {nome_arquivo}]\n" + "\n".join(paginas))
+        except Exception as e:
+            log.error(f"[analisar-controle-ponto] Erro extraindo '{nome_arquivo}': {e}")
+            return jsonify({"ok": False, "error": f"Erro ao ler o PDF \"{nome_arquivo}\": {e}"}), 400
+
+    prompt = _montar_prompt_controle_ponto(textos)
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 8192,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=55,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        finish_reason = candidato.get("finishReason", "")
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        if not texto_bruto:
+            log.error(f"[analisar-controle-ponto] Resposta vazia (finishReason={finish_reason}): {texto_bruto!r}")
+            raise ValueError(f"Resposta vazia da IA (finishReason={finish_reason or 'desconhecido'})")
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        resultado = json.loads(texto_limpo)
+        if finish_reason == "MAX_TOKENS":
+            resultado["truncado"] = True
+        return jsonify({"ok": True, "resultado": resultado})
+    except json.JSONDecodeError as e:
+        log.error(f"[analisar-controle-ponto] Resposta não é JSON válido: {e}")
+        return jsonify({"ok": False, "error": ("A IA retornou um formato inesperado. Tente novamente com menos "
+                        "arquivos de uma vez.")}), 502
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            log.error(f"[analisar-controle-ponto] Cota da IA esgotada mesmo apos retries: {e}")
+            return jsonify({"ok": False, "error": ("A IA está temporariamente sem cota disponível. Aguarde "
+                            "alguns minutos e tente de novo.")}), 429
+        log.error(f"[analisar-controle-ponto] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        log.error(f"[analisar-controle-ponto] Timeout/erro de conexão com a IA: {e}")
+        return jsonify({"ok": False, "error": ("A IA demorou demais para responder. Tente novamente com "
+                        "menos arquivos de uma vez.")}), 504
+    except Exception as e:
+        log.error(f"[analisar-controle-ponto] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/converter-ocorrencia-em-atividade", methods=["POST", "OPTIONS"])
 def converter_ocorrencia_em_atividade():
     """
