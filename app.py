@@ -8107,11 +8107,34 @@ def diag_testar_modelo_gemini():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _normalizar_tema_comunicado(texto):
+    """Remove acentos e normaliza espaços/caixa pra comparar temas de forma
+    tolerante (ex: 'Comunicado Padrão' == 'comunicado padrao')."""
+    nfkd = _ud.normalize("NFKD", texto or "")
+    sem_acento = "".join(c for c in nfkd if not _ud.combining(c))
+    return re.sub(r"\s+", " ", sem_acento).strip().lower()
+
+
+# Comunicados fixos: quando o tema digitado bate com uma dessas chaves
+# (normalizada, sem acento/caixa), o texto é devolvido direto, sem
+# passar pela IA. Facilita reenviar avisos recorrentes sempre com a
+# mesma redação exata.
+_COMUNICADOS_PRESET = {
+    "comunicado padrao": (
+        "⚠️ Pessoal, sobre abastecimentos:\n"
+        "📋 Por favor, solicitem no primeiro horário da manhã. Isso evita múltiplas solicitações ao financeiro.\n"
+        "✅ Após liberação, o cartão Clara fica ativo até as 17h, tempo suficiente para abastecer."
+    ),
+}
+
+
 @app.route("/gerar-comunicado-livre-ia", methods=["POST", "OPTIONS"])
 def gerar_comunicado_livre_ia():
     """Gera um texto de comunicado livre (tema + observações) usando IA,
     pra ser enviado manualmente pelos grupos que o Fred escolher — usado
-    pelo campo 'Gerar Comunicado' na sidebar, ao lado do 'Gerar OS'."""
+    pelo campo 'Gerar Comunicado' na sidebar, ao lado do 'Gerar OS'.
+    Se o tema bater com um preset fixo (_COMUNICADOS_PRESET), devolve o
+    texto exato direto, sem gastar chamada de IA."""
     if request.method == "OPTIONS":
         return ("", 204)
     body = request.get_json(force=True, silent=True) or {}
@@ -8119,6 +8142,10 @@ def gerar_comunicado_livre_ia():
     observacoes = (body.get("observacoes") or "").strip()
     if not tema:
         return jsonify({"ok": False, "error": "informe o tema do comunicado"}), 400
+
+    preset = _COMUNICADOS_PRESET.get(_normalizar_tema_comunicado(tema))
+    if preset:
+        return jsonify({"ok": True, "texto": preset})
 
     prompt = _montar_prompt_comunicado_livre(tema, observacoes)
     diagnostico = request.args.get("diagnostico", "").lower() == "true"
