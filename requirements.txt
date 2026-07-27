@@ -7,3 +7,4 @@ pywebpush
 python-pptx==1.0.2
 tzdata
 Pillow==10.4.0
+pdfplumber==0.11.4
