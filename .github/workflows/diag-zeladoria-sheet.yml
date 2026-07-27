@@ -1,0 +1,25 @@
+name: Diag Zeladoria Sheet
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 20 \
+            "https://docs.google.com/spreadsheets/d/1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs/export?format=csv&gid=987654321" \
+            -o backups/diag-zeladoria.csv
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-zeladoria.csv
+          git commit -m "diag zeladoria sheet [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-zeladoria.csv
+          git commit -m "diag zeladoria sheet [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
