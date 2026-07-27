@@ -7191,6 +7191,15 @@ def sincronizar_chamados():
         if criadas_map:
             ws.append_rows(list(criadas_map.values()))
 
+        # registra quando essa sincronização aconteceu — usado pelo painel
+        # pra mostrar "última sincronização" e o Fred conseguir verificar
+        # se está em dia sem precisar comparar contagem manualmente
+        # (pedido em 24/07/2026).
+        try:
+            _gravar_trava("chamados_ultima_sincronizacao", agora_br().strftime("%d/%m/%Y %H:%M:%S"))
+        except Exception as e:
+            log.error(f"[ChamadosFabricante] Falha ao gravar timestamp de sincronização: {e}")
+
         return jsonify({"ok": True, "criadas": len(criadas_map), "atualizadas": len(atualizadas_map),
                          "erros": erros}), 200
     except Exception as e:
@@ -7406,7 +7415,9 @@ def listar_chamados_fabricante():
     exibir no Painel de Chamados sem precisar de nenhuma cópia manual."""
     try:
         itens = _chamados_fabricante_itens()
-        return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
+        ultima_sincronizacao = _ler_trava("chamados_ultima_sincronizacao")
+        return jsonify({"ok": True, "itens": itens, "total": len(itens),
+                         "ultimaSincronizacao": ultima_sincronizacao}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
