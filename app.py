@@ -9005,17 +9005,32 @@ def gerar_texto_os_ia():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def _extrair_texto_sobreaviso(file_storage):
+def _extrair_texto_sobreaviso(file_storage, filtro_aba="FRED ALEXANDRINO"):
     """Extrai a escala de sobreaviso (planilha 'SOBREAVISOS_EQUIPES_GRID') em
     texto compacto pra usar como contexto na auditoria de ponto. A planilha
     tem uma aba por supervisor, cada uma com colunas por cluster/usina e
     linhas por semana, indicando qual técnico está de sobreaviso naquela
-    semana/fim de semana/feriado."""
+    semana/fim de semana/feriado.
+
+    Por padrão processa só a(s) aba(s) do supervisor Fred Alexandrino
+    (filtro_aba), já que o Controle de Ponto audita apenas as equipes dele
+    — as demais abas (Vitor, Danuth, Marcelo, Camila, Pedro) são de outros
+    supervisores e não devem entrar no contexto.
+
+    IMPORTANTE: cada plantão de fim de semana ocupa 2 linhas na planilha
+    (sábado + domingo), mas o nome do técnico só é preenchido na linha do
+    sábado — a linha do domingo vem em branco (é o mesmo plantão, só não
+    repetem o nome). Por isso, quando uma célula está vazia, herdamos o
+    último valor preenchido daquela coluna (carry-forward), pra que a data
+    de domingo também apareça associada ao técnico correto no texto."""
     import openpyxl
     from io import BytesIO
     wb = openpyxl.load_workbook(BytesIO(file_storage.read()), data_only=True)
     blocos = []
+    filtro_norm = (filtro_aba or "").strip().upper()
     for nome_aba in wb.sheetnames:
+        if filtro_norm and filtro_norm not in nome_aba.strip().upper():
+            continue
         ws = wb[nome_aba]
         linhas = list(ws.iter_rows(values_only=True))
         header_idx = None
@@ -9029,6 +9044,7 @@ def _extrair_texto_sobreaviso(file_storage):
         header = linhas[header_idx]
         colunas = [(j, str(header[j]).replace("\n", " / ")) for j in range(3, len(header)) if header[j]]
         saida = [f"=== Supervisor: {nome_aba} ==="]
+        ultimo_valor = {}
         for linha in linhas[header_idx + 1:]:
             data_val = linha[2] if len(linha) > 2 else None
             if not data_val:
@@ -9037,6 +9053,10 @@ def _extrair_texto_sobreaviso(file_storage):
             partes_linha = []
             for j, nome_col in colunas:
                 val = linha[j] if j < len(linha) else None
+                if val:
+                    ultimo_valor[j] = val
+                else:
+                    val = ultimo_valor.get(j)
                 if val:
                     partes_linha.append(f"{nome_col}: {str(val).replace(chr(10), ', ')}")
             if partes_linha:
