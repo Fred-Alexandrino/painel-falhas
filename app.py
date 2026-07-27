@@ -8443,6 +8443,7 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363402559504115": "[O&M] - Grid Co. | 2C",
     "120363426381032089": "[O&M] - Grid Co. | Alves Lima",
     "120363423844956611": "[O&M] - Grid Co. | GD Energy",
+    "120363427259899891": "[O&M] - Grid Co. | Sal Energia",
     "120363421162420788": "COS — Técnicos O&M Centro-Oeste",
     "120363425837962709": "COS — Técnicos O&M Sul",
     "120363402176878100": "COS — Técnicos O&M Nordeste",
