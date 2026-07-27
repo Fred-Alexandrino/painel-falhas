@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p backups
-          STATUS=$(curl -s -w "%{http_code}" --max-time 20 \
+          STATUS=$(curl -sL -w "%{http_code}" --max-time 20 \
             "https://docs.google.com/spreadsheets/d/1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs/export?format=csv&gid=987654321" \
             -o backups/diag-zeladoria.csv)
           echo "STATUS_HTTP=$STATUS" > backups/diag-zeladoria-status.txt
