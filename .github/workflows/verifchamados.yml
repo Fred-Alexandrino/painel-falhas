@@ -1,0 +1,22 @@
+name: Verif Chamados XY
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          R=$(curl -s -m 20 "https://api.168.138.232.237.sslip.io/chamados-fabricante")
+          TOTAL=$(echo "$R" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('total','?'))")
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git commit --allow-empty -m "CHAMADOSCHECK2 total=$TOTAL"
+          n=0
+          until git push || [ $n -ge 6 ]; do
+            n=$((n+1))
+            sleep 3
+            git pull --rebase origin main
+          done
