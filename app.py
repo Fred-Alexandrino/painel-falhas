@@ -8115,17 +8115,38 @@ def _normalizar_tema_comunicado(texto):
     return re.sub(r"\s+", " ", sem_acento).strip().lower()
 
 
-# Comunicados fixos: quando o tema digitado bate com uma dessas chaves
-# (normalizada, sem acento/caixa), o texto é devolvido direto, sem
-# passar pela IA. Facilita reenviar avisos recorrentes sempre com a
-# mesma redação exata.
-_COMUNICADOS_PRESET = {
-    "comunicado padrao": (
+# Comunicados fixos por TEMA: a chave é o tema normalizado (sem acento/caixa),
+# o valor é o texto pronto a ser usado. Pra usar, digite o tema normalmente
+# (ex: "Solicitações de compra") e escreva "comunicado padrão" no OUTRO campo
+# (tema ou observações, tanto faz) — isso funciona como gatilho dizendo
+# "use o texto fixo desse tema" em vez de gerar via IA.
+_COMUNICADOS_PRESET_TEMA = {
+    "abastecimentos": (
         "⚠️ Pessoal, sobre abastecimentos:\n"
         "📋 Por favor, solicitem no primeiro horário da manhã. Isso evita múltiplas solicitações ao financeiro.\n"
         "✅ Após liberação, o cartão Clara fica ativo até as 17h, tempo suficiente para abastecer."
     ),
+    "solicitacoes de compra": (
+        "⚠️ Pessoal, sobre solicitações de compra:\n"
+        "📋 Por favor, enviem o quanto antes todas as solicitações de compra necessárias.\n"
+        "✅ Isso evita atrasos no processo e garante que o material chegue em tempo hábil."
+    ),
 }
+
+_GATILHO_COMUNICADO_PADRAO = "comunicado padrao"  # já normalizado (sem acento)
+
+
+def _resolver_preset_comunicado(tema, observacoes):
+    """Se 'comunicado padrão' foi digitado num dos dois campos, usa o OUTRO
+    campo (normalizado) como tema pra buscar o preset fixo correspondente.
+    Retorna None se não houver gatilho ou se o tema não tiver preset."""
+    tema_norm = _normalizar_tema_comunicado(tema)
+    obs_norm = _normalizar_tema_comunicado(observacoes)
+    if obs_norm == _GATILHO_COMUNICADO_PADRAO:
+        return _COMUNICADOS_PRESET_TEMA.get(tema_norm)
+    if tema_norm == _GATILHO_COMUNICADO_PADRAO:
+        return _COMUNICADOS_PRESET_TEMA.get(obs_norm)
+    return None
 
 
 @app.route("/gerar-comunicado-livre-ia", methods=["POST", "OPTIONS"])
@@ -8133,8 +8154,8 @@ def gerar_comunicado_livre_ia():
     """Gera um texto de comunicado livre (tema + observações) usando IA,
     pra ser enviado manualmente pelos grupos que o Fred escolher — usado
     pelo campo 'Gerar Comunicado' na sidebar, ao lado do 'Gerar OS'.
-    Se o tema bater com um preset fixo (_COMUNICADOS_PRESET), devolve o
-    texto exato direto, sem gastar chamada de IA."""
+    Se 'comunicado padrão' for digitado num dos campos, busca um preset
+    fixo pelo tema (_COMUNICADOS_PRESET_TEMA) e devolve na hora, sem IA."""
     if request.method == "OPTIONS":
         return ("", 204)
     body = request.get_json(force=True, silent=True) or {}
@@ -8143,8 +8164,7 @@ def gerar_comunicado_livre_ia():
     if not tema:
         return jsonify({"ok": False, "error": "informe o tema do comunicado"}), 400
 
-    preset = _COMUNICADOS_PRESET.get(_normalizar_tema_comunicado(tema)) or \
-             _COMUNICADOS_PRESET.get(_normalizar_tema_comunicado(observacoes))
+    preset = _resolver_preset_comunicado(tema, observacoes)
     if preset:
         return jsonify({"ok": True, "texto": preset})
 
