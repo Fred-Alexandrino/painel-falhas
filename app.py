@@ -2192,50 +2192,93 @@ def eh_ronda_status_ok(texto):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-import re as _re_diag
-def _achar_arabicos_usina(valores, col_idx):
-    encontrados = {}
-    for row in valores[1:]:
-        if len(row) > col_idx:
-            v = row[col_idx].strip()
-            if _re_diag.search(r"\b(1|2)\s*$", v) or _re_diag.search(r"\bMat[aã]o\s*1\b", v, _re_diag.IGNORECASE):
-                encontrados[v] = encontrados.get(v, 0) + 1
-    return encontrados
+@app.route("/normalizar-usinas-romano", methods=["POST"])
+def normalizar_usinas_romano():
+    """Uso unico (27/07/2026): corrige nomes de usina gravados em
+    numeracao arabica (1/2) para o padrao oficial romano (I/II) em
+    TODAS as planilhas, e adiciona as 5 usinas da Sal Energia na aba
+    Zeladoria (cliente novo, ainda nao cadastrado la)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
 
-@app.route("/diag-headers-temp", methods=["GET"])
-def diag_headers_temp():
-    resultado = {}
-    try:
-        ws = get_sheet()
-        header = ws.row_values(1)
-        idx = header.index("Usina") if "Usina" in header else 2
-        vals = ws.get_all_values()
-        resultado["falhas_usinas_arabicas"] = _achar_arabicos_usina(vals, idx)
-    except Exception as e:
-        resultado["falhas_erro"] = str(e)
-    try:
-        ws2 = get_atividades_sheet()
-        header2 = ws2.row_values(1)
-        idx2 = header2.index("Usina") if "Usina" in header2 else 2
-        vals2 = ws2.get_all_values()
-        resultado["atividades_usinas_arabicas"] = _achar_arabicos_usina(vals2, idx2)
-    except Exception as e:
-        resultado["atividades_erro"] = str(e)
-    try:
-        ws3 = _get_config_sheet()
-        vals3 = ws3.get_all_values()
-        arabicos_sistema = [r[0] for r in vals3[1:] if r and (_re_diag.search(r"\b(1|2)\s*$", r[0]) or _re_diag.search(r"Mat[aã]o\s*1\b", r[0], _re_diag.IGNORECASE))]
-        resultado["sistema_chaves_arabicas"] = arabicos_sistema
-        resultado["sistema_total_linhas"] = len(vals3)
-    except Exception as e:
-        resultado["sistema_erro"] = str(e)
-    try:
-        ws4 = get_zeladoria_sheet()
-        vals4 = ws4.get_all_values()
-        resultado["zeladoria_usinas"] = [r[1] for r in vals4[2:] if len(r) > 1 and r[1].strip()]
-    except Exception as e:
-        resultado["zeladoria_erro"] = str(e)
-    return jsonify(resultado), 200
+    relatorio = {}
+
+    MAPA_FALHAS = {
+        "boa esperança do sul 1": "Boa Esperança do Sul I",
+        "boa esperança do sul 2": "Boa Esperança do Sul II",
+        "boa esperanca do sul 1": "Boa Esperança do Sul I",
+        "boa esperanca do sul 2": "Boa Esperança do Sul II",
+        "colíder 2": "Colíder II",
+        "colider 2": "Colíder II",
+        "matão 1": "Matão I",
+        "matao 1": "Matão I",
+        "nova xavantina 2": "Nova Xavantina II",
+    }
+    ws_falhas = get_sheet()
+    header_f = ws_falhas.row_values(1)
+    idx_f = header_f.index("Usina") if "Usina" in header_f else 2
+    vals_f = ws_falhas.get_all_values()
+    updates_f = []
+    alterados_f = []
+    for i, row in enumerate(vals_f[1:], start=2):
+        if len(row) > idx_f:
+            v = row[idx_f].strip()
+            novo = MAPA_FALHAS.get(v.lower())
+            if novo and novo != v:
+                updates_f.append({"range": gspread.utils.rowcol_to_a1(i, idx_f + 1), "values": [[novo]]})
+                alterados_f.append({"linha": i, "de": v, "para": novo})
+    if updates_f:
+        ws_falhas.batch_update(updates_f)
+    relatorio["falhas"] = alterados_f
+
+    MAPA_ZEL = {
+        "ibaté 1": "Ibaté I",
+        "ibate 1": "Ibaté I",
+        "ibaté 2": "Ibaté II",
+        "ibate 2": "Ibaté II",
+        "matão 1": "Matão I",
+        "matao 1": "Matão I",
+        "matão 2 - topázio": "Matão II - Topázio",
+        "matao 2 - topazio": "Matão II - Topázio",
+        "canarana 1": "Canarana I",
+        "canarana 2": "Canarana II",
+        "sol do norte 1": "Sol do Norte I",
+        "sol do norte 2": "Sol do Norte II",
+        "morada nova": "ABC Morada Nova",
+    }
+    ws_zel = get_zeladoria_sheet()
+    vals_zel = ws_zel.get_all_values()
+    updates_zel = []
+    alterados_zel = []
+    for i, row in enumerate(vals_zel[2:], start=3):
+        if len(row) > 1:
+            v = row[1].strip()
+            novo = MAPA_ZEL.get(v.lower())
+            if novo and novo != v:
+                updates_zel.append({"range": gspread.utils.rowcol_to_a1(i, 2), "values": [[novo]]})
+                alterados_zel.append({"linha": i, "de": v, "para": novo})
+    if updates_zel:
+        ws_zel.batch_update(updates_zel)
+    relatorio["zeladoria_renomeadas"] = alterados_zel
+
+    SAL_ENERGIA_USINAS = [
+        "SunPower (Cascavel)", "Hortina (Quixadá I)", "Vitesse (Quixadá II)",
+        "Carosa (Aquiraz I)", "Salvales (Aquiraz II)",
+    ]
+    vals_zel_pos = ws_zel.get_all_values()
+    total_colunas = max(len(r) for r in vals_zel_pos)
+    linhas_novas = []
+    for usina in SAL_ENERGIA_USINAS:
+        linha = [""] * total_colunas
+        linha[0] = "Sal Energia"
+        linha[1] = usina
+        linhas_novas.append(linha)
+    ws_zel.append_rows(linhas_novas, value_input_option="USER_ENTERED")
+    relatorio["zeladoria_sal_energia_adicionadas"] = SAL_ENERGIA_USINAS
+
+    return jsonify({"ok": True, "relatorio": relatorio}), 200
 
 
 @app.route("/webhook", methods=["POST"])
