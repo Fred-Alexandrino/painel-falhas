@@ -3091,6 +3091,33 @@ def zeladoria_reestruturar_fornecedor():
     return jsonify({"ok": True, "colunas_renomeadas": alterados}), 200
 
 
+_ZEL_GRUPO_ALIASES = {
+    "rocada": "Roçada", "rocagem": "Roçada", "supressao": "Roçada",
+    "supressao vegetal": "Roçada", "capina": "Roçada", "vegetal": "Roçada",
+    "poda quimica": "Poda Química", "poda": "Poda Química", "herbicida": "Poda Química",
+    "lavagem dos modulos": "Lavagem dos Módulos", "lavagem": "Lavagem dos Módulos",
+    "limpeza": "Lavagem dos Módulos", "limpeza dos modulos": "Lavagem dos Módulos",
+    "limpeza de modulos": "Lavagem dos Módulos", "modulos": "Lavagem dos Módulos",
+    "controle de pragas": "Controle de Pragas", "pragas": "Controle de Pragas",
+}
+
+
+def _zel_resolver_grupo(grupo, indice_cols):
+    """Acha o grupo real da planilha a partir do que a IA (ou o chamador)
+    mandou, tolerando variações de escrita (ex: 'Limpeza' -> 'Lavagem dos
+    Módulos'). Retorna None se não conseguir resolver."""
+    grupo_norm = _normalizar_tema_comunicado(grupo)
+    if grupo in indice_cols:
+        return grupo
+    alvo = _ZEL_GRUPO_ALIASES.get(grupo_norm)
+    if alvo and alvo in indice_cols:
+        return alvo
+    for chave_real in indice_cols:
+        if _normalizar_tema_comunicado(chave_real) == grupo_norm:
+            return chave_real
+    return None
+
+
 def _zel_montar_indice_colunas(ws):
     """Lê as linhas 1 e 2 de cabeçalho da aba Zeladoria e monta um índice
     {grupo: {subcol_normalizada: coluna_1indexed}} pra permitir localizar
@@ -3142,11 +3169,12 @@ def zeladoria_atualizar_lote():
     updates = []  # lista de (linha, coluna, valor) pra um único batch_update
     for item in itens:
         usina = (item.get("usina") or "").strip()
-        grupo = (item.get("grupo") or "").strip()
+        grupo_bruto = (item.get("grupo") or "").strip()
         linha = mapa_linha_usina.get(_normalizar_tema_comunicado(usina))
-        cols_grupo = indice_cols.get(grupo)
+        grupo = _zel_resolver_grupo(grupo_bruto, indice_cols)
+        cols_grupo = indice_cols.get(grupo) if grupo else None
         if not linha or not cols_grupo:
-            nao_encontradas.append({"usina": usina, "grupo": grupo})
+            nao_encontradas.append({"usina": usina, "grupo": grupo_bruto})
             continue
         for campo, valor in [
             ("proxima data", item.get("proximaData")),
@@ -3169,6 +3197,98 @@ def zeladoria_atualizar_lote():
         "aplicadas": aplicadas,
         "nao_encontradas": nao_encontradas,
     }), 200
+
+
+def _montar_prompt_extrair_zeladoria(texto_observacoes, usinas_validas):
+    lista_usinas = "\n".join(f"- {u}" for u in usinas_validas)
+    return f"""Você é um assistente que ajuda a extrair informações de controle de zeladoria (roçada/supressão vegetal, poda química, lavagem/limpeza de módulos fotovoltaicos, controle de pragas) de usinas solares, a partir de prints de conversas, cronogramas de fornecedores terceirizados ou anotações de reunião.
+
+USINAS VÁLIDAS (use exatamente esse nome no campo "usina" quando reconhecer a usina — se a informação for de uma usina que NÃO está nessa lista, ainda inclua no resultado, copie o nome como veio no texto/imagem, e marque "usina_reconhecida": false):
+{lista_usinas}
+
+GRUPOS VÁLIDOS (campo "grupo", escolha o que melhor descreve o serviço):
+- "Roçada" (roçagem, supressão vegetal, capina)
+- "Poda Química" (herbicida, poda química)
+- "Lavagem dos Módulos" (limpeza/lavagem de módulos fotovoltaicos)
+- "Controle de Pragas"
+
+STATUS VÁLIDOS (campo "status", escolha o mais adequado ao que foi informado):
+- "Programado" (data e fornecedor confirmados, aguardando execução)
+- "Aguardando assinatura" (contrato ainda não assinado, previsão sujeita a mudança)
+- "Em cotação" (negociação em andamento com fornecedor já identificado)
+- "Buscando cotação" (ainda procurando fornecedor)
+- "Em andamento" (serviço sendo executado agora)
+- "Concluído" (serviço já finalizado)
+- "Sem informações" (citado mas sem detalhe suficiente pra decidir)
+
+Extraia do texto/imagem abaixo todas as atualizações de zeladoria que conseguir identificar. Pra cada usina+grupo mencionado, gere um item com:
+- "usina": nome exato (da lista acima, se reconhecida) ou como veio no original
+- "usina_reconhecida": true/false
+- "grupo": um dos grupos válidos acima
+- "proximaData": data no formato DD/MM/AAAA, ou "" se não houver data confirmada
+- "fornecedor": nome da empresa/fornecedor responsável, ou "" se não informado
+- "status": um dos status válidos acima
+- "observacao": nota curta livre só se houver algo relevante que não caiba nos campos acima (ex.: "previsão sujeita a confirmação pós-assinatura"), ou "" caso contrário
+
+REGRA CRÍTICA — não invente informação que não está no texto/imagem. Se uma usina for citada mas sem detalhes suficientes pra decidir o status, use "Sem informações" e deixe proximaData/fornecedor vazios em vez de supor.
+
+Texto/observações fornecidas pelo usuário: {texto_observacoes or "(nenhuma observação em texto — considere só a imagem)"}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"itens": [{{"usina": "...", "usina_reconhecida": true, "grupo": "...", "proximaData": "...", "fornecedor": "...", "status": "...", "observacao": "..."}}]}}"""
+
+
+@app.route("/zeladoria-extrair-print", methods=["POST", "OPTIONS"])
+def zeladoria_extrair_print():
+    """Recebe um print (imagem em base64) e/ou texto de observações
+    (repassados de reuniões, fornecedores etc.) e usa IA (Gemini, visão +
+    texto) pra extrair uma lista estruturada de atualizações de zeladoria
+    (usina, grupo, data, fornecedor, status), pronta pra revisão no
+    frontend antes de aplicar via /zeladoria-atualizar-lote. Este
+    endpoint NUNCA grava nada sozinho — só extrai e devolve pra revisão."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    imagem_b64 = body.get("imagemBase64") or ""
+    imagem_mime = body.get("imagemMimeType") or "image/png"
+    texto = (body.get("texto") or "").strip()
+    if not imagem_b64 and not texto:
+        return jsonify({"ok": False, "error": "envie uma imagem e/ou texto de observações"}), 400
+
+    ws = get_zeladoria_sheet()
+    todos = ws.get_all_values()
+    usinas_validas = sorted({row[1].strip() for row in todos[2:] if len(row) > 1 and row[1].strip()})
+
+    prompt = _montar_prompt_extrair_zeladoria(texto, usinas_validas)
+    parts = [{"text": prompt}]
+    if imagem_b64:
+        parts.append({"inline_data": {"mime_type": imagem_mime, "data": imagem_b64}})
+
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 2048,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=45,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        parsed = json.loads(texto_limpo)
+        itens = parsed.get("itens") or []
+        return jsonify({"ok": True, "itens": itens, "usinasValidas": usinas_validas})
+    except Exception as e:
+        log.error(f"[zeladoria-extrair-print] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 502
 
 
 @app.route("/resolver-duplicata-8866", methods=["POST"])
