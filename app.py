@@ -3065,6 +3065,112 @@ def gerar_comunicado_zeladoria():
 
 
 
+_ZEL_GRUPOS = ["Roçada", "Poda Química", "Lavagem dos Módulos", "Controle de Pragas"]
+_ZEL_SUBCOLS = ["Última Data", "Próxima Data", "Fornecedor", "Status"]  # 4 subcolunas por grupo
+
+
+@app.route("/zeladoria-reestruturar-fornecedor", methods=["POST"])
+def zeladoria_reestruturar_fornecedor():
+    """Uso único: renomeia a 3ª subcoluna de cada grupo (Roçada, Poda
+    Química, Lavagem dos Módulos, Controle de Pragas) de 'Quantidade' pra
+    'Fornecedor' na linha 2 de cabeçalho da aba Zeladoria — mais útil pra
+    rastrear qual empresa terceirizada está em cada frente de serviço."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    ws = get_zeladoria_sheet()
+    row2 = ws.row_values(2)
+    alterados = []
+    for i, valor in enumerate(row2):
+        if valor.strip().lower() == "quantidade":
+            col = i + 1  # gspread é 1-indexed
+            ws.update_cell(2, col, "Fornecedor")
+            alterados.append(col)
+    return jsonify({"ok": True, "colunas_renomeadas": alterados}), 200
+
+
+def _zel_montar_indice_colunas(ws):
+    """Lê as linhas 1 e 2 de cabeçalho da aba Zeladoria e monta um índice
+    {grupo: {subcol_normalizada: coluna_1indexed}} pra permitir localizar
+    a célula certa de cada usina/grupo/subcoluna sem hardcode de posição
+    (a planilha pode ganhar colunas novas no futuro)."""
+    row1 = ws.row_values(1)
+    row2 = ws.row_values(2)
+    largura = max(len(row1), len(row2))
+    grupo_atual = None
+    indice = {}
+    for i in range(largura):
+        v1 = row1[i].strip() if i < len(row1) else ""
+        v2 = row2[i].strip() if i < len(row2) else ""
+        if v1:
+            grupo_atual = v1
+        if grupo_atual and v2:
+            indice.setdefault(grupo_atual, {})[_normalizar_tema_comunicado(v2)] = i + 1
+    return indice
+
+
+@app.route("/zeladoria-atualizar-lote", methods=["POST"])
+def zeladoria_atualizar_lote():
+    """Uso único (ou reaproveitável): recebe uma lista de atualizações
+    {usina, grupo, proximaData, fornecedor, status} e grava direto nas
+    células correspondentes da aba Zeladoria, localizando a linha pela
+    usina (coluna B) e as colunas pelo cabeçalho (grupo + subcoluna).
+    Usina não encontrada na planilha é reportada em 'nao_encontradas',
+    sem interromper o restante do lote."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    itens = body.get("itens") or []
+    if not itens:
+        return jsonify({"ok": False, "error": "informe 'itens'"}), 400
+
+    ws = get_zeladoria_sheet()
+    todos = ws.get_all_values()
+    indice_cols = _zel_montar_indice_colunas(ws)
+
+    mapa_linha_usina = {}
+    for i, row in enumerate(todos[2:], start=3):  # dados começam na linha 3
+        if len(row) > 1 and row[1].strip():
+            mapa_linha_usina[_normalizar_tema_comunicado(row[1])] = i
+
+    aplicadas, nao_encontradas = [], []
+    updates = []  # lista de (linha, coluna, valor) pra um único batch_update
+    for item in itens:
+        usina = (item.get("usina") or "").strip()
+        grupo = (item.get("grupo") or "").strip()
+        linha = mapa_linha_usina.get(_normalizar_tema_comunicado(usina))
+        cols_grupo = indice_cols.get(grupo)
+        if not linha or not cols_grupo:
+            nao_encontradas.append({"usina": usina, "grupo": grupo})
+            continue
+        for campo, valor in [
+            ("proxima data", item.get("proximaData")),
+            ("fornecedor", item.get("fornecedor")),
+            ("status", item.get("status")),
+        ]:
+            col = cols_grupo.get(campo)
+            if col and valor is not None:
+                updates.append({
+                    "range": gspread.utils.rowcol_to_a1(linha, col),
+                    "values": [[valor]],
+                })
+        aplicadas.append({"usina": usina, "grupo": grupo, "linha": linha})
+
+    if updates:
+        ws.batch_update(updates)
+
+    return jsonify({
+        "ok": True,
+        "aplicadas": aplicadas,
+        "nao_encontradas": nao_encontradas,
+    }), 200
+
+
 @app.route("/resolver-duplicata-8866", methods=["POST"])
 def resolver_duplicata_8866():
     """Uso único: resolve a duplicidade da OS 8866 (atividades #24 e #35
