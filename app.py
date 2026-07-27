@@ -2192,6 +2192,28 @@ def eh_ronda_status_ok(texto):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@app.route("/diag-headers-temp", methods=["GET"])
+def diag_headers_temp():
+    resultado = {}
+    try:
+        ws = get_sheet()
+        resultado["falhas"] = ws.row_values(1)
+    except Exception as e:
+        resultado["falhas_erro"] = str(e)
+    try:
+        ws2 = get_atividades_sheet()
+        resultado["atividades"] = ws2.row_values(1)
+    except Exception as e:
+        resultado["atividades_erro"] = str(e)
+    try:
+        ws3 = _get_config_sheet()
+        vals = ws3.get_all_values()
+        resultado["sistema_amostra"] = [r[0] for r in vals[1:30] if r]
+    except Exception as e:
+        resultado["sistema_erro"] = str(e)
+    return jsonify(resultado), 200
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     """
