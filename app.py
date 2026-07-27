@@ -8549,15 +8549,19 @@ def _montar_prompt_resumo_cliente(cliente, atividades, saudacao):
     selecionadas manualmente pelo Fred, em linguagem polida e voltada ao
     cliente final (não ao técnico de campo) — usado pelo painel 'Gestão
     Cliente'. Diferente do comunicado técnico (objetivo/seco), aqui o tom é
-    consultivo: saudação, contexto, e assinatura pessoal do Fred."""
+    consultivo: saudação, contexto, e assinatura pessoal do Fred. A OS é
+    incluída como referência ao final de cada linha (pedido do Fred em
+    27/07/2026 — antes era omitida, agora é mantida pra rastreabilidade)."""
     mapa_cluster = _mapa_cluster_usina()
     por_usina = {}
     for a in atividades:
         usina = (a.get("usina") or "").strip() or "não informado"
         descricao = (a.get("descricao") or "").strip()
+        numero_os = (a.get("numeroOS") or "").strip()
         if not descricao:
             continue
-        por_usina.setdefault(usina, []).append(descricao)
+        linha = descricao + (f" [ref. OS {numero_os}]" if numero_os else "")
+        por_usina.setdefault(usina, []).append(linha)
 
     blocos = []
     for usina, descricoes in por_usina.items():
@@ -8574,7 +8578,8 @@ Regras obrigatórias de formato:
 - Comece com a saudação "{saudacao}" seguida de uma referência cordial ao cliente (ex.: "{saudacao}, equipe {cliente}!"). Pode usar um emoji simples e discreto na saudação (ex.: 👋), sem exagerar em emojis no resto do texto.
 - Uma frase curta de abertura contextualizando que segue o panorama de atividades programadas para hoje.
 - Liste as atividades agrupadas por usina (use o nome da usina como pequeno destaque, ex. em negrito ou seguido de dois pontos), com marcador "•" para cada atividade daquela usina.
-- Reescreva cada descrição de atividade em linguagem clara e acessível pro cliente — SEM número de OS, SEM código de ativo/equipamento cru, SEM jargão técnico interno de sistema (nada de "statusOS", "Fracttal", etc). Mantenha o conteúdo técnico real (o que será feito), só troque a forma como é dito.
+- Reescreva cada descrição de atividade em linguagem clara e acessível pro cliente — SEM código de ativo/equipamento cru, SEM jargão técnico interno de sistema (nada de "statusOS", "Fracttal", etc). Mantenha o conteúdo técnico real (o que será feito), só troque a forma como é dito.
+- Quando a atividade tiver uma marcação "[ref. OS XXXX]" na informação fornecida, inclua o número da OS como referência ao final da linha, em formato discreto, ex.: "• Manutenção preventiva no inversor 3 (ref. OS 8508)". Não invente número de OS pra atividades que não tiverem essa marcação.
 - Não invente atividades nem detalhes que não estejam na lista fornecida.
 - Termine com uma frase curta de disponibilidade/cordialidade (ex. equipe de campo mobilizada, à disposição para dúvidas).
 - Assine ao final com:
@@ -8646,14 +8651,17 @@ def _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao):
     diferente de 'Finalizado') selecionados manualmente pelo Fred, em
     linguagem polida voltada ao cliente final — botão 'Gestão Cliente'
     dentro do Painel de Chamados. Mesmo princípio do resumo de atividades:
-    seleção 100% manual, sem número de ticket/RMA ou código de série cru,
-    linguagem acessível."""
+    seleção 100% manual, sem serial number ou código de equipamento cru,
+    linguagem acessível. O ticket/RMA é incluído como referência ao final
+    de cada linha (pedido do Fred em 27/07/2026 — antes era omitido, agora
+    é mantido pra rastreabilidade)."""
     por_usina = {}
     for c in chamados:
         usina = (c.get("usina") or "").strip() or "não informado"
         motivo = (c.get("motivo") or "").strip()
         status = (c.get("status") or "").strip()
         dias = (c.get("diasCorridos") or "").strip()
+        ticket = (c.get("ticket") or "").strip()
         if not motivo:
             continue
         linha = motivo
@@ -8661,6 +8669,8 @@ def _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao):
             linha += f" — status atual: {status}"
         if dias:
             linha += f" (em aberto há {dias} dia(s))"
+        if ticket:
+            linha += f" [ref. Ticket {ticket}]"
         por_usina.setdefault(usina, []).append(linha)
 
     blocos = []
@@ -8677,7 +8687,8 @@ Regras obrigatórias de formato:
 - Comece com a saudação "{saudacao}" seguida de uma referência cordial ao cliente (ex.: "{saudacao}, equipe {cliente}!"). Pode usar um emoji simples e discreto na saudação (ex.: 👋), sem exagerar em emojis no resto do texto.
 - Uma frase curta de abertura contextualizando que segue o panorama dos chamados de fabricante em andamento.
 - Liste os chamados agrupados por usina (destaque o nome da usina), com marcador "•" para cada chamado daquela usina.
-- Reescreva cada chamado em linguagem clara pro cliente — SEM número de ticket/RMA, SEM serial number, SEM código de identificação de equipamento cru, SEM jargão interno. Mantenha o conteúdo real (o que motivou o chamado e o status/andamento atual), só troque a forma como é dito.
+- Reescreva cada chamado em linguagem clara pro cliente — SEM serial number, SEM código de identificação de equipamento cru, SEM jargão interno. Mantenha o conteúdo real (o que motivou o chamado e o status/andamento atual), só troque a forma como é dito.
+- Quando o chamado tiver uma marcação "[ref. Ticket XXXX]" na informação fornecida, inclua o número do ticket como referência ao final da linha, em formato discreto, ex.: "• Substituição de módulo com defeito de fabricação, em análise com o fabricante (ref. Ticket 4821)". Não invente número de ticket pra chamados que não tiverem essa marcação.
 - Não invente informações que não estejam na lista fornecida — se o status não estiver claro, diga algo como "em andamento com o fabricante", sem inventar prazo ou solução.
 - Não invente prazo de solução nem prometa data — se não houver data confirmada na informação fornecida, deixe claro que ainda está em acompanhamento.
 - Termine com uma frase curta de disponibilidade/cordialidade.
