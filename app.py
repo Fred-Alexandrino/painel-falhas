@@ -8575,7 +8575,7 @@ def _montar_prompt_resumo_cliente(cliente, atividades, saudacao):
 Esta mensagem é PRA CLIENTE, não pra equipe técnica interna — o tom deve ser polido, profissional, amigável e direto, como uma comunicação de relacionamento com cliente (não uma ordem de serviço interna).
 
 Regras obrigatórias de formato:
-- Comece com a saudação "{saudacao}" seguida de uma referência cordial ao cliente (ex.: "{saudacao}, equipe {cliente}!"). Pode usar um emoji simples e discreto na saudação (ex.: 👋), sem exagerar em emojis no resto do texto.
+- Comece com a saudação seca e direta "{saudacao}, pessoal." — sem exclamação, sem emoji, e sem mencionar o nome do cliente na saudação (o texto já vai ser enviado no grupo certo, não precisa reforçar isso).
 - Uma frase curta de abertura contextualizando que segue o panorama de atividades programadas para hoje.
 - Liste as atividades agrupadas por usina (use o nome da usina como pequeno destaque, ex. em negrito ou seguido de dois pontos), com marcador "•" para cada atividade daquela usina.
 - Reescreva cada descrição de atividade em linguagem clara e acessível pro cliente — SEM código de ativo/equipamento cru, SEM jargão técnico interno de sistema (nada de "statusOS", "Fracttal", etc). Mantenha o conteúdo técnico real (o que será feito), só troque a forma como é dito.
@@ -8684,7 +8684,7 @@ def _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao):
 Esta mensagem é PRA CLIENTE, não pra equipe técnica interna — o tom deve ser polido, profissional, amigável e direto, como uma comunicação de relacionamento com cliente (não um controle interno de ticket).
 
 Regras obrigatórias de formato:
-- Comece com a saudação "{saudacao}" seguida de uma referência cordial ao cliente (ex.: "{saudacao}, equipe {cliente}!"). Pode usar um emoji simples e discreto na saudação (ex.: 👋), sem exagerar em emojis no resto do texto.
+- Comece com a saudação seca e direta "{saudacao}, pessoal." — sem exclamação, sem emoji, e sem mencionar o nome do cliente na saudação (o texto já vai ser enviado no grupo certo, não precisa reforçar isso).
 - Uma frase curta de abertura contextualizando que segue o panorama dos chamados de fabricante em andamento.
 - Liste os chamados agrupados por usina (destaque o nome da usina), com marcador "•" para cada chamado daquela usina.
 - Reescreva cada chamado em linguagem clara pro cliente — SEM serial number, SEM código de identificação de equipamento cru, SEM jargão interno. Mantenha o conteúdo real (o que motivou o chamado e o status/andamento atual), só troque a forma como é dito.
