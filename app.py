@@ -9005,25 +9005,17 @@ def gerar_texto_os_ia():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def _extrair_texto_sobreaviso(file_storage, filtro_aba="FRED ALEXANDRINO"):
+def _extrair_texto_sobreaviso(file_storage):
     """Extrai a escala de sobreaviso (planilha 'SOBREAVISOS_EQUIPES_GRID') em
     texto compacto pra usar como contexto na auditoria de ponto. A planilha
     tem uma aba por supervisor, cada uma com colunas por cluster/usina e
     linhas por semana, indicando qual técnico está de sobreaviso naquela
-    semana/fim de semana/feriado.
-
-    Por padrão processa só a(s) aba(s) do supervisor Fred Alexandrino
-    (filtro_aba), já que o Controle de Ponto audita apenas as equipes dele
-    — as demais abas (Vitor, Danuth, Marcelo, Camila, Pedro) são de outros
-    supervisores e não devem entrar no contexto."""
+    semana/fim de semana/feriado."""
     import openpyxl
     from io import BytesIO
     wb = openpyxl.load_workbook(BytesIO(file_storage.read()), data_only=True)
     blocos = []
-    filtro_norm = (filtro_aba or "").strip().upper()
     for nome_aba in wb.sheetnames:
-        if filtro_norm and filtro_norm not in nome_aba.strip().upper():
-            continue
         ws = wb[nome_aba]
         linhas = list(ws.iter_rows(values_only=True))
         header_idx = None
@@ -9061,13 +9053,16 @@ def _extrair_texto_sobreaviso(file_storage, filtro_aba="FRED ALEXANDRINO"):
     return texto
 
 
-def _montar_prompt_controle_ponto(textos_extraidos, texto_escala_sobreaviso=None):
+def _montar_prompt_controle_ponto(textos_extraidos, texto_escala_sobreaviso=None, orientacao_adicional=None):
     """Monta o prompt de auditoria de ponto (setor Controle de Ponto,
     dentro do Painel Gerencial). textos_extraidos: lista de strings, uma
     por PDF enviado (cada PDF do Pontomais pode conter 1 ou vários
     colaboradores, um por página/bloco 'Colaborador: NOME'). Opcionalmente
     recebe a escala de sobreaviso (planilha) pra cruzar quem estava
-    realmente escalado nos fins de semana/feriados analisados."""
+    realmente escalado nos fins de semana/feriados analisados, e uma
+    orientação adicional em texto livre escrita pelo Fred na hora — que
+    COMPLEMENTA as regras fixas abaixo, sem substituí-las, a não ser que
+    ele diga expressamente o contrário."""
     corpo = "\n\n=== NOVO ARQUIVO ===\n\n".join(textos_extraidos)
     bloco_escala = ""
     instrucao_etapa3_extra = ""
@@ -9080,6 +9075,18 @@ def _montar_prompt_controle_ponto(textos_extraidos, texto_escala_sobreaviso=None
             "escalado, ou se um colaborador escalado não tem nenhuma marcação nem foi substituído, "
             "registre isso no campo \"anomalias_sobreaviso\" como uma observação (não necessariamente "
             "uma falta grave, apenas evidencie a divergência pro RH avaliar)."
+        )
+    bloco_orientacao = ""
+    if orientacao_adicional and orientacao_adicional.strip():
+        bloco_orientacao = (
+            "\n\nORIENTAÇÃO ADICIONAL DO SUPERVISOR (Fred) PRA ESTA ANÁLISE:\n"
+            "As instruções abaixo foram escritas por Fred especificamente pra esta rodada de análise. "
+            "Elas COMPLEMENTAM as etapas 1 a 5 e o formato de resposta definidos acima — aplique-as "
+            "junto com as regras fixas, sem descartar nenhuma etapa. Só ignore ou substitua alguma "
+            "regra fixa se o texto abaixo disser isso de forma clara e explícita (ex.: \"não considere "
+            "a etapa 2 desta vez\", \"ignore ajustes por esquecimento do colaborador X\"). Em qualquer "
+            "outro caso, trate como um complemento às regras já definidas.\n\n"
+            f"\"\"\"\n{orientacao_adicional.strip()}\n\"\"\"\n"
         )
     instrucoes = (
         "Aja como um auditor técnico de Departamento Pessoal especializado em controle de jornada. "
@@ -9120,7 +9127,8 @@ def _montar_prompt_controle_ponto(textos_extraidos, texto_escala_sobreaviso=None
         "}]}\n\n"
         "Linguagem técnica, concisa e estruturada por colaborador, evidenciando apenas pendências "
         "reais que demandam ação do setor de Recursos Humanos."
-        f"{bloco_escala}\n"
+        f"{bloco_escala}"
+        f"{bloco_orientacao}\n"
         f"ESPELHOS DE PONTO:\n{corpo}"
     )
     return instrucoes
@@ -9170,7 +9178,11 @@ def analisar_controle_ponto():
             log.error(f"[analisar-controle-ponto] Erro extraindo '{nome_arquivo}': {e}")
             return jsonify({"ok": False, "error": f"Erro ao ler o PDF \"{nome_arquivo}\": {e}"}), 400
 
-    prompt = _montar_prompt_controle_ponto(textos, texto_escala_sobreaviso=texto_escala)
+    prompt = _montar_prompt_controle_ponto(
+        textos,
+        texto_escala_sobreaviso=texto_escala,
+        orientacao_adicional=request.form.get("orientacao_adicional"),
+    )
     diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
         resp = _chamar_gemini_com_retry(
