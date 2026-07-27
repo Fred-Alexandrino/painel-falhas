@@ -2192,25 +2192,49 @@ def eh_ronda_status_ok(texto):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+import re as _re_diag
+def _achar_arabicos_usina(valores, col_idx):
+    encontrados = {}
+    for row in valores[1:]:
+        if len(row) > col_idx:
+            v = row[col_idx].strip()
+            if _re_diag.search(r"\b(1|2)\s*$", v) or _re_diag.search(r"\bMat[aã]o\s*1\b", v, _re_diag.IGNORECASE):
+                encontrados[v] = encontrados.get(v, 0) + 1
+    return encontrados
+
 @app.route("/diag-headers-temp", methods=["GET"])
 def diag_headers_temp():
     resultado = {}
     try:
         ws = get_sheet()
-        resultado["falhas"] = ws.row_values(1)
+        header = ws.row_values(1)
+        idx = header.index("Usina") if "Usina" in header else 2
+        vals = ws.get_all_values()
+        resultado["falhas_usinas_arabicas"] = _achar_arabicos_usina(vals, idx)
     except Exception as e:
         resultado["falhas_erro"] = str(e)
     try:
         ws2 = get_atividades_sheet()
-        resultado["atividades"] = ws2.row_values(1)
+        header2 = ws2.row_values(1)
+        idx2 = header2.index("Usina") if "Usina" in header2 else 2
+        vals2 = ws2.get_all_values()
+        resultado["atividades_usinas_arabicas"] = _achar_arabicos_usina(vals2, idx2)
     except Exception as e:
         resultado["atividades_erro"] = str(e)
     try:
         ws3 = _get_config_sheet()
-        vals = ws3.get_all_values()
-        resultado["sistema_amostra"] = [r[0] for r in vals[1:30] if r]
+        vals3 = ws3.get_all_values()
+        arabicos_sistema = [r[0] for r in vals3[1:] if r and (_re_diag.search(r"\b(1|2)\s*$", r[0]) or _re_diag.search(r"Mat[aã]o\s*1\b", r[0], _re_diag.IGNORECASE))]
+        resultado["sistema_chaves_arabicas"] = arabicos_sistema
+        resultado["sistema_total_linhas"] = len(vals3)
     except Exception as e:
         resultado["sistema_erro"] = str(e)
+    try:
+        ws4 = get_zeladoria_sheet()
+        vals4 = ws4.get_all_values()
+        resultado["zeladoria_usinas"] = [r[1] for r in vals4[2:] if len(r) > 1 and r[1].strip()]
+    except Exception as e:
+        resultado["zeladoria_erro"] = str(e)
     return jsonify(resultado), 200
 
 
