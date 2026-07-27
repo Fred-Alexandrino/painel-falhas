@@ -1,0 +1,23 @@
+name: Diag Headers Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/diag-headers-temp" -o backups/diag-headers.json
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-headers.json
+          git commit -m "diag headers [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-headers.json
+          git commit -m "diag headers [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
