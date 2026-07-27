@@ -9005,12 +9005,74 @@ def gerar_texto_os_ia():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def _montar_prompt_controle_ponto(textos_extraidos):
+def _extrair_texto_sobreaviso(file_storage):
+    """Extrai a escala de sobreaviso (planilha 'SOBREAVISOS_EQUIPES_GRID') em
+    texto compacto pra usar como contexto na auditoria de ponto. A planilha
+    tem uma aba por supervisor, cada uma com colunas por cluster/usina e
+    linhas por semana, indicando qual técnico está de sobreaviso naquela
+    semana/fim de semana/feriado."""
+    import openpyxl
+    from io import BytesIO
+    wb = openpyxl.load_workbook(BytesIO(file_storage.read()), data_only=True)
+    blocos = []
+    for nome_aba in wb.sheetnames:
+        ws = wb[nome_aba]
+        linhas = list(ws.iter_rows(values_only=True))
+        header_idx = None
+        for i, linha in enumerate(linhas):
+            textos = [str(c).upper() for c in linha if c]
+            if any("SEMANA" in t for t in textos) and any("DIAS" in t for t in textos):
+                header_idx = i
+                break
+        if header_idx is None:
+            continue
+        header = linhas[header_idx]
+        colunas = [(j, str(header[j]).replace("\n", " / ")) for j in range(3, len(header)) if header[j]]
+        saida = [f"=== Supervisor: {nome_aba} ==="]
+        for linha in linhas[header_idx + 1:]:
+            data_val = linha[2] if len(linha) > 2 else None
+            if not data_val:
+                continue
+            data_str = data_val.strftime("%d/%m/%Y") if hasattr(data_val, "strftime") else str(data_val)
+            partes_linha = []
+            for j, nome_col in colunas:
+                val = linha[j] if j < len(linha) else None
+                if val:
+                    partes_linha.append(f"{nome_col}: {str(val).replace(chr(10), ', ')}")
+            if partes_linha:
+                saida.append(f"{data_str} -> " + "; ".join(partes_linha))
+        if len(saida) > 1:
+            blocos.append("\n".join(saida))
+    texto = "\n\n".join(blocos)
+    # a escala é ordenada cronologicamente (mais antiga primeiro), então se
+    # precisar truncar por tamanho, corta do INÍCIO — o período mais recente
+    # (relevante pro espelho de ponto analisado) fica no fim do texto.
+    limite = 250000
+    if len(texto) > limite:
+        texto = "[...início do texto truncado por tamanho...]\n" + texto[-limite:]
+    return texto
+
+
+def _montar_prompt_controle_ponto(textos_extraidos, texto_escala_sobreaviso=None):
     """Monta o prompt de auditoria de ponto (setor Controle de Ponto,
     dentro do Painel Gerencial). textos_extraidos: lista de strings, uma
     por PDF enviado (cada PDF do Pontomais pode conter 1 ou vários
-    colaboradores, um por página/bloco 'Colaborador: NOME')."""
+    colaboradores, um por página/bloco 'Colaborador: NOME'). Opcionalmente
+    recebe a escala de sobreaviso (planilha) pra cruzar quem estava
+    realmente escalado nos fins de semana/feriados analisados."""
     corpo = "\n\n=== NOVO ARQUIVO ===\n\n".join(textos_extraidos)
+    bloco_escala = ""
+    instrucao_etapa3_extra = ""
+    if texto_escala_sobreaviso:
+        bloco_escala = f"\n\nESCALA DE SOBREAVISO (referência — quem estava escalado em cada semana/cluster):\n{texto_escala_sobreaviso}\n"
+        instrucao_etapa3_extra = (
+            " Use a ESCALA DE SOBREAVISO fornecida pra cruzar: se o colaborador tem marcações em um "
+            "fim de semana/feriado, verifique se ele estava de fato escalado naquela semana (pelo nome "
+            "dele na escala, considerando variações de nome/apelido). Se ele trabalhou sem estar "
+            "escalado, ou se um colaborador escalado não tem nenhuma marcação nem foi substituído, "
+            "registre isso no campo \"anomalias_sobreaviso\" como uma observação (não necessariamente "
+            "uma falta grave, apenas evidencie a divergência pro RH avaliar)."
+        )
     instrucoes = (
         "Aja como um auditor técnico de Departamento Pessoal especializado em controle de jornada. "
         "Analise o(s) espelho(s) de ponto fornecido(s) abaixo, aplicando estritamente as regras de "
@@ -9026,7 +9088,8 @@ def _montar_prompt_controle_ponto(textos_extraidos):
         "Etapa 3 - Validação de sobreaviso em finais de semana e feriados: a ausência total de "
         "marcações em sábados, domingos e feriados indica que o colaborador não foi acionado e "
         "DISPENSA o registro de ponto — NÃO reporte isso como pendência. Aponte anomalias nesses dias "
-        "exclusivamente se houver início de jornada sem a respectiva conclusão (marcação em aberto).\n"
+        "exclusivamente se houver início de jornada sem a respectiva conclusão (marcação em aberto)."
+        f"{instrucao_etapa3_extra}\n"
         "Etapa 4 - Mapeamento de falhas sistêmicas: agrupe os colaboradores que registraram "
         "inconsistências técnicas (falha de aplicativo, travamento, falta de internet, bateria "
         "descarregada), indicando a frequência desses eventos.\n"
@@ -9048,7 +9111,8 @@ def _montar_prompt_controle_ponto(textos_extraidos):
         "\"comunicado_individual\": string"
         "}]}\n\n"
         "Linguagem técnica, concisa e estruturada por colaborador, evidenciando apenas pendências "
-        "reais que demandam ação do setor de Recursos Humanos.\n\n"
+        "reais que demandam ação do setor de Recursos Humanos."
+        f"{bloco_escala}\n"
         f"ESPELHOS DE PONTO:\n{corpo}"
     )
     return instrucoes
@@ -9075,6 +9139,18 @@ def analisar_controle_ponto():
         log.error("[analisar-controle-ponto] pdfplumber não instalado")
         return jsonify({"ok": False, "error": "Dependência pdfplumber não instalada no servidor"}), 500
 
+    texto_escala = None
+    arquivo_escala = request.files.get("planilha_sobreaviso")
+    if arquivo_escala and arquivo_escala.filename:
+        try:
+            texto_escala = _extrair_texto_sobreaviso(arquivo_escala)
+        except ImportError:
+            log.error("[analisar-controle-ponto] openpyxl não instalado")
+            return jsonify({"ok": False, "error": "Dependência openpyxl não instalada no servidor"}), 500
+        except Exception as e:
+            log.error(f"[analisar-controle-ponto] Erro extraindo planilha de sobreaviso: {e}")
+            return jsonify({"ok": False, "error": f"Erro ao ler a planilha de sobreaviso: {e}"}), 400
+
     textos = []
     for f in arquivos:
         nome_arquivo = secure_filename(f.filename or "arquivo.pdf")
@@ -9086,7 +9162,7 @@ def analisar_controle_ponto():
             log.error(f"[analisar-controle-ponto] Erro extraindo '{nome_arquivo}': {e}")
             return jsonify({"ok": False, "error": f"Erro ao ler o PDF \"{nome_arquivo}\": {e}"}), 400
 
-    prompt = _montar_prompt_controle_ponto(textos)
+    prompt = _montar_prompt_controle_ponto(textos, texto_escala_sobreaviso=texto_escala)
     diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
         resp = _chamar_gemini_com_retry(
