@@ -7579,10 +7579,60 @@ def listar_chamados_fabricante():
     try:
         itens = _chamados_fabricante_itens()
         ultima_sincronizacao = _ler_trava("chamados_ultima_sincronizacao")
+        ultima_tentativa = _ler_trava("chamados_ultima_tentativa")
+        ultimo_status = _ler_trava("chamados_ultimo_status")
+        ultimo_erro = _ler_trava("chamados_ultimo_erro")
         return jsonify({"ok": True, "itens": itens, "total": len(itens),
-                         "ultimaSincronizacao": ultima_sincronizacao}), 200
+                         "ultimaSincronizacao": ultima_sincronizacao,
+                         "ultimaTentativa": ultima_tentativa,
+                         "ultimoStatus": ultimo_status,
+                         "ultimoErro": ultimo_erro}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/reportar-status-sincronizacao-chamados", methods=["POST", "OPTIONS"])
+def reportar_status_sincronizacao_chamados():
+    """Recebe um relatório de status do script local (Agendador de Tarefas
+    no PC do Fred), chamado no final de TODA execução — sucesso ou erro.
+
+    Por quê existe separado do /sincronizar-chamados: quando o script
+    falha ANTES de conseguir montar/enviar os dados (ex.: Excel não
+    encontrado, OneDrive não sincronizado, erro de rede), o endpoint de
+    sincronização de verdade nunca é chamado — então o painel ficaria
+    "cego" pra esse tipo de falha, achando que só não rodou. Esse
+    endpoint garante que TODA tentativa (com sucesso ou não) fica
+    registrada, pra exibir um indicador de status no Painel de Chamados
+    (pedido pelo Fred em 28/07/2026, após diagnosticar uma falha
+    silenciosa do Agendador de Tarefas — Launch Failure por caminho de
+    python.exe incorreto).
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    ok = bool(body.get("ok"))
+    erro = str(body.get("erro") or "").strip()
+    criadas = body.get("criadas")
+    atualizadas = body.get("atualizadas")
+
+    agora_str = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+    try:
+        _gravar_trava("chamados_ultima_tentativa", agora_str)
+        _gravar_trava("chamados_ultimo_status", "ok" if ok else "erro")
+        _gravar_trava("chamados_ultimo_erro", erro if not ok else "")
+        if ok:
+            detalhe = f"criadas: {criadas}, atualizadas: {atualizadas}"
+            _gravar_trava("chamados_ultimo_detalhe", detalhe)
+    except Exception as e:
+        log.error(f"[ChamadosFabricante] Falha ao gravar status de sincronização: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    return jsonify({"ok": True}), 200
 
 
 FOTOS_ATIVIDADES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fotos_atividades")
