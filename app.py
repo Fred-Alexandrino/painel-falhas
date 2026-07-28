@@ -6775,60 +6775,71 @@ def sync_fracttal():
 
 
 # ══════════════════════════════════════════════════════════════════════
-# PROGRAMAÇÃO PCM — espelha o JSON público gerado pelo PCM (Fillipe
-# Figueiro) via Power Automate, publicado no repo gridco-pcm-data
-# (GitHub Pages). Fonte de verdade é esse JSON estático — este painel é
-# somente leitura, nunca grava nada de volta lá. Filtra só as tarefas do
-# responsável O&M "Fred Alexandrino", pra alimentar o card "Programação
-# do Dia" logo abaixo do Painel de Atividades.
-# O arquivo completo (gestao_pcm.json) tem ~8MB, então evitamos rebaixar
-# a cada chamada: primeiro checamos o hash publicado (arquivo de poucos
-# bytes) e só rebaixamos o JSON inteiro quando ele mudar.
+# PROGRAMAÇÃO PCM — espelha a MESMA fonte que alimenta a aba "Programação
+# Semanal" do portal do PCM (Fillipe Figueiro): banco_dados.json,
+# publicado no repo gridco-pcm-data (GitHub Pages), gerado por
+# gerar_pcm_json.py. Fonte de verdade é esse JSON estático — este painel
+# é somente leitura, nunca grava nada de volta lá.
+#
+# IMPORTANTE (corrigido em 28/07/2026): a primeira versão lia
+# gestao_pcm.json (lista bruta de OS da Fracttal, campo dataProg), o que
+# causava divergência com o portal — dataProg reflete a data bruta da OS
+# na Fracttal, não o cronograma efetivamente PUBLICADO pelo PCM (que já
+# passou por reprogramações manuais, tem horário definido, etc.).
+# banco_dados.json é o que o portal de fato usa pra montar a Programação
+# Semanal, então é a fonte certa pra espelhar aqui.
+#
+# banco_dados.json guarda as ~4 semanas mais recentes (semana_ativa +
+# passadas/futuras), cada uma com "week" no formato ISO "AAAA-Www" e uma
+# lista "rows" com um item por tarefa/dia/responsável, incluindo horário
+# (h_ini/h_fim), status e dia da semana por extenso em português.
 # ══════════════════════════════════════════════════════════════════════
 
-_PCM_HASH_URL = "https://raw.githubusercontent.com/fillipefigueiro-source/gridco-pcm-data/main/_gestao_pcm_published_hash.txt"
-_PCM_JSON_URL = "https://raw.githubusercontent.com/fillipefigueiro-source/gridco-pcm-data/main/gestao_pcm.json"
+_PCM_BANCO_URL = "https://raw.githubusercontent.com/fillipefigueiro-source/gridco-pcm-data/main/banco_dados.json"
 _PCM_RESPONSAVEL = "Fred Alexandrino"
+_PCM_CACHE_TTL_SEGUNDOS = 180  # banco_dados.json não tem hash publicado (~2.6MB) — cache curto por tempo em vez de checagem por hash
 
-_cache_programacao_pcm = {"hash": None, "tarefas": None, "gerado_em": None, "atualizado_em": None}
+_cache_programacao_pcm = {"dados": None, "buscado_em": 0, "gerado_em": None}
+
+_DIA_SEMANA_PT = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+
+# banco_dados.json usa esses rótulos brutos de status; normalizamos pros
+# mesmos rótulos que o resto do painel já usa (Finalizada/Pausada/etc.).
+_PCM_STATUS_NORMALIZADO = {
+    "Finalizados": "Finalizada",
+    "Não Iniciada": "Não Iniciada",
+    "pausado": "Pausada",
+    "Em progresso": "Em progresso",
+}
 
 
 def _buscar_programacao_pcm_core(forcar=False):
-    """Baixa (com cache por hash) o JSON público de Gestão PCM e filtra
-    só as tarefas do responsável O&M Fred Alexandrino."""
+    """Baixa (com cache curto por TTL, já que não há hash publicado pra
+    esse arquivo) o banco_dados.json público do PCM — mesma fonte da
+    Programação Semanal do portal."""
     global _cache_programacao_pcm
-
-    hash_atual = _cache_programacao_pcm.get("hash")
-    hash_remoto = None
-    try:
-        resp_hash = requests.get(_PCM_HASH_URL, timeout=10)
-        resp_hash.raise_for_status()
-        hash_remoto = resp_hash.text.strip()
-    except Exception as e:
-        log.error(f"[ProgramacaoPCM] Erro ao checar hash publicado: {e}")
-
-    precisa_baixar = forcar or _cache_programacao_pcm.get("tarefas") is None or (
-        hash_remoto and hash_remoto != hash_atual
+    agora = time.time()
+    cache_valido = (
+        _cache_programacao_pcm.get("dados") is not None
+        and (agora - _cache_programacao_pcm.get("buscado_em", 0)) < _PCM_CACHE_TTL_SEGUNDOS
     )
+    if not forcar and cache_valido:
+        return _cache_programacao_pcm
 
-    if precisa_baixar:
-        try:
-            resp = requests.get(_PCM_JSON_URL, timeout=60)
-            resp.raise_for_status()
-            dados = resp.json()
-            todas = dados.get("tarefas", [])
-            tarefas_fred = [t for t in todas if t.get("responsavel") == _PCM_RESPONSAVEL]
-            _cache_programacao_pcm = {
-                "hash": hash_remoto,
-                "tarefas": tarefas_fred,
-                "gerado_em": dados.get("geradoEm"),
-                "atualizado_em": datetime.now(_TZ_BR).isoformat(),
-            }
-            log.info(f"[ProgramacaoPCM] JSON atualizado — {len(tarefas_fred)} tarefas do Fred de {len(todas)} totais.")
-        except Exception as e:
-            log.error(f"[ProgramacaoPCM] Erro ao baixar gestao_pcm.json: {e}")
-            if _cache_programacao_pcm.get("tarefas") is None:
-                raise
+    try:
+        resp = requests.get(_PCM_BANCO_URL, timeout=60)
+        resp.raise_for_status()
+        dados = resp.json()
+        _cache_programacao_pcm = {
+            "dados": dados,
+            "buscado_em": agora,
+            "gerado_em": dados.get("geradoEm"),
+        }
+        log.info(f"[ProgramacaoPCM] banco_dados.json atualizado — {len(dados.get('semanas', []))} semana(s) publicadas.")
+    except Exception as e:
+        log.error(f"[ProgramacaoPCM] Erro ao baixar banco_dados.json: {e}")
+        if _cache_programacao_pcm.get("dados") is None:
+            raise
 
     return _cache_programacao_pcm
 
@@ -6836,12 +6847,12 @@ def _buscar_programacao_pcm_core(forcar=False):
 @app.route("/programacao-pcm", methods=["GET"])
 def programacao_pcm():
     """
-    Painel de Programações — o que o PCM programou para as equipes do
-    Fred Alexandrino num dia específico (default: hoje). Somente leitura,
-    puxado ao vivo (com cache por hash) do JSON público gerado pelo PCM.
+    Painel de Programações — espelha a Programação Semanal do PCM
+    (banco_dados.json), filtrada pro responsável O&M Fred Alexandrino num
+    dia específico. Somente leitura, puxado ao vivo (com cache curto).
     Parâmetros opcionais:
       ?data=YYYY-MM-DD  (default: hoje, America/Sao_Paulo)
-      ?forcar=1          força rebaixar o JSON ignorando o cache de hash
+      ?forcar=1          força rebaixar banco_dados.json ignorando o cache
     """
     forcar = request.args.get("forcar") in ("1", "true", "True")
     data_filtro = request.args.get("data", "").strip()
@@ -6849,46 +6860,80 @@ def programacao_pcm():
         data_filtro = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
 
     try:
+        dt = datetime.strptime(data_filtro, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"ok": False, "error": "parâmetro 'data' inválido, use YYYY-MM-DD"}), 400
+
+    try:
         cache = _buscar_programacao_pcm_core(forcar=forcar)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Falha ao consultar PCM: {e}"}), 502
 
-    tarefas_dia = [t for t in (cache.get("tarefas") or []) if t.get("dataProg") == data_filtro]
+    dados = cache.get("dados") or {}
+    semanas = dados.get("semanas", [])
+    iso_year, iso_week, _ = dt.isocalendar()
+    semana_alvo = f"{iso_year}-W{iso_week:02d}"
+    semana = next((s for s in semanas if s.get("week") == semana_alvo), None)
+
+    if semana is None:
+        janela = ", ".join(s.get("week", "") for s in semanas)
+        return jsonify({
+            "ok": True, "data": data_filtro, "diaSemana": None, "total": 0, "atrasadas": 0,
+            "resumoEstado": {}, "grupos": [],
+            "aviso": f"Sem programação publicada pelo PCM pra semana {semana_alvo} (janela disponível: {janela}).",
+            "fonte": {"geradoEmPCM": cache.get("gerado_em")},
+        }), 200
+
+    dia_pt = _DIA_SEMANA_PT[dt.weekday()]
+    hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
+
+    linhas_dia = [
+        r for r in semana.get("rows", [])
+        if r.get("responsavel") == _PCM_RESPONSAVEL and r.get("dia") == dia_pt
+    ]
 
     por_usina = {}
-    for t in tarefas_dia:
-        usina = t.get("usina") or "(sem usina)"
+    for r in linhas_dia:
+        usina = r.get("usina") or "(sem usina)"
+        estado = _PCM_STATUS_NORMALIZADO.get(r.get("status"), r.get("status") or "")
+        atrasado = data_filtro < hoje_str and estado != "Finalizada"
         por_usina.setdefault(usina, []).append({
-            "os": t.get("os"),
-            "idWO": t.get("idWO"),
-            "url": t.get("url"),
-            "cliente": t.get("cliente"),
-            "cluster": t.get("cluster"),
-            "tipo": t.get("tipo"),
-            "tarefa": t.get("tarefa"),
-            "estado": t.get("estado"),
-            "atrasado": bool(t.get("atrasado")),
-            "dataFinal": t.get("dataFinal"),
+            "os": r.get("os_id"),
+            "cliente": r.get("cliente"),
+            "cluster": r.get("cluster"),
+            "tipo": r.get("tipo"),
+            "tarefa": r.get("tarefa"),
+            "estado": estado,
+            "hIni": r.get("h_ini"),
+            "hFim": r.get("h_fim"),
+            "duracaoH": r.get("duracao"),
+            "reprogramavel": (r.get("reprog") or "").strip().lower() == "sim",
+            "atrasado": atrasado,
         })
+
+    for itens in por_usina.values():
+        itens.sort(key=lambda x: x.get("hIni") or "")
 
     grupos = [{"usina": usina, "itens": itens} for usina, itens in sorted(por_usina.items())]
 
     resumo_estado = {}
-    for t in tarefas_dia:
-        est = t.get("estado") or "—"
-        resumo_estado[est] = resumo_estado.get(est, 0) + 1
+    for itens in por_usina.values():
+        for it in itens:
+            est = it["estado"] or "—"
+            resumo_estado[est] = resumo_estado.get(est, 0) + 1
+
+    total = sum(len(v) for v in por_usina.values())
+    atrasadas = sum(1 for v in por_usina.values() for it in v if it["atrasado"])
 
     return jsonify({
         "ok": True,
         "data": data_filtro,
-        "total": len(tarefas_dia),
-        "atrasadas": sum(1 for t in tarefas_dia if t.get("atrasado")),
+        "diaSemana": dia_pt,
+        "total": total,
+        "atrasadas": atrasadas,
         "resumoEstado": resumo_estado,
         "grupos": grupos,
-        "fonte": {
-            "geradoEmPCM": cache.get("gerado_em"),
-            "atualizadoEmCache": cache.get("atualizado_em"),
-        },
+        "fonte": {"geradoEmPCM": cache.get("gerado_em")},
     }), 200
 
 
