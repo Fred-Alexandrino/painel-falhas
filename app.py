@@ -16,7 +16,7 @@ Suporta:
 - Formato Cos Grid com bullets (·) sem emojis
 """
 
-import os, re, json, logging, time, random, base64, uuid
+import os, re, json, logging, time, random, base64, uuid, sqlite3
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -7798,6 +7798,605 @@ def listar_clientes_configurados():
     """
     clientes = sorted(set(_CLIENTE_INDEX.values()))
     return jsonify({"ok": True, "clientes": clientes}), 200
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CAPTURA DE MENSAGENS DOS GRUPOS — pro resumo diário/semanal (Gestão
+# O&M). Usa SQLite local em vez de Google Sheets de propósito: volume
+# potencialmente alto (16 grupos, todo dia) e mais frequente que
+# qualquer outra escrita do sistema — colocar isso nas Sheets arriscaria
+# estourar a cota de escrita/leitura que já vimos dar 429 antes
+# (27/07/2026). Implementado a pedido do Fred pra alimentar o resumo
+# diário/semanal com o que foi tratado em cada grupo, não só o que já
+# era parseado (status de OS via palavras-chave).
+# ══════════════════════════════════════════════════════════════════════
+MENSAGENS_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mensagens_grupos.db")
+
+
+def _get_mensagens_db():
+    conn = sqlite3.connect(MENSAGENS_DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS mensagens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grupo_id TEXT NOT NULL,
+            nome_grupo TEXT NOT NULL,
+            remetente TEXT,
+            texto TEXT,
+            data_hora TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mensagens_grupo_data ON mensagens(grupo_id, data_hora)")
+    return conn
+
+
+@app.route("/capturar-mensagem-grupo", methods=["POST", "OPTIONS"])
+def capturar_mensagem_grupo():
+    """Arquiva uma mensagem de um dos 16 grupos mapeados pro resumo
+    diário/semanal. Chamado pela ponte do WhatsApp (server.js) pra TODA
+    mensagem desses grupos, sem filtro de conteúdo."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    grupo_id = (body.get("grupoId") or "").strip()
+    nome_grupo = (body.get("nomeGrupo") or "").strip()
+    remetente = (body.get("remetente") or "").strip()
+    texto = (body.get("texto") or "").strip()
+    if not grupo_id or not texto:
+        return jsonify({"ok": False, "error": "grupoId e texto são obrigatórios"}), 400
+
+    try:
+        conn = _get_mensagens_db()
+        conn.execute(
+            "INSERT INTO mensagens (grupo_id, nome_grupo, remetente, texto, data_hora) VALUES (?, ?, ?, ?, ?)",
+            (grupo_id, nome_grupo, remetente, texto, agora_br().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        log.error(f"[MensagensGrupos] Erro ao gravar mensagem de {nome_grupo}: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _buscar_mensagens_periodo(data_inicio, data_fim, grupo_id=None):
+    """Busca mensagens capturadas entre data_inicio e data_fim (strings
+    'YYYY-MM-DD', inclusive dos dois lados), opcionalmente filtrando por
+    um grupo específico. Retorna lista de dicts."""
+    conn = _get_mensagens_db()
+    conn.row_factory = sqlite3.Row
+    query = "SELECT * FROM mensagens WHERE date(data_hora) >= ? AND date(data_hora) <= ?"
+    params = [data_inicio, data_fim]
+    if grupo_id:
+        query += " AND grupo_id = ?"
+        params.append(grupo_id)
+    query += " ORDER BY data_hora ASC"
+    linhas = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in linhas]
+
+
+GRUPO_GESTAO_OM_ID = "120363429317295622@g.us"
+
+
+def _pcm_linhas_do_dia(data_str):
+    """Retorna as linhas cruas da programação do PCM pro Fred, numa data
+    específica (YYYY-MM-DD) — extraído do endpoint /programacao-pcm pra
+    ser reaproveitado pelo resumo diário/semanal sem duplicar lógica."""
+    try:
+        dt = datetime.strptime(data_str, "%Y-%m-%d").date()
+    except ValueError:
+        return []
+    try:
+        cache = _buscar_programacao_pcm_core()
+    except Exception:
+        return []
+    dados = cache.get("dados") or {}
+    semanas = dados.get("semanas", [])
+    iso_year, iso_week, _ = dt.isocalendar()
+    semana_alvo = f"{iso_year}-W{iso_week:02d}"
+    semana = next((s for s in semanas if s.get("week") == semana_alvo), None)
+    if semana is None:
+        return []
+    dia_pt = _DIA_SEMANA_PT[dt.weekday()]
+    return [r for r in semana.get("rows", []) if r.get("responsavel") == _PCM_RESPONSAVEL and r.get("dia") == dia_pt]
+
+
+FALHAS_SHEET_NAME_CANDIDATOS = ["Painel de Falhas - Fred Alexandrino", "Painel de Falhas"]
+
+
+def _falhas_itens():
+    """Lê a aba do Painel de Falhas direto via gspread (mesma
+    credencial/conexão usada em todo o resto do sistema), com
+    correspondência de coluna por palavra-chave no cabeçalho — igual à
+    lógica já usada no frontend (fetchSheet), pra não depender de posição
+    fixa de coluna. Criado em 27/07/2026 pro resumo diário/semanal."""
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    ws = None
+    for nome in FALHAS_SHEET_NAME_CANDIDATOS:
+        try:
+            ws = ss.worksheet(nome)
+            break
+        except gspread.WorksheetNotFound:
+            continue
+    if ws is None:
+        ws = ss.get_worksheet(0)  # fallback: primeira aba (gid=0), mesma usada pelo frontend
+
+    todos = ws.get_all_values()
+    if not todos:
+        return []
+    header = [h.lower().strip() for h in todos[0]]
+
+    def _achar_idx(*palavras_chave):
+        for i, h in enumerate(header):
+            if any(p in h for p in palavras_chave):
+                return i
+        return None
+
+    idx = {
+        "id": _achar_idx("id") or 0,
+        "dataAbertura": _achar_idx("data_abertura", "data abertura"),
+        "cliente": _achar_idx("cliente"),
+        "usina": _achar_idx("usina"),
+        "falha": _achar_idx("falha"),
+        "status": _achar_idx("status"),
+    }
+    itens = []
+    for row in todos[1:]:
+        if not row or not (row[idx["id"]] if idx["id"] < len(row) else "").strip():
+            continue
+        def _get(campo, default_idx=None):
+            i = idx.get(campo, default_idx)
+            return row[i].strip() if i is not None and i < len(row) else ""
+        itens.append({
+            "id": _get("id"), "dataAbertura": _get("dataAbertura"),
+            "cliente": _get("cliente"), "usina": _get("usina"),
+            "falha": _get("falha"), "status": _get("status") or "Em Aberto",
+        })
+    return itens
+
+
+def _coletar_dados_resumo_diario(data_str):
+    """Junta tudo que o resumo diário precisa pra uma data específica
+    (YYYY-MM-DD): programação do PCM cruzada com status real das OS,
+    atividades concluídas no dia que NÃO estavam programadas, chamados
+    de fabricante do dia, ocorrências novas do dia, desligamentos
+    ativos, prazos vencendo amanhã, e as mensagens capturadas nos
+    grupos mapeados."""
+    resultado = {"data": data_str}
+
+    # ── Programação do PCM x status real das OS ─────────────────────────
+    linhas_pcm = _pcm_linhas_do_dia(data_str)
+    try:
+        ws_ativ = get_atividades_sheet()
+        todos_ativ = ws_ativ.get_all_values()
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro ao ler Atividades: {e}")
+        todos_ativ = []
+
+    por_numero_os = {}
+    for row in todos_ativ[1:]:
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
+        if numero_os:
+            por_numero_os[numero_os] = row
+
+    programado_cumprido, programado_pendente = [], []
+    for r in linhas_pcm:
+        os_id = str(r.get("os_id") or "").strip()
+        item = {
+            "usina": r.get("usina"), "cliente": r.get("cliente"), "tarefa": r.get("tarefa"),
+            "os": os_id, "hIni": r.get("h_ini"),
+        }
+        row_real = por_numero_os.get(os_id) if os_id else None
+        if row_real is not None:
+            status_real = row_real[ATIV_CAMPO_COL["status"] - 1].strip()
+            status_os_real = row_real[ATIV_CAMPO_COL["statusOS"] - 1].strip()
+            item["statusReal"] = status_real
+            item["statusOSReal"] = status_os_real
+            if _is_concluido_atividade(status_real) or status_os_real in ("Em Revisão", "Finalizada"):
+                programado_cumprido.append(item)
+            else:
+                programado_pendente.append(item)
+        else:
+            item["statusReal"] = "sem OS correspondente no painel"
+            programado_pendente.append(item)
+
+    resultado["programacao"] = {"cumprido": programado_cumprido, "pendente": programado_pendente}
+
+    # ── Atividades concluídas no dia que NÃO estavam na programação ─────
+    numeros_programados = {str(r.get("os_id") or "").strip() for r in linhas_pcm if r.get("os_id")}
+    extras_nao_programadas = []
+    for row in todos_ativ[1:]:
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        data_conclusao = row[ATIV_CAMPO_COL["dataConclusao"] - 1].strip().split(" ")[0]
+        if not data_conclusao:
+            continue
+        try:
+            dc = datetime.strptime(data_conclusao, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+        if dc != data_str:
+            continue
+        numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
+        if numero_os and numero_os in numeros_programados:
+            continue  # já contabilizada como programação cumprida
+        extras_nao_programadas.append({
+            "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+            "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+            "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
+            "numeroOS": numero_os,
+        })
+    resultado["extrasNaoProgramadas"] = extras_nao_programadas
+
+    # ── Chamados de fabricante abertos/atualizados no dia ────────────────
+    try:
+        chamados = _chamados_fabricante_itens()
+        chamados_do_dia = [
+            c for c in chamados
+            if (c.get("Data da abertura do chamado") or "").strip() == datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+        ]
+        resultado["chamadosDoDia"] = chamados_do_dia
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro ao ler Chamados: {e}")
+        resultado["chamadosDoDia"] = []
+
+    # ── Ocorrências novas do dia (Painel de Falhas) ──────────────────────
+    try:
+        falhas = _falhas_itens()
+        data_br = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+        resultado["ocorrenciasNovasDoDia"] = [
+            f for f in falhas if str(f.get("dataAbertura") or "").strip().startswith(data_br)
+        ]
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro ao ler Falhas: {e}")
+        resultado["ocorrenciasNovasDoDia"] = []
+
+    # ── Desligamentos ativos agora ────────────────────────────────────────
+    # Versão simplificada da mesma lógica usada no frontend (isDesligamento/
+    # isDesligamentoAtividade) — respeita os overrides manuais já
+    # cadastrados, e usa os mesmos padrões-chave de texto.
+    try:
+        overrides = {}
+        ws_desl = get_desligamento_manual_sheet()
+        for row in ws_desl.get_all_values()[1:]:
+            if len(row) >= 3 and row[0].strip():
+                overrides[f"{row[0].strip()}:{row[1].strip()}"] = row[2].strip()
+
+        padrao_desligamento = re.compile(
+            r"(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao]|sem\s+energia|desenergizad[ao]|offline|sem\s+comunica[çc][ãa]o)"
+            r"|(?:desligad[ao]|parad[ao]|offline)\s+(?:\w+\s+){0,3}(?:usina|ufv)"
+            r"|desligamento\s+(?:total\s+)?(?:da|de)\s+(?:usina|ufv)",
+            re.IGNORECASE,
+        )
+        desligamentos = []
+        for f in resultado.get("ocorrenciasNovasDoDia", []) or _falhas_itens():
+            override = overrides.get(f"falha:{f.get('id')}")
+            texto = (f.get("falha") or "")
+            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)
+                                      and (f.get("status") or "").lower() not in ("concluído", "concluido", "resolvido", "fechado")):
+                desligamentos.append({"usina": f.get("usina"), "cliente": f.get("cliente"), "descricao": texto})
+        resultado["desligamentosAtivos"] = desligamentos
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro ao checar desligamentos: {e}")
+        resultado["desligamentosAtivos"] = []
+
+    # ── OS de alta prioridade ainda em aberto ────────────────────────────
+    altas_abertas = []
+    for row in todos_ativ[1:]:
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        if (row[ATIV_CAMPO_COL["prioridade"] - 1].strip().lower() == "alta"
+                and not _is_concluido_atividade(row[ATIV_CAMPO_COL["status"] - 1].strip())):
+            altas_abertas.append({
+                "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+                "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+                "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
+                "prazo": row[ATIV_CAMPO_COL["prazo"] - 1].strip(),
+            })
+    resultado["altaPrioridadeAberta"] = altas_abertas
+
+    # ── Mensagens capturadas nos grupos, nesse dia ───────────────────────
+    try:
+        mensagens = _buscar_mensagens_periodo(data_str, data_str)
+        por_grupo = {}
+        for m in mensagens:
+            por_grupo.setdefault(m["nome_grupo"], []).append(m)
+        resultado["mensagensPorGrupo"] = por_grupo
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro ao ler mensagens capturadas: {e}")
+        resultado["mensagensPorGrupo"] = {}
+
+    return resultado
+
+
+def _montar_prompt_resumo_diario(dados):
+    data_str = dados["data"]
+    try:
+        data_fmt = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        data_fmt = data_str
+
+    prog = dados.get("programacao", {})
+    cumprido = prog.get("cumprido", [])
+    pendente = prog.get("pendente", [])
+    extras = dados.get("extrasNaoProgramadas", [])
+    chamados = dados.get("chamadosDoDia", [])
+    ocorrencias = dados.get("ocorrenciasNovasDoDia", [])
+    desligamentos = dados.get("desligamentosAtivos", [])
+    altas = dados.get("altaPrioridadeAberta", [])
+    mensagens_por_grupo = dados.get("mensagensPorGrupo", {})
+
+    def _fmt_lista(itens, campos):
+        if not itens:
+            return "(nenhum)"
+        linhas = []
+        for it in itens:
+            linhas.append(" | ".join(f"{c}={it.get(c, '')}" for c in campos))
+        return "\n".join(linhas)
+
+    bloco_mensagens = []
+    for nome_grupo, msgs in mensagens_por_grupo.items():
+        bloco_mensagens.append(f"\n--- Grupo: {nome_grupo} ({len(msgs)} mensagens) ---")
+        for m in msgs[:80]:  # teto de segurança por grupo, evita prompt gigante em dia muito movimentado
+            hora = (m.get("data_hora") or "").split(" ")[-1][:5]
+            bloco_mensagens.append(f"[{hora}] {m.get('remetente','?')}: {m.get('texto','')[:300]}")
+    texto_mensagens = "\n".join(bloco_mensagens) if bloco_mensagens else "(nenhuma mensagem capturada nos grupos hoje)"
+
+    return f"""Aja como um Supervisor de O&M Sênior da Grid Co., escrevendo o resumo diário das usinas pro seu próprio controle — vai ser enviado só pra você mesmo, num grupo pessoal de gestão (não é um comunicado pra equipe nem pra cliente).
+
+Data do resumo: {data_fmt}
+
+REGRAS DE ESCRITA:
+- Direto e objetivo, sem enrolação, sem saudação.
+- Estruture em tópicos curtos com emojis moderados pra facilitar leitura rápida no celular.
+- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo.
+- Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
+- No trecho de mensagens dos grupos, sintetize os TEMAS relevantes tratados (problemas relatados, decisões, pendências mencionadas) — não liste mensagem por mensagem, é pra virar um resumo do que rolou, no seu próprio estilo de linguagem natural.
+
+DADOS DO DIA:
+
+## Programação do PCM — cumprida
+{_fmt_lista(cumprido, ['usina', 'cliente', 'tarefa', 'os'])}
+
+## Programação do PCM — pendente/não cumprida hoje
+{_fmt_lista(pendente, ['usina', 'cliente', 'tarefa', 'os', 'statusReal'])}
+
+## Atividades concluídas fora da programação (fizeram outra coisa em vez do planejado, ou além dele)
+{_fmt_lista(extras, ['usina', 'cliente', 'descricao', 'numeroOS'])}
+
+## Chamados de fabricante abertos hoje
+{_fmt_lista(chamados, ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
+
+## Ocorrências novas no Painel de Falhas hoje
+{_fmt_lista(ocorrencias, ['usina', 'cliente', 'falha', 'status'])}
+
+## Desligamentos ativos agora
+{_fmt_lista(desligamentos, ['usina', 'cliente', 'descricao'])}
+
+## OS de alta prioridade ainda em aberto (não necessariamente de hoje)
+{_fmt_lista(altas, ['usina', 'cliente', 'descricao', 'prazo'])}
+
+## Mensagens nos grupos do WhatsApp mapeados hoje
+{texto_mensagens}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"texto": "resumo diário completo, pronto pra enviar no WhatsApp, começando com um cabeçalho tipo '📋 RESUMO DIÁRIO — {data_fmt}'"}}"""
+
+
+def _enviar_mensagem_grupo(grupo_id, texto):
+    if not WPP_SERVER_URL:
+        raise RuntimeError("WPP_SERVER_URL não configurado")
+    r = requests.post(
+        f"{WPP_SERVER_URL}/api/enviar-mensagem",
+        json={"grupoId": grupo_id, "texto": texto},
+        headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _gerar_resumo_diario_core(data_str=None, enviar=True):
+    if not data_str:
+        data_str = agora_br().strftime("%Y-%m-%d")
+    dados = _coletar_dados_resumo_diario(data_str)
+    prompt = _montar_prompt_resumo_diario(dados)
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 3072,
+                "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        },
+        timeout=45,
+    )
+    resp_data = resp.json()
+    texto_bruto = resp_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    texto = json.loads(texto_limpo).get("texto", "").strip()
+    if not texto:
+        raise ValueError("A IA não retornou nenhum texto pro resumo diário")
+
+    resultado_envio = None
+    if enviar:
+        resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
+
+    return {"ok": True, "data": data_str, "texto": texto, "envio": resultado_envio}
+
+
+@app.route("/gerar-resumo-diario", methods=["POST", "GET"])
+def gerar_resumo_diario():
+    """Gera (e envia por padrão) o resumo diário pro grupo Gestão O&M.
+    Query params: ?data=YYYY-MM-DD (default hoje), ?enviar=false (só
+    gera e devolve o texto, sem mandar pro WhatsApp — útil pra testar)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    data_str = request.args.get("data", "").strip() or None
+    enviar = request.args.get("enviar", "true").lower() != "false"
+    try:
+        resultado = _gerar_resumo_diario_core(data_str=data_str, enviar=enviar)
+        return jsonify(resultado), 200
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _coletar_dados_resumo_semanal(data_fim_str):
+    """Roda a coleta diária pra cada dia da semana (segunda até a data
+    informada, tipicamente sexta) e consolida tudo numa estrutura só."""
+    dt_fim = datetime.strptime(data_fim_str, "%Y-%m-%d").date()
+    dt_inicio = dt_fim - timedelta(days=dt_fim.weekday())  # segunda-feira da mesma semana
+
+    consolidado = {
+        "dataInicio": dt_inicio.strftime("%Y-%m-%d"), "dataFim": data_fim_str,
+        "programacaoCumprida": [], "programacaoPendente": [], "extrasNaoProgramadas": [],
+        "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
+        "mensagensPorGrupo": {}, "diasProcessados": [],
+    }
+    dia = dt_inicio
+    while dia <= dt_fim:
+        dia_str = dia.strftime("%Y-%m-%d")
+        try:
+            dados_dia = _coletar_dados_resumo_diario(dia_str)
+            consolidado["diasProcessados"].append(dia_str)
+            consolidado["programacaoCumprida"].extend(dados_dia.get("programacao", {}).get("cumprido", []))
+            consolidado["programacaoPendente"].extend(dados_dia.get("programacao", {}).get("pendente", []))
+            consolidado["extrasNaoProgramadas"].extend(dados_dia.get("extrasNaoProgramadas", []))
+            consolidado["chamados"].extend(dados_dia.get("chamadosDoDia", []))
+            consolidado["ocorrencias"].extend(dados_dia.get("ocorrenciasNovasDoDia", []))
+            for nome_grupo, msgs in dados_dia.get("mensagensPorGrupo", {}).items():
+                consolidado["mensagensPorGrupo"].setdefault(nome_grupo, []).extend(msgs)
+        except Exception as e:
+            log.error(f"[ResumoSemanal] Erro ao coletar dia {dia_str}: {e}")
+        dia += timedelta(days=1)
+
+    # alta prioridade aberta é sempre o estado ATUAL (não faz sentido somar por dia)
+    try:
+        consolidado["altaPrioridadeAberta"] = _coletar_dados_resumo_diario(data_fim_str).get("altaPrioridadeAberta", [])
+    except Exception:
+        pass
+
+    return consolidado
+
+
+def _montar_prompt_resumo_semanal(dados):
+    data_ini_fmt = datetime.strptime(dados["dataInicio"], "%Y-%m-%d").strftime("%d/%m")
+    data_fim_fmt = datetime.strptime(dados["dataFim"], "%Y-%m-%d").strftime("%d/%m/%Y")
+
+    def _fmt_lista(itens, campos, teto=60):
+        if not itens:
+            return "(nenhum)"
+        linhas = [" | ".join(f"{c}={it.get(c, '')}" for c in campos) for it in itens[:teto]]
+        if len(itens) > teto:
+            linhas.append(f"... e mais {len(itens) - teto} itens")
+        return "\n".join(linhas)
+
+    bloco_mensagens = []
+    for nome_grupo, msgs in dados.get("mensagensPorGrupo", {}).items():
+        bloco_mensagens.append(f"\n--- Grupo: {nome_grupo} ({len(msgs)} mensagens na semana) ---")
+        for m in msgs[:150]:
+            bloco_mensagens.append(f"[{m.get('data_hora','')}] {m.get('remetente','?')}: {m.get('texto','')[:250]}")
+    texto_mensagens = "\n".join(bloco_mensagens) if bloco_mensagens else "(nenhuma mensagem capturada nos grupos essa semana)"
+
+    return f"""Aja como um Supervisor de O&M Sênior da Grid Co., escrevendo o resumo SEMANAL das usinas pro seu próprio controle — vai ser enviado só pra você mesmo, num grupo pessoal de gestão.
+
+Semana de {data_ini_fmt} a {data_fim_fmt}.
+
+REGRAS DE ESCRITA:
+- Direto e objetivo, com uma visão consolidada da semana (não é só empilhar os resumos diários) — destaque padrões, usinas que mais concentraram problema, equipes que mais produziram, etc.
+- Estruture em tópicos curtos com emojis moderados.
+- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo.
+- No trecho de mensagens dos grupos, sintetize os TEMAS relevantes da semana inteira — não liste mensagem por mensagem.
+
+DADOS DA SEMANA:
+
+## Programação do PCM cumprida na semana
+{_fmt_lista(dados['programacaoCumprida'], ['usina', 'cliente', 'tarefa', 'os'])}
+
+## Programação do PCM pendente/não cumprida na semana
+{_fmt_lista(dados['programacaoPendente'], ['usina', 'cliente', 'tarefa', 'os', 'statusReal'])}
+
+## Atividades concluídas fora da programação na semana
+{_fmt_lista(dados['extrasNaoProgramadas'], ['usina', 'cliente', 'descricao', 'numeroOS'])}
+
+## Chamados de fabricante abertos na semana
+{_fmt_lista(dados['chamados'], ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
+
+## Ocorrências novas na semana
+{_fmt_lista(dados['ocorrencias'], ['usina', 'cliente', 'falha', 'status'])}
+
+## OS de alta prioridade ainda em aberto (estado atual)
+{_fmt_lista(dados['altaPrioridadeAberta'], ['usina', 'cliente', 'descricao', 'prazo'])}
+
+## Mensagens nos grupos do WhatsApp mapeados, na semana
+{texto_mensagens}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"texto": "resumo semanal completo, pronto pra enviar no WhatsApp, começando com um cabeçalho tipo '📊 RESUMO SEMANAL — {data_ini_fmt} a {data_fim_fmt}'"}}"""
+
+
+def _gerar_resumo_semanal_core(data_fim_str=None, enviar=True):
+    if not data_fim_str:
+        data_fim_str = agora_br().strftime("%Y-%m-%d")
+    dados = _coletar_dados_resumo_semanal(data_fim_str)
+    prompt = _montar_prompt_resumo_semanal(dados)
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 4096,
+                "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        },
+        timeout=50,
+    )
+    resp_data = resp.json()
+    texto_bruto = resp_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    texto = json.loads(texto_limpo).get("texto", "").strip()
+    if not texto:
+        raise ValueError("A IA não retornou nenhum texto pro resumo semanal")
+
+    resultado_envio = None
+    if enviar:
+        resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
+
+    return {"ok": True, "dataInicio": dados["dataInicio"], "dataFim": dados["dataFim"],
+            "texto": texto, "envio": resultado_envio}
+
+
+@app.route("/gerar-resumo-semanal", methods=["POST", "GET"])
+def gerar_resumo_semanal():
+    """Gera (e envia por padrão) o resumo semanal pro grupo Gestão O&M.
+    Query params: ?data=YYYY-MM-DD (default hoje, usado como fim da
+    semana), ?enviar=false (só gera e devolve o texto)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    data_str = request.args.get("data", "").strip() or None
+    enviar = request.args.get("enviar", "true").lower() != "false"
+    try:
+        resultado = _gerar_resumo_semanal_core(data_fim_str=data_str, enviar=enviar)
+        return jsonify(resultado), 200
+    except Exception as e:
+        log.error(f"[ResumoSemanal] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
