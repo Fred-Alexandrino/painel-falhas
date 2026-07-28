@@ -489,6 +489,33 @@ CATALOGO_USINAS = {
         "cliente": "Alves Lima",
         "aliases": ["abc morada nova", "morada nova"],
     },
+
+    # ── Sal Energia ───────────────────────────────────────────────────────────
+    # Cliente confirmado pelo Fred em 27/07/2026, mas nunca tinha sido
+    # adicionado ao catálogo — por isso nenhuma OS da Fracttal desse
+    # cliente era reconhecida automaticamente (nem na descoberta, nem na
+    # auditoria), sempre caindo em revisão manual. Nomes oficiais no
+    # formato "Codinome (Cidade)", igual usado na tabela de localizações.
+    "SunPower (Cascavel)": {
+        "cliente": "Sal Energia",
+        "aliases": ["sunpower", "sunpower cascavel", "cascavel"],
+    },
+    "Hortina (Quixadá I)": {
+        "cliente": "Sal Energia",
+        "aliases": ["hortina", "quixada i", "quixada 1", "quixadá i", "quixadá 1"],
+    },
+    "Vitesse (Quixadá II)": {
+        "cliente": "Sal Energia",
+        "aliases": ["vitesse", "quixada ii", "quixada 2", "quixadá ii", "quixadá 2"],
+    },
+    "Carosa (Aquiraz I)": {
+        "cliente": "Sal Energia",
+        "aliases": ["carosa", "aquiraz i", "aquiraz 1"],
+    },
+    "Salvales (Aquiraz II)": {
+        "cliente": "Sal Energia",
+        "aliases": ["salvales", "aquiraz ii", "aquiraz 2"],
+    },
 }
 
 # ── Índice invertido: alias_normalizado → nome_oficial ────────────────────────
