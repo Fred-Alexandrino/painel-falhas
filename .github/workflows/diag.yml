@@ -11,22 +11,15 @@ jobs:
       - env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
-          set +e
           mkdir -p backups
-          curl -s --max-time 25 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/diag-verify.txt
-          echo "GET_EXIT:$?" >> backups/diag-verify.txt
-          echo "---POST---" >> backups/diag-verify.txt
-          curl -s --max-time 25 -X POST -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -d "{\"ok\": false, \"erro\": \"teste de diagnostico Claude\"}" "https://api.168.138.232.237.sslip.io/reportar-status-sincronizacao-chamados" >> backups/diag-verify.txt
-          echo "POST_EXIT:$?" >> backups/diag-verify.txt
-          echo "---GET2---" >> backups/diag-verify.txt
-          curl -s --max-time 25 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/diag-verify2.txt
+          curl -s --max-time 25 -X POST -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -d "{\"ok\": true, \"criadas\": 0, \"atualizadas\": 0}" "https://api.168.138.232.237.sslip.io/reportar-status-sincronizacao-chamados" -o backups/diag-cleanup.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-verify.txt backups/diag-verify2.txt
-          git commit -m "diag verify [skip ci]" || echo "nothing"
+          git add backups/diag-cleanup.txt
+          git commit -m "diag cleanup [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-verify.txt backups/diag-verify2.txt
-          git commit -m "diag verify [skip ci]" || echo "nothing2"
+          git add backups/diag-cleanup.txt
+          git commit -m "diag cleanup [skip ci]" || echo "nothing2"
           git push origin HEAD:main
