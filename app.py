@@ -5452,6 +5452,21 @@ def _gravar_trava(chave, valor):
     ws_cfg.append_row([chave, valor])
 
 
+def _ler_travas(chaves):
+    """Lê várias chaves da aba _Sistema numa única leitura (1 chamada à
+    API do Sheets), em vez de uma chamada por chave via _ler_trava — usado
+    onde múltiplas travas são lidas juntas (ex.: status de sincronização
+    de chamados) pra não somar latência desnecessária num endpoint que já
+    lê uma planilha grande."""
+    ws_cfg = _get_config_sheet()
+    valores = ws_cfg.get_all_values()
+    mapa = {}
+    for row in valores[1:]:
+        if row and row[0].strip() in chaves:
+            mapa[row[0].strip()] = row[1].strip() if len(row) > 1 else ""
+    return {chave: mapa.get(chave, "") for chave in chaves}
+
+
 # ══════════════════════════════════════════════════════════════════════
 # COMPROMISSOS (Boletim de Medição, Relatório de Performance, Relatório
 # PCM) — checklist de prazos recorrentes por cliente/usina, com engine
@@ -7578,15 +7593,13 @@ def listar_chamados_fabricante():
     exibir no Painel de Chamados sem precisar de nenhuma cópia manual."""
     try:
         itens = _chamados_fabricante_itens()
-        ultima_sincronizacao = _ler_trava("chamados_ultima_sincronizacao")
-        ultima_tentativa = _ler_trava("chamados_ultima_tentativa")
-        ultimo_status = _ler_trava("chamados_ultimo_status")
-        ultimo_erro = _ler_trava("chamados_ultimo_erro")
+        travas = _ler_travas(["chamados_ultima_sincronizacao", "chamados_ultima_tentativa",
+                               "chamados_ultimo_status", "chamados_ultimo_erro"])
         return jsonify({"ok": True, "itens": itens, "total": len(itens),
-                         "ultimaSincronizacao": ultima_sincronizacao,
-                         "ultimaTentativa": ultima_tentativa,
-                         "ultimoStatus": ultimo_status,
-                         "ultimoErro": ultimo_erro}), 200
+                         "ultimaSincronizacao": travas["chamados_ultima_sincronizacao"],
+                         "ultimaTentativa": travas["chamados_ultima_tentativa"],
+                         "ultimoStatus": travas["chamados_ultimo_status"],
+                         "ultimoErro": travas["chamados_ultimo_erro"]}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
