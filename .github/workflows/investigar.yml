@@ -1,0 +1,44 @@
+name: Investigar Resumo
+on:
+  workflow_dispatch: {}
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          echo "=== falhas ativas (Araputanga, Nova Xavantina, Morada Nova) ===" > resultado.txt
+          curl -s -m 20 "https://api.168.138.232.237.sslip.io/atividade-fotos/x" > /dev/null 2>&1 || true
+          curl -s -m 30 -X POST "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?enviar=false&data=2026-07-28" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o /tmp/resumo_debug.json
+          cat /tmp/resumo_debug.json | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+print('OK:', d.get('ok'))
+" >> resultado.txt
+          echo "" >> resultado.txt
+          echo "=== overrides de desligamento manual ===" >> resultado.txt
+          curl -s -m 20 "https://api.168.138.232.237.sslip.io/desligamento-manual" -o /tmp/overrides.json
+          cat /tmp/overrides.json | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+for it in d.get('itens',[]):
+    print(it)
+" >> resultado.txt
+          cat resultado.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          mkdir -p backups
+          cp resultado.txt backups/investigar-resumo.txt
+          git add backups/investigar-resumo.txt
+          git commit -m "investigar resumo [skip ci]"
+          n=0
+          until git push || [ $n -ge 8 ]; do
+            n=$((n+1))
+            sleep 3
+            git pull --rebase origin main
+          done
