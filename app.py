@@ -6774,6 +6774,124 @@ def sync_fracttal():
     return jsonify(body), 200
 
 
+# ══════════════════════════════════════════════════════════════════════
+# PROGRAMAÇÃO PCM — espelha o JSON público gerado pelo PCM (Fillipe
+# Figueiro) via Power Automate, publicado no repo gridco-pcm-data
+# (GitHub Pages). Fonte de verdade é esse JSON estático — este painel é
+# somente leitura, nunca grava nada de volta lá. Filtra só as tarefas do
+# responsável O&M "Fred Alexandrino", pra alimentar o card "Programação
+# do Dia" logo abaixo do Painel de Atividades.
+# O arquivo completo (gestao_pcm.json) tem ~8MB, então evitamos rebaixar
+# a cada chamada: primeiro checamos o hash publicado (arquivo de poucos
+# bytes) e só rebaixamos o JSON inteiro quando ele mudar.
+# ══════════════════════════════════════════════════════════════════════
+
+_PCM_HASH_URL = "https://raw.githubusercontent.com/fillipefigueiro-source/gridco-pcm-data/main/_gestao_pcm_published_hash.txt"
+_PCM_JSON_URL = "https://raw.githubusercontent.com/fillipefigueiro-source/gridco-pcm-data/main/gestao_pcm.json"
+_PCM_RESPONSAVEL = "Fred Alexandrino"
+
+_cache_programacao_pcm = {"hash": None, "tarefas": None, "gerado_em": None, "atualizado_em": None}
+
+
+def _buscar_programacao_pcm_core(forcar=False):
+    """Baixa (com cache por hash) o JSON público de Gestão PCM e filtra
+    só as tarefas do responsável O&M Fred Alexandrino."""
+    global _cache_programacao_pcm
+
+    hash_atual = _cache_programacao_pcm.get("hash")
+    hash_remoto = None
+    try:
+        resp_hash = requests.get(_PCM_HASH_URL, timeout=10)
+        resp_hash.raise_for_status()
+        hash_remoto = resp_hash.text.strip()
+    except Exception as e:
+        log.error(f"[ProgramacaoPCM] Erro ao checar hash publicado: {e}")
+
+    precisa_baixar = forcar or _cache_programacao_pcm.get("tarefas") is None or (
+        hash_remoto and hash_remoto != hash_atual
+    )
+
+    if precisa_baixar:
+        try:
+            resp = requests.get(_PCM_JSON_URL, timeout=60)
+            resp.raise_for_status()
+            dados = resp.json()
+            todas = dados.get("tarefas", [])
+            tarefas_fred = [t for t in todas if t.get("responsavel") == _PCM_RESPONSAVEL]
+            _cache_programacao_pcm = {
+                "hash": hash_remoto,
+                "tarefas": tarefas_fred,
+                "gerado_em": dados.get("geradoEm"),
+                "atualizado_em": datetime.now(_TZ_BR).isoformat(),
+            }
+            log.info(f"[ProgramacaoPCM] JSON atualizado — {len(tarefas_fred)} tarefas do Fred de {len(todas)} totais.")
+        except Exception as e:
+            log.error(f"[ProgramacaoPCM] Erro ao baixar gestao_pcm.json: {e}")
+            if _cache_programacao_pcm.get("tarefas") is None:
+                raise
+
+    return _cache_programacao_pcm
+
+
+@app.route("/programacao-pcm", methods=["GET"])
+def programacao_pcm():
+    """
+    Painel de Programações — o que o PCM programou para as equipes do
+    Fred Alexandrino num dia específico (default: hoje). Somente leitura,
+    puxado ao vivo (com cache por hash) do JSON público gerado pelo PCM.
+    Parâmetros opcionais:
+      ?data=YYYY-MM-DD  (default: hoje, America/Sao_Paulo)
+      ?forcar=1          força rebaixar o JSON ignorando o cache de hash
+    """
+    forcar = request.args.get("forcar") in ("1", "true", "True")
+    data_filtro = request.args.get("data", "").strip()
+    if not data_filtro:
+        data_filtro = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
+
+    try:
+        cache = _buscar_programacao_pcm_core(forcar=forcar)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Falha ao consultar PCM: {e}"}), 502
+
+    tarefas_dia = [t for t in (cache.get("tarefas") or []) if t.get("dataProg") == data_filtro]
+
+    por_usina = {}
+    for t in tarefas_dia:
+        usina = t.get("usina") or "(sem usina)"
+        por_usina.setdefault(usina, []).append({
+            "os": t.get("os"),
+            "idWO": t.get("idWO"),
+            "url": t.get("url"),
+            "cliente": t.get("cliente"),
+            "cluster": t.get("cluster"),
+            "tipo": t.get("tipo"),
+            "tarefa": t.get("tarefa"),
+            "estado": t.get("estado"),
+            "atrasado": bool(t.get("atrasado")),
+            "dataFinal": t.get("dataFinal"),
+        })
+
+    grupos = [{"usina": usina, "itens": itens} for usina, itens in sorted(por_usina.items())]
+
+    resumo_estado = {}
+    for t in tarefas_dia:
+        est = t.get("estado") or "—"
+        resumo_estado[est] = resumo_estado.get(est, 0) + 1
+
+    return jsonify({
+        "ok": True,
+        "data": data_filtro,
+        "total": len(tarefas_dia),
+        "atrasadas": sum(1 for t in tarefas_dia if t.get("atrasado")),
+        "resumoEstado": resumo_estado,
+        "grupos": grupos,
+        "fonte": {
+            "geradoEmPCM": cache.get("gerado_em"),
+            "atualizadoEmCache": cache.get("atualizado_em"),
+        },
+    }), 200
+
+
 @app.route("/alertar-wpp-status", methods=["POST"])
 def alertar_wpp_status():
     """
