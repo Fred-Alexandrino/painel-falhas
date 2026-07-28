@@ -9,10 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
+          set +e
           mkdir -p backups
-          curl -s --max-time 15 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/diag-verify.txt
+          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/diag-verify.txt
+          echo "GET_EXIT:$?" >> backups/diag-verify.txt
           echo "---POST---" >> backups/diag-verify.txt
-          curl -s --max-time 15 -X POST -H "Content-Type: application/json" -d '{"ok": true, "criadas": 0, "atualizadas": 0}' "https://api.168.138.232.237.sslip.io/reportar-status-sincronizacao-chamados" >> backups/diag-verify.txt
+          curl -s --max-time 20 -X POST -H "Content-Type: application/json" -d "{\"ok\": true, \"criadas\": 0, \"atualizadas\": 0}" "https://api.168.138.232.237.sslip.io/reportar-status-sincronizacao-chamados" >> backups/diag-verify.txt
+          echo "POST_EXIT:$?" >> backups/diag-verify.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
