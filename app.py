@@ -8578,6 +8578,7 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363426886851537": "Equipe Nova Xavantina",
     "120363425342949474": "Equipe Araputanga/Poconé",
     "120363406329162612": "Equipe Nobres",
+    "120363424804307945": "Thopen & GridCo. | Usinas FRED ALEXANDRINO",
 }
 
 
