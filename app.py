@@ -7782,6 +7782,24 @@ def atividade_remover_foto():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/clientes-configurados", methods=["GET"])
+def listar_clientes_configurados():
+    """
+    Lista os clientes cadastrados — derivada diretamente de
+    CATALOGO_USINAS (a mesma fonte usada pra reconhecer OS da Fracttal),
+    em vez de ser uma lista solta mantida à parte no frontend.
+
+    Criado em 27/07/2026 depois de descobrir que a Sal Energia estava
+    cadastrada na lista de clientes do frontend, mas ausente do
+    catálogo de usinas do backend — duas fontes de verdade que
+    precisavam ser lembradas separadamente, e uma ficou pra trás. Isso
+    faz o frontend buscar a lista aqui, então cadastrar um cliente novo
+    num lugar só (aqui) já reflete em tudo.
+    """
+    clientes = sorted(set(_CLIENTE_INDEX.values()))
+    return jsonify({"ok": True, "clientes": clientes}), 200
+
+
 @app.route("/verificar-uma-os", methods=["POST", "OPTIONS"])
 def verificar_uma_os():
     """
