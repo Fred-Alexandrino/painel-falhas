@@ -322,7 +322,7 @@ def limpar_log_antigo():
 CATALOGO_USINAS = {
     # ── RENOGRID ──────────────────────────────────────────────────────────────
     "Nova Xavantina I": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": [
             "nova xavantina 1", "nova xavantina i",
             "xavantina 1", "xavantina i",
@@ -331,7 +331,7 @@ CATALOGO_USINAS = {
         ],
     },
     "Nova Xavantina II": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": [
             "nova xavantina 2", "nova xavantina ii",
             "xavantina 2", "xavantina ii",
@@ -340,35 +340,35 @@ CATALOGO_USINAS = {
         ],
     },
     "Colíder I": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": [
             "colider i", "colider 1", "colíder 1", "colíder i",
             "colider 1a", "colider ia", "colíder 1a", "colíder ia",
         ],
     },
     "Colíder II": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": [
             "colider ii", "colider 2", "colíder 2", "colíder ii",
             "colider 1b", "colider ib", "colíder 1b", "colíder ib",
         ],
     },
     "Nobres": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": ["nobres"],
     },
     "Elias Fausto": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": ["elias fausto"],
     },
     "Crateús": {
-        "cliente": "RENOGRID",
+        "cliente": "Renogrid",
         "aliases": ["crateus", "crateús", "cratéus"],
     },
 
     # ── THOPEN ────────────────────────────────────────────────────────────────
     "Boa Esperança do Sul I": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "boa esperanca do sul i", "boa esperanca do sul 1",
             "boa esperanca do sul a", "boa esperanca do sul 1a",
@@ -381,7 +381,7 @@ CATALOGO_USINAS = {
         ],
     },
     "Boa Esperança do Sul II": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "boa esperanca do sul ii", "boa esperanca do sul 2",
             "boa esperanca do sul b", "boa esperanca do sul 1b",
@@ -394,28 +394,28 @@ CATALOGO_USINAS = {
         ],
     },
     "Ibaté I": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "ibate i", "ibate 1", "ibate 1a", "ibate ia", "ibate a",
             "ibaté i", "ibaté 1", "ibaté 1a", "ibaté ia", "ibaté a",
         ],
     },
     "Ibaté II": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "ibate ii", "ibate 2", "ibate 1b", "ibate ib", "ibate b",
             "ibaté ii", "ibaté 2", "ibaté 1b", "ibaté ib", "ibaté b",
         ],
     },
     "Matão I": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "matao 1", "matao i", "matao 1a", "matao ia", "matao a",
             "matão 1", "matão i", "matão 1a", "matão ia", "matão a",
         ],
     },
     "Matão II - Topázio": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "matao 2", "matao ii", "matao 1b", "matao ib", "matao b",
             "matão 2", "matão ii", "matão 1b", "matão ib", "matão b",
@@ -424,30 +424,30 @@ CATALOGO_USINAS = {
         ],
     },
     "Sítio Bonfim": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "sitio bonfim", "sítio bonfim",
             "bonfim",
         ],
     },
     "Poconé": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": ["pocone", "poconé", "poconé"],
     },
     "Canarana I": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "canarana i", "canarana 1", "canarana 1a", "canarana ia", "canarana a",
         ],
     },
     "Canarana II": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "canarana ii", "canarana 2", "canarana 1b", "canarana ib", "canarana b",
         ],
     },
     "Ribeirão Cascalheira": {
-        "cliente": "THOPEN",
+        "cliente": "Thopen",
         "aliases": [
             "ribeirao cascalheira", "ribeirão cascalheira",
             "ribeirao", "cascalheira",
@@ -5605,8 +5605,8 @@ def _get_compromissos_regras_sheet():
         # Seed inicial — só os clientes já mapeados no painel, regra de BM
         # tirada do calendário de emissão enviado pelo Fred (13/07/2026).
         seed = [
-            ["1", "BM", "RENOGRID", "", "diaFixo", "25", "TRUE"],
-            ["2", "BM", "THOPEN", "", "diaFixo", "15", "TRUE"],
+            ["1", "BM", "Renogrid", "", "diaFixo", "25", "TRUE"],
+            ["2", "BM", "Thopen", "", "diaFixo", "15", "TRUE"],
             ["3", "BM", "2C Energia", "", "nDiaUtil", "5", "TRUE"],
             ["4", "BM", "GD Energy", "", "nDiaUtil", "5", "TRUE"],
             ["5", "BM", "Alves Lima", "", "nDiaUtil", "5", "TRUE"],
