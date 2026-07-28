@@ -10,19 +10,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p backups
-          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/chamados-fabricante" | python3 -c "
-import sys, json
-data = sys.stdin.read()
-lines = data.split('STATUS:')
-try:
-    d = json.loads(lines[0])
-    print(d.get('ultimaSincronizacao'), d.get('ultimaTentativa'), d.get('ultimoStatus'), d.get('ultimoErro'))
-except Exception as e:
-    print('parse fail', e, data[:300])
-" > backups/diag-verify.txt
-          curl -s -w "STATUS:%{http_code}" --max-time 15 -X POST -H "Content-Type: application/json" \
-            -d '{"ok": true, "criadas": 0, "atualizadas": 0}' \
-            "https://api.168.138.232.237.sslip.io/reportar-status-sincronizacao-chamados" >> backups/diag-verify.txt
+          curl -s --max-time 15 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o backups/diag-verify.txt
+          echo "---POST---" >> backups/diag-verify.txt
+          curl -s --max-time 15 -X POST -H "Content-Type: application/json" -d '{"ok": true, "criadas": 0, "atualizadas": 0}' "https://api.168.138.232.237.sslip.io/reportar-status-sincronizacao-chamados" >> backups/diag-verify.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
