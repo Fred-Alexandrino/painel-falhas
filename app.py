@@ -7874,6 +7874,37 @@ def _salvar_resumo(tipo, texto, data_referencia, data_inicio=None, data_fim=None
     return novo_id
 
 
+@app.route("/mensagens-grupo-diagnostico", methods=["GET"])
+def mensagens_grupo_diagnostico():
+    """Endpoint de diagnóstico: mostra quantas mensagens foram capturadas
+    por grupo num período, e uma amostra das últimas — pra confirmar que
+    a captura está realmente funcionando (não só confiar no resumo dizer
+    'sem assunto relevante'). ?dias=N (default 3)."""
+    dias = int(request.args.get("dias", 3) or 3)
+    hoje = agora_br().date()
+    data_inicio = (hoje - timedelta(days=dias - 1)).strftime("%Y-%m-%d")
+    data_fim = hoje.strftime("%Y-%m-%d")
+    try:
+        mensagens = _buscar_mensagens_periodo(data_inicio, data_fim)
+        por_grupo = {}
+        for m in mensagens:
+            por_grupo.setdefault(m["nome_grupo"], []).append(m)
+        resumo = {
+            grupo: {
+                "total": len(msgs),
+                "ultimas": [{"data_hora": m["data_hora"], "remetente": m["remetente"], "texto": m["texto"][:150]} for m in msgs[-3:]],
+            }
+            for grupo, msgs in por_grupo.items()
+        }
+        return jsonify({
+            "ok": True, "periodo": f"{data_inicio} a {data_fim}",
+            "totalGeral": len(mensagens), "gruposComMensagem": len(por_grupo),
+            "porGrupo": resumo,
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/resumos", methods=["GET"])
 def listar_resumos():
     """Lista o histórico de resumos diários/semanais já gerados, pro
@@ -8137,6 +8168,9 @@ def _coletar_dados_resumo_diario(data_str):
     _padrao_so_finalizacao_administrativa = re.compile(
         r'^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - status na Fracttal mudou de ".*?" para "Finalizada"\.?$'
         r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - .*Status interno corrigido pra "Conclu[ií]do".*$'
+        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - Atividade criada por sincroniza[çc][ãa]o autom[áa]tica.*$'
+        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - Marcado como visualizado.*$'
+        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - Usina alterado de .* por assistente.*$'
     )
     for row in todos_ativ[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
@@ -8144,11 +8178,20 @@ def _coletar_dados_resumo_diario(data_str):
         numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
         if not numero_os or numero_os in numeros_ja_contabilizados:
             continue
+        # GUARDA ADICIONAL (relatado pelo Fred em 29/07/2026): uma OS
+        # descoberta/sincronizada hoje mas que o técnico ainda nem começou
+        # ("Não Iniciada") não é progresso nenhum — é só o sistema tendo
+        # tomado conhecimento dela. Checar status_geral é mais confiável
+        # que só excluir a linha de criação no histórico (que também
+        # corrigimos abaixo, em conjunto).
+        status_geral = row[ATIV_CAMPO_COL["statusGeralOS"] - 1].strip() if len(row) > ATIV_CAMPO_COL["statusGeralOS"] - 1 else ""
+        if status_geral == "Não Iniciada":
+            continue
         historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
         linhas_de_hoje = [l for l in historico.split("\n") if l.strip().startswith(data_str_br)]
         linhas_relevantes = [l for l in linhas_de_hoje if not _padrao_so_finalizacao_administrativa.match(l.strip())]
         if not linhas_relevantes:
-            continue  # só teve finalização administrativa hoje, sem progresso de campo real
+            continue  # só teve eventos administrativos/de sistema hoje (criação, visualização, correção de nome), sem progresso de campo real
         progresso_do_dia.append({
             "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
