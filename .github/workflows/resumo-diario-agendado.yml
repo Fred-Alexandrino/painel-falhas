@@ -1,0 +1,14 @@
+name: Resumo Diario Agendado (17h)
+on:
+  schedule:
+    - cron: '0 20 * * *'
+  workflow_dispatch: {}
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gerar e enviar resumo diario
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          curl -s -m 55 -X POST "https://api.168.138.232.237.sslip.io/gerar-resumo-diario" -H "X-Webhook-Secret: $WEBHOOK_SECRET"
