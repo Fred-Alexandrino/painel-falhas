@@ -7593,7 +7593,15 @@ def corrigir_ativo_chamado():
 def _chamados_fabricante_itens():
     """Lê a aba ChamadosFabricante inteira + mescla as notas do dashboard
     (aba _Sistema). Reaproveitada tanto pelo endpoint GET /chamados-fabricante
-    quanto pela geração do relatório semanal — uma única fonte de verdade."""
+    quanto pela geração do relatório semanal — uma única fonte de verdade.
+
+    FILTRO POR USINA CONHECIDA (adicionado 29/07/2026): a planilha do
+    SharePoint que alimenta essa aba tem chamados de OUTRAS empresas
+    também (ex.: Santarém, Aparecida — nada a ver com o Fred), e essa
+    função sincronizava tudo sem filtrar. Isso vazou no resumo diário
+    (chamados de usinas que não são do Fred aparecendo como se fossem).
+    Agora só entram linhas cujo campo UFV bate com uma usina do catálogo
+    (mesma fonte usada pra reconhecer OS da Fracttal)."""
     ws = get_chamados_fabricante_sheet()
     todos = ws.get_all_values()
     notas = _mapa_notas_chamados()
@@ -7608,6 +7616,9 @@ def _chamados_fabricante_itens():
         if not any(cell.strip() for cell in row):
             continue
         item = dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)]))
+        ufv_bruta = item.get("UFV", "")
+        if ufv_bruta and canonizar_usina(ufv_bruta) is None:
+            continue  # usina não reconhecida = não é do Fred, não deveria estar nessa planilha
         chave_nota = f"{item.get('Ticket/RMA','')}|{item.get('UFV','')}|{item.get('Identificação do Equipamento','')}"
         item["NotaDashboard"] = notas.get(chave_nota, "")
         itens.append(item)
