@@ -12,13 +12,22 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s -m 30 "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?enviar=false" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/diag-resumo-hoje.json
-          cat backups/diag-resumo-hoje.json
+          curl -s -m 20 "https://api.168.138.232.237.sslip.io/atividades" -o /tmp/ativs.json
+          python3 -c "
+import json
+d = json.load(open('/tmp/ativs.json'))
+ativs = d.get('atividades', [])
+alvos = ['9991','9995','9997','10100','10067','10089','10099','10101','10212']
+for a in ativs:
+    if a.get('numeroOS') in alvos:
+        print(a.get('numeroOS'), '|', a.get('usina'), '|', a.get('descricao','')[:60], '| dataConclusao=', a.get('dataConclusao'), '| status=', a.get('status'), '| statusOS=', a.get('statusOS'))
+" > backups/diag-os-especificas.txt
+          cat backups/diag-os-especificas.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-resumo-hoje.json
-          git commit -m "diag resumo hoje [skip ci]" || echo "nothing"
+          git add backups/diag-os-especificas.txt
+          git commit -m "diag os especificas [skip ci]" || echo "nothing"
           n=0
           until git push || [ $n -ge 8 ]; do
             n=$((n+1))
