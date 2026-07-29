@@ -8,15 +8,21 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - env:
-          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
-        run: |
+      - run: |
           mkdir -p backups
-          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/health-check.json
-          cat backups/health-check.json
+          curl -s -m 20 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o /tmp/chamados.json
+          python3 -c "
+import json
+d = json.load(open('/tmp/chamados.json'))
+itens = d.get('itens', [])
+print('total apos filtro:', d.get('total'))
+ufvs = sorted(set(i.get('UFV','') for i in itens))
+for u in ufvs:
+    print(u)
+" > backups/chamados-filtrados.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/health-check.json
-          git diff --quiet --cached || git commit -m "check log [skip ci]"
+          git add backups/chamados-filtrados.txt
+          git diff --quiet --cached || git commit -m "chamados filtrados [skip ci]"
           git push
