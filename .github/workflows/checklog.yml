@@ -8,12 +8,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
           mkdir -p backups
-          curl -s -m 15 "https://api.168.138.232.237.sslip.io/mensagens-grupo-diagnostico?dias=1" -o backups/varredura-hoje.json
+          curl -s -m 50 -X POST "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?enviar=false" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/resumo-comOSnovas.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/varredura-hoje.json
-          git diff --quiet --cached || git commit -m "varredura hoje [skip ci]"
+          git add backups/resumo-comOSnovas.json
+          git diff --quiet --cached || git commit -m "resumo com os novas [skip ci]"
           git push
