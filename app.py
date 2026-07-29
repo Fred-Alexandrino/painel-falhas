@@ -8069,6 +8069,7 @@ def _coletar_dados_resumo_diario(data_str):
     # essa transição administrativa.
     _padrao_so_finalizacao_administrativa = re.compile(
         r'^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - status na Fracttal mudou de ".*?" para "Finalizada"\.?$'
+        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - .*Status interno corrigido pra "Conclu[ií]do".*$'
     )
     for row in todos_ativ[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
