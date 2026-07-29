@@ -3455,11 +3455,17 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         if mudou and enviar_notificacao:
             try:
                 usina_row = row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else ""
+                descricao_row = row[ATIV_CAMPO_COL["descricao"] - 1] if len(row) >= ATIV_CAMPO_COL["descricao"] else ""
                 equipamento_row = row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else ""
                 id_atividade = row[0] if row else ""
+                # Prioriza a Ação/Tarefa (o "tema" real da OS) em vez do
+                # código do Ativo — mesmo ativo pode ter tarefas bem
+                # diferentes entre OSs, então mostrar só o equipamento não
+                # diz o que de fato precisa ser feito (corrigido 29/07/2026).
+                tema_row = descricao_row or equipamento_row or "Descrição não informada"
                 enviar_push(
                     titulo=f"🔄 OS {numero_os} — {usina_row or 'Usina não informada'}",
-                    corpo=f"{equipamento_row or 'Equipamento não informado'} · {status_geral_novo} — {percentual_novo}% concluído",
+                    corpo=f"{tema_row} · {status_geral_novo} — {percentual_novo}% concluído",
                     tipo="fracttal_status",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={id_atividade}",
                 )
@@ -3605,7 +3611,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
             if len(mudaram) == 1:
                 r = mudaram[0]
                 usina_r = r.get("usina") or "Usina não informada"
-                equip_r = r.get("equipamento") or r.get("descricao") or "Equipamento não informado"
+                equip_r = r.get("descricao") or r.get("equipamento") or "Descrição não informada"
                 enviar_push(
                     titulo=f"🔄 OS {r['numeroOS']} — {usina_r}",
                     corpo=f"{equip_r} · {r.get('statusGeralOS','')} — {r.get('percentualOS','0')}% concluído",
