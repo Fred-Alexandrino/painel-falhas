@@ -10,10 +10,10 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p backups
-          curl -s -m 20 "https://api.168.138.232.237.sslip.io/mensagens-grupo-diagnostico?dias=3" -o backups/mensagens-diag.json
+          curl -s -m 15 "https://wpp.147.15.66.241.sslip.io/health" -o backups/wpp-health.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/mensagens-diag.json
-          git diff --quiet --cached || git commit -m "mensagens diag [skip ci]"
+          git add backups/wpp-health.json
+          git diff --quiet --cached || git commit -m "wpp health [skip ci]"
           git push
