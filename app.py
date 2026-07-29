@@ -27,6 +27,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
                                 listar_usinas_cliente)
+from relatorio_ocorrencia import gerar_relatorio_ocorrencia_pptx
+from io import BytesIO
 
 # Push notifications (pywebpush)
 try:
@@ -9424,6 +9426,90 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     raise ultima_excecao
 
 
+def _montar_prompt_relatorio_ocorrencia(cliente, usina, resumo):
+    """Prompt pra expandir um resumo curto (escrito pelo técnico/supervisor)
+    num Relatório de Ocorrência formal, no tom e estrutura dos relatórios
+    oficiais da Grid Co. (ver relatorio_ocorrencia.py e o botão 'Gerar
+    Relatório de Ocorrência' do Painel de Relatórios)."""
+    return f"""Aja como um Supervisor de O&M da Grid Co. redigindo um "Relatório de Ocorrência" formal, no mesmo tom e estrutura usados nos relatórios oficiais da empresa (terceira pessoa, tom técnico e direto, sem gírias).
+
+Você vai receber um resumo curto e informal do que aconteceu, escrito por um técnico ou supervisor de campo. Sua tarefa é expandir esse resumo em um relatório completo, dividido em 3 partes: OCORRÊNCIA (o que aconteceu, contexto, causa raiz), AÇÕES A SEREM TOMADAS (encaminhamentos definidos) e CONCLUSÃO (situação atual do caso, breve).
+
+Regras de conteúdo:
+- NUNCA invente fatos, números, nomes, datas ou causas que não estejam no resumo. Se o resumo não disser algo (ex.: quem fez a vistoria, se já foi resolvido), simplesmente não mencione — não complete com suposições.
+- Mantenha o grau de certeza do resumo original: se o autor disse que "vai resolver" ou "pretende fazer", não escreva como se já tivesse sido feito.
+- Cada parágrafo deve ser um bloco de texto corrido (sem bullets, sem markdown), no estilo formal dos relatórios da Grid Co.
+- Cliente: {cliente}. Usina: {usina}.
+
+Resumo enviado pelo usuário:
+\"\"\"{resumo}\"\"\"
+
+Para cada parágrafo, além do texto, aponte quais trechos EXATOS (substring literal, copiada do próprio texto que você escreveu) devem aparecer em negrito — sempre os pontos mais importantes (datas, quantidades, causa raiz, nomes de equipamentos, decisões), no mesmo estilo do relatório de referência da empresa (frases-chave em negrito dentro do parágrafo, não o parágrafo inteiro).
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{
+  "ocorrencia": [
+    {{"texto": "parágrafo completo aqui", "negritos": ["trecho exato 1", "trecho exato 2"]}}
+  ],
+  "acoes": [
+    {{"texto": "...", "negritos": ["..."]}}
+  ],
+  "conclusao": [
+    {{"texto": "...", "negritos": ["..."]}}
+  ]
+}}
+
+- "ocorrencia": normalmente 2 a 3 parágrafos.
+- "acoes": normalmente 1 a 3 parágrafos (pode começar com uma frase curta tipo "Diante do ocorrido, definimos os seguintes encaminhamentos:").
+- "conclusao": normalmente 1 parágrafo curto sobre a situação atual do caso."""
+
+
+def _paragrafos_com_negrito(lista_ia):
+    """Converte [{"texto":..., "negritos":[...]}] (resposta da IA) no
+    formato de runs esperado por relatorio_ocorrencia.py:
+    [{"runs": [{"texto":..., "bold": bool}, ...]}]
+
+    Os trechos em "negritos" precisam bater literalmente (substring) com o
+    texto do parágrafo; trechos não encontrados são ignorados (fail-safe:
+    o parágrafo continua saindo inteiro, só sem aquele destaque)."""
+    paragrafos = []
+    for item in lista_ia or []:
+        texto = (item.get("texto") or "").strip()
+        if not texto:
+            continue
+        negritos = [n for n in (item.get("negritos") or []) if n and n in texto]
+
+        ocorrencias = []
+        for n in negritos:
+            idx = texto.find(n)
+            if idx == -1:
+                continue
+            ocorrencias.append((idx, idx + len(n), n))
+        ocorrencias.sort(key=lambda t: t[0])
+
+        limpo = []
+        cursor = -1
+        for ini, fim, n in ocorrencias:
+            if ini < cursor:
+                continue
+            limpo.append((ini, fim, n))
+            cursor = fim
+
+        runs = []
+        pos = 0
+        for ini, fim, n in limpo:
+            if ini > pos:
+                runs.append({"texto": texto[pos:ini], "bold": False})
+            runs.append({"texto": texto[ini:fim], "bold": True})
+            pos = fim
+        if pos < len(texto):
+            runs.append({"texto": texto[pos:], "bold": False})
+        if not runs:
+            runs = [{"texto": texto, "bold": False}]
+        paragrafos.append({"runs": runs})
+    return paragrafos
+
+
 def _montar_prompt_comunicado_livre(tema, observacoes):
     return f"""Aja como um Supervisor de O&M da Grid Co. escrevendo um comunicado curto e direto pra ser enviado por WhatsApp às equipes técnicas e/ou clientes.
 
@@ -10744,6 +10830,93 @@ def gerar_relatorio_semanal_route():
         )
     except Exception as e:
         log.error(f"[Relatorio Semanal] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/gerar-relatorio-ocorrencia", methods=["POST", "OPTIONS"])
+def gerar_relatorio_ocorrencia_route():
+    """Botão 'Gerar Relatório de Ocorrência' do Painel de Relatórios: recebe
+    cliente, usina, um resumo curto do que aconteceu e até 8 fotos de
+    evidência (multipart/form-data), expande o resumo em texto formal via
+    IA (mesmo padrão do relatório de referência) e devolve o .pptx pronto
+    pra download. Não persiste nada em planilha — geração sob demanda."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    cliente = (request.form.get("cliente") or "").strip()
+    usina = (request.form.get("usina") or "").strip()
+    resumo = (request.form.get("resumo") or "").strip()
+    if not cliente or not usina or not resumo:
+        return jsonify({"ok": False, "error": "cliente, usina e resumo são obrigatórios"}), 400
+
+    extensoes_validas = (".jpg", ".jpeg", ".png", ".webp")
+    fotos_arquivos = [f for f in request.files.getlist("fotos") if f and f.filename][:8]
+    fotos_streams = []
+    for f in fotos_arquivos:
+        nome = secure_filename(f.filename or "")
+        if not nome.lower().endswith(extensoes_validas):
+            continue
+        stream = BytesIO(f.read())
+        stream.seek(0)
+        fotos_streams.append(stream)
+
+    try:
+        prompt = _montar_prompt_relatorio_ocorrencia(cliente, usina, resumo)
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 4096,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=45,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        finish_reason = candidato.get("finishReason", "")
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        if not texto_bruto or len(texto_bruto) < 20:
+            log.error(f"[gerar-relatorio-ocorrencia] Resposta curta/vazia "
+                      f"(finishReason={finish_reason}): {texto_bruto!r}")
+            raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
+
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        parsed = json.loads(texto_limpo)
+
+        ocorrencia_paragrafos = _paragrafos_com_negrito(parsed.get("ocorrencia") or [])
+        acoes_paragrafos = _paragrafos_com_negrito(parsed.get("acoes") or [])
+        conclusao_paragrafos = _paragrafos_com_negrito(parsed.get("conclusao") or [])
+
+        if not ocorrencia_paragrafos:
+            raise ValueError("A IA não retornou o texto da Ocorrência")
+
+        buf = gerar_relatorio_ocorrencia_pptx(cliente, usina, ocorrencia_paragrafos,
+                                               acoes_paragrafos, conclusao_paragrafos, fotos_streams)
+
+        nome_arquivo = f"Relatório de Ocorrência - {usina} ({cliente}).pptx"
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=nome_arquivo,
+            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            log.error(f"[gerar-relatorio-ocorrencia] Cota da IA esgotada mesmo apos retries: {e}")
+            return jsonify({"ok": False, "error": ("A IA está temporariamente sem cota disponível (uso "
+                            "excessivo em pouco tempo). Aguarde alguns minutos e tente de novo.")}), 429
+        log.error(f"[gerar-relatorio-ocorrencia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+    except (json.JSONDecodeError, AttributeError) as e:
+        log.error(f"[gerar-relatorio-ocorrencia] Erro de parse do JSON da IA: {e}")
+        return jsonify({"ok": False, "error": "A IA retornou um formato inesperado da IA. Tente novamente."}), 500
+    except Exception as e:
+        log.error(f"[gerar-relatorio-ocorrencia] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
