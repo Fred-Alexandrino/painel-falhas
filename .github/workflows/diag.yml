@@ -12,13 +12,13 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s -m 20 "https://api.168.138.232.237.sslip.io/desligamento-manual" -o backups/diag-overrides.json
-          cat backups/diag-overrides.json
+          curl -s -m 30 "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?enviar=false" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/diag-resumo-hoje.json
+          cat backups/diag-resumo-hoje.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-overrides.json
-          git commit -m "diag overrides [skip ci]" || echo "nothing"
+          git add backups/diag-resumo-hoje.json
+          git commit -m "diag resumo hoje [skip ci]" || echo "nothing"
           n=0
           until git push || [ $n -ge 8 ]; do
             n=$((n+1))
