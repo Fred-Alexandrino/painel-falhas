@@ -8011,6 +8011,14 @@ def _coletar_dados_resumo_diario(data_str):
     resultado["programacao"] = {"cumprido": programado_cumprido, "pendente": programado_pendente}
 
     # ── Atividades concluídas no dia que NÃO estavam na programação ─────
+    # Corrigido em 28/07/2026: só olhar dataConclusao não bastava — uma
+    # auditoria automática pode marcar uma OS antiga como "Concluído" só
+    # hoje (catch-up de backlog), sem que o trabalho de campo tenha
+    # acontecido hoje de verdade. Agora exige também uma entrada no
+    # histórico datada de hoje, como evidência real de atividade no dia
+    # (mensagem de técnico, atualização da Fracttal, etc.) — não só uma
+    # mudança de status administrativa.
+    data_str_br = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
     numeros_programados = {str(r.get("os_id") or "").strip() for r in linhas_pcm if r.get("os_id")}
     extras_nao_programadas = []
     for row in todos_ativ[1:]:
@@ -8025,6 +8033,9 @@ def _coletar_dados_resumo_diario(data_str):
             continue
         if dc != data_str:
             continue
+        historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
+        if data_str_br not in historico:
+            continue  # dataConclusao é de hoje, mas sem evidência de atividade real no histórico — provável catch-up administrativo
         numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
         if numero_os and numero_os in numeros_programados:
             continue  # já contabilizada como programação cumprida
@@ -8035,6 +8046,32 @@ def _coletar_dados_resumo_diario(data_str):
             "numeroOS": numero_os,
         })
     resultado["extrasNaoProgramadas"] = extras_nao_programadas
+
+    # ── Atividades com progresso hoje (mudança de % ou estado registrada
+    #    no histórico), mesmo sem chegar a "Concluído" — pra não deixar
+    #    de fora OS que avançaram mas ainda não fecharam. Não repete o
+    #    que já apareceu em "cumprido" ou "extras". Adicionado em
+    #    28/07/2026 a pedido do Fred.
+    progresso_do_dia = []
+    numeros_ja_contabilizados = numeros_programados | {e["numeroOS"] for e in extras_nao_programadas if e.get("numeroOS")}
+    for row in todos_ativ[1:]:
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
+        if not numero_os or numero_os in numeros_ja_contabilizados:
+            continue
+        historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
+        if data_str_br not in historico:
+            continue
+        progresso_do_dia.append({
+            "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+            "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+            "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
+            "numeroOS": numero_os,
+            "percentualAtual": row[ATIV_CAMPO_COL["percentualOS"] - 1].strip() if len(row) > ATIV_CAMPO_COL["percentualOS"] - 1 else "",
+            "statusAtual": row[ATIV_CAMPO_COL["statusOS"] - 1].strip(),
+        })
+    resultado["progressoDoDia"] = progresso_do_dia
 
     # ── Chamados de fabricante abertos/atualizados no dia ────────────────
     try:
@@ -8059,10 +8096,14 @@ def _coletar_dados_resumo_diario(data_str):
         log.error(f"[ResumoDiario] Erro ao ler Falhas: {e}")
         resultado["ocorrenciasNovasDoDia"] = []
 
-    # ── Desligamentos ativos agora ────────────────────────────────────────
-    # Versão simplificada da mesma lógica usada no frontend (isDesligamento/
-    # isDesligamentoAtividade) — respeita os overrides manuais já
-    # cadastrados, e usa os mesmos padrões-chave de texto.
+    # ── Desligamentos que ocorreram HOJE (ocorrências novas do dia que
+    #    batem no padrão de desligamento) ─────────────────────────────────
+    # Corrigido em 28/07/2026: a versão anterior caía pra TODO o histórico
+    # de falhas quando não havia ocorrência nova no dia (bug de "or" em
+    # Python — lista vazia é falsy), trazendo desligamentos crônicos
+    # antigos (ex.: Araputanga, Nova Xavantina II) que não tinham nada a
+    # ver com o dia relatado, e fazendo passar batido o desligamento real
+    # do dia (Morada Nova). Agora usa só as ocorrências novas de hoje.
     try:
         overrides = {}
         ws_desl = get_desligamento_manual_sheet()
@@ -8077,11 +8118,10 @@ def _coletar_dados_resumo_diario(data_str):
             re.IGNORECASE,
         )
         desligamentos = []
-        for f in resultado.get("ocorrenciasNovasDoDia", []) or _falhas_itens():
+        for f in resultado.get("ocorrenciasNovasDoDia", []):
             override = overrides.get(f"falha:{f.get('id')}")
             texto = (f.get("falha") or "")
-            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)
-                                      and (f.get("status") or "").lower() not in ("concluído", "concluido", "resolvido", "fechado")):
+            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)):
                 desligamentos.append({"usina": f.get("usina"), "cliente": f.get("cliente"), "descricao": texto})
         resultado["desligamentosAtivos"] = desligamentos
     except Exception as e:
@@ -8128,6 +8168,7 @@ def _montar_prompt_resumo_diario(dados):
     cumprido = prog.get("cumprido", [])
     pendente = prog.get("pendente", [])
     extras = dados.get("extrasNaoProgramadas", [])
+    progresso = dados.get("progressoDoDia", [])
     chamados = dados.get("chamadosDoDia", [])
     ocorrencias = dados.get("ocorrenciasNovasDoDia", [])
     desligamentos = dados.get("desligamentosAtivos", [])
@@ -8157,7 +8198,7 @@ Data do resumo: {data_fmt}
 REGRAS DE ESCRITA:
 - Direto e objetivo, sem enrolação, sem saudação.
 - Estruture em tópicos curtos com emojis moderados pra facilitar leitura rápida no celular.
-- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo.
+- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo. Cada dado abaixo já foi validado como evidência real do dia — não generalize nem "arredonde" a descrição da tarefa (ex.: se a descrição cita religamento mas isso é só parte de uma tarefa maior, não resuma como "fizemos religamentos" sem mais contexto).
 - Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
 - No trecho de mensagens dos grupos, sintetize os TEMAS relevantes tratados (problemas relatados, decisões, pendências mencionadas) — não liste mensagem por mensagem, é pra virar um resumo do que rolou, no seu próprio estilo de linguagem natural.
 
@@ -8169,8 +8210,11 @@ DADOS DO DIA:
 ## Programação do PCM — pendente/não cumprida hoje
 {_fmt_lista(pendente, ['usina', 'cliente', 'tarefa', 'os', 'statusReal'])}
 
-## Atividades concluídas fora da programação (fizeram outra coisa em vez do planejado, ou além dele)
+## Atividades CONCLUÍDAS hoje fora da programação (evidência real de trabalho no histórico, não só mudança administrativa de status)
 {_fmt_lista(extras, ['usina', 'cliente', 'descricao', 'numeroOS'])}
+
+## Atividades com PROGRESSO hoje, mas ainda não concluídas (avançaram % ou mudaram de estado)
+{_fmt_lista(progresso, ['usina', 'cliente', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
 
 ## Chamados de fabricante abertos hoje
 {_fmt_lista(chamados, ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
@@ -8178,7 +8222,7 @@ DADOS DO DIA:
 ## Ocorrências novas no Painel de Falhas hoje
 {_fmt_lista(ocorrencias, ['usina', 'cliente', 'falha', 'status'])}
 
-## Desligamentos ativos agora
+## Desligamentos que ocorreram HOJE (não é lista de desligamentos crônicos/antigos — só hoje)
 {_fmt_lista(desligamentos, ['usina', 'cliente', 'descricao'])}
 
 ## OS de alta prioridade ainda em aberto (não necessariamente de hoje)
@@ -8263,7 +8307,7 @@ def _coletar_dados_resumo_semanal(data_fim_str):
     consolidado = {
         "dataInicio": dt_inicio.strftime("%Y-%m-%d"), "dataFim": data_fim_str,
         "programacaoCumprida": [], "programacaoPendente": [], "extrasNaoProgramadas": [],
-        "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
+        "progressoDaSemana": [], "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
         "mensagensPorGrupo": {}, "diasProcessados": [],
     }
     dia = dt_inicio
@@ -8275,6 +8319,7 @@ def _coletar_dados_resumo_semanal(data_fim_str):
             consolidado["programacaoCumprida"].extend(dados_dia.get("programacao", {}).get("cumprido", []))
             consolidado["programacaoPendente"].extend(dados_dia.get("programacao", {}).get("pendente", []))
             consolidado["extrasNaoProgramadas"].extend(dados_dia.get("extrasNaoProgramadas", []))
+            consolidado["progressoDaSemana"].extend(dados_dia.get("progressoDoDia", []))
             consolidado["chamados"].extend(dados_dia.get("chamadosDoDia", []))
             consolidado["ocorrencias"].extend(dados_dia.get("ocorrenciasNovasDoDia", []))
             for nome_grupo, msgs in dados_dia.get("mensagensPorGrupo", {}).items():
@@ -8331,6 +8376,9 @@ DADOS DA SEMANA:
 
 ## Atividades concluídas fora da programação na semana
 {_fmt_lista(dados['extrasNaoProgramadas'], ['usina', 'cliente', 'descricao', 'numeroOS'])}
+
+## Atividades com progresso na semana, mas ainda não concluídas
+{_fmt_lista(dados['progressoDaSemana'], ['usina', 'cliente', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
 
 ## Chamados de fabricante abertos na semana
 {_fmt_lista(dados['chamados'], ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
