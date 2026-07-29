@@ -8207,6 +8207,54 @@ def _montar_prompt_resumo_diario(dados):
             linhas.append(" | ".join(f"{c}={it.get(c, '')}" for c in campos))
         return "\n".join(linhas)
 
+    # ── Cruzamento: números de OS mencionados nas mensagens x dados já
+    #    mapeados (cumprido/pendente/extras/progresso). Isso é feito aqui
+    #    em Python (não só confiando na IA achar sozinha no meio de um
+    #    bloco de mensagens grande) pra ser confiável — pedido do Fred
+    #    em 28/07/2026: "bater as informações das OS com as conversas no
+    #    WhatsApp com as equipes".
+    todas_os_conhecidas = {}
+    for item in cumprido:
+        if item.get("os"):
+            todas_os_conhecidas[str(item["os"])] = {**item, "origem": "PCM cumprido"}
+    for item in pendente:
+        if item.get("os"):
+            todas_os_conhecidas[str(item["os"])] = {**item, "origem": "PCM pendente"}
+    for item in extras:
+        if item.get("numeroOS"):
+            todas_os_conhecidas[str(item["numeroOS"])] = {**item, "origem": "concluída fora da programação"}
+    for item in progresso:
+        if item.get("numeroOS"):
+            todas_os_conhecidas[str(item["numeroOS"])] = {**item, "origem": "em progresso"}
+
+    _padrao_numero_os = re.compile(r"\b(?:os\.?\s*)?(\d{4,6})\b", re.IGNORECASE)
+    confirmacoes, mencoes_sem_correspondencia = [], []
+    for nome_grupo, msgs in mensagens_por_grupo.items():
+        for m in msgs:
+            texto_msg = m.get("texto", "")
+            for numero in set(_padrao_numero_os.findall(texto_msg)):
+                if numero in todas_os_conhecidas:
+                    confirmacoes.append({
+                        "os": numero, "grupo": nome_grupo, "remetente": m.get("remetente"),
+                        "trechoMensagem": texto_msg[:200],
+                        "statusNoSistema": todas_os_conhecidas[numero].get("origem"),
+                    })
+                elif len(numero) >= 4:  # ignora numeros curtos tipo horario/telefone parcial
+                    mencoes_sem_correspondencia.append({
+                        "os": numero, "grupo": nome_grupo, "remetente": m.get("remetente"),
+                        "trechoMensagem": texto_msg[:200],
+                    })
+
+    def _fmt_cruzamento(itens, teto=40):
+        if not itens:
+            return "(nenhuma)"
+        linhas = [f"OS {it['os']} | grupo={it['grupo']} | {it['remetente']}: \"{it['trechoMensagem']}\"" +
+                  (f" | status no sistema: {it.get('statusNoSistema','')}" if 'statusNoSistema' in it else "")
+                  for it in itens[:teto]]
+        if len(itens) > teto:
+            linhas.append(f"... e mais {len(itens) - teto}")
+        return "\n".join(linhas)
+
     bloco_mensagens = []
     for nome_grupo, msgs in mensagens_por_grupo.items():
         bloco_mensagens.append(f"\n--- Grupo: {nome_grupo} ({len(msgs)} mensagens) ---")
@@ -8225,6 +8273,7 @@ REGRAS DE ESCRITA:
 - NUNCA invente números, nomes ou fatos que não estão nos dados abaixo. Cada dado abaixo já foi validado como evidência real do dia — não generalize nem "arredonde" a descrição da tarefa (ex.: se a descrição cita religamento mas isso é só parte de uma tarefa maior, não resuma como "fizemos religamentos" sem mais contexto).
 - Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
 - No trecho de mensagens dos grupos, sintetize os TEMAS relevantes tratados (problemas relatados, decisões, pendências mencionadas) — não liste mensagem por mensagem, é pra virar um resumo do que rolou, no seu próprio estilo de linguagem natural.
+- IMPORTANTE — cruzamento OS x WhatsApp: as seções "OS confirmadas por mensagem" e "OS mencionadas sem correspondência no sistema" abaixo já foram cruzadas automaticamente (não é pra você tentar achar OS dentro do bloco de mensagens sozinho). Use a seção de confirmadas pra reforçar/validar o que já está nas outras seções (ex.: "Ibaté II, religamento inversor 1.6 (OS 10225) — confirmado pelo técnico no grupo"). Para as "sem correspondência", inclua como um alerta separado — pode ser uma OS que o técnico comentou mas ainda não está refletida no painel, vale a pena o Fred checar.
 
 DADOS DO DIA:
 
@@ -8252,7 +8301,13 @@ DADOS DO DIA:
 ## OS de alta prioridade ainda em aberto (não necessariamente de hoje)
 {_fmt_lista(altas, ['usina', 'cliente', 'descricao', 'prazo'])}
 
-## Mensagens nos grupos do WhatsApp mapeados hoje
+## OS confirmadas por mensagem no WhatsApp (número da OS mencionado numa mensagem BATE com uma OS já mapeada acima)
+{_fmt_cruzamento(confirmacoes)}
+
+## Números mencionados nas mensagens que PARECEM ser OS, mas NÃO batem com nenhuma OS mapeada hoje (checar se é OS de outro dia, erro de digitação do técnico, ou algo que ainda não está no painel)
+{_fmt_cruzamento(mencoes_sem_correspondencia)}
+
+## Mensagens nos grupos do WhatsApp mapeados hoje (texto completo, pra contexto e síntese de temas gerais)
 {texto_mensagens}
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
