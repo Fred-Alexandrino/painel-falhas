@@ -7826,7 +7826,56 @@ def _get_mensagens_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mensagens_grupo_data ON mensagens(grupo_id, data_hora)")
+    # Histórico dos resumos diário/semanal já gerados — pro Fred conseguir
+    # ver no próprio painel, não só no WhatsApp (pedido em 29/07/2026).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS resumos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL,
+            data_referencia TEXT NOT NULL,
+            data_inicio TEXT,
+            data_fim TEXT,
+            texto TEXT NOT NULL,
+            enviado_whatsapp INTEGER NOT NULL DEFAULT 0,
+            criado_em TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_resumos_tipo_data ON resumos(tipo, data_referencia)")
     return conn
+
+
+def _salvar_resumo(tipo, texto, data_referencia, data_inicio=None, data_fim=None, enviado=False):
+    conn = _get_mensagens_db()
+    conn.execute(
+        "INSERT INTO resumos (tipo, data_referencia, data_inicio, data_fim, texto, enviado_whatsapp, criado_em) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (tipo, data_referencia, data_inicio, data_fim, texto, 1 if enviado else 0, agora_br().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    novo_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return novo_id
+
+
+@app.route("/resumos", methods=["GET"])
+def listar_resumos():
+    """Lista o histórico de resumos diários/semanais já gerados, pro
+    painel mostrar (não só o WhatsApp). Filtros opcionais: ?tipo=diario
+    ou ?tipo=semanal, ?limit=N (default 30)."""
+    tipo = request.args.get("tipo", "").strip()
+    limit = min(int(request.args.get("limit", 30) or 30), 200)
+    conn = _get_mensagens_db()
+    conn.row_factory = sqlite3.Row
+    query = "SELECT id, tipo, data_referencia, data_inicio, data_fim, texto, enviado_whatsapp, criado_em FROM resumos"
+    params = []
+    if tipo:
+        query += " WHERE tipo = ?"
+        params.append(tipo)
+    query += " ORDER BY criado_em DESC LIMIT ?"
+    params.append(limit)
+    linhas = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify({"ok": True, "itens": [dict(r) for r in linhas]}), 200
 
 
 @app.route("/capturar-mensagem-grupo", methods=["POST", "OPTIONS"])
@@ -8361,6 +8410,11 @@ def _gerar_resumo_diario_core(data_str=None, enviar=True):
     if enviar:
         resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
 
+    try:
+        _salvar_resumo("diario", texto, data_referencia=data_str, enviado=enviar)
+    except Exception as e:
+        log.error(f"[ResumoDiario] Falha ao salvar no histórico do painel: {e}")
+
     return {"ok": True, "data": data_str, "texto": texto, "envio": resultado_envio}
 
 
@@ -8508,6 +8562,12 @@ def _gerar_resumo_semanal_core(data_fim_str=None, enviar=True):
     resultado_envio = None
     if enviar:
         resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
+
+    try:
+        _salvar_resumo("semanal", texto, data_referencia=dados["dataFim"],
+                        data_inicio=dados["dataInicio"], data_fim=dados["dataFim"], enviado=enviar)
+    except Exception as e:
+        log.error(f"[ResumoSemanal] Falha ao salvar no histórico do painel: {e}")
 
     return {"ok": True, "dataInicio": dados["dataInicio"], "dataFim": dados["dataFim"],
             "texto": texto, "envio": resultado_envio}
