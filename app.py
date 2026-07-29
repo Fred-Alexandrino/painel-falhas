@@ -8018,24 +8018,31 @@ def _coletar_dados_resumo_diario(data_str):
     # histórico datada de hoje, como evidência real de atividade no dia
     # (mensagem de técnico, atualização da Fracttal, etc.) — não só uma
     # mudança de status administrativa.
+    #
+    # CORREÇÃO 28/07/2026 (relatado pelo Fred): dataConclusao reflete
+    # quando a Fracttal finalizou ADMINISTRATIVAMENTE a OS (mudou pra
+    # "Finalizada"), que pode ser dias depois do trabalho de campo real
+    # (que termina quando o técnico manda pra "Em Revisão", 100%). Usar
+    # dataConclusao sozinha fez o resumo dizer "fizemos religamento hoje"
+    # pra OSs cujo trabalho de campo foi feito 4 dias antes — só a
+    # Fracttal demorou pra confirmar. Agora busca especificamente a data
+    # da transição de progresso/campo no histórico, não qualquer menção
+    # à data de hoje (que aparecia de qualquer forma por causa da
+    # finalização administrativa).
+    _padrao_trabalho_campo = re.compile(
+        r"(\d{2}/\d{2}/\d{4}) \d{2}:\d{2} - .*(?:progresso da tarefa foi de|"
+        r'mudou de ".*?" para "Em Revisão"|situação geral da tarefa mudou.*?"Concluída")',
+    )
     data_str_br = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
     numeros_programados = {str(r.get("os_id") or "").strip() for r in linhas_pcm if r.get("os_id")}
     extras_nao_programadas = []
     for row in todos_ativ[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
-        data_conclusao = row[ATIV_CAMPO_COL["dataConclusao"] - 1].strip().split(" ")[0]
-        if not data_conclusao:
-            continue
-        try:
-            dc = datetime.strptime(data_conclusao, "%d/%m/%Y").strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-        if dc != data_str:
-            continue
         historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
-        if data_str_br not in historico:
-            continue  # dataConclusao é de hoje, mas sem evidência de atividade real no histórico — provável catch-up administrativo
+        datas_trabalho_campo = _padrao_trabalho_campo.findall(historico)
+        if data_str_br not in datas_trabalho_campo:
+            continue  # trabalho de campo não foi feito hoje (mesmo que a OS tenha sido finalizada administrativamente hoje)
         numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
         if numero_os and numero_os in numeros_programados:
             continue  # já contabilizada como programação cumprida
