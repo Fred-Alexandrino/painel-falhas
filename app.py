@@ -8049,6 +8049,7 @@ def _coletar_dados_resumo_diario(data_str):
         extras_nao_programadas.append({
             "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+            "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1].strip(),
             "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
             "numeroOS": numero_os,
         })
@@ -8085,6 +8086,7 @@ def _coletar_dados_resumo_diario(data_str):
         progresso_do_dia.append({
             "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+            "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1].strip(),
             "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
             "numeroOS": numero_os,
             "percentualAtual": row[ATIV_CAMPO_COL["percentualOS"] - 1].strip() if len(row) > ATIV_CAMPO_COL["percentualOS"] - 1 else "",
@@ -8272,8 +8274,12 @@ REGRAS DE ESCRITA:
 - Estruture em tópicos curtos com emojis moderados pra facilitar leitura rápida no celular.
 - NUNCA invente números, nomes ou fatos que não estão nos dados abaixo. Cada dado abaixo já foi validado como evidência real do dia — não generalize nem "arredonde" a descrição da tarefa (ex.: se a descrição cita religamento mas isso é só parte de uma tarefa maior, não resuma como "fizemos religamentos" sem mais contexto).
 - Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
-- No trecho de mensagens dos grupos, sintetize os TEMAS relevantes tratados (problemas relatados, decisões, pendências mencionadas) — não liste mensagem por mensagem, é pra virar um resumo do que rolou, no seu próprio estilo de linguagem natural.
-- IMPORTANTE — cruzamento OS x WhatsApp: as seções "OS confirmadas por mensagem" e "OS mencionadas sem correspondência no sistema" abaixo já foram cruzadas automaticamente (não é pra você tentar achar OS dentro do bloco de mensagens sozinho). Use a seção de confirmadas pra reforçar/validar o que já está nas outras seções (ex.: "Ibaté II, religamento inversor 1.6 (OS 10225) — confirmado pelo técnico no grupo"). Para as "sem correspondência", inclua como um alerta separado — pode ser uma OS que o técnico comentou mas ainda não está refletida no painel, vale a pena o Fred checar.
+- IMPORTANTE — cruzamento por NÚMERO DE OS: as seções "OS confirmadas por mensagem" e "OS mencionadas sem correspondência" abaixo já foram cruzadas automaticamente por número (não precisa procurar número de OS no bloco de mensagens sozinho).
+- IMPORTANTE — cruzamento por EQUIPAMENTO/USINA (faça você mesmo, é o cruzamento mais comum): o técnico raramente fala o número da OS no grupo — ele fala do EQUIPAMENTO ou da USINA ("o inversor 1.6 de Ibaté", "religamos o trafo de Araputanga", "terminamos a preventiva de Crateús"). Cruze o que foi dito nas mensagens com o campo "equipamento"/"usina" das OS listadas acima (programação, concluídas, progresso). Se uma mensagem falar de um equipamento/usina que bate com uma OS do dia, uma dessas coisas:
+  (a) CONFIRMA o que já está registrado (cite isso junto da OS correspondente, ex.: "Ibaté I, inversor 1.10 (OS 9781) — confirmado pelo técnico no grupo: 'terminei a inspeção do 1.10'"), ou
+  (b) CONTRADIZ o que está registrado (ex.: técnico diz que não terminou algo que o sistema mostra concluído, ou vice-versa) — isso é importante, aponte como um alerta de divergência pro Fred verificar, ou
+  (c) é uma menção nova sem OS correspondente no sistema — mesma lógica das OS sem correspondência: vale mencionar como algo pra conferir.
+- RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo curto e específico do que foi tratado NAQUELE grupo — não um resumo genérico misturando tudo. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato.
 
 DADOS DO DIA:
 
@@ -8284,10 +8290,10 @@ DADOS DO DIA:
 {_fmt_lista(pendente, ['usina', 'cliente', 'tarefa', 'os', 'statusReal'])}
 
 ## Atividades CONCLUÍDAS hoje fora da programação (evidência real de trabalho no histórico, não só mudança administrativa de status)
-{_fmt_lista(extras, ['usina', 'cliente', 'descricao', 'numeroOS'])}
+{_fmt_lista(extras, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS'])}
 
 ## Atividades com PROGRESSO hoje, mas ainda não concluídas (avançaram % ou mudaram de estado)
-{_fmt_lista(progresso, ['usina', 'cliente', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
+{_fmt_lista(progresso, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
 
 ## Chamados de fabricante abertos hoje
 {_fmt_lista(chamados, ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
@@ -8307,11 +8313,11 @@ DADOS DO DIA:
 ## Números mencionados nas mensagens que PARECEM ser OS, mas NÃO batem com nenhuma OS mapeada hoje (checar se é OS de outro dia, erro de digitação do técnico, ou algo que ainda não está no painel)
 {_fmt_cruzamento(mencoes_sem_correspondencia)}
 
-## Mensagens nos grupos do WhatsApp mapeados hoje (texto completo, pra contexto e síntese de temas gerais)
+## Mensagens nos grupos do WhatsApp mapeados hoje, organizadas por grupo (use pro cruzamento por equipamento/usina E pro resumo por equipe)
 {texto_mensagens}
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{"texto": "resumo diário completo, pronto pra enviar no WhatsApp, começando com um cabeçalho tipo '📋 RESUMO DIÁRIO — {data_fmt}'"}}"""
+{{"texto": "resumo diário completo, pronto pra enviar no WhatsApp, começando com um cabeçalho tipo '📋 RESUMO DIÁRIO — {data_fmt}', e terminando com a seção 'RESUMO POR EQUIPE' descrita acima"}}"""
 
 
 def _enviar_mensagem_grupo(grupo_id, texto):
