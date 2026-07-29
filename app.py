@@ -8061,6 +8061,15 @@ def _coletar_dados_resumo_diario(data_str):
     #    28/07/2026 a pedido do Fred.
     progresso_do_dia = []
     numeros_ja_contabilizados = numeros_programados | {e["numeroOS"] for e in extras_nao_programadas if e.get("numeroOS")}
+    # mesmo cuidado do bloco de "extras": uma linha de histórico com a
+    # data de hoje pode ser SÓ a finalização administrativa (Fracttal
+    # mudou pra "Finalizada"), sem nenhum progresso de campo real hoje —
+    # nesse caso não é notícia do dia, é catch-up atrasado. Só entra aqui
+    # se tiver pelo menos uma linha de hoje que NÃO seja exclusivamente
+    # essa transição administrativa.
+    _padrao_so_finalizacao_administrativa = re.compile(
+        r'^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - status na Fracttal mudou de ".*?" para "Finalizada"\.?$'
+    )
     for row in todos_ativ[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
@@ -8068,8 +8077,10 @@ def _coletar_dados_resumo_diario(data_str):
         if not numero_os or numero_os in numeros_ja_contabilizados:
             continue
         historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
-        if data_str_br not in historico:
-            continue
+        linhas_de_hoje = [l for l in historico.split("\n") if l.strip().startswith(data_str_br)]
+        linhas_relevantes = [l for l in linhas_de_hoje if not _padrao_so_finalizacao_administrativa.match(l.strip())]
+        if not linhas_relevantes:
+            continue  # só teve finalização administrativa hoje, sem progresso de campo real
         progresso_do_dia.append({
             "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
