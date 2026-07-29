@@ -12,11 +12,11 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/health-check.json
-          cat backups/health-check.json
+          curl -s -m 50 -X POST "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?data=2026-07-28" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/envio-ontem.json
+          cat backups/envio-ontem.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/health-check.json
-          git diff --quiet --cached || git commit -m "check log [skip ci]"
+          git add backups/envio-ontem.json
+          git diff --quiet --cached || git commit -m "envio ontem [skip ci]"
           git push
