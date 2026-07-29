@@ -2940,7 +2940,7 @@ ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "resp
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
-    "prazo": 7, "prioridade": 8, "status": 9, "dataConclusao": 11, "historico": 12, "numeroOS": 14,
+    "prazo": 7, "prioridade": 8, "status": 9, "dataCriacao": 10, "dataConclusao": 11, "historico": 12, "numeroOS": 14,
     "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
     "anotacoesPessoais": 20, "percentualOS": 21, "statusGeralOS": 22, "detalhesEquipamentosOS": 23,
     "ultimaVerificacaoOS": 24, "visualizado": 25,
@@ -8205,6 +8205,35 @@ def _coletar_dados_resumo_diario(data_str):
         })
     resultado["progressoDoDia"] = progresso_do_dia
 
+    # ── OS novas hoje (descobertas/sincronizadas da Fracttal hoje) ───────
+    # Separado do "progresso" de propósito: aqui é só "isso apareceu no
+    # radar hoje", independente de já ter trabalho de campo ou não —
+    # pedido pelo Fred em 29/07/2026 pra ter visão do que entrou de novo
+    # no dia, sem misturar com o que já está sendo trabalhado.
+    os_novas_hoje = []
+    for row in todos_ativ[1:]:
+        if len(row) < ATIV_TOTAL_COLUNAS:
+            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        data_criacao = row[ATIV_CAMPO_COL["dataCriacao"] - 1].strip().split(" ")[0] if len(row) > ATIV_CAMPO_COL["dataCriacao"] - 1 else ""
+        if not data_criacao:
+            continue
+        try:
+            dc = datetime.strptime(data_criacao, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+        if dc != data_str:
+            continue
+        os_novas_hoje.append({
+            "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+            "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+            "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1].strip(),
+            "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
+            "numeroOS": row[ATIV_CAMPO_COL["numeroOS"] - 1].strip(),
+            "prioridade": row[ATIV_CAMPO_COL["prioridade"] - 1].strip(),
+            "statusGeralAtual": row[ATIV_CAMPO_COL["statusGeralOS"] - 1].strip() if len(row) > ATIV_CAMPO_COL["statusGeralOS"] - 1 else "",
+        })
+    resultado["osNovasHoje"] = os_novas_hoje
+
     # ── Desligamentos que ocorreram HOJE ─────────────────────────────────
     # Checa tanto Falhas (ocorrências novas de hoje) quanto Atividades
     # (extras concluídas + progresso do dia) — um desligamento pode ter
@@ -8306,6 +8335,7 @@ def _montar_prompt_resumo_diario(dados):
     pendente = prog.get("pendente", [])
     extras = dados.get("extrasNaoProgramadas", [])
     progresso = dados.get("progressoDoDia", [])
+    os_novas = dados.get("osNovasHoje", [])
     chamados = dados.get("chamadosDoDia", [])
     ocorrencias = dados.get("ocorrenciasNovasDoDia", [])
     desligamentos = dados.get("desligamentosAtivos", [])
@@ -8390,6 +8420,7 @@ REGRAS DE ESCRITA:
   (a) CONFIRMA o que já está registrado (cite isso junto da OS correspondente, ex.: "Ibaté I, inversor 1.10 (OS 9781) — confirmado pelo técnico no grupo: 'terminei a inspeção do 1.10'"), ou
   (b) CONTRADIZ o que está registrado (ex.: técnico diz que não terminou algo que o sistema mostra concluído, ou vice-versa) — isso é importante, aponte como um alerta de divergência pro Fred verificar, ou
   (c) é uma menção nova sem OS correspondente no sistema — mesma lógica das OS sem correspondência: vale mencionar como algo pra conferir.
+- OS NOVAS HOJE (seção própria, obrigatória mesmo se vazia): liste as OS que entraram no sistema hoje, separado das outras seções — isso é só "descoberta/sincronizada hoje", não confundir com "concluída" ou "em progresso". Uma mesma OS pode aparecer aqui E em "progresso" (se já tiver trabalho de campo também) — não tem problema, são perguntas diferentes ("o que é novo" x "o que avançou").
 - RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo curto e específico do que foi tratado NAQUELE grupo — não um resumo genérico misturando tudo. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato.
 
 DADOS DO DIA:
@@ -8405,6 +8436,9 @@ DADOS DO DIA:
 
 ## Atividades com PROGRESSO hoje, mas ainda não concluídas (avançaram % ou mudaram de estado)
 {_fmt_lista(progresso, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
+
+## OS NOVAS hoje (descobertas/sincronizadas da Fracttal hoje, independente de já terem trabalho de campo ou não — isso é só "entrou no radar hoje")
+{_fmt_lista(os_novas, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'prioridade', 'statusGeralAtual'])}
 
 ## Chamados de fabricante abertos hoje
 {_fmt_lista(chamados, ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
@@ -8508,7 +8542,7 @@ def _coletar_dados_resumo_semanal(data_fim_str):
     consolidado = {
         "dataInicio": dt_inicio.strftime("%Y-%m-%d"), "dataFim": data_fim_str,
         "programacaoCumprida": [], "programacaoPendente": [], "extrasNaoProgramadas": [],
-        "progressoDaSemana": [], "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
+        "progressoDaSemana": [], "osNovasDaSemana": [], "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
         "mensagensPorGrupo": {}, "diasProcessados": [],
     }
     dia = dt_inicio
@@ -8521,6 +8555,7 @@ def _coletar_dados_resumo_semanal(data_fim_str):
             consolidado["programacaoPendente"].extend(dados_dia.get("programacao", {}).get("pendente", []))
             consolidado["extrasNaoProgramadas"].extend(dados_dia.get("extrasNaoProgramadas", []))
             consolidado["progressoDaSemana"].extend(dados_dia.get("progressoDoDia", []))
+            consolidado["osNovasDaSemana"].extend(dados_dia.get("osNovasHoje", []))
             consolidado["chamados"].extend(dados_dia.get("chamadosDoDia", []))
             consolidado["ocorrencias"].extend(dados_dia.get("ocorrenciasNovasDoDia", []))
             for nome_grupo, msgs in dados_dia.get("mensagensPorGrupo", {}).items():
@@ -8580,6 +8615,9 @@ DADOS DA SEMANA:
 
 ## Atividades com progresso na semana, mas ainda não concluídas
 {_fmt_lista(dados['progressoDaSemana'], ['usina', 'cliente', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
+
+## OS novas na semana (descobertas/sincronizadas da Fracttal)
+{_fmt_lista(dados['osNovasDaSemana'], ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'prioridade'])}
 
 ## Chamados de fabricante abertos na semana
 {_fmt_lista(dados['chamados'], ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
