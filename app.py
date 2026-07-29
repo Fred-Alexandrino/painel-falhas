@@ -8073,6 +8073,43 @@ def _coletar_dados_resumo_diario(data_str):
         })
     resultado["progressoDoDia"] = progresso_do_dia
 
+    # ── Desligamentos que ocorreram HOJE ─────────────────────────────────
+    # Checa tanto Falhas (ocorrências novas de hoje) quanto Atividades
+    # (extras concluídas + progresso do dia) — um desligamento pode ter
+    # sido registrado em qualquer um dos dois painéis. Corrigido em
+    # 28/07/2026: a versão anterior só olhava Falhas e caía num bug de
+    # fallback que trazia desligamentos crônicos antigos (Araputanga,
+    # Nova Xavantina II) em vez do dia real, além de não pegar
+    # desligamentos registrados só como Atividade (ex.: Morada Nova).
+    try:
+        overrides = {}
+        ws_desl = get_desligamento_manual_sheet()
+        for row in ws_desl.get_all_values()[1:]:
+            if len(row) >= 3 and row[0].strip():
+                overrides[f"{row[0].strip()}:{row[1].strip()}"] = row[2].strip()
+
+        padrao_desligamento = re.compile(
+            r"(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao]|sem\s+energia|desenergizad[ao]|offline|sem\s+comunica[çc][ãa]o)"
+            r"|(?:desligad[ao]|parad[ao]|offline)\s+(?:\w+\s+){0,3}(?:usina|ufv)"
+            r"|desligamento\s+(?:total\s+)?(?:da|de)\s+(?:usina|ufv)",
+            re.IGNORECASE,
+        )
+        desligamentos = []
+        for f in resultado.get("ocorrenciasNovasDoDia", []):
+            override = overrides.get(f"falha:{f.get('id')}")
+            texto = (f.get("falha") or "")
+            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)):
+                desligamentos.append({"usina": f.get("usina"), "cliente": f.get("cliente"), "descricao": texto, "origem": "Falha"})
+        for a in (extras_nao_programadas + progresso_do_dia):
+            override = overrides.get(f"atividade:{a.get('numeroOS')}")
+            texto = (a.get("descricao") or "")
+            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)):
+                desligamentos.append({"usina": a.get("usina"), "cliente": a.get("cliente"), "descricao": texto, "origem": f"Atividade OS {a.get('numeroOS')}"})
+        resultado["desligamentosAtivos"] = desligamentos
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro ao checar desligamentos: {e}")
+        resultado["desligamentosAtivos"] = []
+
     # ── Chamados de fabricante abertos/atualizados no dia ────────────────
     try:
         chamados = _chamados_fabricante_itens()
@@ -8095,38 +8132,6 @@ def _coletar_dados_resumo_diario(data_str):
     except Exception as e:
         log.error(f"[ResumoDiario] Erro ao ler Falhas: {e}")
         resultado["ocorrenciasNovasDoDia"] = []
-
-    # ── Desligamentos que ocorreram HOJE (ocorrências novas do dia que
-    #    batem no padrão de desligamento) ─────────────────────────────────
-    # Corrigido em 28/07/2026: a versão anterior caía pra TODO o histórico
-    # de falhas quando não havia ocorrência nova no dia (bug de "or" em
-    # Python — lista vazia é falsy), trazendo desligamentos crônicos
-    # antigos (ex.: Araputanga, Nova Xavantina II) que não tinham nada a
-    # ver com o dia relatado, e fazendo passar batido o desligamento real
-    # do dia (Morada Nova). Agora usa só as ocorrências novas de hoje.
-    try:
-        overrides = {}
-        ws_desl = get_desligamento_manual_sheet()
-        for row in ws_desl.get_all_values()[1:]:
-            if len(row) >= 3 and row[0].strip():
-                overrides[f"{row[0].strip()}:{row[1].strip()}"] = row[2].strip()
-
-        padrao_desligamento = re.compile(
-            r"(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao]|sem\s+energia|desenergizad[ao]|offline|sem\s+comunica[çc][ãa]o)"
-            r"|(?:desligad[ao]|parad[ao]|offline)\s+(?:\w+\s+){0,3}(?:usina|ufv)"
-            r"|desligamento\s+(?:total\s+)?(?:da|de)\s+(?:usina|ufv)",
-            re.IGNORECASE,
-        )
-        desligamentos = []
-        for f in resultado.get("ocorrenciasNovasDoDia", []):
-            override = overrides.get(f"falha:{f.get('id')}")
-            texto = (f.get("falha") or "")
-            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)):
-                desligamentos.append({"usina": f.get("usina"), "cliente": f.get("cliente"), "descricao": texto})
-        resultado["desligamentosAtivos"] = desligamentos
-    except Exception as e:
-        log.error(f"[ResumoDiario] Erro ao checar desligamentos: {e}")
-        resultado["desligamentosAtivos"] = []
 
     # ── OS de alta prioridade ainda em aberto ────────────────────────────
     altas_abertas = []
