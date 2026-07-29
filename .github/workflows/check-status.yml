@@ -11,15 +11,7 @@ jobs:
       - run: |
           mkdir -p backups
           curl -s -m 20 "https://api.168.138.232.237.sslip.io/chamados-fabricante" -o /tmp/chamados.json
-          python3 -c "
-import json
-d = json.load(open('/tmp/chamados.json'))
-itens = d.get('itens', [])
-print('total apos filtro:', d.get('total'))
-ufvs = sorted(set(i.get('UFV','') for i in itens))
-for u in ufvs:
-    print(u)
-" > backups/chamados-filtrados.txt
+          python3 -c "import json; d = json.load(open('/tmp/chamados.json')); itens = d.get('itens', []); print('total apos filtro:', d.get('total')); ufvs = sorted(set(i.get('UFV','') for i in itens)); [print(u) for u in ufvs]" > backups/chamados-filtrados.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
