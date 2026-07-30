@@ -26,7 +26,7 @@ from werkzeug.utils import secure_filename
 import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
-                                listar_usinas_cliente)
+                                listar_usinas_cliente, montar_status_zeladoria_por_usina)
 
 # Push notifications (pywebpush)
 try:
@@ -10708,8 +10708,21 @@ def gerar_relatorio_semanal_route():
         semana_num = data_fim.isocalendar()[1]
         data_label = data_fim.strftime('%d/%m/%Y')
 
+        # Zeladoria: preenche a página com os dados reais do Painel de
+        # Zeladoria. Se der qualquer erro (aba fora do ar, etc.), o
+        # relatório inteiro não pode falhar por causa disso -- cai pro
+        # comportamento antigo (página sai com "Em acompanhamento.").
+        try:
+            ws_zeladoria = get_zeladoria_sheet()
+            todos_zeladoria = carregar_planilha(ws_zeladoria)
+            zeladoria_status_por_usina = montar_status_zeladoria_por_usina(todos_zeladoria, cliente)
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao buscar dados de Zeladoria: {e}")
+            zeladoria_status_por_usina = None
+
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
-                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente)
+                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente,
+                                    zeladoria_status_por_usina)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
