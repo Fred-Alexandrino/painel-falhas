@@ -563,6 +563,7 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
 
         usina = row[ATIV_COL_USINA].strip() or "Usina não informada"
         descricao = row[ATIV_COL_DESCRICAO].strip() or "Sem descrição"
+        descricao = _descricao_com_mes_se_preventiva_mensal(descricao, row[ATIV_COL_PRAZO])
         equipamento = row[ATIV_COL_EQUIP].strip()
         if len(descricao) > 140:
             descricao = descricao[:137].rstrip() + "..."
@@ -575,6 +576,30 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
             atividades.setdefault(usina, []).append(item)
 
     return atividades, desligamentos
+
+
+_MESES_PT = {
+    1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL", 5: "MAIO", 6: "JUNHO",
+    7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO",
+}
+_RE_PREVENTIVA_MENSAL = re.compile(r"^preventiva\s+mensal$", re.IGNORECASE)
+
+
+def _descricao_com_mes_se_preventiva_mensal(descricao, prazo_txt):
+    """Combinado com Fred em 30/07/2026: como a preventiva mensal se repete
+    todo mês (cada usina pode ter mais de uma OS 'PREVENTIVA MENSAL' em
+    aberto/concluída ao mesmo tempo, uma de cada ciclo), o relatório
+    precisa deixar claro a qual mês cada uma se refere — usa o mês do
+    Prazo da própria OS (é o que diferencia o ciclo de julho do de
+    agosto), não a data de execução. Só mexe no texto quando a descrição
+    é exatamente "PREVENTIVA MENSAL" (nomenclatura padrão); qualquer outra
+    descrição sai como está."""
+    if not _RE_PREVENTIVA_MENSAL.match(descricao.strip()):
+        return descricao
+    dt_prazo = _parse_data(prazo_txt)
+    if not dt_prazo:
+        return descricao
+    return f"PREVENTIVA MENSAL {_MESES_PT[dt_prazo.month]}"
 
 
 def _formatar_item_atividade(it):
