@@ -747,11 +747,25 @@ PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "DESLIGAMENTOS", "CHAMADOS E PROT
 def _renderizar_pautas_gerais(prs):
     """Slide 2 — pauta fixa e universal (vale para todos os clientes,
     confirmado com Fred 23/07/2026), substitui a antiga 'Ata da reunião'
-    com pauta variável por cliente."""
+    com pauta variável por cliente.
+
+    Corrigido 30/07/2026: o cabeçalho ("Serviços Especializados Grid Co."
+    + "Gestão e Operação de Ativos" + linha final) é UM ÚNICO shape com 3
+    parágrafos, e só a 3ª linha varia por slide (aqui "Pautas Gerais", nas
+    demais seções fica "O&M" e nunca é tocado). O bug antigo usava
+    _set_text_preservando_estilo, que dá tf.clear() no shape inteiro e
+    reconstrói os parágrafos com a formatação do PRIMEIRO parágrafo (o
+    eyebrow, pequeno e cinza) — por isso o eyebrow sumia e o título saía
+    sem negrito/cor. Agora só o texto da ÚLTIMA linha é trocado, mantendo
+    o eyebrow e o "Gestão e Operação de Ativos" 100% intactos."""
     ata = _duplicate_slide(prs, 1)
     shp_titulo = _find_shape(ata, "Ata da reuni")
     if shp_titulo:
-        _set_text_preservando_estilo(shp_titulo, "Gestão e Operação de Ativos\nPautas Gerais")
+        ultimo_par = shp_titulo.text_frame.paragraphs[-1]
+        if ultimo_par.runs:
+            ultimo_par.runs[0].text = "Pautas Gerais"
+            for extra in ultimo_par.runs[1:]:
+                extra.text = ""
     shp_corpo = _find_shape(ata, "Desligamentos")
     if shp_corpo:
         tf = shp_corpo.text_frame
@@ -1003,7 +1017,9 @@ CLIENTES_ZELADORIA_DEFAULT_ACOMPANHAMENTO = ["gd energy", "alves lima"]
 def coletar_zeladoria(zeladoria_valores, cliente):
     """
     zeladoria_valores: ws.get_all_values() da aba Zeladoria (linhas 1-2 = cabeçalho).
-    Retorna lista de dicts: [{"usina": ..., "grupos": [{"nome":, "status":, "ultima_data":}, ...]}, ...]
+    Layout de cada grupo (4 subcolunas): Última Data, Próxima Data, Fornecedor, Status
+    (renomeado de "Quantidade" pra "Fornecedor" — ver /zeladoria-reestruturar-fornecedor em app.py).
+    Retorna lista de dicts: [{"usina": ..., "grupos": [{"nome":, "status":, "ultima_data":, "proxima_data":}, ...]}, ...]
     """
     cliente_norm = _norm(cliente)
     usa_default_acompanhamento = any(c in cliente_norm for c in CLIENTES_ZELADORIA_DEFAULT_ACOMPANHAMENTO)
@@ -1019,6 +1035,7 @@ def coletar_zeladoria(zeladoria_valores, cliente):
         grupos_usina = []
         for nome, col_ini in ZEL_GRUPOS:
             ultima_data = row[col_ini].strip()
+            proxima_data = row[col_ini + 1].strip()
             status = row[col_ini + 3].strip()
             # A célula pode estar vazia OU conter literalmente o texto
             # "Sem informação(ões)" já gravado como dado na planilha (por
@@ -1029,10 +1046,48 @@ def coletar_zeladoria(zeladoria_valores, cliente):
             # do mesmo jeito. Corrigido 22/07/2026.
             if _norm(status) in ("", "sem informacao", "sem informacoes") and usa_default_acompanhamento:
                 status = "Acompanhamento"
-            grupos_usina.append({"nome": nome, "status": status, "ultima_data": ultima_data})
+            grupos_usina.append({"nome": nome, "status": status, "ultima_data": ultima_data,
+                                  "proxima_data": proxima_data})
 
         resultado.append({"usina": row[ZEL_COL_USINA].strip(), "grupos": grupos_usina})
     return resultado
+
+
+def montar_status_zeladoria_por_usina(zeladoria_valores, cliente):
+    """
+    Combinado com Fred em 30/07/2026: a página ZELADORIA do relatório
+    semanal deve vir pré-preenchida com os dados reais do Painel de
+    Zeladoria, em vez de bullets vazios pro Fred digitar na mão.
+
+    Retorna {usina: {"data": datetime|None}} — a data mais próxima entre
+    os 4 grupos (Roçada, Poda Química, Lavagem dos Módulos, Controle de
+    Pragas) que tiver "Próxima Data" preenchida. Se nenhum grupo tiver
+    data marcada, "data" fica None (vira "Em acompanhamento" no slide).
+    """
+    itens = coletar_zeladoria(zeladoria_valores, cliente)
+    resultado = {}
+    for item in itens:
+        datas = [dt for dt in (_parse_data(g["proxima_data"]) for g in item["grupos"]) if dt]
+        resultado[item["usina"]] = {"data": min(datas) if datas else None}
+    return resultado
+
+
+def _fmt_data_curta(dt):
+    """datetime -> 'DD/MM' (sem ano — mesmo padrão do print de referência do Fred)."""
+    return dt.strftime("%d/%m")
+
+
+def _formatar_item_zeladoria(info):
+    """info: {"data": datetime|None} (ver montar_status_zeladoria_por_usina), ou
+    None quando a usina não foi encontrada na aba Zeladoria. Runs pro
+    parágrafo de status da usina no slide ZELADORIA."""
+    if info and info.get("data"):
+        return [
+            {"texto": "Programado (", "bold": False},
+            {"texto": _fmt_data_curta(info["data"]), "bold": False, "color": VERDE_STATUS},
+            {"texto": ").", "bold": False},
+        ]
+    return [{"texto": "Em acompanhamento.", "bold": False}]
 
 
 def _status_zeladoria_para_tabela(item, nome_grupo):
@@ -1397,7 +1452,7 @@ def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
 
 
 def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
-                          desligamentos_por_usina, usinas_cliente):
+                          desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None):
     """
     PADRÃO DEFINITIVO confirmado com Fred em 23/07/2026 (revisão meticulosa
     do relatório RENOGRID Semana 30, vale para todos os clientes):
@@ -1405,14 +1460,18 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     (1) Capa; (2) Pautas Gerais (5 tópicos fixos); (3-4) ATIVIDADES DA
     SEMANA por usina em ordem alfabética; (5-6) DESLIGAMENTOS, mesma
     lógica; (7) CHAMADOS E PROTOCOLOS (só título — Fred preenche);
-    (8) OUTRAS ATIVIDADES (só título); (9) ZELADORIA (estrutura de usinas
-    pronta, Fred preenche os valores); (10) contato (slide original do
-    template, não gerado).
+    (8) OUTRAS ATIVIDADES (só título); (9) ZELADORIA (preenchida com os
+    dados reais do Painel de Zeladoria — combinado 30/07/2026, antes era
+    só a estrutura de usinas pronta pro Fred preencher); (10) contato
+    (slide original do template, não gerado).
 
     atividades_por_usina / desligamentos_por_usina: retorno de
     coletar_atividades_e_desligamentos_por_usina().
     usinas_cliente: lista de usinas do cliente (define a ordem alfabética
     e a estrutura da Zeladoria).
+    zeladoria_status_por_usina: retorno de montar_status_zeladoria_por_usina(),
+    ou None (nesse caso a página ZELADORIA sai com "Em acompanhamento."
+    em todas as usinas — mesmo efeito de não achar dado nenhuma).
     data_label: mantido por compatibilidade de assinatura (não exibido).
     Retorna BytesIO() pronto para download.
     """
@@ -1457,13 +1516,14 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     # --- Slide 8: OUTRAS ATIVIDADES — só título, Fred preenche --------------
     _renderizar_secao_placeholder(prs, 4, "OUTRAS ATIVIDADES", None)
 
-    # --- Slide 9: ZELADORIA — estrutura de usinas pronta, Fred preenche ----
+    # --- Slide 9: ZELADORIA — preenchida com os dados reais do Painel -----
     def _corpo_zeladoria(tf):
         primeiro = True
         for i, usina in enumerate(usinas_ordenadas, start=1):
             _add_paragrafo(tf, "usina", [{"texto": usina, "bold": True}], first=primeiro, start_at=i)
             primeiro = False
-            _add_paragrafo(tf, "item", [{"texto": "", "bold": False}], first=False, bullet_char="•")
+            info = (zeladoria_status_por_usina or {}).get(usina)
+            _add_paragrafo(tf, "item", _formatar_item_zeladoria(info), first=False, bullet_char="•")
     _renderizar_secao_placeholder(prs, 5, "ZELADORIA", _corpo_zeladoria)
 
     # --- Reordena o deck: capa nova -> pautas nova -> conteúdo -> contato --
