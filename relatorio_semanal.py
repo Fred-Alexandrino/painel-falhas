@@ -200,6 +200,42 @@ def _ultima_data_historico(historico_texto):
     return primeira_marca or ultima_qualquer
 
 
+_RE_PROGRESSO_LINHA = re.compile(r"progresso da tarefa foi de\s+\d+%\s+para\s+(\d+)%", re.IGNORECASE)
+
+
+def _ultimo_progresso_no_periodo(historico_texto, data_inicio, data_fim):
+    """Retorna a % de progresso mais recente registrada no histórico, SE
+    essa última atualização de progresso caiu dentro do período do
+    relatório (data_inicio..data_fim). Caso contrário (a última mexida na
+    OS foi antes do período, ou não há nenhuma linha de progresso),
+    retorna None — a OS não teve avanço nesta semana e não deve aparecer.
+
+    Combinado com Fred em 30/07/2026: OSs "Em Processo" que tiveram
+    atualização de progresso dentro do período DEVEM aparecer no
+    relatório com o status "Em Progresso (XX%)" — só ficam de fora as que
+    não tiveram nenhuma movimentação na semana. Isso é diferente (e
+    complementar) da regra de "Concluída", que exige status Finalizada/Em
+    Revisão."""
+    if not historico_texto:
+        return None
+    melhor_dt, melhor_pct = None, None
+    for linha in historico_texto.splitlines():
+        m_pct = _RE_PROGRESSO_LINHA.search(linha)
+        if not m_pct:
+            continue
+        m_dt = _RE_DATA_HISTORICO.search(linha)
+        if not m_dt:
+            continue
+        dt = _parse_data(f"{m_dt.group(1)} {m_dt.group(2)}")
+        if not dt:
+            continue
+        if melhor_dt is None or dt > melhor_dt:
+            melhor_dt, melhor_pct = dt, int(m_pct.group(1))
+    if melhor_dt is None or not (data_inicio <= melhor_dt <= data_fim):
+        return None
+    return melhor_pct
+
+
 def _fmt_data_hora(dt):
     """datetime -> 'dd/mm/aaaa às HH:MM'."""
     return dt.strftime("%d/%m/%Y às %H:%M")
@@ -463,7 +499,7 @@ _PADROES_DESLIGAMENTO_ATIVIDADE = [
     r"(?:usina|ufv)\s+(?:\w+\s+){0,3}sem\s+comunica[cç][ãa]o",
     r"sem\s+comunica[cç][ãa]o\s+(?:\w+\s+){0,3}(?:usina|ufv)",
     r"desligamento\s+(?:total\s+)?(?:da|de)\s+(?:usina|ufv)",
-    r"religamento\s+(?:da|de)\s+(?:usina|ufv)",
+    r"religamento\s+(?:\w+\s+){0,2}(?:usina|ufv)",
     r"transformador\s+(?:\w+\s+){0,3}(?:da|de)\s+(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao])",
     r"trafo\s+(?:\w+\s+){0,3}(?:da|de)\s+(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao])",
 ]
@@ -477,6 +513,7 @@ def _e_desligamento_atividade(descricao, equipamento):
 STATUS_OS_ELEGIVEIS_RELATORIO = ["finalizada", "em revisão", "em revisao"]
 
 VERDE_STATUS = "00B050"  # verde do relatório PPTX de cliente — não é o A1CA40 da marca
+AMBAR_STATUS = "F5A623"  # âmbar de "em andamento" — mesma cor usada no dashboard (--amber)
 
 
 def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_inicio, data_fim):
@@ -507,11 +544,21 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
             continue  # relatório só traz OS vinculada à Fracttal
 
         status_os = row[ATIV_COL_STATUSOS].strip().lower()
-        if status_os not in STATUS_OS_ELEGIVEIS_RELATORIO:
-            continue
+        progresso_pct = None
 
-        dt_marco = _ultima_data_historico(row[ATIV_COL_HISTORICO]) or _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
-        if not dt_marco or not (data_inicio <= dt_marco <= data_fim):
+        if status_os in STATUS_OS_ELEGIVEIS_RELATORIO:
+            dt_marco = _ultima_data_historico(row[ATIV_COL_HISTORICO]) or _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
+            if not dt_marco or not (data_inicio <= dt_marco <= data_fim):
+                continue
+        elif status_os == "em processo":
+            # Combinado com Fred em 30/07/2026: OS ainda "Em Processo" mas
+            # com avanço registrado na semana entra no relatório com o
+            # status "Em Progresso (XX%)" — só fica de fora se não teve
+            # nenhuma atualização de progresso no período.
+            progresso_pct = _ultimo_progresso_no_periodo(row[ATIV_COL_HISTORICO], data_inicio, data_fim)
+            if progresso_pct is None:
+                continue
+        else:
             continue
 
         usina = row[ATIV_COL_USINA].strip() or "Usina não informada"
@@ -520,7 +567,7 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
         if len(descricao) > 140:
             descricao = descricao[:137].rstrip() + "..."
 
-        item = {"descricao": descricao, "numero_os": numero_os}
+        item = {"descricao": descricao, "numero_os": numero_os, "progresso_pct": progresso_pct}
 
         if _e_desligamento_atividade(descricao, equipamento):
             desligamentos.setdefault(usina, []).append(item)
@@ -531,20 +578,30 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
 
 
 def _formatar_item_atividade(it):
+    pct = it.get("progresso_pct")
+    if pct is not None:
+        status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
+    else:
+        status_texto, status_cor = "Concluída", VERDE_STATUS
     return [
         {"texto": f'{it["descricao"]} – ', "bold": False},
         {"texto": f'OS {it["numero_os"]}', "bold": True},
         {"texto": " – ", "bold": False},
-        {"texto": "Concluída", "bold": False, "color": VERDE_STATUS},
+        {"texto": status_texto, "bold": False, "color": status_cor},
     ]
 
 
 def _formatar_item_desligamento(it):
+    pct = it.get("progresso_pct")
+    if pct is not None:
+        status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
+    else:
+        status_texto, status_cor = "Concluída.", VERDE_STATUS
     return [
         {"texto": "Desligamento - ", "bold": False},
         {"texto": f'OS {it["numero_os"]}', "bold": True},
         {"texto": " – ", "bold": False},
-        {"texto": "Concluída.", "bold": False, "color": VERDE_STATUS},
+        {"texto": status_texto, "bold": False, "color": status_cor},
     ]
 
 
