@@ -6668,6 +6668,17 @@ def _enviar_comunicados_diarios_core():
             # 8025 (Boa Esperança do Sul I), etiquetada PERFORMANCE e
             # atribuída a um analista, mas enviada ao grupo de campo.
             continue
+        if "CHAMADOS" in etiquetas:
+            # chamado de garantia com fabricante — o responsável é um
+            # analista de pós-operação (ex.: Singrid Vieira), não o técnico
+            # de campo da usina/cluster. O grupo de WhatsApp da usina é do
+            # técnico de campo, então essa OS nunca deve entrar aqui (o
+            # comunicado dedicado pro analista é gerado à parte, no painel
+            # manual de Comunicados — agrupado por responsável, não por
+            # usina). Identificado 30/07/2026 com a OS 10149 (Sete Lagoas,
+            # responsável Singrid Vieira), enviada por engano ao grupo de
+            # campo do técnico Daniel de Paula.
+            continue
         if numero_os:
             candidatas_recheck.append((i, row, numero_os))
 
@@ -6703,6 +6714,8 @@ def _enviar_comunicados_diarios_core():
             continue
         etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
         if "PERFORMANCE" in etiquetas:
+            continue
+        if "CHAMADOS" in etiquetas:
             continue
         usina = row[2].strip()
         if not usina:
