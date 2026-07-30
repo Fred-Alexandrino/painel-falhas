@@ -8,25 +8,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
           mkdir -p backups
-          echo "=== 1. adicionar usina de teste (Marcelo Martineli tem so 7, mais facil de testar) ===" > backups/teste-supervisao.txt
-          curl -s -m 20 -X POST "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" -H "Content-Type: application/json" -d "{\"usina\":\"Greenyellow - Cedro 1 - CE\",\"cliente\":\"Greenyellow\",\"cluster\":\"CE Sul 01\",\"responsavelOriginal\":\"Marcelo Martineli\"}" >> backups/teste-supervisao.txt
-          echo "" >> backups/teste-supervisao.txt
-          echo "=== 2. listar supervisao temporaria ===" >> backups/teste-supervisao.txt
-          curl -s -m 15 "https://api.168.138.232.237.sslip.io/supervisao-temporaria" >> backups/teste-supervisao.txt
-          echo "" >> backups/teste-supervisao.txt
-          echo "=== 3. clientes-configurados deve incluir Greenyellow agora ===" >> backups/teste-supervisao.txt
-          curl -s -m 15 "https://api.168.138.232.237.sslip.io/clientes-configurados" >> backups/teste-supervisao.txt
-          echo "" >> backups/teste-supervisao.txt
-          echo "=== 4. remover ===" >> backups/teste-supervisao.txt
-          curl -s -m 20 -X POST "https://api.168.138.232.237.sslip.io/supervisao-temporaria/remover" -H "Content-Type: application/json" -d "{\"usina\":\"Greenyellow - Cedro 1 - CE\"}" >> backups/teste-supervisao.txt
-          echo "" >> backups/teste-supervisao.txt
-          echo "=== 5. confirmar removido ===" >> backups/teste-supervisao.txt
-          curl -s -m 15 "https://api.168.138.232.237.sslip.io/supervisao-temporaria" >> backups/teste-supervisao.txt
+          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/health-check.json
+          cat backups/health-check.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/teste-supervisao.txt
-          git diff --quiet --cached || git commit -m "teste supervisao [skip ci]"
+          git add backups/health-check.json
+          git diff --quiet --cached || git commit -m "check log [skip ci]"
           git push
