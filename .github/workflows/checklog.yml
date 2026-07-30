@@ -12,20 +12,11 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           mkdir -p backups
-          cat > pares.json << 'JSONEOF'
-          {"pares": {
-            "cluster_usina:SunPower (Cascavel)": "CE Leste 01",
-            "cluster_usina:Hortina (Quixadá I)": "CE Leste 01",
-            "cluster_usina:Vitesse (Quixadá II)": "CE Leste 01",
-            "cluster_usina:Carosa (Aquiraz I)": "CE Leste 01",
-            "cluster_usina:Salvales (Aquiraz II)": "CE Leste 01"
-          }}
-          JSONEOF
-          curl -s -X POST "https://api.168.138.232.237.sslip.io/config-set-lote" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -H "Content-Type: application/json" --data @pares.json -o backups/cluster-sal-energia.json
-          cat backups/cluster-sal-energia.json
+          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/health-check.json
+          cat backups/health-check.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/cluster-sal-energia.json
-          git diff --quiet --cached || git commit -m "cluster sal energia [skip ci]"
+          git add backups/health-check.json
+          git diff --quiet --cached || git commit -m "check log [skip ci]"
           git push
