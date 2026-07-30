@@ -27,8 +27,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
                                 listar_usinas_cliente)
-from relatorio_ocorrencia import gerar_relatorio_ocorrencia_pptx
-from io import BytesIO
 
 # Push notifications (pywebpush)
 try:
@@ -555,10 +553,7 @@ _SUFIXOS_USINA = re.compile(
 def canonizar_usina(texto_bruto):
     """
     Recebe qualquer variação de nome de usina e retorna o nome oficial canônico.
-    Retorna None se a usina não estiver no catálogo (outro supervisor) NEM
-    na lista de usinas emprestadas temporariamente (ver
-    _usinas_temporarias, seção "Supervisão Temporária" — usinas de outro
-    supervisor que o Fred assumiu por período de férias/ausência).
+    Retorna None se a usina não estiver no catálogo (outro supervisor).
 
     Exemplos:
       "UFV Xavantina 1"         → "Nova Xavantina I"
@@ -586,17 +581,11 @@ def canonizar_usina(texto_bruto):
     if s_norm in _ALIAS_INDEX:
         return _ALIAS_INDEX[s_norm]
 
-    # 1b. Lookup no índice de usinas emprestadas temporariamente (dinâmico,
-    # recarregado a cada poucos minutos — ver _indices_temporarios)
-    alias_temp, _ = _indices_temporarios()
-    if s_norm in alias_temp:
-        return alias_temp[s_norm]
-
     # 2. Busca parcial — útil para variações não previstas
     # Tenta encontrar qual usina tem maior sobreposição com o texto
     melhor = None
     melhor_score = 0
-    for alias_norm, nome_oficial in {**_ALIAS_INDEX, **alias_temp}.items():
+    for alias_norm, nome_oficial in _ALIAS_INDEX.items():
         # Match se o alias está contido no texto ou vice-versa
         if alias_norm in s_norm or s_norm in alias_norm:
             score = len(alias_norm)  # prefere matches mais longos
@@ -612,10 +601,7 @@ def canonizar_usina(texto_bruto):
 
 def inferir_cliente(usina_canonical):
     """Retorna o cliente dado o nome canônico da usina."""
-    if usina_canonical in _CLIENTE_INDEX:
-        return _CLIENTE_INDEX[usina_canonical]
-    _, cliente_temp = _indices_temporarios()
-    return cliente_temp.get(usina_canonical, "")
+    return _CLIENTE_INDEX.get(usina_canonical, "")
 
 
 def usina_permitida(texto):
@@ -1286,21 +1272,6 @@ def get_desligamento_manual_sheet():
     except gspread.WorksheetNotFound:
         ws = ss.add_worksheet(title=DESLIGAMENTO_MANUAL_SHEET_NAME, rows=200, cols=len(DESLIGAMENTO_MANUAL_HEADERS))
         ws.append_row(DESLIGAMENTO_MANUAL_HEADERS)
-    return ws
-
-
-SUPERVISAO_TEMP_SHEET_NAME = "_SupervisaoTemporaria"
-SUPERVISAO_TEMP_HEADERS = ["cliente", "usina", "cluster", "responsavelOriginal", "adicionadoEm"]
-
-
-def get_supervisao_temp_sheet():
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
-    try:
-        ws = ss.worksheet(SUPERVISAO_TEMP_SHEET_NAME)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=SUPERVISAO_TEMP_SHEET_NAME, rows=200, cols=len(SUPERVISAO_TEMP_HEADERS))
-        ws.append_row(SUPERVISAO_TEMP_HEADERS)
     return ws
 
 
@@ -2967,7 +2938,7 @@ ATIV_HEADERS_JSON = ["id", "cliente", "usina", "equipamento", "descricao", "resp
 
 ATIV_CAMPO_COL = {
     "cliente": 2, "usina": 3, "equipamento": 4, "descricao": 5, "responsavel": 6,
-    "prazo": 7, "prioridade": 8, "status": 9, "dataCriacao": 10, "dataConclusao": 11, "historico": 12, "numeroOS": 14,
+    "prazo": 7, "prioridade": 8, "status": 9, "dataConclusao": 11, "historico": 12, "numeroOS": 14,
     "statusOS": 15, "observacoesOS": 16, "linkOS": 17, "statusTarefaOS": 18, "etiquetasOS": 19,
     "anotacoesPessoais": 20, "percentualOS": 21, "statusGeralOS": 22, "detalhesEquipamentosOS": 23,
     "ultimaVerificacaoOS": 24, "visualizado": 25,
@@ -3445,6 +3416,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             mudou = True
 
         hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
+        mudanca_resumo = ""  # versão curta do que mudou, pra caber em notificação (push/central) — 29/07/2026
         if mudou:
             # Mensagem reescrita (17/07/2026): a versão anterior sempre
             # mostrava "status X → X, 0% → 0%" mesmo quando SÓ a situação
@@ -3452,16 +3424,21 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             # tinha acontecido de verdade. Agora só entra na frase o que
             # de fato mudou, cada coisa em sua própria oração.
             partes = []
+            partes_curtas = []
             if status_novo and status_novo != status_os_atual:
                 partes.append(f"status na Fracttal mudou de \"{status_os_atual or '—'}\" para \"{status_novo}\"")
+                partes_curtas.append(f"{status_os_atual or '—'} → {status_novo}")
             if percentual_novo != percentual_atual:
                 partes.append(f"progresso da tarefa foi de {percentual_atual or '0'}% para {percentual_novo}%")
+                partes_curtas.append(f"{percentual_atual or '0'}% → {percentual_novo}%")
             if status_geral_novo != status_geral_atual:
                 partes.append(f"situação geral da tarefa mudou de \"{status_geral_atual or '—'}\" para \"{status_geral_novo}\"")
+                partes_curtas.append(f"{status_geral_novo}")
             if partes:
                 entry = f"{agora_br().strftime('%d/%m/%Y %H:%M')} - " + "; ".join(partes) + "."
                 ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist_atual}\n{entry}".strip() if hist_atual else entry)
                 hist_atual = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
+                mudanca_resumo = "; ".join(partes_curtas)
 
         # correção de status interno — roda SEMPRE, independente de "mudou"
         # (bug estrutural identificado e corrigido em 12/07/2026: se só
@@ -3492,9 +3469,13 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
                 # diferentes entre OSs, então mostrar só o equipamento não
                 # diz o que de fato precisa ser feito (corrigido 29/07/2026).
                 tema_row = descricao_row or equipamento_row or "Descrição não informada"
+                # Corpo agora mostra o que a OS É (tema/tarefa) e o que
+                # de fato MUDOU (ex. "Em Processo → Em Revisão"), não só
+                # o estado atual — sem isso não dava pra saber se a OS
+                # tinha sido concluída, reaberta, etc (corrigido 29/07/2026).
                 enviar_push(
                     titulo=f"🔄 OS {numero_os} — {usina_row or 'Usina não informada'}",
-                    corpo=f"{tema_row} · {status_geral_novo} — {percentual_novo}% concluído",
+                    corpo=f"{tema_row}\n{mudanca_resumo or f'{status_geral_novo} — {percentual_novo}% concluído'}",
                     tipo="fracttal_status",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={id_atividade}",
                 )
@@ -3507,7 +3488,8 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
                 "statusInternoCorrigido": novo_status_interno,
                 "usina": row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else "",
                 "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else "",
-                "descricao": row[ATIV_CAMPO_COL["descricao"] - 1] if len(row) >= ATIV_CAMPO_COL["descricao"] else ""}
+                "descricao": row[ATIV_CAMPO_COL["descricao"] - 1] if len(row) >= ATIV_CAMPO_COL["descricao"] else "",
+                "mudancaResumo": mudanca_resumo}
     except Exception as e:
         log.error(f"[Fracttal] Erro ao checar/atualizar OS {numero_os}: {e}")
         return None
@@ -3648,12 +3630,20 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={r.get('id','')}",
                 )
             else:
-                linhas = ", ".join(
-                    f"{r['numeroOS']} ({r.get('usina') or 'usina não informada'})" for r in mudaram[:8]
-                )
+                # Cada linha agora traz o tema da OS (Ação/Tarefa, truncado)
+                # e o que mudou nela — antes só mostrava "número (usina)",
+                # impossível saber do que se tratava sem abrir o painel
+                # (corrigido 29/07/2026).
+                def _linha_resumo(r):
+                    tema = (r.get("descricao") or r.get("equipamento") or "sem descrição").strip()
+                    if len(tema) > 45:
+                        tema = tema[:45].rstrip() + "…"
+                    mudanca = r.get("mudancaResumo") or r.get("statusGeralOS") or ""
+                    return f"{r['numeroOS']} — {tema} ({mudanca})" if mudanca else f"{r['numeroOS']} — {tema}"
+                linhas = "\n".join(_linha_resumo(r) for r in mudaram[:8])
                 enviar_push(
                     titulo=f"🔄 {len(mudaram)} OSs atualizadas",
-                    corpo=f"{linhas}{'...' if len(mudaram) > 8 else ''}",
+                    corpo=f"{linhas}{chr(10) + '...' if len(mudaram) > 8 else ''}",
                     tipo="fracttal_status",
                 )
         except Exception as e:
@@ -6397,66 +6387,6 @@ def migrar_historico_legivel():
 
 _mapa_cluster_usina_cache = {"dados": None, "expira_em": 0}
 
-_usinas_temporarias_cache = {"dados": None, "expira_em": 0}
-_indices_temporarios_cache = {"alias": {}, "cliente": {}, "expira_em": 0}
-
-
-def _usinas_temporarias():
-    """Lista as usinas atualmente sob supervisão temporária do Fred
-    (emprestadas de outro supervisor, ex.: cobertura de férias) — lidas
-    da aba _SupervisaoTemporaria. Cache de 3 min (mais curto que o de
-    cluster, já que essa lista pode mudar durante o uso ativo do painel,
-    diferente de cluster que é bem mais estático).
-    Implementado em 30/07/2026 a pedido do Fred."""
-    agora_ts = time.time()
-    if _usinas_temporarias_cache["dados"] is not None and agora_ts < _usinas_temporarias_cache["expira_em"]:
-        return _usinas_temporarias_cache["dados"]
-    try:
-        ws = get_supervisao_temp_sheet()
-        valores = ws.get_all_values()
-    except Exception as e:
-        if _usinas_temporarias_cache["dados"] is not None:
-            log.error(f"[_usinas_temporarias] Falha ao atualizar ({e}) — usando cache em memória")
-            return _usinas_temporarias_cache["dados"]
-        return []
-    itens = []
-    for row in valores[1:]:
-        if len(row) >= 2 and row[1].strip():
-            itens.append({
-                "cliente": row[0].strip() if len(row) > 0 else "",
-                "usina": row[1].strip(),
-                "cluster": row[2].strip() if len(row) > 2 else "",
-                "responsavelOriginal": row[3].strip() if len(row) > 3 else "",
-                "adicionadoEm": row[4].strip() if len(row) > 4 else "",
-            })
-    _usinas_temporarias_cache["dados"] = itens
-    _usinas_temporarias_cache["expira_em"] = agora_ts + 180
-    return itens
-
-
-def _indices_temporarios():
-    """Constrói (alias_index, cliente_index) a partir de _usinas_temporarias
-    — mesma ideia do _ALIAS_INDEX/_CLIENTE_INDEX estáticos, só que
-    recarregado periodicamente em vez de fixo na inicialização (pois essa
-    lista muda em tempo real conforme o Fred adiciona/remove usinas)."""
-    agora_ts = time.time()
-    if agora_ts < _indices_temporarios_cache["expira_em"]:
-        return _indices_temporarios_cache["alias"], _indices_temporarios_cache["cliente"]
-    alias_temp, cliente_temp = {}, {}
-    for item in _usinas_temporarias():
-        nome_oficial = item["usina"]  # usa o nome exato do PCM como "oficial" pra essas emprestadas
-        cliente_temp[nome_oficial] = item["cliente"]
-        alias_temp[_norm_usina(nome_oficial)] = nome_oficial
-        # adiciona também variações comuns: sem o sufixo "- UF", só a parte do meio
-        m = re.match(r"^(.+?)\s*-\s*(.+?)\s*-\s*\w{2}$", nome_oficial)
-        if m:
-            alias_temp[_norm_usina(m.group(2))] = nome_oficial
-            alias_temp[_norm_usina(f"{m.group(1)} - {m.group(2)}")] = nome_oficial
-    _indices_temporarios_cache["alias"] = alias_temp
-    _indices_temporarios_cache["cliente"] = cliente_temp
-    _indices_temporarios_cache["expira_em"] = agora_ts + 180
-    return alias_temp, cliente_temp
-
 
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
@@ -6668,17 +6598,6 @@ def _enviar_comunicados_diarios_core():
             # 8025 (Boa Esperança do Sul I), etiquetada PERFORMANCE e
             # atribuída a um analista, mas enviada ao grupo de campo.
             continue
-        if "CHAMADOS" in etiquetas:
-            # chamado de garantia com fabricante — o responsável é um
-            # analista de pós-operação (ex.: Singrid Vieira), não o técnico
-            # de campo da usina/cluster. O grupo de WhatsApp da usina é do
-            # técnico de campo, então essa OS nunca deve entrar aqui (o
-            # comunicado dedicado pro analista é gerado à parte, no painel
-            # manual de Comunicados — agrupado por responsável, não por
-            # usina). Identificado 30/07/2026 com a OS 10149 (Sete Lagoas,
-            # responsável Singrid Vieira), enviada por engano ao grupo de
-            # campo do técnico Daniel de Paula.
-            continue
         if numero_os:
             candidatas_recheck.append((i, row, numero_os))
 
@@ -6714,8 +6633,6 @@ def _enviar_comunicados_diarios_core():
             continue
         etiquetas = row[ATIV_CAMPO_COL["etiquetasOS"] - 1].strip().upper()
         if "PERFORMANCE" in etiquetas:
-            continue
-        if "CHAMADOS" in etiquetas:
             continue
         usina = row[2].strip()
         if not usina:
@@ -7037,10 +6954,9 @@ def programacao_pcm():
     dia_pt = _DIA_SEMANA_PT[dt.weekday()]
     hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
 
-    usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
     linhas_dia = [
         r for r in semana.get("rows", [])
-        if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt
+        if r.get("responsavel") == _PCM_RESPONSAVEL and r.get("dia") == dia_pt
     ]
 
     por_usina = {}
@@ -7902,120 +7818,6 @@ def atividade_remover_foto():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/outras-usinas-supervisores", methods=["GET"])
-def outras_usinas_supervisores():
-    """
-    Lista as usinas de TODOS os outros supervisores (não o Fred), agrupadas
-    por responsável, direto da fonte pública do PCM (banco_dados.json,
-    semana ativa) — pro Fred escolher quais quer assumir temporariamente
-    (ex.: cobertura de férias de outro supervisor).
-
-    Implementado em 30/07/2026.
-    """
-    try:
-        resp = requests.get(_PCM_BANCO_URL, timeout=25)
-        resp.raise_for_status()
-        dados = resp.json()
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Falha ao buscar dados do PCM: {e}"}), 502
-
-    semana_ativa = dados.get("semana_ativa")
-    semana = next((s for s in dados.get("semanas", []) if s.get("week") == semana_ativa), None)
-    if semana is None and dados.get("semanas"):
-        semana = dados["semanas"][0]
-    rows = semana.get("rows", []) if semana else []
-
-    ja_adicionadas = {item["usina"] for item in _usinas_temporarias()}
-    vistos = {}
-    for r in rows:
-        resp_nome = (r.get("responsavel") or "").strip()
-        if not resp_nome or resp_nome == _PCM_RESPONSAVEL:
-            continue
-        usina = (r.get("usina") or "").strip()
-        if not usina:
-            continue
-        chave = (resp_nome, usina)
-        cluster = (r.get("cluster") or "").strip()
-        if chave not in vistos or cluster.isupper():
-            vistos[chave] = {
-                "cliente": (r.get("cliente") or "").strip(),
-                "usina": usina,
-                "cluster": cluster,
-                "responsavel": resp_nome,
-                "jaAdicionada": usina in ja_adicionadas,
-            }
-
-    por_supervisor = {}
-    for v in vistos.values():
-        por_supervisor.setdefault(v["responsavel"], []).append(v)
-    for lista in por_supervisor.values():
-        lista.sort(key=lambda x: x["usina"])
-
-    return jsonify({"ok": True, "porSupervisor": por_supervisor,
-                     "semanaFonte": semana.get("week") if semana else None}), 200
-
-
-@app.route("/supervisao-temporaria", methods=["GET"])
-def listar_supervisao_temporaria():
-    """Lista as usinas atualmente sob supervisão temporária do Fred."""
-    _usinas_temporarias_cache["expira_em"] = 0  # força reler — o Fred precisa ver o estado real ao abrir a tela
-    return jsonify({"ok": True, "itens": _usinas_temporarias()}), 200
-
-
-@app.route("/supervisao-temporaria/adicionar", methods=["POST", "OPTIONS"])
-def adicionar_supervisao_temporaria():
-    """Adiciona uma usina de outro supervisor à supervisão temporária do
-    Fred — a partir desse momento, ela passa a ser reconhecida em TODO o
-    sistema (catálogo de usinas, chamados, comunicados, filtros,
-    programação PCM) como se fosse dele, até ser removida."""
-    if request.method == "OPTIONS":
-        return ("", 204)
-    body = request.get_json(force=True, silent=True) or {}
-    cliente = (body.get("cliente") or "").strip()
-    usina = (body.get("usina") or "").strip()
-    cluster = (body.get("cluster") or "").strip()
-    responsavel_original = (body.get("responsavelOriginal") or "").strip()
-    if not usina:
-        return jsonify({"ok": False, "error": "usina é obrigatória"}), 400
-    try:
-        ws = get_supervisao_temp_sheet()
-        valores = ws.get_all_values()
-        if any(len(row) > 1 and row[1].strip() == usina for row in valores[1:]):
-            return jsonify({"ok": True, "jaExistia": True}), 200
-        ws.append_row([cliente, usina, cluster, responsavel_original, agora_br().strftime("%d/%m/%Y %H:%M:%S")])
-        _usinas_temporarias_cache["expira_em"] = 0
-        _indices_temporarios_cache["expira_em"] = 0
-        return jsonify({"ok": True}), 200
-    except Exception as e:
-        log.error(f"[SupervisaoTemporaria] Erro ao adicionar {usina}: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/supervisao-temporaria/remover", methods=["POST", "OPTIONS"])
-def remover_supervisao_temporaria():
-    """Remove uma usina da supervisão temporária — volta ao normal
-    (deixa de ser reconhecida como do Fred em todo o sistema)."""
-    if request.method == "OPTIONS":
-        return ("", 204)
-    body = request.get_json(force=True, silent=True) or {}
-    usina = (body.get("usina") or "").strip()
-    if not usina:
-        return jsonify({"ok": False, "error": "usina é obrigatória"}), 400
-    try:
-        ws = get_supervisao_temp_sheet()
-        valores = ws.get_all_values()
-        for i, row in enumerate(valores[1:], start=2):
-            if len(row) > 1 and row[1].strip() == usina:
-                ws.delete_rows(i)
-                break
-        _usinas_temporarias_cache["expira_em"] = 0
-        _indices_temporarios_cache["expira_em"] = 0
-        return jsonify({"ok": True}), 200
-    except Exception as e:
-        log.error(f"[SupervisaoTemporaria] Erro ao remover {usina}: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
 @app.route("/clientes-configurados", methods=["GET"])
 def listar_clientes_configurados():
     """
@@ -8029,12 +7831,8 @@ def listar_clientes_configurados():
     precisavam ser lembradas separadamente, e uma ficou pra trás. Isso
     faz o frontend buscar a lista aqui, então cadastrar um cliente novo
     num lugar só (aqui) já reflete em tudo.
-
-    Também inclui clientes de usinas sob supervisão temporária (ver
-    /supervisao-temporaria), consistente com o resto do sistema.
     """
-    _, cliente_temp = _indices_temporarios()
-    clientes = sorted(set(_CLIENTE_INDEX.values()) | set(cliente_temp.values()))
+    clientes = sorted(set(_CLIENTE_INDEX.values()))
     return jsonify({"ok": True, "clientes": clientes}), 200
 
 
@@ -8093,37 +7891,6 @@ def _salvar_resumo(tipo, texto, data_referencia, data_inicio=None, data_fim=None
     novo_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
     return novo_id
-
-
-@app.route("/mensagens-grupo-diagnostico", methods=["GET"])
-def mensagens_grupo_diagnostico():
-    """Endpoint de diagnóstico: mostra quantas mensagens foram capturadas
-    por grupo num período, e uma amostra das últimas — pra confirmar que
-    a captura está realmente funcionando (não só confiar no resumo dizer
-    'sem assunto relevante'). ?dias=N (default 3)."""
-    dias = int(request.args.get("dias", 3) or 3)
-    hoje = agora_br().date()
-    data_inicio = (hoje - timedelta(days=dias - 1)).strftime("%Y-%m-%d")
-    data_fim = hoje.strftime("%Y-%m-%d")
-    try:
-        mensagens = _buscar_mensagens_periodo(data_inicio, data_fim)
-        por_grupo = {}
-        for m in mensagens:
-            por_grupo.setdefault(m["nome_grupo"], []).append(m)
-        resumo = {
-            grupo: {
-                "total": len(msgs),
-                "ultimas": [{"data_hora": m["data_hora"], "remetente": m["remetente"], "texto": m["texto"][:150]} for m in msgs[-3:]],
-            }
-            for grupo, msgs in por_grupo.items()
-        }
-        return jsonify({
-            "ok": True, "periodo": f"{data_inicio} a {data_fim}",
-            "totalGeral": len(mensagens), "gruposComMensagem": len(por_grupo),
-            "porGrupo": resumo,
-        }), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/resumos", methods=["GET"])
@@ -8221,9 +7988,7 @@ def _pcm_linhas_do_dia(data_str):
     if semana is None:
         return []
     dia_pt = _DIA_SEMANA_PT[dt.weekday()]
-    usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
-    return [r for r in semana.get("rows", [])
-            if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt]
+    return [r for r in semana.get("rows", []) if r.get("responsavel") == _PCM_RESPONSAVEL and r.get("dia") == dia_pt]
 
 
 FALHAS_SHEET_NAME_CANDIDATOS = ["Painel de Falhas - Fred Alexandrino", "Painel de Falhas"]
@@ -8391,9 +8156,6 @@ def _coletar_dados_resumo_diario(data_str):
     _padrao_so_finalizacao_administrativa = re.compile(
         r'^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - status na Fracttal mudou de ".*?" para "Finalizada"\.?$'
         r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - .*Status interno corrigido pra "Conclu[ií]do".*$'
-        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - Atividade criada por sincroniza[çc][ãa]o autom[áa]tica.*$'
-        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - Marcado como visualizado.*$'
-        r'|^\d{2}/\d{2}/\d{4} \d{2}:\d{2} - Usina alterado de .* por assistente.*$'
     )
     for row in todos_ativ[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
@@ -8401,20 +8163,11 @@ def _coletar_dados_resumo_diario(data_str):
         numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
         if not numero_os or numero_os in numeros_ja_contabilizados:
             continue
-        # GUARDA ADICIONAL (relatado pelo Fred em 29/07/2026): uma OS
-        # descoberta/sincronizada hoje mas que o técnico ainda nem começou
-        # ("Não Iniciada") não é progresso nenhum — é só o sistema tendo
-        # tomado conhecimento dela. Checar status_geral é mais confiável
-        # que só excluir a linha de criação no histórico (que também
-        # corrigimos abaixo, em conjunto).
-        status_geral = row[ATIV_CAMPO_COL["statusGeralOS"] - 1].strip() if len(row) > ATIV_CAMPO_COL["statusGeralOS"] - 1 else ""
-        if status_geral == "Não Iniciada":
-            continue
         historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
         linhas_de_hoje = [l for l in historico.split("\n") if l.strip().startswith(data_str_br)]
         linhas_relevantes = [l for l in linhas_de_hoje if not _padrao_so_finalizacao_administrativa.match(l.strip())]
         if not linhas_relevantes:
-            continue  # só teve eventos administrativos/de sistema hoje (criação, visualização, correção de nome), sem progresso de campo real
+            continue  # só teve finalização administrativa hoje, sem progresso de campo real
         progresso_do_dia.append({
             "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
@@ -8425,35 +8178,6 @@ def _coletar_dados_resumo_diario(data_str):
             "statusAtual": row[ATIV_CAMPO_COL["statusOS"] - 1].strip(),
         })
     resultado["progressoDoDia"] = progresso_do_dia
-
-    # ── OS novas hoje (descobertas/sincronizadas da Fracttal hoje) ───────
-    # Separado do "progresso" de propósito: aqui é só "isso apareceu no
-    # radar hoje", independente de já ter trabalho de campo ou não —
-    # pedido pelo Fred em 29/07/2026 pra ter visão do que entrou de novo
-    # no dia, sem misturar com o que já está sendo trabalhado.
-    os_novas_hoje = []
-    for row in todos_ativ[1:]:
-        if len(row) < ATIV_TOTAL_COLUNAS:
-            row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
-        data_criacao = row[ATIV_CAMPO_COL["dataCriacao"] - 1].strip().split(" ")[0] if len(row) > ATIV_CAMPO_COL["dataCriacao"] - 1 else ""
-        if not data_criacao:
-            continue
-        try:
-            dc = datetime.strptime(data_criacao, "%d/%m/%Y").strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-        if dc != data_str:
-            continue
-        os_novas_hoje.append({
-            "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
-            "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
-            "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1].strip(),
-            "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
-            "numeroOS": row[ATIV_CAMPO_COL["numeroOS"] - 1].strip(),
-            "prioridade": row[ATIV_CAMPO_COL["prioridade"] - 1].strip(),
-            "statusGeralAtual": row[ATIV_CAMPO_COL["statusGeralOS"] - 1].strip() if len(row) > ATIV_CAMPO_COL["statusGeralOS"] - 1 else "",
-        })
-    resultado["osNovasHoje"] = os_novas_hoje
 
     # ── Desligamentos que ocorreram HOJE ─────────────────────────────────
     # Checa tanto Falhas (ocorrências novas de hoje) quanto Atividades
@@ -8556,7 +8280,6 @@ def _montar_prompt_resumo_diario(dados):
     pendente = prog.get("pendente", [])
     extras = dados.get("extrasNaoProgramadas", [])
     progresso = dados.get("progressoDoDia", [])
-    os_novas = dados.get("osNovasHoje", [])
     chamados = dados.get("chamadosDoDia", [])
     ocorrencias = dados.get("ocorrenciasNovasDoDia", [])
     desligamentos = dados.get("desligamentosAtivos", [])
@@ -8641,7 +8364,6 @@ REGRAS DE ESCRITA:
   (a) CONFIRMA o que já está registrado (cite isso junto da OS correspondente, ex.: "Ibaté I, inversor 1.10 (OS 9781) — confirmado pelo técnico no grupo: 'terminei a inspeção do 1.10'"), ou
   (b) CONTRADIZ o que está registrado (ex.: técnico diz que não terminou algo que o sistema mostra concluído, ou vice-versa) — isso é importante, aponte como um alerta de divergência pro Fred verificar, ou
   (c) é uma menção nova sem OS correspondente no sistema — mesma lógica das OS sem correspondência: vale mencionar como algo pra conferir.
-- OS NOVAS HOJE (seção própria, obrigatória mesmo se vazia): liste as OS que entraram no sistema hoje, separado das outras seções — isso é só "descoberta/sincronizada hoje", não confundir com "concluída" ou "em progresso". Uma mesma OS pode aparecer aqui E em "progresso" (se já tiver trabalho de campo também) — não tem problema, são perguntas diferentes ("o que é novo" x "o que avançou").
 - RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo curto e específico do que foi tratado NAQUELE grupo — não um resumo genérico misturando tudo. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato.
 
 DADOS DO DIA:
@@ -8657,9 +8379,6 @@ DADOS DO DIA:
 
 ## Atividades com PROGRESSO hoje, mas ainda não concluídas (avançaram % ou mudaram de estado)
 {_fmt_lista(progresso, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
-
-## OS NOVAS hoje (descobertas/sincronizadas da Fracttal hoje, independente de já terem trabalho de campo ou não — isso é só "entrou no radar hoje")
-{_fmt_lista(os_novas, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'prioridade', 'statusGeralAtual'])}
 
 ## Chamados de fabricante abertos hoje
 {_fmt_lista(chamados, ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
@@ -8763,7 +8482,7 @@ def _coletar_dados_resumo_semanal(data_fim_str):
     consolidado = {
         "dataInicio": dt_inicio.strftime("%Y-%m-%d"), "dataFim": data_fim_str,
         "programacaoCumprida": [], "programacaoPendente": [], "extrasNaoProgramadas": [],
-        "progressoDaSemana": [], "osNovasDaSemana": [], "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
+        "progressoDaSemana": [], "chamados": [], "ocorrencias": [], "altaPrioridadeAberta": [],
         "mensagensPorGrupo": {}, "diasProcessados": [],
     }
     dia = dt_inicio
@@ -8776,7 +8495,6 @@ def _coletar_dados_resumo_semanal(data_fim_str):
             consolidado["programacaoPendente"].extend(dados_dia.get("programacao", {}).get("pendente", []))
             consolidado["extrasNaoProgramadas"].extend(dados_dia.get("extrasNaoProgramadas", []))
             consolidado["progressoDaSemana"].extend(dados_dia.get("progressoDoDia", []))
-            consolidado["osNovasDaSemana"].extend(dados_dia.get("osNovasHoje", []))
             consolidado["chamados"].extend(dados_dia.get("chamadosDoDia", []))
             consolidado["ocorrencias"].extend(dados_dia.get("ocorrenciasNovasDoDia", []))
             for nome_grupo, msgs in dados_dia.get("mensagensPorGrupo", {}).items():
@@ -8836,9 +8554,6 @@ DADOS DA SEMANA:
 
 ## Atividades com progresso na semana, mas ainda não concluídas
 {_fmt_lista(dados['progressoDaSemana'], ['usina', 'cliente', 'descricao', 'numeroOS', 'percentualAtual', 'statusAtual'])}
-
-## OS novas na semana (descobertas/sincronizadas da Fracttal)
-{_fmt_lista(dados['osNovasDaSemana'], ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS', 'prioridade'])}
 
 ## Chamados de fabricante abertos na semana
 {_fmt_lista(dados['chamados'], ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
@@ -9683,90 +9398,6 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
             ultima_excecao = e
 
     raise ultima_excecao
-
-
-def _montar_prompt_relatorio_ocorrencia(cliente, usina, resumo):
-    """Prompt pra expandir um resumo curto (escrito pelo técnico/supervisor)
-    num Relatório de Ocorrência formal, no tom e estrutura dos relatórios
-    oficiais da Grid Co. (ver relatorio_ocorrencia.py e o botão 'Gerar
-    Relatório de Ocorrência' do Painel de Relatórios)."""
-    return f"""Aja como um Supervisor de O&M da Grid Co. redigindo um "Relatório de Ocorrência" formal, no mesmo tom e estrutura usados nos relatórios oficiais da empresa (terceira pessoa, tom técnico e direto, sem gírias).
-
-Você vai receber um resumo curto e informal do que aconteceu, escrito por um técnico ou supervisor de campo. Sua tarefa é expandir esse resumo em um relatório completo, dividido em 3 partes: OCORRÊNCIA (o que aconteceu, contexto, causa raiz), AÇÕES A SEREM TOMADAS (encaminhamentos definidos) e CONCLUSÃO (situação atual do caso, breve).
-
-Regras de conteúdo:
-- NUNCA invente fatos, números, nomes, datas ou causas que não estejam no resumo. Se o resumo não disser algo (ex.: quem fez a vistoria, se já foi resolvido), simplesmente não mencione — não complete com suposições.
-- Mantenha o grau de certeza do resumo original: se o autor disse que "vai resolver" ou "pretende fazer", não escreva como se já tivesse sido feito.
-- Cada parágrafo deve ser um bloco de texto corrido (sem bullets, sem markdown), no estilo formal dos relatórios da Grid Co.
-- Cliente: {cliente}. Usina: {usina}.
-
-Resumo enviado pelo usuário:
-\"\"\"{resumo}\"\"\"
-
-Para cada parágrafo, além do texto, aponte quais trechos EXATOS (substring literal, copiada do próprio texto que você escreveu) devem aparecer em negrito — sempre os pontos mais importantes (datas, quantidades, causa raiz, nomes de equipamentos, decisões), no mesmo estilo do relatório de referência da empresa (frases-chave em negrito dentro do parágrafo, não o parágrafo inteiro).
-
-FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{
-  "ocorrencia": [
-    {{"texto": "parágrafo completo aqui", "negritos": ["trecho exato 1", "trecho exato 2"]}}
-  ],
-  "acoes": [
-    {{"texto": "...", "negritos": ["..."]}}
-  ],
-  "conclusao": [
-    {{"texto": "...", "negritos": ["..."]}}
-  ]
-}}
-
-- "ocorrencia": normalmente 2 a 3 parágrafos.
-- "acoes": normalmente 1 a 3 parágrafos (pode começar com uma frase curta tipo "Diante do ocorrido, definimos os seguintes encaminhamentos:").
-- "conclusao": normalmente 1 parágrafo curto sobre a situação atual do caso."""
-
-
-def _paragrafos_com_negrito(lista_ia):
-    """Converte [{"texto":..., "negritos":[...]}] (resposta da IA) no
-    formato de runs esperado por relatorio_ocorrencia.py:
-    [{"runs": [{"texto":..., "bold": bool}, ...]}]
-
-    Os trechos em "negritos" precisam bater literalmente (substring) com o
-    texto do parágrafo; trechos não encontrados são ignorados (fail-safe:
-    o parágrafo continua saindo inteiro, só sem aquele destaque)."""
-    paragrafos = []
-    for item in lista_ia or []:
-        texto = (item.get("texto") or "").strip()
-        if not texto:
-            continue
-        negritos = [n for n in (item.get("negritos") or []) if n and n in texto]
-
-        ocorrencias = []
-        for n in negritos:
-            idx = texto.find(n)
-            if idx == -1:
-                continue
-            ocorrencias.append((idx, idx + len(n), n))
-        ocorrencias.sort(key=lambda t: t[0])
-
-        limpo = []
-        cursor = -1
-        for ini, fim, n in ocorrencias:
-            if ini < cursor:
-                continue
-            limpo.append((ini, fim, n))
-            cursor = fim
-
-        runs = []
-        pos = 0
-        for ini, fim, n in limpo:
-            if ini > pos:
-                runs.append({"texto": texto[pos:ini], "bold": False})
-            runs.append({"texto": texto[ini:fim], "bold": True})
-            pos = fim
-        if pos < len(texto):
-            runs.append({"texto": texto[pos:], "bold": False})
-        if not runs:
-            runs = [{"texto": texto, "bold": False}]
-        paragrafos.append({"runs": runs})
-    return paragrafos
 
 
 def _montar_prompt_comunicado_livre(tema, observacoes):
@@ -11089,93 +10720,6 @@ def gerar_relatorio_semanal_route():
         )
     except Exception as e:
         log.error(f"[Relatorio Semanal] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/gerar-relatorio-ocorrencia", methods=["POST", "OPTIONS"])
-def gerar_relatorio_ocorrencia_route():
-    """Botão 'Gerar Relatório de Ocorrência' do Painel de Relatórios: recebe
-    cliente, usina, um resumo curto do que aconteceu e até 8 fotos de
-    evidência (multipart/form-data), expande o resumo em texto formal via
-    IA (mesmo padrão do relatório de referência) e devolve o .pptx pronto
-    pra download. Não persiste nada em planilha — geração sob demanda."""
-    if request.method == "OPTIONS":
-        return ("", 204)
-    if not GEMINI_API_KEY:
-        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
-
-    cliente = (request.form.get("cliente") or "").strip()
-    usina = (request.form.get("usina") or "").strip()
-    resumo = (request.form.get("resumo") or "").strip()
-    if not cliente or not usina or not resumo:
-        return jsonify({"ok": False, "error": "cliente, usina e resumo são obrigatórios"}), 400
-
-    extensoes_validas = (".jpg", ".jpeg", ".png", ".webp")
-    fotos_arquivos = [f for f in request.files.getlist("fotos") if f and f.filename][:8]
-    fotos_streams = []
-    for f in fotos_arquivos:
-        nome = secure_filename(f.filename or "")
-        if not nome.lower().endswith(extensoes_validas):
-            continue
-        stream = BytesIO(f.read())
-        stream.seek(0)
-        fotos_streams.append(stream)
-
-    try:
-        prompt = _montar_prompt_relatorio_ocorrencia(cliente, usina, resumo)
-        resp = _chamar_gemini_com_retry(
-            {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": 4096,
-                    "responseMimeType": "application/json",
-                    "thinkingConfig": {"thinkingBudget": 0},
-                },
-            },
-            timeout=45,
-        )
-        data = resp.json()
-        candidato = data["candidates"][0]
-        finish_reason = candidato.get("finishReason", "")
-        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
-        if not texto_bruto or len(texto_bruto) < 20:
-            log.error(f"[gerar-relatorio-ocorrencia] Resposta curta/vazia "
-                      f"(finishReason={finish_reason}): {texto_bruto!r}")
-            raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
-
-        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
-        parsed = json.loads(texto_limpo)
-
-        ocorrencia_paragrafos = _paragrafos_com_negrito(parsed.get("ocorrencia") or [])
-        acoes_paragrafos = _paragrafos_com_negrito(parsed.get("acoes") or [])
-        conclusao_paragrafos = _paragrafos_com_negrito(parsed.get("conclusao") or [])
-
-        if not ocorrencia_paragrafos:
-            raise ValueError("A IA não retornou o texto da Ocorrência")
-
-        buf = gerar_relatorio_ocorrencia_pptx(cliente, usina, ocorrencia_paragrafos,
-                                               acoes_paragrafos, conclusao_paragrafos, fotos_streams)
-
-        nome_arquivo = f"Relatório de Ocorrência - {usina} ({cliente}).pptx"
-        return send_file(
-            buf,
-            as_attachment=True,
-            download_name=nome_arquivo,
-            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        )
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 429:
-            log.error(f"[gerar-relatorio-ocorrencia] Cota da IA esgotada mesmo apos retries: {e}")
-            return jsonify({"ok": False, "error": ("A IA está temporariamente sem cota disponível (uso "
-                            "excessivo em pouco tempo). Aguarde alguns minutos e tente de novo.")}), 429
-        log.error(f"[gerar-relatorio-ocorrencia] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-    except (json.JSONDecodeError, AttributeError) as e:
-        log.error(f"[gerar-relatorio-ocorrencia] Erro de parse do JSON da IA: {e}")
-        return jsonify({"ok": False, "error": "A IA retornou um formato inesperado da IA. Tente novamente."}), 500
-    except Exception as e:
-        log.error(f"[gerar-relatorio-ocorrencia] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
