@@ -8,12 +8,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
           mkdir -p backups
-          curl -s -m 15 "https://api.168.138.232.237.sslip.io/programacao-pcm" -o backups/confirmar-cluster.json
+          curl -s "https://api.168.138.232.237.sslip.io/health" -o backups/health-check.json
+          cat backups/health-check.json
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/confirmar-cluster.json
-          git diff --quiet --cached || git commit -m "confirmar cluster [skip ci]"
+          git add backups/health-check.json
+          git diff --quiet --cached || git commit -m "check log [skip ci]"
           git push
