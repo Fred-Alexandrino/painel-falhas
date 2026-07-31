@@ -4024,6 +4024,14 @@ def listar_atividades():
             if not row[0].strip():
                 continue
             item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+            # Correção 31/07/2026: se a atividade foi criada enquanto a
+            # usina estava sob supervisão temporária e o Fred já devolveu
+            # essa usina (removeu de /supervisao-temporaria), ela não deve
+            # mais aparecer aqui — senão a devolução não devolve de fato,
+            # só esconde a usina do catálogo mas deixa o histórico de
+            # atividades grudado no painel do Fred pra sempre.
+            if not usina_permitida(item.get("usina", "")):
+                continue
             item["cluster"] = mapa_cluster.get(item.get("usina", "").strip(), "")
             out.append(item)
         return jsonify({"ok": True, "atividades": out})
@@ -6430,12 +6438,17 @@ _indices_temporarios_cache = {"alias": {}, "cliente": {}, "expira_em": 0}
 def _usinas_temporarias():
     """Lista as usinas atualmente sob supervisão temporária do Fred
     (emprestadas de outro supervisor, ex.: cobertura de férias) — lidas
-    da aba _SupervisaoTemporaria. Cache de 10 min (aumentado de 3 min em
-    31/07/2026 — a releitura frequente + a força-releitura a cada
-    abertura da tela estavam somando com o resto do sistema e estourando
-    a cota de leitura do Google Sheets). Invalidado imediatamente quando
-    o Fred adiciona/remove uma usina, que é quando o estado realmente
-    muda.
+    da aba _SupervisaoTemporaria. Cache de 60s (era 3 min, subiu pra 10
+    min mais cedo em 31/07/2026 pra aliviar a cota de leitura do Sheets,
+    depois voltou pra 60s no mesmo dia: com Gunicorn rodando 2 workers,
+    cada um tem seu próprio cache em memória — não há estado
+    compartilhado entre processos — então invalidar o cache num worker
+    (ex.: ao remover uma usina) não afeta o outro, e esse painel filtra
+    /atividades por essa lista (usina_permitida), então cache velho
+    demais fazia usina já devolvida continuar aparecendo por até 10 min
+    dependendo de qual worker atendesse a requisição. 60s é o meio-termo:
+    ainda alivia bastante a frequência de leitura comparado ao original,
+    mas limita a inconsistência entre workers a no máximo 1 min.
     Implementado em 30/07/2026 a pedido do Fred; restaurado em 31/07/2026
     depois que uma sessão paralela sobrescreveu o app.py sem essa
     funcionalidade (ver histórico de commits — commit 3b1d1e77c0)."""
@@ -6461,7 +6474,7 @@ def _usinas_temporarias():
                 "adicionadoEm": row[4].strip() if len(row) > 4 else "",
             })
     _usinas_temporarias_cache["dados"] = itens
-    _usinas_temporarias_cache["expira_em"] = agora_ts + 600
+    _usinas_temporarias_cache["expira_em"] = agora_ts + 60
     return itens
 
 
@@ -6485,7 +6498,7 @@ def _indices_temporarios():
             alias_temp[_norm_usina(f"{m.group(1)} - {m.group(2)}")] = nome_oficial
     _indices_temporarios_cache["alias"] = alias_temp
     _indices_temporarios_cache["cliente"] = cliente_temp
-    _indices_temporarios_cache["expira_em"] = agora_ts + 600
+    _indices_temporarios_cache["expira_em"] = agora_ts + 60
     return alias_temp, cliente_temp
 
 
