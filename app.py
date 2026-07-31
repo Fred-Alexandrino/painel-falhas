@@ -6430,9 +6430,12 @@ _indices_temporarios_cache = {"alias": {}, "cliente": {}, "expira_em": 0}
 def _usinas_temporarias():
     """Lista as usinas atualmente sob supervisão temporária do Fred
     (emprestadas de outro supervisor, ex.: cobertura de férias) — lidas
-    da aba _SupervisaoTemporaria. Cache de 3 min (mais curto que o de
-    cluster, já que essa lista pode mudar durante o uso ativo do painel,
-    diferente de cluster que é bem mais estático).
+    da aba _SupervisaoTemporaria. Cache de 10 min (aumentado de 3 min em
+    31/07/2026 — a releitura frequente + a força-releitura a cada
+    abertura da tela estavam somando com o resto do sistema e estourando
+    a cota de leitura do Google Sheets). Invalidado imediatamente quando
+    o Fred adiciona/remove uma usina, que é quando o estado realmente
+    muda.
     Implementado em 30/07/2026 a pedido do Fred; restaurado em 31/07/2026
     depois que uma sessão paralela sobrescreveu o app.py sem essa
     funcionalidade (ver histórico de commits — commit 3b1d1e77c0)."""
@@ -6458,7 +6461,7 @@ def _usinas_temporarias():
                 "adicionadoEm": row[4].strip() if len(row) > 4 else "",
             })
     _usinas_temporarias_cache["dados"] = itens
-    _usinas_temporarias_cache["expira_em"] = agora_ts + 180
+    _usinas_temporarias_cache["expira_em"] = agora_ts + 600
     return itens
 
 
@@ -6482,7 +6485,7 @@ def _indices_temporarios():
             alias_temp[_norm_usina(f"{m.group(1)} - {m.group(2)}")] = nome_oficial
     _indices_temporarios_cache["alias"] = alias_temp
     _indices_temporarios_cache["cliente"] = cliente_temp
-    _indices_temporarios_cache["expira_em"] = agora_ts + 180
+    _indices_temporarios_cache["expira_em"] = agora_ts + 600
     return alias_temp, cliente_temp
 
 
@@ -7972,8 +7975,13 @@ def outras_usinas_supervisores():
 
 @app.route("/supervisao-temporaria", methods=["GET"])
 def listar_supervisao_temporaria():
-    """Lista as usinas atualmente sob supervisão temporária do Fred."""
-    _usinas_temporarias_cache["expira_em"] = 0  # força reler — o Fred precisa ver o estado real ao abrir a tela
+    """Lista as usinas atualmente sob supervisão temporária do Fred.
+    Correção 31/07/2026: não força mais releitura do Sheets a cada
+    abertura da tela — isso somava com o resto do sistema (auditorias,
+    sync-fracttal etc.) e estourava a cota de leitura do Google Sheets.
+    O cache (10 min) já é invalidado nas ações de adicionar/remover, que
+    é quando o estado realmente muda; abrir a tela sem mexer em nada
+    pode reaproveitar o cache tranquilamente."""
     return jsonify({"ok": True, "itens": _usinas_temporarias()}), 200
 
 
