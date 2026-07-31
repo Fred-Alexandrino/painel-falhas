@@ -9834,53 +9834,85 @@ def listar_grupos_configurados():
 @app.route("/disparar-comunicado-livre", methods=["POST", "OPTIONS"])
 def disparar_comunicado_livre():
     """Envia um texto de comunicado livre (já gerado/editado) pra uma
-    lista de grupos escolhida manualmente pelo Fred no pop-up."""
+    lista de grupos escolhida manualmente pelo Fred no pop-up.
+    Aceita opcionalmente uma lista de imagens (prints/fotos) em base64 —
+    quando presentes, a 1ª imagem é enviada com o texto como legenda e as
+    demais em seguida, sem legenda. Sem imagens, comportamento igual a antes
+    (mensagem de texto simples)."""
     if request.method == "OPTIONS":
         return ("", 204)
     body = request.get_json(force=True, silent=True) or {}
     texto = (body.get("texto") or "").strip()
     grupos = body.get("grupos") or []
+    imagens = body.get("imagens") or []  # [{base64, mimeType}, ...] — mimeType não usado pelo Baileys, aceito por completude
     if not texto:
         return jsonify({"ok": False, "error": "texto vazio"}), 400
     if not grupos or not isinstance(grupos, list):
         return jsonify({"ok": False, "error": "selecione ao menos um grupo"}), 400
+    if not isinstance(imagens, list):
+        return jsonify({"ok": False, "error": "imagens deve ser uma lista"}), 400
+    if len(imagens) > 5:
+        return jsonify({"ok": False, "error": "máximo de 5 imagens por comunicado"}), 400
     if not WPP_SERVER_URL:
         return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 500
 
-    enviados, erros = [], []
-    for grupo_id in grupos:
+    def _enviar_com_retry(payload, endpoint):
+        """Mesma lógica de retry curto pra blips de conexão do WhatsApp,
+        reaproveitada tanto pra texto quanto pra imagem."""
         ultimo_erro = None
-        sucesso = False
-        # Retry curto (24/07/2026): a sessão do WhatsApp no VM2 às vezes
-        # cai/reconecta rapidamente (Baileys) e responde 503 "WhatsApp não
-        # conectado" por alguns segundos. Antes disso já contava como
-        # falha definitiva pro grupo; agora tenta mais 2 vezes com espera
-        # curta antes de desistir, o que cobre a maioria desses blips.
         for tentativa in range(3):
             try:
                 r = requests.post(
-                    f"{WPP_SERVER_URL}/api/enviar-mensagem",
-                    json={"grupoId": grupo_id, "texto": texto},
+                    f"{WPP_SERVER_URL}{endpoint}",
+                    json=payload,
                     headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
-                    timeout=20,
+                    timeout=40,  # imagens demoram mais que texto puro
                 )
                 if r.ok and r.json().get("ok"):
-                    sucesso = True
-                    break
+                    return True, None
                 corpo = r.text[:200]
                 ultimo_erro = corpo
                 if "não conectado" in corpo.lower() or "nao conectado" in corpo.lower():
                     if tentativa < 2:
                         time.sleep(4)
                         continue
-                break
+                return False, ultimo_erro
             except Exception as e:
                 ultimo_erro = str(e)
-                break
-        if sucesso:
+                return False, ultimo_erro
+        return False, ultimo_erro
+
+    enviados, erros = [], []
+    for grupo_id in grupos:
+        sucesso_geral = True
+        erro_grupo = None
+
+        if imagens:
+            # 1ª imagem leva o texto como legenda; as demais vão sem legenda
+            for i, img in enumerate(imagens):
+                img_b64 = (img.get("base64") or "") if isinstance(img, dict) else ""
+                if not img_b64:
+                    continue
+                payload_img = {"grupoId": grupo_id, "imagemBase64": img_b64}
+                if i == 0:
+                    payload_img["legenda"] = texto
+                ok, erro = _enviar_com_retry(payload_img, "/api/enviar-imagem")
+                if not ok:
+                    sucesso_geral = False
+                    erro_grupo = erro
+                    break
+            # Se por algum motivo nenhuma imagem tinha base64 válido, cai pro texto puro
+            if sucesso_geral and not any((img.get("base64") if isinstance(img, dict) else None) for img in imagens):
+                ok, erro = _enviar_com_retry({"grupoId": grupo_id, "texto": texto}, "/api/enviar-mensagem")
+                sucesso_geral, erro_grupo = ok, erro
+        else:
+            ok, erro = _enviar_com_retry({"grupoId": grupo_id, "texto": texto}, "/api/enviar-mensagem")
+            sucesso_geral, erro_grupo = ok, erro
+
+        if sucesso_geral:
             enviados.append(grupo_id)
         else:
-            erros.append({"grupo": grupo_id, "erro": ultimo_erro})
+            erros.append({"grupo": grupo_id, "erro": erro_grupo})
     return jsonify({"ok": True, "enviados": enviados, "erros": erros})
 
 
