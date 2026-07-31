@@ -9640,10 +9640,15 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     raise ultima_excecao
 
 
-def _montar_prompt_comunicado_livre(tema, observacoes):
+def _montar_prompt_comunicado_livre(tema, observacoes, tem_imagem=False):
+    bloco_imagem = ""
+    if tem_imagem:
+        bloco_imagem = """
+UMA IMAGEM (PRINT) FOI ANEXADA COMO FONTE DE INFORMAÇÃO: extraia dela tudo que for relevante pro comunicado — texto, valores, nomes, datas, contexto visível. Se o tema/observações também tiverem sido preenchidos, combine as duas fontes; se estiverem vazios, baseie o comunicado inteiramente no que a imagem mostra. Não invente nada que não esteja nem no texto nem na imagem — se algo na imagem estiver ilegível ou cortado, não presuma o conteúdo.
+"""
     return f"""Aja como um Supervisor de O&M da Grid Co. redigindo um comunicado TÉCNICO e DIRETO para ser enviado por WhatsApp às equipes de campo e/ou clientes.
-
-REGRA MAIS IMPORTANTE — OS PONTOS ESPECÍFICOS DO USUÁRIO SÃO O NÚCLEO DO COMUNICADO: tudo que foi pedido explicitamente no tema/observações (itens a verificar, instruções, prazos, ações) tem que aparecer de forma CLARA E DESTACADA — se forem vários itens/verificações, apresente como LISTA curta (um item por linha), nunca dissolvidos dentro de um parágrafo genérico. Uma instrução prática específica (ex.: "verificar selo de calibração") NUNCA pode se perder atrás de linguagem genérica sobre riscos, normas ou importância do assunto. Se ao reler o texto pronto o ponto principal pedido pelo usuário não pular aos olhos em 2 segundos de leitura, o texto está errado.
+{bloco_imagem}
+REGRA MAIS IMPORTANTE — OS PONTOS ESPECÍFICOS DO USUÁRIO SÃO O NÚCLEO DO COMUNICADO: tudo que foi pedido explicitamente no tema/observações/imagem (itens a verificar, instruções, prazos, ações) tem que aparecer de forma CLARA E DESTACADA — se forem vários itens/verificações, apresente como LISTA curta (um item por linha), nunca dissolvidos dentro de um parágrafo genérico. Uma instrução prática específica (ex.: "verificar selo de calibração") NUNCA pode se perder atrás de linguagem genérica sobre riscos, normas ou importância do assunto. Se ao reler o texto pronto o ponto principal pedido pelo usuário não pular aos olhos em 2 segundos de leitura, o texto está errado.
 
 Contexto técnico (o "porquê") é permitido, mas com moderação: no máximo UMA frase curta de enquadramento, nunca um parágrafo explicando consequências genéricas de segurança/normas regulatórias. Gaste as linhas do comunicado nos pontos que o usuário efetivamente pediu pra comunicar, não em explicações genéricas sobre o tema.
 
@@ -9654,7 +9659,7 @@ O que NÃO fazer:
 
 Estrutura padrão (adapte ao conteúdo, mas sempre em blocos curtos com emoji de destaque):
 ⚠️ Linha de abertura com o assunto principal, direto ao ponto.
-📋 Os pontos/itens específicos pedidos pelo usuário — em lista, se forem vários.
+📋 Os pontos/itens específicos pedidos pelo usuário (do texto e/ou da imagem) — em lista, se forem vários.
 📋 (opcional, só se necessário) Uma frase curta de contexto técnico ou instrução complementar.
 ✅ Prazo, status ou próximo passo — respeitando rigorosamente o grau de certeza da regra abaixo.
 
@@ -9664,7 +9669,7 @@ Regras gerais:
 
 REGRA CRÍTICA — PRESERVAR O GRAU DE CERTEZA DO TEXTO ORIGINAL: preste muita atenção em palavras que indicam incerteza ou expectativa, como "acredito que", "acho que", "acho possível", "acredito", "acho provável", "talvez", "devemos", "devemos conseguir". NUNCA transforme uma expectativa/crença em uma confirmação ou promessa de prazo. Se o autor disse que "acredita" que algo vai acontecer, sem data confirmada, o comunicado deve deixar claro que ainda NÃO há data definida (ex.: "ainda não temos data para retorno", "sem previsão confirmada", "assim que tivermos confirmação, avisamos") — em vez de anunciar como certo ou "em breve". Errar pra mais confiança do que o texto original tem é pior do que errar pra menos — na dúvida, seja mais conservador, não mais otimista.
 
-Tema do comunicado: {tema}
+Tema do comunicado: {tema or "(nenhum tema em texto — considere só a imagem, se houver)"}
 Observações/detalhes: {observacoes or "nenhuma observação adicional"}
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
@@ -9740,29 +9745,39 @@ def _resolver_preset_comunicado(tema, observacoes):
 
 @app.route("/gerar-comunicado-livre-ia", methods=["POST", "OPTIONS"])
 def gerar_comunicado_livre_ia():
-    """Gera um texto de comunicado livre (tema + observações) usando IA,
-    pra ser enviado manualmente pelos grupos que o Fred escolher — usado
-    pelo campo 'Gerar Comunicado' na sidebar, ao lado do 'Gerar OS'.
-    Se 'comunicado padrão' for digitado num dos campos, busca um preset
-    fixo pelo tema (_COMUNICADOS_PRESET_TEMA) e devolve na hora, sem IA."""
+    """Gera um texto de comunicado livre (tema + observações e/ou um print
+    anexado) usando IA, pra ser enviado manualmente pelos grupos que o Fred
+    escolher — usado pelo campo 'Gerar Comunicado' na sidebar, ao lado do
+    'Gerar OS'. Se um print for anexado, a IA (Gemini, visão + texto) lê o
+    conteúdo da imagem pra montar o comunicado — tema/observações em texto
+    passam a ser opcionais nesse caso (mas continuam sendo combinados com
+    a imagem se preenchidos). Se 'comunicado padrão' for digitado num dos
+    campos de texto, busca um preset fixo pelo tema (_COMUNICADOS_PRESET_TEMA)
+    e devolve na hora, sem IA — presets não usam imagem."""
     if request.method == "OPTIONS":
         return ("", 204)
     body = request.get_json(force=True, silent=True) or {}
     tema = (body.get("tema") or "").strip()
     observacoes = (body.get("observacoes") or "").strip()
-    if not tema:
-        return jsonify({"ok": False, "error": "informe o tema do comunicado"}), 400
+    imagem_b64 = body.get("imagemBase64") or ""
+    imagem_mime = body.get("imagemMimeType") or "image/png"
+    if not tema and not imagem_b64:
+        return jsonify({"ok": False, "error": "informe o tema do comunicado ou anexe um print"}), 400
 
-    preset = _resolver_preset_comunicado(tema, observacoes)
+    preset = _resolver_preset_comunicado(tema, observacoes) if tema else None
     if preset:
         return jsonify({"ok": True, "texto": preset})
 
-    prompt = _montar_prompt_comunicado_livre(tema, observacoes)
+    prompt = _montar_prompt_comunicado_livre(tema, observacoes, tem_imagem=bool(imagem_b64))
+    parts = [{"text": prompt}]
+    if imagem_b64:
+        parts.append({"inline_data": {"mime_type": imagem_mime, "data": imagem_b64}})
+
     diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
         resp = _chamar_gemini_com_retry(
             {
-                "contents": [{"parts": [{"text": prompt}]}],
+                "contents": [{"parts": parts}],
                 "generationConfig": {
                     "temperature": 0.4,
                     "maxOutputTokens": 1024,
@@ -9770,7 +9785,7 @@ def gerar_comunicado_livre_ia():
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
-            timeout=20,
+            timeout=45 if imagem_b64 else 20,
             usar_chave_teste=diagnostico,
         )
         data = resp.json()
