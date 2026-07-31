@@ -26,7 +26,7 @@ from werkzeug.utils import secure_filename
 import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
-                                listar_usinas_cliente)
+                                listar_usinas_cliente, montar_status_zeladoria_por_usina)
 
 # Push notifications (pywebpush)
 try:
@@ -2669,26 +2669,6 @@ def notificar_edicao_planilha():
         corpo = (f"Linha {linha} · {cabecalho}: "
                  f"\"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})")
 
-        # Se for edição no Painel de Atividades, busca o número da OS e o
-        # tema (Ação/Tarefa) da linha editada — sem isso a notificação só
-        # dizia "linha X mudou", impossível saber do que se tratava sem
-        # abrir a planilha (corrigido 31/07/2026).
-        if aba == ATIVIDADES_SHEET_NAME and id_registro:
-            try:
-                ws_ativ = get_atividades_sheet()
-                todos_ativ = ws_ativ.get_all_values()
-                encontrada = buscar_atividade_por_id_ou_os(todos_ativ, id_registro)
-                if encontrada:
-                    _, linha_ativ = encontrada
-                    numero_os_ativ = linha_ativ[13].strip() if len(linha_ativ) > 13 else ""
-                    descricao_ativ = linha_ativ[4].strip() if len(linha_ativ) > 4 else ""
-                    usina_ativ = linha_ativ[2].strip() if len(linha_ativ) > 2 else ""
-                    tema_ativ = descricao_ativ or "Descrição não informada"
-                    titulo = f"✏️ Edição manual" + (f" — OS {numero_os_ativ}" if numero_os_ativ else "") + (f" — {usina_ativ}" if usina_ativ else "")
-                    corpo = f"{tema_ativ}\n{cabecalho}: \"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})"
-            except Exception as e:
-                log.error(f"[EdicaoPlanilha] Falha ao enriquecer com tema da OS: {e}")
-
         url = "https://fred-alexandrino.github.io/PAINELDEFALHAS/"
         if id_registro:
             if aba == ATIVIDADES_SHEET_NAME:
@@ -3221,6 +3201,7 @@ def zeladoria_atualizar_lote():
             nao_encontradas.append({"usina": usina, "grupo": grupo_bruto})
             continue
         for campo, valor in [
+            ("ultima data", item.get("ultimaData")),
             ("proxima data", item.get("proximaData")),
             ("fornecedor", item.get("fornecedor")),
             ("status", item.get("status")),
@@ -3274,17 +3255,23 @@ Extraia do texto/imagem abaixo todas as atualizações de zeladoria que consegui
 - "usina": nome exato (da lista acima, se reconhecida) ou como veio no original
 - "usina_reconhecida": true/false
 - "grupo": um dos grupos válidos acima
-- "proximaData": data no formato DD/MM/AAAA, ou "" se não houver data confirmada
+- "ultimaData": data em que o serviço JÁ FOI EXECUTADO/CONCLUÍDO (data passada), formato DD/MM/AAAA, ou "" se não houver
+- "proximaData": data AGENDADA/PROGRAMADA pra acontecer (data futura, ainda não executada), formato DD/MM/AAAA, ou "" se não houver
 - "fornecedor": nome da empresa/fornecedor responsável, ou "" se não informado
 - "status": um dos status válidos acima
 - "observacao": nota curta livre só se houver algo relevante que não caiba nos campos acima (ex.: "previsão sujeita a confirmação pós-assinatura"), ou "" caso contrário
 
-REGRA CRÍTICA — não invente informação que não está no texto/imagem. Se uma usina for citada mas sem detalhes suficientes pra decidir o status, use "Sem informações" e deixe proximaData/fornecedor vazios em vez de supor. Isso vale especialmente pro ANO da data — siga a regra de contexto de data acima, nunca invente um ano aleatório.
+REGRA CRÍTICA sobre qual campo de data usar — isso é o erro mais comum, preste atenção:
+- Se o texto diz que o serviço JÁ ACONTECEU ("foi concluída em X", "concluído dia X", "realizado em X", "feito em X", "executado em X"), essa data vai em "ultimaData" e o status correto é "Concluído" (ou "Em andamento" se foi parcial). NUNCA coloque essa data em "proximaData" — "próxima data" significa data futura ainda não executada, e colocar uma data de conclusão ali contradiz o status "Concluído".
+- Se o texto diz que o serviço está AGENDADO/PREVISTO pra acontecer ("programado para X", "vai ser feito dia X", "agendado para X", "previsão de X"), essa data vai em "proximaData", com status "Programado" (ou "Aguardando assinatura"/"Em cotação"/"Buscando cotação" conforme o caso).
+- Um item pode ter as duas datas preenchidas ao mesmo tempo (ex.: "concluímos a roçada dia 27/07, a próxima já tá programada pra 15/09" → ultimaData=27/07, proximaData=15/09), mas nunca a MESMA data nos dois campos.
+
+REGRA CRÍTICA — não invente informação que não está no texto/imagem. Se uma usina for citada mas sem detalhes suficientes pra decidir o status, use "Sem informações" e deixe ultimaData/proximaData/fornecedor vazios em vez de supor. Isso vale especialmente pro ANO da data — siga a regra de contexto de data acima, nunca invente um ano aleatório.
 
 Texto/observações fornecidas pelo usuário: {texto_observacoes or "(nenhuma observação em texto — considere só a imagem)"}
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{"itens": [{{"usina": "...", "usina_reconhecida": true, "grupo": "...", "proximaData": "...", "fornecedor": "...", "status": "...", "observacao": "..."}}]}}"""
+{{"itens": [{{"usina": "...", "usina_reconhecida": true, "grupo": "...", "ultimaData": "...", "proximaData": "...", "fornecedor": "...", "status": "...", "observacao": "..."}}]}}"""
 
 
 @app.route("/zeladoria-extrair-print", methods=["POST", "OPTIONS"])
@@ -5236,8 +5223,7 @@ def _sync_fracttal_core(desde_horas=8):
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-sync", append=True)
             criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta,
-                             "usina": mapeado["usina"], "cliente": mapeado["cliente"],
-                             "descricao": mapeado.get("descricao", "")})
+                             "usina": mapeado["usina"], "cliente": mapeado["cliente"]})
             os_existentes.add(mapeado["numeroOS"])
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
@@ -5251,28 +5237,17 @@ def _sync_fracttal_core(desde_horas=8):
         try:
             if len(criadas) == 1:
                 c = criadas[0]
-                # Corpo agora mostra o tema real da OS (Ação/Tarefa), não
-                # só o cliente — sem isso não dava pra saber do que se
-                # tratava sem abrir o painel (corrigido 31/07/2026).
-                tema = (c.get("descricao") or "Descrição não informada").strip()
                 enviar_push(
                     titulo=f"🆕 Nova OS Fracttal — {c['numeroOS']} — {c['usina']}",
-                    corpo=f"{tema}\n{c['cliente']}",
+                    corpo=f"{c['cliente']}",
                     tipo="fracttal_nova_os",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={c['id']}",
                 )
             else:
-                # Cada linha traz número + tema (truncado) + usina, em vez
-                # de só agrupar por usina sem dizer do que se trata cada OS.
-                def _linha_nova_os(c):
-                    tema = (c.get("descricao") or "sem descrição").strip()
-                    if len(tema) > 40:
-                        tema = tema[:40].rstrip() + "…"
-                    return f"{c['numeroOS']} — {tema} ({c['usina']})"
-                linhas = "\n".join(_linha_nova_os(c) for c in criadas[:6])
+                usinas_resumo = ", ".join(sorted(set(c["usina"] for c in criadas))[:5])
                 enviar_push(
                     titulo=f"🆕 {len(criadas)} novas OSs na Fracttal",
-                    corpo=f"{linhas}{chr(10) + '...' if len(criadas) > 6 else ''}",
+                    corpo=f"Usinas: {usinas_resumo}{'...' if len(set(c['usina'] for c in criadas)) > 5 else ''}",
                     tipo="fracttal_nova_os",
                     url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
                 )
@@ -10740,8 +10715,21 @@ def gerar_relatorio_semanal_route():
         semana_num = data_fim.isocalendar()[1]
         data_label = data_fim.strftime('%d/%m/%Y')
 
+        # Zeladoria: preenche a página com os dados reais do Painel de
+        # Zeladoria. Se der qualquer erro (aba fora do ar, etc.), o
+        # relatório inteiro não pode falhar por causa disso -- cai pro
+        # comportamento antigo (página sai com "Em acompanhamento.").
+        try:
+            ws_zeladoria = get_zeladoria_sheet()
+            todos_zeladoria = carregar_planilha(ws_zeladoria)
+            zeladoria_status_por_usina = montar_status_zeladoria_por_usina(todos_zeladoria, cliente)
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao buscar dados de Zeladoria: {e}")
+            zeladoria_status_por_usina = None
+
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
-                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente)
+                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente,
+                                    zeladoria_status_por_usina)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
