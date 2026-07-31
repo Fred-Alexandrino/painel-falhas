@@ -553,7 +553,10 @@ _SUFIXOS_USINA = re.compile(
 def canonizar_usina(texto_bruto):
     """
     Recebe qualquer variação de nome de usina e retorna o nome oficial canônico.
-    Retorna None se a usina não estiver no catálogo (outro supervisor).
+    Retorna None se a usina não estiver no catálogo (outro supervisor) NEM
+    na lista de usinas emprestadas temporariamente (ver
+    _usinas_temporarias, seção "Supervisão Temporária" — usinas de outro
+    supervisor que o Fred assumiu por período de férias/ausência).
 
     Exemplos:
       "UFV Xavantina 1"         → "Nova Xavantina I"
@@ -581,11 +584,17 @@ def canonizar_usina(texto_bruto):
     if s_norm in _ALIAS_INDEX:
         return _ALIAS_INDEX[s_norm]
 
+    # 1b. Lookup no índice de usinas emprestadas temporariamente (dinâmico,
+    # recarregado a cada poucos minutos — ver _indices_temporarios)
+    alias_temp, _ = _indices_temporarios()
+    if s_norm in alias_temp:
+        return alias_temp[s_norm]
+
     # 2. Busca parcial — útil para variações não previstas
     # Tenta encontrar qual usina tem maior sobreposição com o texto
     melhor = None
     melhor_score = 0
-    for alias_norm, nome_oficial in _ALIAS_INDEX.items():
+    for alias_norm, nome_oficial in {**_ALIAS_INDEX, **alias_temp}.items():
         # Match se o alias está contido no texto ou vice-versa
         if alias_norm in s_norm or s_norm in alias_norm:
             score = len(alias_norm)  # prefere matches mais longos
@@ -601,12 +610,16 @@ def canonizar_usina(texto_bruto):
 
 def inferir_cliente(usina_canonical):
     """Retorna o cliente dado o nome canônico da usina."""
-    return _CLIENTE_INDEX.get(usina_canonical, "")
+    if usina_canonical in _CLIENTE_INDEX:
+        return _CLIENTE_INDEX[usina_canonical]
+    _, cliente_temp = _indices_temporarios()
+    return cliente_temp.get(usina_canonical, "")
 
 
 def usina_permitida(texto):
     """Retorna True se a usina for reconhecida no catálogo."""
     return canonizar_usina(texto) is not None
+
 
 
 # Mantém compatibilidade com código legado que usava CLIENTE_POR_USINA
@@ -1272,6 +1285,21 @@ def get_desligamento_manual_sheet():
     except gspread.WorksheetNotFound:
         ws = ss.add_worksheet(title=DESLIGAMENTO_MANUAL_SHEET_NAME, rows=200, cols=len(DESLIGAMENTO_MANUAL_HEADERS))
         ws.append_row(DESLIGAMENTO_MANUAL_HEADERS)
+    return ws
+
+
+SUPERVISAO_TEMP_SHEET_NAME = "_SupervisaoTemporaria"
+SUPERVISAO_TEMP_HEADERS = ["cliente", "usina", "cluster", "responsavelOriginal", "adicionadoEm"]
+
+
+def get_supervisao_temp_sheet():
+    gc = get_gc()
+    ss = gc.open_by_key(SHEET_ID)
+    try:
+        ws = ss.worksheet(SUPERVISAO_TEMP_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=SUPERVISAO_TEMP_SHEET_NAME, rows=200, cols=len(SUPERVISAO_TEMP_HEADERS))
+        ws.append_row(SUPERVISAO_TEMP_HEADERS)
     return ws
 
 
@@ -6394,6 +6422,68 @@ def migrar_historico_legivel():
 
 _mapa_cluster_usina_cache = {"dados": None, "expira_em": 0}
 
+_usinas_temporarias_cache = {"dados": None, "expira_em": 0}
+_indices_temporarios_cache = {"alias": {}, "cliente": {}, "expira_em": 0}
+
+
+def _usinas_temporarias():
+    """Lista as usinas atualmente sob supervisão temporária do Fred
+    (emprestadas de outro supervisor, ex.: cobertura de férias) — lidas
+    da aba _SupervisaoTemporaria. Cache de 3 min (mais curto que o de
+    cluster, já que essa lista pode mudar durante o uso ativo do painel,
+    diferente de cluster que é bem mais estático).
+    Implementado em 30/07/2026 a pedido do Fred; restaurado em 31/07/2026
+    depois que uma sessão paralela sobrescreveu o app.py sem essa
+    funcionalidade (ver histórico de commits — commit 3b1d1e77c0)."""
+    agora_ts = time.time()
+    if _usinas_temporarias_cache["dados"] is not None and agora_ts < _usinas_temporarias_cache["expira_em"]:
+        return _usinas_temporarias_cache["dados"]
+    try:
+        ws = get_supervisao_temp_sheet()
+        valores = ws.get_all_values()
+    except Exception as e:
+        if _usinas_temporarias_cache["dados"] is not None:
+            log.error(f"[_usinas_temporarias] Falha ao atualizar ({e}) — usando cache em memória")
+            return _usinas_temporarias_cache["dados"]
+        return []
+    itens = []
+    for row in valores[1:]:
+        if len(row) >= 2 and row[1].strip():
+            itens.append({
+                "cliente": row[0].strip() if len(row) > 0 else "",
+                "usina": row[1].strip(),
+                "cluster": row[2].strip() if len(row) > 2 else "",
+                "responsavelOriginal": row[3].strip() if len(row) > 3 else "",
+                "adicionadoEm": row[4].strip() if len(row) > 4 else "",
+            })
+    _usinas_temporarias_cache["dados"] = itens
+    _usinas_temporarias_cache["expira_em"] = agora_ts + 180
+    return itens
+
+
+def _indices_temporarios():
+    """Constrói (alias_index, cliente_index) a partir de _usinas_temporarias
+    — mesma ideia do _ALIAS_INDEX/_CLIENTE_INDEX estáticos, só que
+    recarregado periodicamente em vez de fixo na inicialização (pois essa
+    lista muda em tempo real conforme o Fred adiciona/remove usinas)."""
+    agora_ts = time.time()
+    if agora_ts < _indices_temporarios_cache["expira_em"]:
+        return _indices_temporarios_cache["alias"], _indices_temporarios_cache["cliente"]
+    alias_temp, cliente_temp = {}, {}
+    for item in _usinas_temporarias():
+        nome_oficial = item["usina"]  # usa o nome exato do PCM como "oficial" pra essas emprestadas
+        cliente_temp[nome_oficial] = item["cliente"]
+        alias_temp[_norm_usina(nome_oficial)] = nome_oficial
+        # adiciona também variações comuns: sem o sufixo "- UF", só a parte do meio
+        m = re.match(r"^(.+?)\s*-\s*(.+?)\s*-\s*\w{2}$", nome_oficial)
+        if m:
+            alias_temp[_norm_usina(m.group(2))] = nome_oficial
+            alias_temp[_norm_usina(f"{m.group(1)} - {m.group(2)}")] = nome_oficial
+    _indices_temporarios_cache["alias"] = alias_temp
+    _indices_temporarios_cache["cliente"] = cliente_temp
+    _indices_temporarios_cache["expira_em"] = agora_ts + 180
+    return alias_temp, cliente_temp
+
 
 def _mapa_cluster_usina():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
@@ -6961,9 +7051,10 @@ def programacao_pcm():
     dia_pt = _DIA_SEMANA_PT[dt.weekday()]
     hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
 
+    usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
     linhas_dia = [
         r for r in semana.get("rows", [])
-        if r.get("responsavel") == _PCM_RESPONSAVEL and r.get("dia") == dia_pt
+        if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt
     ]
 
     por_usina = {}
@@ -7825,6 +7916,120 @@ def atividade_remover_foto():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/outras-usinas-supervisores", methods=["GET"])
+def outras_usinas_supervisores():
+    """
+    Lista as usinas de TODOS os outros supervisores (não o Fred), agrupadas
+    por responsável, direto da fonte pública do PCM (banco_dados.json,
+    semana ativa) — pro Fred escolher quais quer assumir temporariamente
+    (ex.: cobertura de férias de outro supervisor).
+
+    Implementado em 30/07/2026; restaurado em 31/07/2026.
+    """
+    try:
+        resp = requests.get(_PCM_BANCO_URL, timeout=25)
+        resp.raise_for_status()
+        dados = resp.json()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Falha ao buscar dados do PCM: {e}"}), 502
+
+    semana_ativa = dados.get("semana_ativa")
+    semana = next((s for s in dados.get("semanas", []) if s.get("week") == semana_ativa), None)
+    if semana is None and dados.get("semanas"):
+        semana = dados["semanas"][0]
+    rows = semana.get("rows", []) if semana else []
+
+    ja_adicionadas = {item["usina"] for item in _usinas_temporarias()}
+    vistos = {}
+    for r in rows:
+        resp_nome = (r.get("responsavel") or "").strip()
+        if not resp_nome or resp_nome == _PCM_RESPONSAVEL:
+            continue
+        usina = (r.get("usina") or "").strip()
+        if not usina:
+            continue
+        chave = (resp_nome, usina)
+        cluster = (r.get("cluster") or "").strip()
+        if chave not in vistos or cluster.isupper():
+            vistos[chave] = {
+                "cliente": (r.get("cliente") or "").strip(),
+                "usina": usina,
+                "cluster": cluster,
+                "responsavel": resp_nome,
+                "jaAdicionada": usina in ja_adicionadas,
+            }
+
+    por_supervisor = {}
+    for v in vistos.values():
+        por_supervisor.setdefault(v["responsavel"], []).append(v)
+    for lista in por_supervisor.values():
+        lista.sort(key=lambda x: x["usina"])
+
+    return jsonify({"ok": True, "porSupervisor": por_supervisor,
+                     "semanaFonte": semana.get("week") if semana else None}), 200
+
+
+@app.route("/supervisao-temporaria", methods=["GET"])
+def listar_supervisao_temporaria():
+    """Lista as usinas atualmente sob supervisão temporária do Fred."""
+    _usinas_temporarias_cache["expira_em"] = 0  # força reler — o Fred precisa ver o estado real ao abrir a tela
+    return jsonify({"ok": True, "itens": _usinas_temporarias()}), 200
+
+
+@app.route("/supervisao-temporaria/adicionar", methods=["POST", "OPTIONS"])
+def adicionar_supervisao_temporaria():
+    """Adiciona uma usina de outro supervisor à supervisão temporária do
+    Fred — a partir desse momento, ela passa a ser reconhecida em TODO o
+    sistema (catálogo de usinas, chamados, comunicados, filtros,
+    programação PCM) como se fosse dele, até ser removida."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    cliente = (body.get("cliente") or "").strip()
+    usina = (body.get("usina") or "").strip()
+    cluster = (body.get("cluster") or "").strip()
+    responsavel_original = (body.get("responsavelOriginal") or "").strip()
+    if not usina:
+        return jsonify({"ok": False, "error": "usina é obrigatória"}), 400
+    try:
+        ws = get_supervisao_temp_sheet()
+        valores = ws.get_all_values()
+        if any(len(row) > 1 and row[1].strip() == usina for row in valores[1:]):
+            return jsonify({"ok": True, "jaExistia": True}), 200
+        ws.append_row([cliente, usina, cluster, responsavel_original, agora_br().strftime("%d/%m/%Y %H:%M:%S")])
+        _usinas_temporarias_cache["expira_em"] = 0
+        _indices_temporarios_cache["expira_em"] = 0
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        log.error(f"[SupervisaoTemporaria] Erro ao adicionar {usina}: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/supervisao-temporaria/remover", methods=["POST", "OPTIONS"])
+def remover_supervisao_temporaria():
+    """Remove uma usina da supervisão temporária — volta ao normal
+    (deixa de ser reconhecida como do Fred em todo o sistema)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    usina = (body.get("usina") or "").strip()
+    if not usina:
+        return jsonify({"ok": False, "error": "usina é obrigatória"}), 400
+    try:
+        ws = get_supervisao_temp_sheet()
+        valores = ws.get_all_values()
+        for i, row in enumerate(valores[1:], start=2):
+            if len(row) > 1 and row[1].strip() == usina:
+                ws.delete_rows(i)
+                break
+        _usinas_temporarias_cache["expira_em"] = 0
+        _indices_temporarios_cache["expira_em"] = 0
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        log.error(f"[SupervisaoTemporaria] Erro ao remover {usina}: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/clientes-configurados", methods=["GET"])
 def listar_clientes_configurados():
     """
@@ -7838,8 +8043,12 @@ def listar_clientes_configurados():
     precisavam ser lembradas separadamente, e uma ficou pra trás. Isso
     faz o frontend buscar a lista aqui, então cadastrar um cliente novo
     num lugar só (aqui) já reflete em tudo.
+
+    Também inclui clientes de usinas sob supervisão temporária (ver
+    /supervisao-temporaria), consistente com o resto do sistema.
     """
-    clientes = sorted(set(_CLIENTE_INDEX.values()))
+    _, cliente_temp = _indices_temporarios()
+    clientes = sorted(set(_CLIENTE_INDEX.values()) | set(cliente_temp.values()))
     return jsonify({"ok": True, "clientes": clientes}), 200
 
 
@@ -7995,7 +8204,9 @@ def _pcm_linhas_do_dia(data_str):
     if semana is None:
         return []
     dia_pt = _DIA_SEMANA_PT[dt.weekday()]
-    return [r for r in semana.get("rows", []) if r.get("responsavel") == _PCM_RESPONSAVEL and r.get("dia") == dia_pt]
+    usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
+    return [r for r in semana.get("rows", [])
+            if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt]
 
 
 FALHAS_SHEET_NAME_CANDIDATOS = ["Painel de Falhas - Fred Alexandrino", "Painel de Falhas"]
