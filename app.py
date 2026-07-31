@@ -9955,11 +9955,14 @@ REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
 - Cada "Responsável/Equipe" representa uma equipe de campo fisicamente alocada. Uma mesma equipe NUNCA pode ter atividades programadas em USINAS DIFERENTES no mesmo dia — o deslocamento entre usinas inviabiliza isso. Se a equipe tem atividades em mais de uma usina, agrupe-as em dias diferentes, dedicando um ou mais dias consecutivos inteiros a cada usina antes de mover a equipe pra próxima.
 - Atividades da MESMA equipe na MESMA usina podem (e devem, quando fizer sentido) ser agrupadas no mesmo dia ou em dias consecutivos, pra reduzir viagens.
 
-REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre os critérios de preenchimento por proximidade abaixo): a equipe do Cláudio Ferreira (cluster CE Leste 01) tem dias fixos por cliente, definidos pelo Fred:
-- Atividades em usinas do cliente GD Energy (ex.: Guajirú, Sol do Norte I, Sol do Norte II) alocadas a essa equipe: "dataSugerida" DEVE cair numa quarta-feira (dentre as datas disponíveis na lista de dias úteis).
-- Atividades em usinas do cliente Alves Lima (ABC Morada Nova) alocadas a essa equipe: "dataSugerida" DEVE cair numa segunda-feira (dentre as datas disponíveis na lista de dias úteis).
-- Se não houver nenhuma quarta-feira (ou segunda-feira, conforme o caso) disponível na lista de dias úteis fornecida, escolha a data disponível mais próxima e explique isso claramente na "justificativa".
-- Essa regra vale só pra essa equipe/cliente específicos — não aplique padrão parecido pra outras equipes sem instrução explícita.
+REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre os critérios de preenchimento por proximidade abaixo): a equipe do Cláudio Ferreira (cluster CE Leste 01) tem dias fixos por usina, definidos pelo Fred (regra atualizada em 31/07/2026):
+- Segunda-feira: usina ABC Morada Nova (cliente Alves Lima).
+- Terça-feira: usinas Hortina e Vitesse (cliente Sal Energia).
+- Quarta-feira: usinas do cliente GD Energy (ex.: Guajirú, Sol do Norte I, Sol do Norte II).
+- Quinta-feira: usina Sítio Bonfim (cliente Thopen).
+- Sexta-feira: NÃO tem usina fixa. Olhe todas as atividades em aberto dessa equipe/cluster (as da lista abaixo) e identifique qual usina do cluster tem o maior backlog (mais atividades acumuladas/atrasadas) — encaixe as atividades dessa usina na sexta-feira. Explique esse raciocínio na "justificativa".
+- Se não houver nenhuma data do dia da semana correspondente disponível na lista de dias úteis fornecida, escolha a data disponível mais próxima e explique isso claramente na "justificativa".
+- Essa regra vale só pra essa equipe/cluster específicos — não aplique padrão parecido pra outras equipes sem instrução explícita.
 
 OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
