@@ -18,6 +18,7 @@ Suporta:
 
 import os, re, json, logging, time, random, base64, uuid, sqlite3
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, send_file
@@ -10189,7 +10190,7 @@ REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre TODOS
 OUTROS CRITÉRIOS DE PRIORIZAÇÃO (em ordem de importância):
 1. Atividades com prioridade "Alta" devem ser reprogramadas para as datas mais próximas possíveis.
 2. Atividades que já estão com prazo vencido ou vencendo nos próximos dias têm urgência maior que as sem prazo definido ou com prazo distante.
-3. SEJA CONSERVADOR NA QUANTIDADE POR DIA — isso é crítico. Grande parte dessas atividades já está atrasada justamente porque a agenda anterior foi otimista demais e não sobrou tempo real de execução, deslocamento dentro da própria usina, imprevistos e deslocamento até o próximo compromisso. Distribua no máximo 1 atividade por turno (manhã OU tarde) por equipe — ou seja, no máximo 2 atividades por dia por equipe — a menos que sejam claramente rápidas/simples (ex.: inspeção visual, verificação de temperatura), caso em que até 2 por turno é aceitável. Nunca mais que isso. EXCEÇÃO: esse limite NÃO vale pra equipe do Cláudio Ferreira (cluster CE Leste 01) — ver a REGRA FIXA DE DIA DA SEMANA acima, que tem prioridade sobre este critério.
+3. SEJA CONSERVADOR NA QUANTIDADE POR DIA — isso é crítico. Grande parte dessas atividades já está atrasada justamente porque a agenda anterior foi otimista demais e não sobrou tempo real de execução, deslocamento dentro da própria usina, imprevistos e deslocamento até o próximo compromisso. Distribua no máximo 1 atividade por turno (manhã OU tarde) por equipe — ou seja, no máximo 2 atividades por dia por equipe — a menos que sejam claramente rápidas/simples (ex.: inspeção visual, verificação de temperatura), caso em que até 2 por turno é aceitável. Nunca mais que isso. EXCEÇÃO 1: esse limite NÃO vale pra equipe do Cláudio Ferreira (cluster CE Leste 01) — ver a REGRA FIXA DE DIA DA SEMANA acima, que tem prioridade sobre este critério. EXCEÇÃO 2 (vale pra QUALQUER equipe): se uma equipe tem atividades represadas em mais de uma usina e a semana de dias úteis disponível não tem dias suficientes pra dar um ou mais dias inteiros a cada usina respeitando esse limite de 2/dia, o limite de quantidade CEDE — nunca a REGRA MAIS IMPORTANTE (não-dupla-alocação de usina no mesmo dia). Nesse caso, é preferível colocar 3, 4 ou mais atividades da MESMA usina no MESMO dia (mesmo turno inclusive) do que dividir a semana igualmente entre usinas e acabar colocando a equipe em duas usinas diferentes num mesmo dia. Dedique dias inteiros e consecutivos a cada usina, na ordem de maior urgência/backlog primeiro, até esgotar os dias úteis disponíveis — não tente encaixar todas as usinas da equipe na mesma semana só pra "distribuir bonito"; é normal e esperado que uma usina com muito backlog fique pra semana seguinte.
 4. REGRA RÍGIDA, SEM NENHUMA EXCEÇÃO: a "dataSugerida" de TODA atividade precisa ser uma das datas listadas em "DIAS ÚTEIS DISPONÍVEIS" acima. Nunca use uma data que não esteja nessa lista — ela já exclui sábados e domingos pra você.
 5. Preencha os dias úteis mais próximos primeiro, na ordem em que aparecem na lista — não pule um dia disponível pra frente sem necessidade. Só avance pra um dia mais distante da lista quando os turnos dos dias mais próximos já estiverem no limite do critério 3.
 6. Para cada atividade, defina também um TURNO (manhã ou tarde) dentro do dia sugerido, respeitando o limite de 1-2 atividades por turno do critério 3.
@@ -10419,31 +10420,54 @@ def sugerir_reprogramacao():
     if not atividades:
         return jsonify({"ok": False, "error": "Nenhuma atividade em aberto encontrada para reprogramar"}), 400
     total_original = len(atividades)
-    truncado = total_original > 60
-    if truncado:
-        # Limite de segurança pro tempo de resposta da IA + tamanho do
-        # prompt/resposta. A causa real do 502 anterior era o modelo
-        # gastando tempo em "thinking" estendido (thinkingConfig ausente);
-        # com isso desativado, o processamento ficou rápido o bastante
-        # (~13s pra 25 atividades) pra suportar um teto bem maior.
-        # Prioriza as mais urgentes: Alta prioridade primeiro, depois por
-        # prazo mais próximo/vencido.
-        def _chave_urgencia(item):
-            prioridade_peso = {"alta": 0, "média": 1, "media": 1, "baixa": 2}.get((item.get("prioridade") or "").strip().lower(), 1)
-            prazo_str = (item.get("prazo") or "").strip()
-            m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo_str)
-            prazo_ts = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp() if m else float("inf")
-            return (prioridade_peso, prazo_ts)
-        atividades = sorted(atividades, key=_chave_urgencia)[:60]
 
-    hoje_str = agora_br().strftime('%d/%m/%Y (%A)')
-    proximos_dias_uteis = _proximos_dias_uteis(agora_br())
-    prompt = _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis)
+    # Reformulado em 31/07/2026 — arquitetura anterior mandava TODAS as
+    # atividades (de todos os clusters/equipes) num prompt só, cortando
+    # num teto global de 60 (por prioridade/prazo). Isso causava dois
+    # problemas sérios: (1) usinas/clusters inteiros de menor urgência
+    # (ex.: Araputanga, Sol do Norte I/II) ficavam de fora silenciosamente
+    # quando o total geral passava de 60; (2) com dezenas de equipes
+    # diferentes disputando espaço no mesmo prompt, a IA perdia o fio e
+    # violava a regra de não-dupla-alocação (ex.: Ibaté I e Ibaté II, que
+    # são a MESMA equipe, caindo no mesmo dia).
+    #
+    # Agora cada cluster/equipe (via _equipe_label, a mesma função usada
+    # em todo o resto do sistema) vira uma chamada de IA SEPARADA, em
+    # paralelo. Isso garante que: nenhuma equipe passa despercebida por
+    # um corte global; a IA reprogramando uma equipe só vê as atividades
+    # DAQUELA equipe (contexto muito menor e mais fácil de raciocinar
+    # sobre conflitos de agenda); e o teto de 60 por chamada, que já era
+    # generoso pro maior cluster observado (~20 atividades), praticamente
+    # nunca é atingido na prática.
+    mapa_cluster = _mapa_cluster_usina()
+    grupos = {}
+    for item in atividades:
+        chave = _equipe_label(item, mapa_cluster) or "Sem cluster"
+        grupos.setdefault(chave, []).append(item)
 
-    try:
+    def _chave_urgencia(item):
+        prioridade_peso = {"alta": 0, "média": 1, "media": 1, "baixa": 2}.get((item.get("prioridade") or "").strip().lower(), 1)
+        prazo_str = (item.get("prazo") or "").strip()
+        m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo_str)
+        prazo_ts = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp() if m else float("inf")
+        return (prioridade_peso, prazo_ts)
+
+    grupos_truncados = []
+    for nome, itens_grupo in grupos.items():
+        if len(itens_grupo) > 60:
+            grupos[nome] = sorted(itens_grupo, key=_chave_urgencia)[:60]
+            grupos_truncados.append(nome)
+
+    hoje_dt = agora_br()
+    hoje_str = hoje_dt.strftime('%d/%m/%Y (%A)')
+    proximos_dias_uteis = _proximos_dias_uteis(hoje_dt)
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+
+    def _processar_grupo(nome_grupo, itens_grupo):
+        prompt_grupo = _montar_prompt_reprogramacao(itens_grupo, hoje_str, proximos_dias_uteis)
         resp = _chamar_gemini_com_retry(
             {
-                "contents": [{"parts": [{"text": prompt}]}],
+                "contents": [{"parts": [{"text": prompt_grupo}]}],
                 "generationConfig": {
                     "temperature": 0.2,
                     "maxOutputTokens": 24576,
@@ -10451,43 +10475,55 @@ def sugerir_reprogramacao():
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
-            timeout=45,
-            usar_chave_teste=(request.args.get("diagnostico", "").lower() == "true"),
+            timeout=60,
+            usar_chave_teste=diagnostico,
         )
         data = resp.json()
         candidato = data["candidates"][0]
         finish_reason = candidato.get("finishReason", "")
         if finish_reason == "MAX_TOKENS":
-            log.error(f"[sugerir-reprogramacao] Resposta cortada por limite de tokens ({len(atividades)} atividades)")
-            return jsonify({"ok": False, "error": ("A resposta da IA foi cortada por ser grande demais. "
-                            "Tente com menos atividades de uma vez (filtre por cliente/usina).")}), 502
+            raise RuntimeError(f"Resposta cortada por limite de tokens ({len(itens_grupo)} atividades)")
         texto = candidato["content"]["parts"][0]["text"].strip()
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto.strip())
-        sugestao = json.loads(texto_limpo)
-        _corrigir_fins_de_semana(sugestao)
-        _comprimir_agenda_reprogramacao(sugestao, agora_br())
-        mapa_cluster = _mapa_cluster_usina()
-        for item in sugestao.get("reprogramacoes", []):
-            item["cluster"] = mapa_cluster.get((item.get("usina") or "").strip(), "")
-        return jsonify({"ok": True, "sugestao": sugestao, "total_atividades": len(atividades),
-                         "total_original": total_original, "truncado": truncado})
-    except json.JSONDecodeError as e:
-        log.error(f"[sugerir-reprogramacao] Resposta não é JSON válido: {e} | texto={texto[:500] if 'texto' in dir() else '?'}")
-        return jsonify({"ok": False, "error": "A IA retornou um formato inesperado. Tente novamente."}), 502
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 429:
-            log.error(f"[sugerir-reprogramacao] Cota da IA esgotada mesmo apos retries: {e}")
-            return jsonify({"ok": False, "error": ("A IA está temporariamente sem cota disponível (uso "
-                            "excessivo em pouco tempo). Aguarde alguns minutos e tente de novo.")}), 429
-        log.error(f"[sugerir-reprogramacao] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-        log.error(f"[sugerir-reprogramacao] Timeout/erro de conexão com a IA mesmo após retries: {e}")
-        return jsonify({"ok": False, "error": ("A IA demorou demais para responder. Tente novamente em instantes "
-                        "ou com menos atividades de uma vez (filtre por cliente/usina).")}), 504
-    except Exception as e:
-        log.error(f"[sugerir-reprogramacao] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        sugestao_grupo = json.loads(texto_limpo)
+        _corrigir_fins_de_semana(sugestao_grupo)
+        _comprimir_agenda_reprogramacao(sugestao_grupo, hoje_dt)
+        return sugestao_grupo
+
+    reprogramacoes_combinadas = []
+    resumos = []
+    erros_grupos = []
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futuros = {executor.submit(_processar_grupo, nome, itens): nome for nome, itens in grupos.items()}
+        for futuro in as_completed(futuros):
+            nome_grupo = futuros[futuro]
+            try:
+                sugestao_grupo = futuro.result()
+                reprogramacoes_combinadas.extend(sugestao_grupo.get("reprogramacoes", []))
+                if sugestao_grupo.get("resumo"):
+                    resumos.append(f"{nome_grupo}: {sugestao_grupo['resumo']}")
+            except Exception as e:
+                log.error(f"[sugerir-reprogramacao] Erro no grupo '{nome_grupo}': {e}")
+                erros_grupos.append(f"{nome_grupo}: {e}")
+
+    if not reprogramacoes_combinadas and erros_grupos:
+        return jsonify({"ok": False, "error": "Falha ao gerar sugestão pra todos os grupos: " + "; ".join(erros_grupos)}), 502
+
+    for item in reprogramacoes_combinadas:
+        item["cluster"] = mapa_cluster.get((item.get("usina") or "").strip(), "")
+
+    sugestao = {"resumo": " | ".join(resumos), "reprogramacoes": reprogramacoes_combinadas}
+    avisos = []
+    if grupos_truncados:
+        avisos.append("Cortado em 60 atividades (limite por chamada) pra: " + ", ".join(grupos_truncados))
+    if erros_grupos:
+        avisos.append("Falha ao processar: " + "; ".join(erros_grupos))
+
+    return jsonify({
+        "ok": True, "sugestao": sugestao, "total_atividades": len(reprogramacoes_combinadas),
+        "total_original": total_original, "truncado": bool(grupos_truncados),
+        "avisos": avisos or None,
+    })
 
 
 @app.route("/gerar-texto-os-ia", methods=["POST", "OPTIONS"])
