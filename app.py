@@ -9641,17 +9641,24 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
 
 
 def _montar_prompt_comunicado_livre(tema, observacoes):
-    return f"""Aja como um Supervisor de O&M da Grid Co. escrevendo um comunicado curto e direto pra ser enviado por WhatsApp às equipes técnicas e/ou clientes.
+    return f"""Aja como um Supervisor de O&M da Grid Co. redigindo um comunicado TÉCNICO para ser enviado por WhatsApp às equipes de campo e/ou clientes.
 
-Escreva um comunicado objetivo, com tom profissional mas direto (nada de linguagem robótica ou corporativa exagerada), pronto pra ser colado e enviado no WhatsApp. Use emojis com moderação, só onde ajudam a dar destaque (ex.: ⚠️ pra avisos importantes, 📋 pra instruções, ✅ pra confirmações), sem exagerar.
+O comunicado deve ser tecnicamente completo e bem estruturado — nunca uma única frase genérica solta, mesmo quando o tema/observações informados forem curtos. Desenvolva o texto adicionando contexto técnico relevante da sua própria bagagem como profissional de O&M de usinas solares: por que a atividade/assunto é importante, o que ela envolve tecnicamente, qual o risco ou motivo por trás, o que muda na prática para quem recebe. Esse tipo de contexto técnico GENÉRICO (normas, conceitos, riscos, boas práticas do setor) pode e deve ser usado para enriquecer o texto.
+
+O que NÃO pode: inventar FATOS ESPECÍFICOS que não foram informados — datas exatas, números de OS, prazos, quantidades, nomes de usinas/equipes, valores. Se o tema não trouxer esse dado específico, não crie um; ou generalize (ex.: "as OS serão disponibilizadas no Fracttal em breve") ou omita.
+
+Estrutura padrão (adapte os tópicos ao conteúdo, mas sempre em blocos curtos com emoji de destaque — nunca em parágrafo único corrido, mesmo para temas simples):
+⚠️ Linha de abertura com o assunto principal, direto ao ponto.
+📋 Contexto técnico: o que está acontecendo/motivo, explicando o "porquê" com embasamento técnico do setor.
+📋 (se fizer sentido) O que muda na prática — o que a equipe precisa fazer, observar ou verificar.
+✅ Prazo, status ou próximo passo — respeitando rigorosamente o grau de certeza da regra abaixo.
 
 Regras:
 - Vá direto ao ponto, sem saudação genérica tipo "Prezados" ou assinatura formal no final.
-- Não invente informações que não foram dadas — use só o que está no tema e nas observações.
-- Se as observações já derem detalhes suficientes, estruture em tópicos curtos; se for uma frase só, pode ficar em parágrafo corrido mesmo.
-- Tamanho: curto o bastante pra ler de relance no celular (poucas linhas).
+- Elaboração técnica é esperada: não entregue uma frase única e pobre quando o tema permite explicar o "porquê" e o "como" com conhecimento técnico de O&M solar/elétrico.
+- Tamanho: denso o suficiente pra passar a informação completa (normalmente 4 a 7 linhas curtas), mas ainda organizado pra leitura rápida no celular — nunca um bloco de texto corrido.
 
-REGRA CRÍTICA — PRESERVAR O GRAU DE CERTEZA DO TEXTO ORIGINAL: preste muita atenção em palavras que indicam incerteza ou expectativa, como "acredito que", "acho que", "acho possível", "acredito", "acho provável", "talvez", "devemos", "devemos conseguir". NUNCA transforme uma expectativa/crença em uma confirmação ou promessa de prazo. Se o autor disse que "acredita" que algo vai acontecer, sem data confirmada, o comunicado deve deixar claro que ainda NÃO há data definida (ex.: "ainda não temos data para retorno", "sem previsão confirmada", "assim que tivermos confirmação, avisamos") — em vez de anunciar como certo ou "em breve". Errar pra mais confiança do que o texto original tem é pior do que errar pra menos — na dúvida, seja mais conservador, não mais otimista.
+REGRA CRÍTICA — PRESERVAR O GRAU DE CERTEZA DO TEXTO ORIGINAL: preste muita atenção em palavras que indicam incerteza ou expectativa, como "acredito que", "acho que", "acho possível", "acredito", "acho provável", "talvez", "devemos", "devemos conseguir". NUNCA transforme uma expectativa/crença em uma confirmação ou promessa de prazo. Se o autor disse que "acredita" que algo vai acontecer, sem data confirmada, o comunicado deve deixar claro que ainda NÃO há data definida (ex.: "ainda não temos data para retorno", "sem previsão confirmada", "assim que tivermos confirmação, avisamos") — em vez de anunciar como certo ou "em breve". Errar pra mais confiança do que o texto original tem é pior do que errar pra menos — na dúvida, seja mais conservador, não mais otimista. Essa regra vale MESMO com a instrução de elaborar tecnicamente: contexto técnico genérico pode ser enriquecido, mas o grau de certeza sobre prazos/fatos específicos do autor nunca pode ser inflado.
 
 Tema do comunicado: {tema}
 Observações/detalhes: {observacoes or "nenhuma observação adicional"}
