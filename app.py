@@ -26,7 +26,7 @@ from werkzeug.utils import secure_filename
 import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
-                                listar_usinas_cliente, montar_status_zeladoria_por_usina)
+                                listar_usinas_cliente)
 
 # Push notifications (pywebpush)
 try:
@@ -5216,7 +5216,8 @@ def _sync_fracttal_core(desde_horas=8):
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-sync", append=True)
             criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta,
-                             "usina": mapeado["usina"], "cliente": mapeado["cliente"]})
+                             "usina": mapeado["usina"], "cliente": mapeado["cliente"],
+                             "descricao": mapeado.get("descricao", "")})
             os_existentes.add(mapeado["numeroOS"])
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
@@ -5230,17 +5231,28 @@ def _sync_fracttal_core(desde_horas=8):
         try:
             if len(criadas) == 1:
                 c = criadas[0]
+                # Corpo agora mostra o tema real da OS (Ação/Tarefa), não
+                # só o cliente — sem isso não dava pra saber do que se
+                # tratava sem abrir o painel (corrigido 31/07/2026).
+                tema = (c.get("descricao") or "Descrição não informada").strip()
                 enviar_push(
                     titulo=f"🆕 Nova OS Fracttal — {c['numeroOS']} — {c['usina']}",
-                    corpo=f"{c['cliente']}",
+                    corpo=f"{tema}\n{c['cliente']}",
                     tipo="fracttal_nova_os",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={c['id']}",
                 )
             else:
-                usinas_resumo = ", ".join(sorted(set(c["usina"] for c in criadas))[:5])
+                # Cada linha traz número + tema (truncado) + usina, em vez
+                # de só agrupar por usina sem dizer do que se trata cada OS.
+                def _linha_nova_os(c):
+                    tema = (c.get("descricao") or "sem descrição").strip()
+                    if len(tema) > 40:
+                        tema = tema[:40].rstrip() + "…"
+                    return f"{c['numeroOS']} — {tema} ({c['usina']})"
+                linhas = "\n".join(_linha_nova_os(c) for c in criadas[:6])
                 enviar_push(
                     titulo=f"🆕 {len(criadas)} novas OSs na Fracttal",
-                    corpo=f"Usinas: {usinas_resumo}{'...' if len(set(c['usina'] for c in criadas)) > 5 else ''}",
+                    corpo=f"{linhas}{chr(10) + '...' if len(criadas) > 6 else ''}",
                     tipo="fracttal_nova_os",
                     url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
                 )
@@ -10708,21 +10720,8 @@ def gerar_relatorio_semanal_route():
         semana_num = data_fim.isocalendar()[1]
         data_label = data_fim.strftime('%d/%m/%Y')
 
-        # Zeladoria: preenche a página com os dados reais do Painel de
-        # Zeladoria. Se der qualquer erro (aba fora do ar, etc.), o
-        # relatório inteiro não pode falhar por causa disso -- cai pro
-        # comportamento antigo (página sai com "Em acompanhamento.").
-        try:
-            ws_zeladoria = get_zeladoria_sheet()
-            todos_zeladoria = carregar_planilha(ws_zeladoria)
-            zeladoria_status_por_usina = montar_status_zeladoria_por_usina(todos_zeladoria, cliente)
-        except Exception as e:
-            log.error(f"[Relatorio Semanal] Erro ao buscar dados de Zeladoria: {e}")
-            zeladoria_status_por_usina = None
-
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
-                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente,
-                                    zeladoria_status_por_usina)
+                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
