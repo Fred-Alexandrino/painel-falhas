@@ -2669,6 +2669,26 @@ def notificar_edicao_planilha():
         corpo = (f"Linha {linha} · {cabecalho}: "
                  f"\"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})")
 
+        # Se for edição no Painel de Atividades, busca o número da OS e o
+        # tema (Ação/Tarefa) da linha editada — sem isso a notificação só
+        # dizia "linha X mudou", impossível saber do que se tratava sem
+        # abrir a planilha (corrigido 31/07/2026).
+        if aba == ATIVIDADES_SHEET_NAME and id_registro:
+            try:
+                ws_ativ = get_atividades_sheet()
+                todos_ativ = ws_ativ.get_all_values()
+                encontrada = buscar_atividade_por_id_ou_os(todos_ativ, id_registro)
+                if encontrada:
+                    _, linha_ativ = encontrada
+                    numero_os_ativ = linha_ativ[13].strip() if len(linha_ativ) > 13 else ""
+                    descricao_ativ = linha_ativ[4].strip() if len(linha_ativ) > 4 else ""
+                    usina_ativ = linha_ativ[2].strip() if len(linha_ativ) > 2 else ""
+                    tema_ativ = descricao_ativ or "Descrição não informada"
+                    titulo = f"✏️ Edição manual" + (f" — OS {numero_os_ativ}" if numero_os_ativ else "") + (f" — {usina_ativ}" if usina_ativ else "")
+                    corpo = f"{tema_ativ}\n{cabecalho}: \"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})"
+            except Exception as e:
+                log.error(f"[EdicaoPlanilha] Falha ao enriquecer com tema da OS: {e}")
+
         url = "https://fred-alexandrino.github.io/PAINELDEFALHAS/"
         if id_registro:
             if aba == ATIVIDADES_SHEET_NAME:
