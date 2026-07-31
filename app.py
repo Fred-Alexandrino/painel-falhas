@@ -9927,12 +9927,22 @@ Não invente atividades que não estão na lista. Inclua em "prioridades" todas 
 
 
 def _montar_prompt_reprogramacao(atividades, hoje_str, proximos_dias_uteis):
+    # Correção 31/07/2026: usar o mesmo _equipe_label() (cluster, com
+    # fallback pro responsável normalizado) já usado no resto do sistema
+    # pra identificar a equipe — em vez do campo "responsavel" cru. Duas
+    # pessoas da MESMA equipe física (ex.: Rodolfo Oliveira e Andrick
+    # Gouveia, que atendem Boa Esperança/Ibaté juntos) apareciam com nomes
+    # diferentes no campo responsavel, fazendo a IA achar que eram equipes
+    # DIFERENTES e escalando a mesma equipe em usinas distintas no mesmo
+    # dia — violando a REGRA MAIS IMPORTANTE do prompt.
+    mapa_cluster = _mapa_cluster_usina()
     linhas = []
     for a in atividades:
+        equipe = _equipe_label(a, mapa_cluster)
         linhas.append(
             f"- id={a['id']} | OS={a.get('numeroOS') or '—'} | Cliente={a['cliente']} | Usina={a['usina']} | "
             f"Ativo/Equipamento={a.get('equipamento') or '—'} | Ação/Tarefa={a.get('descricao') or '—'} | "
-            f"Responsável/Equipe={a.get('responsavel') or 'não informado'} | "
+            f"Responsável={a.get('responsavel') or 'não informado'} | Equipe/Cluster (grupo físico de deslocamento)={equipe or 'não informado'} | "
             f"Prioridade={a.get('prioridade') or 'Média'} | Prazo atual={a.get('prazo') or 'sem prazo definido'} | "
             f"Status={a.get('status')}"
         )
@@ -9952,7 +9962,7 @@ DIAS ÚTEIS DISPONÍVEIS PRA REPROGRAMAR (já calculados, use SOMENTE essas data
 O primeiro dia útil disponível é {primeiro_dia} ({primeiro_dia_nome}) — a menos que os turnos desse dia já estejam no limite do critério 3 abaixo, ele DEVE ser usado por pelo menos uma equipe. Nunca pule esse primeiro dia sem necessidade real de agenda.
 
 REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
-- Cada "Responsável/Equipe" representa uma equipe de campo fisicamente alocada. Uma mesma equipe NUNCA pode ter atividades programadas em USINAS DIFERENTES no mesmo dia — o deslocamento entre usinas inviabiliza isso. Se a equipe tem atividades em mais de uma usina, agrupe-as em dias diferentes, dedicando um ou mais dias consecutivos inteiros a cada usina antes de mover a equipe pra próxima.
+- Cada "Equipe/Cluster (grupo físico de deslocamento)" representa uma equipe de campo fisicamente alocada — TODOS os "Responsável" que compartilham o mesmo "Equipe/Cluster" são a MESMA equipe física (podem ser pessoas diferentes revezando ou trabalhando juntas na mesma van/rota), não equipes diferentes. Use o "Equipe/Cluster" pra decidir isso, NUNCA o "Responsável" isoladamente. Uma mesma equipe (mesmo Equipe/Cluster) NUNCA pode ter atividades programadas em USINAS DIFERENTES no mesmo dia — o deslocamento entre usinas inviabiliza isso. Se a equipe tem atividades em mais de uma usina, agrupe-as em dias diferentes, dedicando um ou mais dias consecutivos inteiros a cada usina antes de mover a equipe pra próxima.
 - Atividades da MESMA equipe na MESMA usina podem (e devem, quando fizer sentido) ser agrupadas no mesmo dia ou em dias consecutivos, pra reduzir viagens.
 
 REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre TODOS os outros critérios abaixo, incluindo o limite de quantidade por turno do critério 3): a equipe do Cláudio Ferreira (cluster CE Leste 01) tem dias fixos por usina, definidos pelo Fred (regra atualizada em 31/07/2026):
@@ -9991,7 +10001,7 @@ Responda APENAS com um JSON válido (sem markdown, sem blocos de código com cra
       "usina": "<usina>",
       "equipamento": "<código do Ativo/Equipamento, exatamente como veio na lista — mantido só como referência>",
       "tarefa": "<descrição da ação/tarefa em português legível, baseada no campo Ação/Tarefa — NUNCA o código bruto do ativo; ver regra acima>",
-      "responsavel": "<responsável/equipe>",
+      "responsavel": "<valor do campo Responsável, exatamente como veio na lista — NÃO o Equipe/Cluster>",
       "dataAtual": "<prazo atual, ou 'sem prazo definido'>",
       "dataSugerida": "<nova data sugerida, formato dd/mm/aaaa, OBRIGATORIAMENTE um dia de segunda a sexta-feira>",
       "turno": "<'manhã' ou 'tarde'>",
