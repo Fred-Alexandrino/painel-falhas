@@ -4157,25 +4157,38 @@ def nova_atividade():
 
 def _montar_prompt_extrair_atividade_imagem():
     lista_usinas = ", ".join(sorted(CATALOGO_USINAS.keys()))
-    return f"""Aja como um Supervisor de O&M da Grid Co. lendo o print de uma Ordem de Serviço (OS)/tarefa
-(pode ser um card da Fracttal, uma mensagem de WhatsApp de um técnico, ou uma anotação de campo) para
-cadastrar essa atividade no painel de gestão.
+    return f"""Aja como um Supervisor de O&M da Grid Co. lendo o print de uma ou mais Ordens de Serviço (OS)/tarefas
+para cadastrar atividades no painel de gestão. A imagem pode ser: um único card da Fracttal, uma mensagem de
+WhatsApp de um técnico, uma anotação de campo — OU uma tabela/planilha de repasse com VÁRIAS usinas, cada uma
+com uma ou mais observações (ex.: colunas Contratante / UFV / Observações Gerais).
 
-Extraia da imagem os seguintes campos e responda APENAS com um JSON válido (sem markdown, sem crase,
+Extraia da imagem uma LISTA de atividades e responda APENAS com um JSON válido (sem markdown, sem crase,
 sem texto antes ou depois), no formato:
 {{
-  "cliente": "",
-  "usina": "",
-  "equipamento": "",
-  "descricao": "",
-  "responsavel": "",
-  "prazo": "",
-  "prioridade": "",
-  "numeroOS": "",
-  "status": ""
+  "atividades": [
+    {{
+      "cliente": "",
+      "usina": "",
+      "equipamento": "",
+      "descricao": "",
+      "responsavel": "",
+      "prazo": "",
+      "prioridade": "",
+      "numeroOS": "",
+      "status": ""
+    }}
+  ]
 }}
 
-Regras por campo:
+Regras gerais:
+- Se a imagem mostrar uma tabela/lista com várias usinas, gere UMA atividade para CADA observação/bullet distinto
+  e acionável dentro de cada usina — não junte várias observações diferentes numa única "descricao"; cada uma vira
+  um item separado da lista, mesmo que a usina se repita várias vezes na lista.
+- Se a imagem mostrar um único card/print de OS, retorne a lista com apenas 1 item.
+- Cada "descricao" deve ser objetiva e fiel ao que está escrito — pode reescrever de forma mais clara e concisa,
+  mas sem inventar informação nem misturar observações de usinas diferentes num mesmo item.
+
+Regras por campo (aplicam-se a cada item da lista):
 - "usina": nome da usina/planta como aparece na imagem. Usinas conhecidas no catálogo (tente casar com uma
   destas se fizer sentido, mas não force — se a imagem mostrar outra usina não listada, transcreva como
   está escrito mesmo): {lista_usinas}
@@ -4184,15 +4197,15 @@ Regras por campo:
 - "descricao": a AÇÃO/TAREFA real a ser feita (o que precisa ser executado), NUNCA apenas o código do
   ativo/equipamento. Ex.: se o ativo é "THPN-TPZ100-SSEG1-CMRA" mas a ação é "Recomposição de câmera de
   CFTV", "descricao" deve ser "Recomposição de câmera de CFTV", não o código do ativo.
-- "equipamento": o ativo/equipamento em si (código ou nome), separado da ação.
+- "equipamento": o ativo/equipamento em si (código ou nome), separado da ação. Deixe vazio se não for claro.
 - "prazo": data no formato DD/MM/AAAA se houver uma data-limite visível; senão vazio.
 - "prioridade": "Baixa", "Média" ou "Alta" — só preencha se houver indicação clara na imagem (palavras
   como urgente/crítico = Alta); senão deixe "Média" como neutro.
-- "numeroOS": número da OS/OT se visível (só os dígitos, sem prefixo "OS").
+- "numeroOS": número da OS/OT se visível (só os dígitos, sem prefixo "OS"); senão vazio.
 - "status": um destes valores, o mais coerente com o que a imagem mostra: "Em Aberto", "Em Andamento",
   "Aguardando Fabricante", "Aguardando Cliente", "Abrir chamado". Se não houver indicação clara, use
   "Em Aberto".
-- "responsavel": nome da pessoa/técnico responsável, se citado.
+- "responsavel": nome da pessoa/técnico responsável, se citado; senão vazio.
 
 REGRA CRÍTICA: se algum campo estiver ilegível, cortado, ambíguo ou simplesmente não aparecer na imagem,
 deixe esse campo como string vazia "" — NUNCA presuma ou invente conteúdo. É melhor deixar em branco pra
@@ -4228,40 +4241,71 @@ def extrair_atividade_de_imagem():
                 "contents": [{"parts": parts}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": 1024,
+                    "maxOutputTokens": 8192,
                     "responseMimeType": "application/json",
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
-            timeout=45,
+            timeout=55,
             usar_chave_teste=diagnostico,
         )
         data = resp.json()
         candidato = data["candidates"][0]
         texto_bruto = candidato["content"]["parts"][0]["text"].strip()
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
-        campos = json.loads(texto_limpo)
+        parsed = json.loads(texto_limpo)
     except Exception as e:
         log.error(f"[extrair-atividade-de-imagem] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 502
 
-    usina_bruta = (campos.get("usina") or "").strip()
-    usina_canonica = canonizar_usina(usina_bruta) if usina_bruta else None
-    usina_reconhecida = usina_canonica is not None
-    if usina_canonica:
-        campos["usina"] = usina_canonica
-        cliente_inferido = inferir_cliente(usina_canonica)
-        if cliente_inferido:
-            campos["cliente"] = cliente_inferido
+    # Aceita tanto {"atividades": [...]} (formato novo) quanto um objeto único
+    # ou uma lista solta, pra ser resiliente a variações de resposta da IA.
+    if isinstance(parsed, list):
+        lista_bruta = parsed
+    elif isinstance(parsed, dict) and isinstance(parsed.get("atividades"), list):
+        lista_bruta = parsed["atividades"]
+    elif isinstance(parsed, dict):
+        lista_bruta = [parsed]
+    else:
+        return jsonify({"ok": False, "error": "formato inesperado retornado pela IA"}), 502
 
-    campos.setdefault("prioridade", "Média")
-    if not campos.get("prioridade"):
-        campos["prioridade"] = "Média"
-    campos.setdefault("status", "Em Aberto")
-    if not campos.get("status"):
-        campos["status"] = "Em Aberto"
+    if not lista_bruta:
+        return jsonify({"ok": False, "error": "nenhuma atividade identificada na imagem"}), 502
 
-    return jsonify({"ok": True, "campos": campos, "usinaReconhecida": usina_reconhecida}), 200
+    atividades = []
+    for campos in lista_bruta:
+        if not isinstance(campos, dict):
+            continue
+        usina_bruta = (campos.get("usina") or "").strip()
+        usina_canonica = canonizar_usina(usina_bruta) if usina_bruta else None
+        usina_reconhecida = usina_canonica is not None
+        if usina_canonica:
+            campos["usina"] = usina_canonica
+            cliente_inferido = inferir_cliente(usina_canonica)
+            if cliente_inferido:
+                campos["cliente"] = cliente_inferido
+
+        campos.setdefault("prioridade", "Média")
+        if not campos.get("prioridade"):
+            campos["prioridade"] = "Média"
+        campos.setdefault("status", "Em Aberto")
+        if not campos.get("status"):
+            campos["status"] = "Em Aberto"
+        campos["usinaReconhecida"] = usina_reconhecida
+        atividades.append(campos)
+
+    if not atividades:
+        return jsonify({"ok": False, "error": "nenhuma atividade válida identificada na imagem"}), 502
+
+    resposta = {"ok": True, "atividades": atividades}
+    # Compat: quando só há 1 item, mantém também "campos"/"usinaReconhecida" no
+    # nível raiz (formato antigo), pra não quebrar nenhum cliente que ainda
+    # espere só um objeto único.
+    if len(atividades) == 1:
+        resposta["campos"] = atividades[0]
+        resposta["usinaReconhecida"] = atividades[0]["usinaReconhecida"]
+
+    return jsonify(resposta), 200
 
 
 # ── Integração Fracttal (sync automático de OTs → Painel de Atividades) ───
