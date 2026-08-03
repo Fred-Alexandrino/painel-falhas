@@ -8,22 +8,42 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Coletar diagnostico via SSH
+      - name: Coletar diagnostico via SSH e salvar em arquivo
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 147.15.66.241
           username: ubuntu
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
           script: |
-            echo "=== systemctl status ==="
-            sudo systemctl status wppconnect --no-pager -l | head -40
-            echo "=== journalctl ultimas 150 linhas ==="
-            sudo journalctl -u wppconnect --no-pager -n 150
-            echo "=== memoria ==="
-            free -h
-            echo "=== uptime servico (restart count) ==="
-            systemctl show wppconnect -p NRestarts
-      - name: Salvar output
+            {
+              echo "=== systemctl status ==="
+              sudo systemctl status wppconnect --no-pager -l | head -40
+              echo "=== NRestarts ==="
+              systemctl show wppconnect -p NRestarts
+              echo "=== memoria ==="
+              free -h
+              echo "=== journalctl ultimas 200 linhas ==="
+              sudo journalctl -u wppconnect --no-pager -n 200
+            } > /tmp/diag_vm2_output.txt 2>&1
+      - name: Copiar resultado do VM2 pro runner
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          source: "/tmp/diag_vm2_output.txt"
+          target: "/tmp/scp_download"
+          strip_components: 2
+      - name: Commitar resultado no repo
         run: |
           mkdir -p backups
-          echo "ver logs no output do step anterior (Actions run log)" > backups/diag-vm2-placeholder.txt
+          cp /tmp/scp_download/diag_vm2_output.txt backups/diag-vm2-output.txt || echo "arquivo nao encontrado" > backups/diag-vm2-output.txt
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-vm2-output.txt
+          git commit -m "diag vm2 [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-vm2-output.txt
+          git commit -m "diag vm2 [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
