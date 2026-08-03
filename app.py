@@ -8653,8 +8653,11 @@ def _coletar_dados_resumo_diario(data_str):
         numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
         if numero_os and numero_os in numeros_programados:
             continue  # já contabilizada como programação cumprida
+        usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
+        if canonizar_usina(usina_bruta) is None:
+            continue  # usina de outro cliente/supervisor vazada no painel — não é do Fred, ignora
         extras_nao_programadas.append({
-            "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+            "usina": usina_bruta,
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
             "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1].strip(),
             "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
@@ -8690,8 +8693,11 @@ def _coletar_dados_resumo_diario(data_str):
         linhas_relevantes = [l for l in linhas_de_hoje if not _padrao_so_finalizacao_administrativa.match(l.strip())]
         if not linhas_relevantes:
             continue  # só teve finalização administrativa hoje, sem progresso de campo real
+        usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
+        if canonizar_usina(usina_bruta) is None:
+            continue  # usina de outro cliente/supervisor vazada no painel — não é do Fred, ignora
         progresso_do_dia.append({
-            "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+            "usina": usina_bruta,
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
             "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1].strip(),
             "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
@@ -8756,6 +8762,7 @@ def _coletar_dados_resumo_diario(data_str):
         data_br = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
         resultado["ocorrenciasNovasDoDia"] = [
             f for f in falhas if str(f.get("dataAbertura") or "").strip().startswith(data_br)
+            and canonizar_usina(f.get("usina")) is not None
         ]
     except Exception as e:
         log.error(f"[ResumoDiario] Erro ao ler Falhas: {e}")
@@ -8766,10 +8773,12 @@ def _coletar_dados_resumo_diario(data_str):
     for row in todos_ativ[1:]:
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
         if (row[ATIV_CAMPO_COL["prioridade"] - 1].strip().lower() == "alta"
-                and not _is_concluido_atividade(row[ATIV_CAMPO_COL["status"] - 1].strip())):
+                and not _is_concluido_atividade(row[ATIV_CAMPO_COL["status"] - 1].strip())
+                and canonizar_usina(usina_bruta) is not None):
             altas_abertas.append({
-                "usina": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+                "usina": usina_bruta,
                 "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
                 "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
                 "prazo": row[ATIV_CAMPO_COL["prazo"] - 1].strip(),
@@ -8872,9 +8881,15 @@ def _montar_prompt_resumo_diario(dados):
             bloco_mensagens.append(f"[{hora}] {m.get('remetente','?')}: {m.get('texto','')[:300]}")
     texto_mensagens = "\n".join(bloco_mensagens) if bloco_mensagens else "(nenhuma mensagem capturada nos grupos hoje)"
 
+    lista_usinas_fred = ", ".join(sorted(CATALOGO_USINAS.keys()))
+
     return f"""Aja como um Supervisor de O&M Sênior da Grid Co., escrevendo o resumo diário das usinas pro seu próprio controle — vai ser enviado só pra você mesmo, num grupo pessoal de gestão (não é um comunicado pra equipe nem pra cliente).
 
 Data do resumo: {data_fmt}
+
+USINAS SOB SUA SUPERVISÃO (lista fechada — só estas): {lista_usinas_fred}
+
+REGRA CRÍTICA — ESCOPO DE USINA: alguns grupos de WhatsApp (principalmente os grupos de cliente, ex. "[O&M] - Grid Co. | 2C") são compartilhados com técnicos/supervisores de OUTRAS usinas do mesmo cliente que NÃO são suas. Se uma mensagem mencionar uma usina que NÃO está na lista acima (ex.: "Tupi Paulista", "Macaíba", "Santarém", "Aparecida" — nomes de exemplo, qualquer nome fora da lista se aplica), essa usina NÃO é sua responsabilidade — não mencione ela em NENHUMA seção do resumo (nem em alertas, nem em "OS sem correspondência", nem no resumo por equipe), mesmo que pareça relevante ou urgente. Trate como ruído de outro supervisor e ignore completamente. Isso vale pra toda a lista de usinas acima, e só pra essa lista.
 
 REGRAS DE ESCRITA:
 - Direto e objetivo, sem enrolação, sem saudação.
@@ -8886,7 +8901,7 @@ REGRAS DE ESCRITA:
   (a) CONFIRMA o que já está registrado (cite isso junto da OS correspondente, ex.: "Ibaté I, inversor 1.10 (OS 9781) — confirmado pelo técnico no grupo: 'terminei a inspeção do 1.10'"), ou
   (b) CONTRADIZ o que está registrado (ex.: técnico diz que não terminou algo que o sistema mostra concluído, ou vice-versa) — isso é importante, aponte como um alerta de divergência pro Fred verificar, ou
   (c) é uma menção nova sem OS correspondente no sistema — mesma lógica das OS sem correspondência: vale mencionar como algo pra conferir.
-- RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo curto e específico do que foi tratado NAQUELE grupo — não um resumo genérico misturando tudo. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato.
+- RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo curto e específico do que foi tratado NAQUELE grupo — não um resumo genérico misturando tudo. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato. Lembre da REGRA CRÍTICA DE ESCOPO acima: se um grupo compartilhado só teve mensagens sobre usina(s) fora da sua lista, trate como "sem assunto relevante hoje" pra você — não resuma o assunto de outra usina.
 
 DADOS DO DIA:
 
