@@ -6119,8 +6119,18 @@ def config_remover():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     dados = request.get_json(force=True, silent=True) or {}
     chaves = dados.get("chaves", [])
+    resultado = _config_remover_chaves_core(chaves)
+    return jsonify({"ok": True, **resultado}), 200
+
+
+def _config_remover_chaves_core(chaves):
+    """Núcleo de /config-remover, reaproveitado internamente (ex.: por
+    /supervisao-temporaria/remover) sem precisar de uma chamada HTTP
+    própria. Remove da aba _Sistema todas as linhas cuja chave (coluna A)
+    bata com alguma da lista, normalizando acentuação (NFC) pra evitar
+    falso-negativo por codificação Unicode diferente."""
     if not chaves:
-        return jsonify({"ok": True, "removidos": []}), 200
+        return {"removidos": 0, "chavesEncontradas": []}
 
     import unicodedata
     chaves_norm = {unicodedata.normalize("NFC", c.strip()) for c in chaves}
@@ -6137,7 +6147,7 @@ def config_remover():
     for idx in linhas_para_remover:
         ws_cfg.delete_rows(idx)
 
-    return jsonify({"ok": True, "removidos": len(linhas_para_remover), "chavesEncontradas": encontradas}), 200
+    return {"removidos": len(linhas_para_remover), "chavesEncontradas": encontradas}
 
 
 @app.route("/config-set-lote", methods=["POST"])
@@ -6151,8 +6161,17 @@ def config_set_lote():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     dados = request.get_json(force=True, silent=True) or {}
     pares = dados.get("pares", {})
+    gravados = _config_set_lote_core(pares)
+    return jsonify({"ok": True, "gravados": gravados}), 200
+
+
+def _config_set_lote_core(pares):
+    """Núcleo de /config-set-lote, reaproveitado internamente (ex.: por
+    /supervisao-temporaria/adicionar) sem precisar de uma chamada HTTP
+    própria. Grava múltiplos pares chave/valor na aba _Sistema numa
+    única leitura + uma única escrita em lote."""
     if not pares:
-        return jsonify({"ok": True, "gravados": []}), 200
+        return []
 
     ws_cfg = _get_config_sheet()
     valores = ws_cfg.get_all_values()
@@ -6174,7 +6193,7 @@ def config_set_lote():
     if novas_linhas:
         ws_cfg.append_rows(novas_linhas, value_input_option="RAW")
 
-    return jsonify({"ok": True, "gravados": list(pares.keys())}), 200
+    return list(pares.keys())
 
 
 # ── Comunicados diários automáticos (WhatsApp) ──────────────────────────
@@ -6472,6 +6491,7 @@ def _usinas_temporarias():
                 "cluster": row[2].strip() if len(row) > 2 else "",
                 "responsavelOriginal": row[3].strip() if len(row) > 3 else "",
                 "adicionadoEm": row[4].strip() if len(row) > 4 else "",
+                "grupoId": row[5].strip() if len(row) > 5 else "",
             })
     _usinas_temporarias_cache["dados"] = itens
     _usinas_temporarias_cache["expira_em"] = agora_ts + 60
@@ -8011,16 +8031,38 @@ def adicionar_supervisao_temporaria():
     usina = (body.get("usina") or "").strip()
     cluster = (body.get("cluster") or "").strip()
     responsavel_original = (body.get("responsavelOriginal") or "").strip()
+    grupo_id = (body.get("grupoId") or "").strip()
     if not usina:
         return jsonify({"ok": False, "error": "usina é obrigatória"}), 400
     try:
         ws = get_supervisao_temp_sheet()
         valores = ws.get_all_values()
         if any(len(row) > 1 and row[1].strip() == usina for row in valores[1:]):
+            # Já existe: se um grupo foi informado agora, atualiza mesmo
+            # assim (permite usar esta mesma tela pra corrigir/trocar o
+            # grupo de uma usina já sob supervisão, sem precisar remover
+            # e adicionar de novo).
+            if grupo_id:
+                _config_set_lote_core({
+                    f"grupo_usina:{usina}": grupo_id,
+                    **({f"cluster_usina:{usina}": cluster} if cluster else {}),
+                })
+                _mapa_grupo_usina_cache["expira_em"] = 0
+                _mapa_cluster_usina_cache["expira_em"] = 0
             return jsonify({"ok": True, "jaExistia": True}), 200
-        ws.append_row([cliente, usina, cluster, responsavel_original, agora_br().strftime("%d/%m/%Y %H:%M:%S")])
+        ws.append_row([cliente, usina, cluster, responsavel_original, agora_br().strftime("%d/%m/%Y %H:%M:%S"), grupo_id])
         _usinas_temporarias_cache["expira_em"] = 0
         _indices_temporarios_cache["expira_em"] = 0
+        # Vincula automaticamente a usina ao grupo do WhatsApp informado
+        # (grupo_usina) e ao cluster (cluster_usina) na aba _Sistema —
+        # antes isso exigia um passo manual separado via /config-set-lote.
+        if grupo_id:
+            _config_set_lote_core({
+                f"grupo_usina:{usina}": grupo_id,
+                **({f"cluster_usina:{usina}": cluster} if cluster else {}),
+            })
+            _mapa_grupo_usina_cache["expira_em"] = 0
+            _mapa_cluster_usina_cache["expira_em"] = 0
         return jsonify({"ok": True}), 200
     except Exception as e:
         log.error(f"[SupervisaoTemporaria] Erro ao adicionar {usina}: {e}")
@@ -8046,6 +8088,12 @@ def remover_supervisao_temporaria():
                 break
         _usinas_temporarias_cache["expira_em"] = 0
         _indices_temporarios_cache["expira_em"] = 0
+        # Limpa também o vínculo grupo_usina/cluster_usina dessa usina na
+        # aba _Sistema, se existir — evita deixar mapeamento órfão
+        # apontando pra uma usina que a Fred já devolveu.
+        _config_remover_chaves_core([f"grupo_usina:{usina}", f"cluster_usina:{usina}"])
+        _mapa_grupo_usina_cache["expira_em"] = 0
+        _mapa_cluster_usina_cache["expira_em"] = 0
         return jsonify({"ok": True}), 200
     except Exception as e:
         log.error(f"[SupervisaoTemporaria] Erro ao remover {usina}: {e}")
