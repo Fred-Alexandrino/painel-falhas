@@ -1,0 +1,11 @@
+name: Limpar Cache Config
+on:
+  workflow_dispatch: {}
+jobs:
+  limpar:
+    runs-on: ubuntu-latest
+    env:
+      WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+    steps:
+      - run: |
+          curl -s -X POST -H "X-Webhook-Secret: $WEBHOOK_SECRET" "https://api.168.138.232.237.sslip.io/config-limpar-cache" -w "\nSTATUS:%{http_code}\n"
