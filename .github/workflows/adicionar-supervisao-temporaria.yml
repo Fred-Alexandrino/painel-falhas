@@ -37,13 +37,8 @@ jobs:
           for USINA in "${ARR[@]}"; do
             USINA_TRIM=$(echo "$USINA" | sed 's/^ *//;s/ *$//')
             echo "Adicionando: $USINA_TRIM"
-            PAYLOAD=$(python3 -c "
-import json
-print(json.dumps({'cliente': '$CLIENTE', 'usina': '''$USINA_TRIM''', 'cluster': '$CLUSTER', 'responsavelOriginal': '''$RESP_ORIG'''}))
-")
-            RESP=$(curl -s -w "\nSTATUS:%{http_code}" -X POST -H "Content-Type: application/json" \
-              "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" \
-              -d "$PAYLOAD")
+            PAYLOAD=$(USINA_TRIM="$USINA_TRIM" python3 -c 'import os, json; print(json.dumps({"cliente": os.environ["CLIENTE"], "usina": os.environ["USINA_TRIM"], "cluster": os.environ["CLUSTER"], "responsavelOriginal": os.environ["RESP_ORIG"]}))')
+            RESP=$(curl -s -w "\nSTATUS:%{http_code}" -X POST -H "Content-Type: application/json" "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" -d "$PAYLOAD")
             echo "Resposta ($USINA_TRIM): $RESP"
             echo "$RESP" >> backups/supervisao-temp-resultado.json
           done
