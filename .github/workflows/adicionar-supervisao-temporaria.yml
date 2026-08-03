@@ -1,0 +1,60 @@
+name: Adicionar Supervisao Temporaria (lote)
+on:
+  workflow_dispatch:
+    inputs:
+      cliente:
+        description: 'Cliente (ex: Thopen)'
+        required: true
+      usinas:
+        description: 'Usinas separadas por vírgula (ex: Indaiatuba,Caxambu,Piracicaba,Santa Barbara)'
+        required: true
+      cluster:
+        description: 'Cluster/código regional (opcional, ex: SP Leste 03)'
+        required: false
+        default: ''
+      responsavel_original:
+        description: 'Supervisor original (opcional)'
+        required: false
+        default: ''
+jobs:
+  adicionar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+      CLIENTE: ${{ github.event.inputs.cliente }}
+      USINAS: ${{ github.event.inputs.usinas }}
+      CLUSTER: ${{ github.event.inputs.cluster }}
+      RESP_ORIG: ${{ github.event.inputs.responsavel_original }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Adicionar cada usina
+        run: |
+          mkdir -p backups
+          echo "[]" > backups/supervisao-temp-resultado.json
+          IFS=',' read -ra ARR <<< "$USINAS"
+          for USINA in "${ARR[@]}"; do
+            USINA_TRIM=$(echo "$USINA" | sed 's/^ *//;s/ *$//')
+            echo "Adicionando: $USINA_TRIM"
+            PAYLOAD=$(python3 -c "
+import json
+print(json.dumps({'cliente': '$CLIENTE', 'usina': '''$USINA_TRIM''', 'cluster': '$CLUSTER', 'responsavelOriginal': '''$RESP_ORIG'''}))
+")
+            RESP=$(curl -s -w "\nSTATUS:%{http_code}" -X POST -H "Content-Type: application/json" \
+              "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" \
+              -d "$PAYLOAD")
+            echo "Resposta ($USINA_TRIM): $RESP"
+            echo "$RESP" >> backups/supervisao-temp-resultado.json
+          done
+      - name: Conferir lista final
+        run: |
+          curl -s "https://api.168.138.232.237.sslip.io/supervisao-temporaria" -o backups/supervisao-temp-lista-final.json
+          cat backups/supervisao-temp-lista-final.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/supervisao-temp-resultado.json backups/supervisao-temp-lista-final.json
+          git diff --quiet --cached || git commit -m "Adicionar supervisao temporaria em lote [skip ci]"
+          git push
