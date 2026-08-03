@@ -4155,6 +4155,115 @@ def nova_atividade():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _montar_prompt_extrair_atividade_imagem():
+    lista_usinas = ", ".join(sorted(CATALOGO_USINAS.keys()))
+    return f"""Aja como um Supervisor de O&M da Grid Co. lendo o print de uma Ordem de Serviço (OS)/tarefa
+(pode ser um card da Fracttal, uma mensagem de WhatsApp de um técnico, ou uma anotação de campo) para
+cadastrar essa atividade no painel de gestão.
+
+Extraia da imagem os seguintes campos e responda APENAS com um JSON válido (sem markdown, sem crase,
+sem texto antes ou depois), no formato:
+{{
+  "cliente": "",
+  "usina": "",
+  "equipamento": "",
+  "descricao": "",
+  "responsavel": "",
+  "prazo": "",
+  "prioridade": "",
+  "numeroOS": "",
+  "status": ""
+}}
+
+Regras por campo:
+- "usina": nome da usina/planta como aparece na imagem. Usinas conhecidas no catálogo (tente casar com uma
+  destas se fizer sentido, mas não force — se a imagem mostrar outra usina não listada, transcreva como
+  está escrito mesmo): {lista_usinas}
+- "cliente": só preencha se estiver explícito na imagem OU se você tiver certeza pela usina identificada;
+  senão deixe vazio (o sistema tenta inferir pelo catálogo depois).
+- "descricao": a AÇÃO/TAREFA real a ser feita (o que precisa ser executado), NUNCA apenas o código do
+  ativo/equipamento. Ex.: se o ativo é "THPN-TPZ100-SSEG1-CMRA" mas a ação é "Recomposição de câmera de
+  CFTV", "descricao" deve ser "Recomposição de câmera de CFTV", não o código do ativo.
+- "equipamento": o ativo/equipamento em si (código ou nome), separado da ação.
+- "prazo": data no formato DD/MM/AAAA se houver uma data-limite visível; senão vazio.
+- "prioridade": "Baixa", "Média" ou "Alta" — só preencha se houver indicação clara na imagem (palavras
+  como urgente/crítico = Alta); senão deixe "Média" como neutro.
+- "numeroOS": número da OS/OT se visível (só os dígitos, sem prefixo "OS").
+- "status": um destes valores, o mais coerente com o que a imagem mostra: "Em Aberto", "Em Andamento",
+  "Aguardando Fabricante", "Aguardando Cliente", "Abrir chamado". Se não houver indicação clara, use
+  "Em Aberto".
+- "responsavel": nome da pessoa/técnico responsável, se citado.
+
+REGRA CRÍTICA: se algum campo estiver ilegível, cortado, ambíguo ou simplesmente não aparecer na imagem,
+deixe esse campo como string vazia "" — NUNCA presuma ou invente conteúdo. É melhor deixar em branco pra
+o supervisor preencher manualmente do que registrar informação errada."""
+
+
+@app.route("/extrair-atividade-de-imagem", methods=["POST", "OPTIONS"])
+def extrair_atividade_de_imagem():
+    """Lê o print de uma OS/tarefa (Fracttal, WhatsApp, anotação de campo)
+    via Gemini (visão) e devolve os campos extraídos para pré-preencher o
+    formulário de 'Nova Atividade' no dashboard — o supervisor revisa e
+    confirma antes de efetivamente criar a atividade (POST /nova-atividade
+    continua sendo um passo separado, feito pelo frontend depois que o
+    usuário confere/ajusta os campos)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    body = request.get_json(force=True, silent=True) or {}
+    imagem_b64 = body.get("imagemBase64") or ""
+    imagem_mime = body.get("imagemMimeType") or "image/png"
+    if not imagem_b64:
+        return jsonify({"ok": False, "error": "anexe uma imagem (print) da OS/atividade"}), 400
+
+    prompt = _montar_prompt_extrair_atividade_imagem()
+    parts = [{"text": prompt}, {"inline_data": {"mime_type": imagem_mime, "data": imagem_b64}}]
+
+    diagnostico = request.args.get("diagnostico", "").lower() == "true"
+    try:
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=45,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        campos = json.loads(texto_limpo)
+    except Exception as e:
+        log.error(f"[extrair-atividade-de-imagem] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+    usina_bruta = (campos.get("usina") or "").strip()
+    usina_canonica = canonizar_usina(usina_bruta) if usina_bruta else None
+    usina_reconhecida = usina_canonica is not None
+    if usina_canonica:
+        campos["usina"] = usina_canonica
+        cliente_inferido = inferir_cliente(usina_canonica)
+        if cliente_inferido:
+            campos["cliente"] = cliente_inferido
+
+    campos.setdefault("prioridade", "Média")
+    if not campos.get("prioridade"):
+        campos["prioridade"] = "Média"
+    campos.setdefault("status", "Em Aberto")
+    if not campos.get("status"):
+        campos["status"] = "Em Aberto"
+
+    return jsonify({"ok": True, "campos": campos, "usinaReconhecida": usina_reconhecida}), 200
+
+
 # ── Integração Fracttal (sync automático de OTs → Painel de Atividades) ───
 FRACTTAL_CLIENT_KEY    = os.environ.get("FRACTTAL_CLIENT_KEY", "")
 FRACTTAL_CLIENT_SECRET = os.environ.get("FRACTTAL_CLIENT_SECRET", "")
@@ -8037,16 +8146,20 @@ def adicionar_supervisao_temporaria():
     try:
         ws = get_supervisao_temp_sheet()
         valores = ws.get_all_values()
-        if any(len(row) > 1 and row[1].strip() == usina for row in valores[1:]):
+        linha_existente = next((i for i, row in enumerate(valores[1:], start=2) if len(row) > 1 and row[1].strip() == usina), None)
+        if linha_existente:
             # Já existe: se um grupo foi informado agora, atualiza mesmo
             # assim (permite usar esta mesma tela pra corrigir/trocar o
             # grupo de uma usina já sob supervisão, sem precisar remover
-            # e adicionar de novo).
+            # e adicionar de novo) — tanto na coluna F da planilha quanto
+            # no mapeamento grupo_usina/cluster_usina em _Sistema.
             if grupo_id:
+                ws.update_cell(linha_existente, 6, grupo_id)
                 _config_set_lote_core({
                     f"grupo_usina:{usina}": grupo_id,
                     **({f"cluster_usina:{usina}": cluster} if cluster else {}),
                 })
+                _usinas_temporarias_cache["expira_em"] = 0
                 _mapa_grupo_usina_cache["expira_em"] = 0
                 _mapa_cluster_usina_cache["expira_em"] = 0
             return jsonify({"ok": True, "jaExistia": True}), 200
