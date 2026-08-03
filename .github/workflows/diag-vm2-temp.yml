@@ -1,0 +1,29 @@
+name: Diagnostico VM2 WhatsApp (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Coletar diagnostico via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            echo "=== systemctl status ==="
+            sudo systemctl status wppconnect --no-pager -l | head -40
+            echo "=== journalctl ultimas 150 linhas ==="
+            sudo journalctl -u wppconnect --no-pager -n 150
+            echo "=== memoria ==="
+            free -h
+            echo "=== uptime servico (restart count) ==="
+            systemctl show wppconnect -p NRestarts
+      - name: Salvar output
+        run: |
+          mkdir -p backups
+          echo "ver logs no output do step anterior (Actions run log)" > backups/diag-vm2-placeholder.txt
