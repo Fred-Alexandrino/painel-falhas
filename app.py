@@ -6145,6 +6145,69 @@ def _verificar_compromissos_se_necessario():
         return {"disparado": False, "erro": str(e)}
 
 
+def _verificar_e_disparar_resumo_diario_se_necessario():
+    """Piggyback no /sync-fracttal: gera e envia o resumo diário todo dia
+    na janela 17:00-17:30 (Brasília).
+
+    Migrado do cron do GitHub Actions em 03/08/2026: o workflow estava
+    agendado pra 20h UTC (17h BRT) mas o GitHub Actions atrasava o
+    disparo em 35 a 55min em TODOS os dias observados (fila de runners
+    compartilhados, comum em horários cheios como hora exata) — a
+    geração e o envio em si sempre levaram menos de 30s, o atraso era
+    100% do agendamento do Actions, não da geração. Mesmo padrão de
+    piggyback já usado pra comunicados/compromissos: o gatilho real é o
+    ping do UptimeRobot a cada 5min no /sync-fracttal, que não depende
+    de fila de agendamento nenhuma.
+
+    Se a geração falhar (ex.: timeout do Gemini), a trava é liberada
+    pra tentar de novo no próximo ping dentro da mesma janela (até 6
+    tentativas, uma a cada 5min entre 17:00 e 17:30)."""
+    try:
+        agora = agora_br()
+        hoje_str = agora.strftime("%Y-%m-%d")
+        if not (agora.hour == 17 and agora.minute <= 30):
+            return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
+        ja_feito = _ler_trava("resumo_diario_enviado_em")
+        if ja_feito == hoje_str:
+            return {"disparado": False, "motivo": "já enviado hoje"}
+        _gravar_trava("resumo_diario_enviado_em", hoje_str)
+        try:
+            resultado = _gerar_resumo_diario_core(data_str=hoje_str, enviar=True)
+        except Exception:
+            _gravar_trava("resumo_diario_enviado_em", "")
+            raise
+        return {"disparado": True, "resultado": resultado}
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro no piggyback: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
+def _verificar_e_disparar_resumo_semanal_se_necessario():
+    """Piggyback no /sync-fracttal: gera e envia o resumo semanal só às
+    sextas-feiras, mesma janela 17:00-17:30 e mesmo motivo da migração
+    do resumo diário (atraso do cron do GitHub Actions)."""
+    try:
+        agora = agora_br()
+        if agora.weekday() != 4:  # 4 = sexta-feira
+            return {"disparado": False, "motivo": "não é sexta-feira"}
+        hoje_str = agora.strftime("%Y-%m-%d")
+        if not (agora.hour == 17 and agora.minute <= 30):
+            return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
+        ja_feito = _ler_trava("resumo_semanal_enviado_em")
+        if ja_feito == hoje_str:
+            return {"disparado": False, "motivo": "já enviado hoje"}
+        _gravar_trava("resumo_semanal_enviado_em", hoje_str)
+        try:
+            resultado = _gerar_resumo_semanal_core(data_fim_str=hoje_str, enviar=True)
+        except Exception:
+            _gravar_trava("resumo_semanal_enviado_em", "")
+            raise
+        return {"disparado": True, "resultado": resultado}
+    except Exception as e:
+        log.error(f"[ResumoSemanal] Erro no piggyback: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
 @app.route("/corrigir-nomenclatura-preventiva", methods=["POST", "GET"])
 def corrigir_nomenclatura_preventiva():
     """Correção retroativa de uso único: atividades multi-tarefa criadas
@@ -7083,6 +7146,8 @@ def sync_fracttal():
          Fracttal e ela aparecer no dashboard, sem esperar a próxima
          janela fixa de auditoria completa.
       4. Comunicados diários das 7h (piggyback, gatilho confiável).
+      5. Resumo diário (17h) e resumo semanal (sexta 17h), migrados do
+         cron do GitHub Actions em 03/08/2026 por atraso recorrente.
     """
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
@@ -7124,6 +7189,18 @@ def sync_fracttal():
     except Exception as e:
         log.error(f"[Compromissos] Erro no piggyback: {e}")
         body["compromissos_check"] = {"erro": str(e)}
+
+    try:
+        body["resumo_diario_check"] = _verificar_e_disparar_resumo_diario_se_necessario()
+    except Exception as e:
+        log.error(f"[ResumoDiario] Erro no piggyback: {e}")
+        body["resumo_diario_check"] = {"erro": str(e)}
+
+    try:
+        body["resumo_semanal_check"] = _verificar_e_disparar_resumo_semanal_se_necessario()
+    except Exception as e:
+        log.error(f"[ResumoSemanal] Erro no piggyback: {e}")
+        body["resumo_semanal_check"] = {"erro": str(e)}
 
     return jsonify(body), 200
 
