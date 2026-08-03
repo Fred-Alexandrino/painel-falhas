@@ -1,13 +1,11 @@
-name: Resumo Diario Agendado (17h)
+name: Resumo Diario Agendado (17h) - DESATIVADO, ver piggyback em /sync-fracttal
 on:
-  schedule:
-    - cron: '0 20 * * *'
   workflow_dispatch: {}
 jobs:
   enviar:
     runs-on: ubuntu-latest
     steps:
-      - name: Gerar e enviar resumo diario
+      - name: Gerar e enviar resumo diario manualmente
         env:
           WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
