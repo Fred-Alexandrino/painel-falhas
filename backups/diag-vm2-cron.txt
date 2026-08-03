@@ -1,0 +1,31 @@
+Warning: Permanently added '147.15.66.241' (ED25519) to the list of known hosts.
+=== crontab -l ===
+no crontab for ubuntu
+=== systemd timers ===
+NEXT                            LEFT LAST                               PASSED UNIT                           ACTIVATES
+Mon 2026-08-03 21:12:26 UTC  1min 8s Mon 2026-08-03 21:10:26 UTC       51s ago heartbeat.timer                heartbeat.service
+Mon 2026-08-03 21:20:00 UTC     8min Mon 2026-08-03 21:10:10 UTC   1min 7s ago sysstat-collect.timer          sysstat-collect.service
+Mon 2026-08-03 22:39:01 UTC 1h 27min Mon 2026-08-03 21:11:06 UTC       11s ago fwupd-refresh.timer            fwupd-refresh.service
+Tue 2026-08-04 00:00:00 UTC 2h 48min Mon 2026-08-03 00:00:00 UTC       21h ago dpkg-db-backup.timer           dpkg-db-backup.service
+Tue 2026-08-04 00:00:00 UTC 2h 48min Mon 2026-08-03 00:00:00 UTC       21h ago logrotate.timer                logrotate.service
+Tue 2026-08-04 00:07:00 UTC 2h 55min Mon 2026-08-03 00:07:15 UTC       21h ago sysstat-summary.timer          sysstat-summary.service
+Tue 2026-08-04 01:06:15 UTC 3h 54min Mon 2026-08-03 01:06:15 UTC       20h ago update-notifier-download.timer update-notifier-download.service
+Tue 2026-08-04 01:14:39 UTC  4h 3min Mon 2026-08-03 01:14:39 UTC       19h ago systemd-tmpfiles-clean.timer   systemd-tmpfiles-clean.service
+Tue 2026-08-04 01:44:19 UTC 4h 33min Mon 2026-08-03 13:33:40 UTC        7h ago apt-daily.timer                apt-daily.service
+Tue 2026-08-04 06:57:25 UTC       9h Mon 2026-08-03 06:22:40 UTC       14h ago apt-daily-upgrade.timer        apt-daily-upgrade.service
+Tue 2026-08-04 07:56:40 UTC      10h Mon 2026-08-03 16:32:15 UTC  4h 39min ago motd-news.timer                motd-news.service
+Tue 2026-08-04 09:33:43 UTC      12h Mon 2026-08-03 01:31:15 UTC       19h ago man-db.timer                   man-db.service
+Sat 2026-08-08 17:26:00 UTC   4 days Thu 2026-07-30 09:40:55 UTC    4 days ago update-notifier-motd.timer     update-notifier-motd.service
+Sun 2026-08-09 03:10:40 UTC   5 days Sun 2026-08-02 03:10:15 UTC 1 day 18h ago e2scrub_all.timer              e2scrub_all.service
+Mon 2026-08-10 00:36:11 UTC   6 days Mon 2026-08-03 00:36:47 UTC       20h ago fstrim.timer                   fstrim.service
+-                                  - -                                       - apport-autoreport.timer        apport-autoreport.service
+-                                  - -                                       - snapd.snap-repair.timer        snapd.snap-repair.service
+-                                  - -                                       - ua-timer.timer                 ua-timer.service
+
+18 timers listed.
+=== unidades systemd wpp/heartbeat ===
+heartbeat.service                                                                                                      loaded    inactive dead      Heartbeat leve pra outra VM (evita ociosidade)
+wppconnect.service                                                                                                     loaded    active   running   Ponte WhatsApp - Baileys
+heartbeat.timer                                                                                                        loaded    active   waiting   Roda o heartbeat a cada 2 minutos
+=== stop/start no journal da unit ===
+SSH_EXIT_CODE=124
