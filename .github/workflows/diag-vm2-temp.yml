@@ -17,23 +17,27 @@ jobs:
           chmod 600 ~/.ssh/vm2_key
           mkdir -p backups
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm2_key ubuntu@147.15.66.241 '
-            echo "=== systemctl status ==="
-            sudo systemctl status wppconnect --no-pager -l | head -40
-            echo "=== NRestarts ==="
-            systemctl show wppconnect -p NRestarts
-            echo "=== memoria ==="
-            free -h
-            echo "=== journalctl ultimas 200 linhas ==="
-            sudo journalctl -u wppconnect --no-pager -n 200
-          ' > backups/diag-vm2-output.txt 2>&1 || true
+            echo "=== crontab -l ==="
+            crontab -l 2>&1
+            echo "=== systemd timers ==="
+            systemctl list-timers --all --no-pager
+            echo "=== unidades systemd relacionadas a heartbeat/watchdog ==="
+            systemctl list-units --all --no-pager | grep -i -E "heartbeat|watchdog|wpp"
+            echo "=== conteudo de possiveis scripts de heartbeat ==="
+            find / -iname "*heartbeat*" -not -path "*/node_modules/*" 2>/dev/null
+            echo "=== journal do systemd mostrando quem chamou restart (unit logs) ==="
+            sudo journalctl -u wppconnect --no-pager | grep -i -E "Stopping|Started|Deactivated" | tail -30
+            echo "=== journal geral do systemd (nao so a unit) mostrando restart commands ==="
+            sudo journalctl --no-pager -n 300 | grep -i wppconnect
+          ' > backups/diag-vm2-cron.txt 2>&1 || true
       - name: Commitar resultado
         run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/diag-vm2-output.txt
-          git commit -m "diag vm2 [skip ci]" || echo "nothing"
+          git add backups/diag-vm2-cron.txt
+          git commit -m "diag vm2 cron [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/diag-vm2-output.txt
-          git commit -m "diag vm2 [skip ci]" || echo "nothing2"
+          git add backups/diag-vm2-cron.txt
+          git commit -m "diag vm2 cron [skip ci]" || echo "nothing2"
           git push origin HEAD:main
