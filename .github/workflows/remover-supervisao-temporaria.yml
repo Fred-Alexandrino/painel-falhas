@@ -1,0 +1,40 @@
+name: Remover Supervisao Temporaria (lote)
+on:
+  workflow_dispatch:
+    inputs:
+      usinas:
+        description: 'Usinas separadas por vírgula (nome exato como está cadastrado)'
+        required: true
+jobs:
+  remover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      USINAS: ${{ github.event.inputs.usinas }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remover cada usina
+        run: |
+          mkdir -p backups
+          echo "[]" > backups/supervisao-temp-remocao-resultado.json
+          IFS=',' read -ra ARR <<< "$USINAS"
+          for USINA in "${ARR[@]}"; do
+            USINA_TRIM=$(echo "$USINA" | sed 's/^ *//;s/ *$//')
+            echo "Removendo: $USINA_TRIM"
+            PAYLOAD=$(USINA_TRIM="$USINA_TRIM" python3 -c 'import os, json; print(json.dumps({"usina": os.environ["USINA_TRIM"]}))')
+            RESP=$(curl -s -w "\nSTATUS:%{http_code}" -X POST -H "Content-Type: application/json" "https://api.168.138.232.237.sslip.io/supervisao-temporaria/remover" -d "$PAYLOAD")
+            echo "Resposta ($USINA_TRIM): $RESP"
+            echo "$RESP" >> backups/supervisao-temp-remocao-resultado.json
+          done
+      - name: Conferir lista final
+        run: |
+          curl -s "https://api.168.138.232.237.sslip.io/supervisao-temporaria" -o backups/supervisao-temp-lista-final.json
+          cat backups/supervisao-temp-lista-final.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/supervisao-temp-remocao-resultado.json backups/supervisao-temp-lista-final.json
+          git diff --quiet --cached || git commit -m "Remover supervisao temporaria em lote [skip ci]"
+          git push
