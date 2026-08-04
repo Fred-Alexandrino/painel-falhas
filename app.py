@@ -9667,12 +9667,18 @@ Comentários:
 3. [Passo 3...]
 
 REGRAS DE ESCRITA E VOCABULÁRIO:
-- O texto deve ser curto, claro e voltado para a execução operacional em campo ou inserção em sistema de OS.
+- O texto deve ser curto na estrutura (frases objetivas, sem enrolação), mas cada passo deve ser DETALHADO E ESPECÍFICO O SUFICIENTE para não deixar margem de interpretação. Escreva pensando que a equipe de campo, se o passo for vago, tende a executar de forma resumida ou pular a etapa — o texto tem que fechar essa brecha.
 - Não invente informações ou equipamentos que não foram solicitados, mas garanta que o passo a passo faça sentido técnico.
 - Integre orientações de segurança (EPIs, desenergização, sinalização) diretamente nos passos da atividade.
 - Não repita a mesma ideia em mais de um item.
 - Para atividades de acompanhamento/fiscalização, inicie os passos com verbos como: Acompanhar, verificar, conferir, registrar, avaliar, validar.
 - Para atividades de execução direta, inicie os passos com verbos como: Realizar, executar, corrigir, ajustar, efetuar, acessar, inspecionar.
+
+REGRA DE DETALHAMENTO ANTI-EXECUÇÃO-SUPERFICIAL (MUITO IMPORTANTE):
+- Nunca deixe um passo genérico e solto, sem objeto claro — proibido escrever coisas como "verificar equipamento", "realizar manutenção", "checar funcionamento", "inspecionar componentes" sem dizer O QUÊ exatamente verificar/realizar/checar/inspecionar.
+- Cada passo deve, sempre que aplicável, deixar explícito: (1) ONDE fazer — o ponto físico exato (ex.: entrada CC do inversor, saída CA, quadro de proteção, string X, conector MC4, cada canaleta, cada face do módulo), não só "no equipamento"; (2) COM QUE FERRAMENTA/MÉTODO — alicate amperímetro, multímetro, inspeção visual, acesso ao supervisório/datalogger, torquímetro, etc.; (3) QUAL O CRITÉRIO de aceite ou o que deve ser comparado — ex.: comparar leitura de campo com a plataforma de monitoramento, verificar se há assimetria entre strings, checar se o valor está dentro da faixa nominal, confirmar ausência de folga/oxidação/aquecimento.
+- Se a atividade tiver múltiplos itens do mesmo tipo (várias strings, vários módulos, vários conectores, várias câmeras), deixe claro no passo que a verificação/ação deve ser feita EM CADA UM deles individualmente, não só "de forma geral".
+- Pelo menos um dos últimos passos deve exigir registro de evidência de forma explícita e específica (fotos do antes/depois, valores medidos anotados, prints de tela) — não basta um "registrar" solto, diga o que precisa ser registrado.
 
 REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
