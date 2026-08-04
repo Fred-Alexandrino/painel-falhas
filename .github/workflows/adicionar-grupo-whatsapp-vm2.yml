@@ -1,0 +1,36 @@
+name: Adicionar Grupo WhatsApp VM2 (GRUPOS_IDS ponte)
+on:
+  workflow_dispatch:
+    inputs:
+      grupo_id:
+        description: 'ID do grupo (ex: 120363427259899891@g.us)'
+        required: true
+jobs:
+  adicionar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Adicionar ID ao GRUPOS_IDS da ponte via SSH e reiniciar servico
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          envs: GRUPO_ID_NOVO
+          script: |
+            set -e
+            cd ~/wppconnect-server
+            echo "=== .env ANTES ==="
+            grep GRUPOS_IDS .env || echo "(GRUPOS_IDS nao encontrado no .env)"
+            if grep -q "$GRUPO_ID_NOVO" .env; then
+              echo "Grupo ja presente no GRUPOS_IDS, nada a fazer."
+            else
+              sed -i "/^GRUPOS_IDS=/ s/\$/,${GRUPO_ID_NOVO}/" .env
+              echo "Grupo adicionado."
+            fi
+            echo "=== .env DEPOIS ==="
+            grep GRUPOS_IDS .env
+            sudo systemctl restart wppconnect
+            sleep 3
+            sudo systemctl is-active wppconnect
+        env:
+          GRUPO_ID_NOVO: ${{ github.event.inputs.grupo_id }}
