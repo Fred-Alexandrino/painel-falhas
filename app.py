@@ -10128,8 +10128,8 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363402176878100": "COS — Técnicos O&M Nordeste",
     "120363423533840348": "COS — Técnicos O&M Sudeste",
     "120363421052607450": "COS — Técnicos O&M Norte",
-    "120363406919935108": "Equipe Nova Xavantina 1 e 2",
     "120363405111083249": "Equipe Crateús",
+    "120363410081447469": "Equipe Crateús",
     "120363405244065477": "O&M CE Sítio Bonfim - Grid/Thopen",
     "120363427839577268": "Equipe Elias Fausto",
     "120363428268426406": "Equipe Matão/Topázio",
@@ -10140,6 +10140,7 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363425342949474": "Equipe Araputanga/Poconé",
     "120363406329162612": "Equipe Nobres",
     "120363424804307945": "Thopen & GridCo. | Usinas FRED ALEXANDRINO",
+    "120363428178674382": "Equipe - Aquiraz/Cascavel",
 }
 
 
