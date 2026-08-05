@@ -1,0 +1,7 @@
+{"gravados":["cluster_usina:Guajir\u00fa","cluster_usina:Sol do Norte I","cluster_usina:Sol do Norte II","grupo_usina:Guajir\u00fa","grupo_usina:Sol do Norte I","grupo_usina:Sol do Norte II","cluster_usina:SunPower (Cascavel)","cluster_usina:Carosa (Aquiraz I)","cluster_usina:Salvales (Aquiraz II)","grupo_usina:SunPower (Cascavel)","grupo_usina:Carosa (Aquiraz I)","grupo_usina:Salvales (Aquiraz II)"],"ok":true}
+
+STATUS:200
+
+{"ok":true}
+
+STATUS:200
