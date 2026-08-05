@@ -1,0 +1,23 @@
+name: Listar Grupos WhatsApp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 30 "https://wpp.147.15.66.241.sslip.io/grupos" -o backups/lista-grupos.txt
+      - run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/lista-grupos.txt
+          git commit -m "listar grupos wpp [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/lista-grupos.txt
+          git commit -m "listar grupos wpp [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
