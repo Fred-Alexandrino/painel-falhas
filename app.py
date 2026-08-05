@@ -2698,6 +2698,29 @@ def notificar_edicao_planilha():
         corpo = (f"Linha {linha} · {cabecalho}: "
                  f"\"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})")
 
+        # Se for edição no Painel de Atividades, busca o número da OS e o
+        # tema (Ação/Tarefa) da linha editada — sem isso a notificação só
+        # dizia "linha X mudou", impossível saber do que se tratava sem
+        # abrir a planilha (corrigido 31/07/2026; reaplicado 05/08/2026
+        # depois de constatado que outra sessão tinha revertido pra versão
+        # anterior — ver nota de vigilância em memória sobre correções
+        # sendo sobrescritas sem aviso).
+        if aba == ATIVIDADES_SHEET_NAME and id_registro:
+            try:
+                ws_ativ = get_atividades_sheet()
+                todos_ativ = ws_ativ.get_all_values()
+                encontrada = buscar_atividade_por_id_ou_os(todos_ativ, id_registro)
+                if encontrada:
+                    _, linha_ativ = encontrada
+                    numero_os_ativ = linha_ativ[13].strip() if len(linha_ativ) > 13 else ""
+                    descricao_ativ = linha_ativ[4].strip() if len(linha_ativ) > 4 else ""
+                    usina_ativ = linha_ativ[2].strip() if len(linha_ativ) > 2 else ""
+                    tema_ativ = descricao_ativ or "Descrição não informada"
+                    titulo = f"✏️ Edição manual" + (f" — OS {numero_os_ativ}" if numero_os_ativ else "") + (f" — {usina_ativ}" if usina_ativ else "")
+                    corpo = f"{tema_ativ}\n{cabecalho}: \"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})"
+            except Exception as e:
+                log.error(f"[EdicaoPlanilha] Falha ao enriquecer com tema da OS: {e}")
+
         url = "https://fred-alexandrino.github.io/PAINELDEFALHAS/"
         if id_registro:
             if aba == ATIVIDADES_SHEET_NAME:
@@ -3666,16 +3689,18 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={r.get('id','')}",
                 )
             else:
-                # Cada linha agora traz o tema da OS (Ação/Tarefa, truncado)
-                # e o que mudou nela — antes só mostrava "número (usina)",
-                # impossível saber do que se tratava sem abrir o painel
-                # (corrigido 29/07/2026).
+                # Cada linha agora traz usina + tema da OS (Ação/Tarefa,
+                # truncado) + o que mudou — antes faltava a usina, então
+                # não dava pra saber de qual planta se tratava sem abrir
+                # o painel (corrigido 05/08/2026).
                 def _linha_resumo(r):
+                    usina = (r.get("usina") or "Usina não informada").strip()
                     tema = (r.get("descricao") or r.get("equipamento") or "sem descrição").strip()
-                    if len(tema) > 45:
-                        tema = tema[:45].rstrip() + "…"
+                    if len(tema) > 35:
+                        tema = tema[:35].rstrip() + "…"
                     mudanca = r.get("mudancaResumo") or r.get("statusGeralOS") or ""
-                    return f"{r['numeroOS']} — {tema} ({mudanca})" if mudanca else f"{r['numeroOS']} — {tema}"
+                    base = f"{r['numeroOS']} · {usina} — {tema}"
+                    return f"{base} ({mudanca})" if mudanca else base
                 linhas = "\n".join(_linha_resumo(r) for r in mudaram[:8])
                 enviar_push(
                     titulo=f"🔄 {len(mudaram)} OSs atualizadas",
@@ -5413,7 +5438,8 @@ def _sync_fracttal_core(desde_horas=8):
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-sync", append=True)
             criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta,
-                             "usina": mapeado["usina"], "cliente": mapeado["cliente"]})
+                             "usina": mapeado["usina"], "cliente": mapeado["cliente"],
+                             "descricao": mapeado.get("descricao", "")})
             os_existentes.add(mapeado["numeroOS"])
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
@@ -5423,21 +5449,32 @@ def _sync_fracttal_core(desde_horas=8):
     # rodada — restaurado 15/07/2026 (tinha sido perdido numa reconstrução
     # desta função por outra sessão, reintroduzindo notificação em
     # duplicidade/spam por item que já tinha sido corrigido antes).
+    # 05/08/2026: mesma função teve o tema/descrição perdido de novo por
+    # outra sobrescrita — reaplicado, agora mostrando tema (Ação/Tarefa)
+    # em vez de só cliente/usina, sem o quê não dava pra saber do que a
+    # OS se tratava sem abrir o painel.
     if criadas:
         try:
             if len(criadas) == 1:
                 c = criadas[0]
+                tema = (c.get("descricao") or "Descrição não informada").strip()
                 enviar_push(
                     titulo=f"🆕 Nova OS Fracttal — {c['numeroOS']} — {c['usina']}",
-                    corpo=f"{c['cliente']}",
+                    corpo=f"{tema}\n{c['cliente']}",
                     tipo="fracttal_nova_os",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={c['id']}",
                 )
             else:
-                usinas_resumo = ", ".join(sorted(set(c["usina"] for c in criadas))[:5])
+                def _linha_nova_os(c):
+                    usina = (c.get("usina") or "Usina não informada").strip()
+                    tema = (c.get("descricao") or "sem descrição").strip()
+                    if len(tema) > 35:
+                        tema = tema[:35].rstrip() + "…"
+                    return f"{c['numeroOS']} · {usina} — {tema}"
+                linhas = "\n".join(_linha_nova_os(c) for c in criadas[:6])
                 enviar_push(
                     titulo=f"🆕 {len(criadas)} novas OSs na Fracttal",
-                    corpo=f"Usinas: {usinas_resumo}{'...' if len(set(c['usina'] for c in criadas)) > 5 else ''}",
+                    corpo=f"{linhas}{chr(10) + '...' if len(criadas) > 6 else ''}",
                     tipo="fracttal_nova_os",
                     url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
                 )
