@@ -1,8 +1,5 @@
-EnvironmentFile=/home/ubuntu/painel-falhas/.env
----
--rw-rw-r-- 1 ubuntu ubuntu 3611 Aug  4 20:24 /home/ubuntu/painel-falhas/.env
--rw-rw-r-- 1 ubuntu ubuntu 3515 Jul 23 12:57 /home/ubuntu/painel-falhas/.env.bak-20260723-125706
----
-SHEET_ID=1VLo8__wxSJVWiUIFd_JTcOnadJlUt440i1M1pC0ehTs
-WEBHOOK_SECRET=falhas2026
-WPP_SERVER_URL=https
+Traceback (most recent call last):
+  File "/tmp/vsis.py", line 3, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+FALHOU
