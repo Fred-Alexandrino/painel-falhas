@@ -1,0 +1,7 @@
+{"gravados":["grupo_usina:Hortina (Quixad\u00e1 I)","grupo_usina:Vitesse (Quixad\u00e1 II)"],"ok":true}
+
+STATUS:200
+
+{"ok":true}
+
+STATUS:200
