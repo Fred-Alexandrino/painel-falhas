@@ -1,0 +1,9 @@
+2026-08-05 13:41:00,934 ERROR [Push] Erro ao carregar subscriptions da planilha: GOOGLE_CREDENTIALS_JSON não configurado
+Traceback (most recent call last):
+  File "/tmp/vsis.py", line 4, in <module>
+    gc = get_gc()
+         ^^^^^^^^
+  File "/home/ubuntu/painel-falhas/app.py", line 114, in get_gc
+    raise ValueError("GOOGLE_CREDENTIALS_JSON não configurado")
+ValueError: GOOGLE_CREDENTIALS_JSON não configurado
+FALHOU
