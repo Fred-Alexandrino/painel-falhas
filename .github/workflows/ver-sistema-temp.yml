@@ -1,4 +1,4 @@
-name: Ver aba Sistema v2
+name: Ver aba Sistema v3
 on:
   workflow_dispatch: {}
 jobs:
@@ -14,30 +14,23 @@ jobs:
           echo "${{ secrets.ORACLE_VM1_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H 168.138.232.237 >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Ver linhas cluster_usina e grupo_usina existentes
+      - name: Rodar dentro do processo do servico via API interna (usar endpoint existente)
         run: |
           mkdir -p backups
-          printf '%s\n' \
-            "import sys" \
-            "sys.path.insert(0, '.')" \
-            "from app import get_gc, SHEET_ID" \
-            "gc = get_gc()" \
-            "ss = gc.open_by_key(SHEET_ID)" \
-            "ws = ss.worksheet('_Sistema')" \
-            "rows = ws.get_all_values()" \
-            "for r in rows:" \
-            "    if r and (r[0].startswith('cluster_usina:') or r[0].startswith('grupo_usina:')):" \
-            "        print(r)" \
-            > /tmp/vsis.py
-          scp -i ~/.ssh/id_rsa /tmp/vsis.py ubuntu@168.138.232.237:/tmp/vsis.py
-          ssh -i ~/.ssh/id_rsa ubuntu@168.138.232.237 'cd ~/painel-falhas && set -a && source .env && set +a && venv/bin/python3 /tmp/vsis.py' > backups/ver-sistema.txt 2>&1 || echo "FALHOU" >> backups/ver-sistema.txt
+          ssh -i ~/.ssh/id_rsa ubuntu@168.138.232.237 '
+            cat /etc/systemd/system/painel-falhas.service | grep -i environment;
+            echo "---";
+            ls -la ~/painel-falhas/.env*;
+            echo "---";
+            head -c 100 ~/painel-falhas/.env 2>/dev/null;
+          ' > backups/ver-sistema.txt 2>&1 || echo "FALHOU" >> backups/ver-sistema.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
           git add backups/ver-sistema.txt
-          git commit -m "ver sistema v2 [skip ci]" || echo "nothing"
+          git commit -m "ver sistema v3 [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
           git add backups/ver-sistema.txt
-          git commit -m "ver sistema v2 [skip ci]" || echo "nothing2"
+          git commit -m "ver sistema v3 [skip ci]" || echo "nothing2"
           git push origin HEAD:main
