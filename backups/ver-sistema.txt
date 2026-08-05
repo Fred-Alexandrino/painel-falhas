@@ -1,5 +1,18 @@
+2026-08-05 13:47:14,357 ERROR [Push] Erro ao carregar subscriptions da planilha: Expecting value: line 1 column 1 (char 0)
 Traceback (most recent call last):
-  File "/tmp/vsis.py", line 3, in <module>
-    from dotenv import load_dotenv
-ModuleNotFoundError: No module named 'dotenv'
+  File "/tmp/vsis.py", line 10, in <module>
+    gc = get_gc()
+         ^^^^^^^^
+  File "/home/ubuntu/painel-falhas/app.py", line 115, in get_gc
+    creds_dict = json.loads(creds_json)
+                 ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
 FALHOU
