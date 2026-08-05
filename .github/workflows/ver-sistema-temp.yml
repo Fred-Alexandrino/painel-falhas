@@ -1,4 +1,4 @@
-name: Ver aba Sistema v5
+name: Config Set Lote Clusters
 on:
   workflow_dispatch: {}
 jobs:
@@ -8,42 +8,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.ORACLE_VM1_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 168.138.232.237 >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Ver linhas cluster_usina e grupo_usina existentes (parse manual do .env)
-        run: |
+      - run: |
           mkdir -p backups
-          printf '%s\n' \
-            "import sys, os, re" \
-            "sys.path.insert(0, '.')" \
-            "for line in open('.env', encoding='utf-8'):" \
-            "    line = line.rstrip('\n')" \
-            "    if not line or line.startswith('#') or '=' not in line:" \
-            "        continue" \
-            "    k, v = line.split('=', 1)" \
-            "    os.environ[k] = v" \
-            "from app import get_gc, SHEET_ID" \
-            "gc = get_gc()" \
-            "ss = gc.open_by_key(SHEET_ID)" \
-            "ws = ss.worksheet('_Sistema')" \
-            "rows = ws.get_all_values()" \
-            "for r in rows:" \
-            "    if r and (r[0].startswith('cluster_usina:') or r[0].startswith('grupo_usina:')):" \
-            "        print(r)" \
-            > /tmp/vsis.py
-          scp -i ~/.ssh/id_rsa /tmp/vsis.py ubuntu@168.138.232.237:/tmp/vsis.py
-          ssh -i ~/.ssh/id_rsa ubuntu@168.138.232.237 'cd ~/painel-falhas && venv/bin/python3 /tmp/vsis.py' > backups/ver-sistema.txt 2>&1 || echo "FALHOU" >> backups/ver-sistema.txt
+          echo "=== antes ===" > backups/config-clusters.txt
+          curl -s "https://api.168.138.232.237.sslip.io/config-ler" -H "X-Webhook-Secret: falhas2026" >> backups/config-clusters.txt
+          echo "" >> backups/config-clusters.txt
       - run: |
           git config user.name "sync-fracttal-bot"
           git config user.email "actions@github.com"
-          git add backups/ver-sistema.txt
-          git commit -m "ver sistema v5 [skip ci]" || echo "nothing"
+          git add backups/config-clusters.txt
+          git commit -m "config clusters antes [skip ci]" || echo "nothing"
           git fetch origin main
           git reset --soft origin/main
-          git add backups/ver-sistema.txt
-          git commit -m "ver sistema v5 [skip ci]" || echo "nothing2"
+          git add backups/config-clusters.txt
+          git commit -m "config clusters antes [skip ci]" || echo "nothing2"
           git push origin HEAD:main
