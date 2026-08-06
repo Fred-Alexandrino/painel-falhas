@@ -1,12 +1,10 @@
 {
   "pares": {
-    "grupo_usina:Thopen - Caxambu 1 - SP": "120363406191445169@g.us",
-    "grupo_usina:Thopen - Indaiatuba 1 - SP": "120363406191445169@g.us",
-    "grupo_usina:Thopen - Santa Bárbara 1 - SP": "120363406191445169@g.us",
-    "grupo_usina:Thopen - Piracicaba 1 - SP": "120363406191445169@g.us",
-    "cluster_usina:Thopen - Caxambu 1 - SP": "SP Leste 03",
-    "cluster_usina:Thopen - Indaiatuba 1 - SP": "SP Leste 03",
-    "cluster_usina:Thopen - Santa Bárbara 1 - SP": "SP Leste 03",
-    "cluster_usina:Thopen - Piracicaba 1 - SP": "SP Leste 03"
+    "grupo_usina:Guajirú": "120363431221706747@g.us",
+    "grupo_usina:Sol do Norte I": "120363431221706747@g.us",
+    "grupo_usina:Sol do Norte II": "120363431221706747@g.us",
+    "cluster_usina:Guajirú": "CE Norte 02",
+    "cluster_usina:Sol do Norte I": "CE Norte 02",
+    "cluster_usina:Sol do Norte II": "CE Norte 02"
   }
 }
