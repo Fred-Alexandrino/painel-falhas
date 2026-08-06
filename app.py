@@ -9731,7 +9731,7 @@ REGRA PARA MEDIÇÕES ELÉTRICAS CC/CA (OBRIGATÓRIA sempre que a atividade envo
 
 REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
-- Em qualquer outro caso, termine com um item dizendo que a atividade não envolve manobra elétrica e não é necessário acionar o COS.
+- Em qualquer outro caso, NÃO inclua nenhum item sobre o COS — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
 
 EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS):
 
@@ -9782,7 +9782,6 @@ Comentários:
 6. Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
 7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
 8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
-9. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
 Título: Inspeção de Inversor para Abertura de Chamado
@@ -9794,7 +9793,6 @@ Comentários:
 4. Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
 5. Coleta do número de série e posição operacional do inversor.
 6. Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
-7. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
