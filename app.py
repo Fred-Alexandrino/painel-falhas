@@ -11540,14 +11540,14 @@ def gerar_relatorio_handover_route():
         buf = gerar_handover_docx(atividade, resumo_ia)
 
         cliente_slug = re.sub(r"[^A-Za-z0-9]+", "", atividade.get("cliente", "") or "") or "GridCo"
-        nome_arquivo = f"Handover_OS_{numero_os.replace('/', '-')}_{cliente_slug}_GridCo.docx"
+        nome_arquivo = f"Handover_OS_{numero_os.replace('/', '-')}_{cliente_slug}_GridCo.pdf"
 
         log.info(f"[Relatorio Handover] Gerado para OS {numero_os} ({atividade.get('cliente','')})")
         return send_file(
             buf,
             as_attachment=True,
             download_name=nome_arquivo,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            mimetype="application/pdf",
         )
     except Exception as e:
         log.error(f"[Relatorio Handover] Erro: {e}")
