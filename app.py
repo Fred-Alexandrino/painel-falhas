@@ -28,8 +28,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
                                 listar_usinas_cliente, montar_status_zeladoria_por_usina)
-from relatorio_handover import gerar_handover_docx
-from relatorio_handover_usina import montar_relatorio_handover_usina
 
 # Push notifications (pywebpush)
 try:
@@ -2700,29 +2698,6 @@ def notificar_edicao_planilha():
         corpo = (f"Linha {linha} · {cabecalho}: "
                  f"\"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})")
 
-        # Se for edição no Painel de Atividades, busca o número da OS e o
-        # tema (Ação/Tarefa) da linha editada — sem isso a notificação só
-        # dizia "linha X mudou", impossível saber do que se tratava sem
-        # abrir a planilha (corrigido 31/07/2026; reaplicado 05/08/2026
-        # depois de constatado que outra sessão tinha revertido pra versão
-        # anterior — ver nota de vigilância em memória sobre correções
-        # sendo sobrescritas sem aviso).
-        if aba == ATIVIDADES_SHEET_NAME and id_registro:
-            try:
-                ws_ativ = get_atividades_sheet()
-                todos_ativ = ws_ativ.get_all_values()
-                encontrada = buscar_atividade_por_id_ou_os(todos_ativ, id_registro)
-                if encontrada:
-                    _, linha_ativ = encontrada
-                    numero_os_ativ = linha_ativ[13].strip() if len(linha_ativ) > 13 else ""
-                    descricao_ativ = linha_ativ[4].strip() if len(linha_ativ) > 4 else ""
-                    usina_ativ = linha_ativ[2].strip() if len(linha_ativ) > 2 else ""
-                    tema_ativ = descricao_ativ or "Descrição não informada"
-                    titulo = f"✏️ Edição manual" + (f" — OS {numero_os_ativ}" if numero_os_ativ else "") + (f" — {usina_ativ}" if usina_ativ else "")
-                    corpo = f"{tema_ativ}\n{cabecalho}: \"{valor_antigo or '—'}\" → \"{valor_novo or '—'}\" (por {usuario})"
-            except Exception as e:
-                log.error(f"[EdicaoPlanilha] Falha ao enriquecer com tema da OS: {e}")
-
         url = "https://fred-alexandrino.github.io/PAINELDEFALHAS/"
         if id_registro:
             if aba == ATIVIDADES_SHEET_NAME:
@@ -3691,18 +3666,16 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={r.get('id','')}",
                 )
             else:
-                # Cada linha agora traz usina + tema da OS (Ação/Tarefa,
-                # truncado) + o que mudou — antes faltava a usina, então
-                # não dava pra saber de qual planta se tratava sem abrir
-                # o painel (corrigido 05/08/2026).
+                # Cada linha agora traz o tema da OS (Ação/Tarefa, truncado)
+                # e o que mudou nela — antes só mostrava "número (usina)",
+                # impossível saber do que se tratava sem abrir o painel
+                # (corrigido 29/07/2026).
                 def _linha_resumo(r):
-                    usina = (r.get("usina") or "Usina não informada").strip()
                     tema = (r.get("descricao") or r.get("equipamento") or "sem descrição").strip()
-                    if len(tema) > 35:
-                        tema = tema[:35].rstrip() + "…"
+                    if len(tema) > 45:
+                        tema = tema[:45].rstrip() + "…"
                     mudanca = r.get("mudancaResumo") or r.get("statusGeralOS") or ""
-                    base = f"{r['numeroOS']} · {usina} — {tema}"
-                    return f"{base} ({mudanca})" if mudanca else base
+                    return f"{r['numeroOS']} — {tema} ({mudanca})" if mudanca else f"{r['numeroOS']} — {tema}"
                 linhas = "\n".join(_linha_resumo(r) for r in mudaram[:8])
                 enviar_push(
                     titulo=f"🔄 {len(mudaram)} OSs atualizadas",
@@ -5440,8 +5413,7 @@ def _sync_fracttal_core(desde_horas=8):
                 _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
                                                  "fracttal-sync", append=True)
             criadas.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks), "alerta": alerta,
-                             "usina": mapeado["usina"], "cliente": mapeado["cliente"],
-                             "descricao": mapeado.get("descricao", "")})
+                             "usina": mapeado["usina"], "cliente": mapeado["cliente"]})
             os_existentes.add(mapeado["numeroOS"])
         except Exception as e:
             log.error(f"[sync-fracttal] Erro ao criar atividade para OT {mapeado.get('numeroOS')}: {e}")
@@ -5451,32 +5423,21 @@ def _sync_fracttal_core(desde_horas=8):
     # rodada — restaurado 15/07/2026 (tinha sido perdido numa reconstrução
     # desta função por outra sessão, reintroduzindo notificação em
     # duplicidade/spam por item que já tinha sido corrigido antes).
-    # 05/08/2026: mesma função teve o tema/descrição perdido de novo por
-    # outra sobrescrita — reaplicado, agora mostrando tema (Ação/Tarefa)
-    # em vez de só cliente/usina, sem o quê não dava pra saber do que a
-    # OS se tratava sem abrir o painel.
     if criadas:
         try:
             if len(criadas) == 1:
                 c = criadas[0]
-                tema = (c.get("descricao") or "Descrição não informada").strip()
                 enviar_push(
                     titulo=f"🆕 Nova OS Fracttal — {c['numeroOS']} — {c['usina']}",
-                    corpo=f"{tema}\n{c['cliente']}",
+                    corpo=f"{c['cliente']}",
                     tipo="fracttal_nova_os",
                     url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={c['id']}",
                 )
             else:
-                def _linha_nova_os(c):
-                    usina = (c.get("usina") or "Usina não informada").strip()
-                    tema = (c.get("descricao") or "sem descrição").strip()
-                    if len(tema) > 35:
-                        tema = tema[:35].rstrip() + "…"
-                    return f"{c['numeroOS']} · {usina} — {tema}"
-                linhas = "\n".join(_linha_nova_os(c) for c in criadas[:6])
+                usinas_resumo = ", ".join(sorted(set(c["usina"] for c in criadas))[:5])
                 enviar_push(
                     titulo=f"🆕 {len(criadas)} novas OSs na Fracttal",
-                    corpo=f"{linhas}{chr(10) + '...' if len(criadas) > 6 else ''}",
+                    corpo=f"Usinas: {usinas_resumo}{'...' if len(set(c['usina'] for c in criadas)) > 5 else ''}",
                     tipo="fracttal_nova_os",
                     url="https://fred-alexandrino.github.io/PAINELDEFALHAS/",
                 )
@@ -6200,7 +6161,22 @@ def _verificar_e_disparar_resumo_diario_se_necessario():
 
     Se a geração falhar (ex.: timeout do Gemini), a trava é liberada
     pra tentar de novo no próximo ping dentro da mesma janela (até 6
-    tentativas, uma a cada 5min entre 17:00 e 17:30)."""
+    tentativas, uma a cada 5min entre 17:00 e 17:30).
+
+    ATENÇÃO (bug corrigido em 06/08/2026): antes a trava era gravada
+    ANTES de rodar a geração, com reset no except em caso de falha —
+    mas isso não protege contra o worker do gunicorn ser matado no meio
+    do caminho por timeout (SIGABRT, não é uma exceção Python normal,
+    pula o except). Foi exatamente o que aconteceu em 06/08: o worker
+    estourou os 160s de timeout no meio da auditoria de OS (fila de
+    revalidação pesada colidindo com a quota de escrita do Google
+    Sheets), foi abortado pelo gunicorn, a trava ficou gravada como
+    "enviado hoje" sem o resumo ter sido gerado, e não teve nova
+    tentativa no resto da janela. Agora a trava só é gravada DEPOIS que
+    a geração retorna com sucesso — o pior caso passa a ser, na pior
+    das hipóteses, duas tentativas quase simultâneas (risco desprezível
+    dado o intervalo de 5min entre pings), nunca mais um dia inteiro
+    sem resumo."""
     try:
         agora = agora_br()
         hoje_str = agora.strftime("%Y-%m-%d")
@@ -6209,12 +6185,8 @@ def _verificar_e_disparar_resumo_diario_se_necessario():
         ja_feito = _ler_trava("resumo_diario_enviado_em")
         if ja_feito == hoje_str:
             return {"disparado": False, "motivo": "já enviado hoje"}
+        resultado = _gerar_resumo_diario_core(data_str=hoje_str, enviar=True)
         _gravar_trava("resumo_diario_enviado_em", hoje_str)
-        try:
-            resultado = _gerar_resumo_diario_core(data_str=hoje_str, enviar=True)
-        except Exception:
-            _gravar_trava("resumo_diario_enviado_em", "")
-            raise
         return {"disparado": True, "resultado": resultado}
     except Exception as e:
         log.error(f"[ResumoDiario] Erro no piggyback: {e}")
@@ -6224,7 +6196,9 @@ def _verificar_e_disparar_resumo_diario_se_necessario():
 def _verificar_e_disparar_resumo_semanal_se_necessario():
     """Piggyback no /sync-fracttal: gera e envia o resumo semanal só às
     sextas-feiras, mesma janela 17:00-17:30 e mesmo motivo da migração
-    do resumo diário (atraso do cron do GitHub Actions)."""
+    do resumo diário (atraso do cron do GitHub Actions). Trava só
+    gravada após sucesso — mesma correção de 06/08/2026 do resumo
+    diário (ver docstring de _verificar_e_disparar_resumo_diario_se_necessario)."""
     try:
         agora = agora_br()
         if agora.weekday() != 4:  # 4 = sexta-feira
@@ -6235,12 +6209,8 @@ def _verificar_e_disparar_resumo_semanal_se_necessario():
         ja_feito = _ler_trava("resumo_semanal_enviado_em")
         if ja_feito == hoje_str:
             return {"disparado": False, "motivo": "já enviado hoje"}
+        resultado = _gerar_resumo_semanal_core(data_fim_str=hoje_str, enviar=True)
         _gravar_trava("resumo_semanal_enviado_em", hoje_str)
-        try:
-            resultado = _gerar_resumo_semanal_core(data_fim_str=hoje_str, enviar=True)
-        except Exception:
-            _gravar_trava("resumo_semanal_enviado_em", "")
-            raise
         return {"disparado": True, "resultado": resultado}
     except Exception as e:
         log.error(f"[ResumoSemanal] Erro no piggyback: {e}")
@@ -9731,7 +9701,7 @@ REGRA PARA MEDIÇÕES ELÉTRICAS CC/CA (OBRIGATÓRIA sempre que a atividade envo
 
 REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
-- Em qualquer outro caso, NÃO inclua nenhum item sobre o COS — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
+- Em qualquer outro caso, termine com um item dizendo que a atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS):
 
@@ -9782,6 +9752,7 @@ Comentários:
 6. Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
 7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
 8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
+9. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
 Título: Inspeção de Inversor para Abertura de Chamado
@@ -9793,6 +9764,7 @@ Comentários:
 4. Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
 5. Coleta do número de série e posição operacional do inversor.
 6. Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
+7. A atividade não envolve manobra elétrica e não é necessário acionar o COS.
 
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
@@ -10160,7 +10132,6 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363423844956611": "[O&M] - Grid Co. | GD Energy",
     "120363427259899891": "[O&M] - Grid Co. | Sal Energia",
     "120363406191445169": "O&M - San. Bárb./Pirac. - SP LESTE 03",
-    "120363431221706747": "Equipe Guajiru/Sol do Norte I e II",
     "120363421162420788": "COS — Técnicos O&M Centro-Oeste",
     "120363425837962709": "COS — Técnicos O&M Sul",
     "120363402176878100": "COS — Técnicos O&M Nordeste",
@@ -11433,173 +11404,6 @@ def gerar_relatorio_semanal_route():
         )
     except Exception as e:
         log.error(f"[Relatorio Semanal] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# ── Relatório de Handover (por OS, .docx, padrão visual Grid Co.) ──────────
-
-def _buscar_atividade_por_numero_os(numero_os):
-    """
-    Procura uma atividade do Painel de Atividades pelo número da OS.
-    Aceita OS compostas (ex. "8467/9035") — bate se numero_os for
-    qualquer um dos números separados por "/", mesma lógica usada na
-    busca global do topbar do dashboard.
-    """
-    ws = get_atividades_sheet()
-    todos = ws.get_all_values()
-    for row in todos[1:]:
-        if not row or not row[0].strip():
-            continue
-        if len(row) < len(ATIV_HEADERS_JSON):
-            row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
-        item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
-        numeros = [n.strip() for n in (item.get("numeroOS") or "").split("/")]
-        if numero_os in numeros:
-            return item
-    return None
-
-
-def _gerar_resumo_handover_ia(atividade):
-    """
-    Resumo executivo formal (1-2 parágrafos) para o Relatório de Handover
-    do cliente, gerado pela API da Anthropic a partir dos dados da OS.
-    Nunca derruba o relatório: se a chave não estiver configurada ou a
-    chamada falhar, retorna "" e a seção sai omitida no documento.
-    """
-    if not ANTHROPIC_API_KEY:
-        return ""
-
-    system_prompt = (
-        "Você é um engenheiro de O&M de usinas solares fotovoltaicas da Grid Co., "
-        "redigindo o resumo executivo de um Relatório de Handover formal para o "
-        "cliente, referente ao fechamento de uma Ordem de Serviço.\n\n"
-        "Escreva 1 a 2 parágrafos curtos, em português formal e técnico, terceira "
-        "pessoa, sem saudações nem despedidas — apenas o corpo do resumo. Descreva "
-        "o que foi identificado, o que foi executado e o resultado/status final, "
-        "com base exclusivamente nos dados fornecidos. Nunca invente informações "
-        "que não estejam nos dados (se um dado não vier informado, simplesmente "
-        "não o mencione). Não use bullets — texto corrido, separando parágrafos "
-        "com uma linha em branco."
-    )
-    user_content = (
-        f"Cliente: {atividade.get('cliente','') or 'não informado'}\n"
-        f"Usina: {atividade.get('usina','') or 'não informado'}\n"
-        f"Equipamento: {atividade.get('equipamento','') or 'não informado'}\n"
-        f"Nº OS: {atividade.get('numeroOS','') or 'não informado'}\n"
-        f"Descrição da OS: {atividade.get('descricao','') or 'não informado'}\n"
-        f"Status atual: {atividade.get('statusOS') or atividade.get('status','') or 'não informado'}\n"
-        f"Observações: {atividade.get('observacoesOS','') or 'nenhuma'}\n"
-        f"Histórico cronológico:\n{atividade.get('historico','') or 'sem histórico registrado'}"
-    )
-
-    try:
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "claude-sonnet-4-6",
-                "max_tokens": 500,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_content}],
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                return block.get("text", "").strip()
-        return ""
-    except Exception as e:
-        log.error(f"[Handover] Erro ao gerar resumo IA: {e}")
-        return ""
-
-
-@app.route("/gerar-relatorio-handover", methods=["POST", "OPTIONS"])
-def gerar_relatorio_handover_route():
-    if request.method == "OPTIONS":
-        return ("", 204)
-    try:
-        body = request.get_json(force=True) or {}
-        numero_os = str(body.get("numeroOS", "")).strip()
-        if not numero_os:
-            return jsonify({"ok": False, "error": "numeroOS é obrigatório"}), 400
-
-        atividade = _buscar_atividade_por_numero_os(numero_os)
-        if not atividade:
-            return jsonify({"ok": False,
-                             "error": f"OS {numero_os} não encontrada no Painel de Atividades."}), 404
-
-        resumo_ia = _gerar_resumo_handover_ia(atividade)
-        buf = gerar_handover_docx(atividade, resumo_ia)
-
-        cliente_slug = re.sub(r"[^A-Za-z0-9]+", "", atividade.get("cliente", "") or "") or "GridCo"
-        nome_arquivo = f"Handover_OS_{numero_os.replace('/', '-')}_{cliente_slug}_GridCo.pdf"
-
-        log.info(f"[Relatorio Handover] Gerado para OS {numero_os} ({atividade.get('cliente','')})")
-        return send_file(
-            buf,
-            as_attachment=True,
-            download_name=nome_arquivo,
-            mimetype="application/pdf",
-        )
-    except Exception as e:
-        log.error(f"[Relatorio Handover] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/gerar-relatorio-handover-usina", methods=["POST", "OPTIONS"])
-def gerar_relatorio_handover_usina_route():
-    """
-    Gera o Relatório de Handover EPC->O&M completo (usina inteira, .pdf),
-    no modelo Grid Co.: capa + narrativa + [PDF da Fracttal anexado
-    manualmente, com o checklist/fotos de cada OS de handover] + capacitação
-    + conclusão + quadro de revisões + punch list.
-
-    multipart/form-data:
-      - "dados": JSON (string) com os campos do formulário (ver
-        relatorio_handover_usina.py para o formato esperado)
-      - "fracttalPdf": arquivo PDF (opcional) exportado da Fracttal com as
-        Ordens de Serviço de handover
-    """
-    if request.method == "OPTIONS":
-        return ("", 204)
-    try:
-        dados_raw = request.form.get("dados", "{}")
-        try:
-            dados = json.loads(dados_raw)
-        except Exception:
-            return jsonify({"ok": False, "error": "Campo 'dados' não é um JSON válido."}), 400
-
-        cliente = (dados.get("cliente") or "").strip()
-        usina = (dados.get("usina") or "").strip()
-        if not cliente or not usina:
-            return jsonify({"ok": False, "error": "cliente e usina são obrigatórios"}), 400
-
-        fracttal_pdf_bytes = None
-        arquivo = request.files.get("fracttalPdf")
-        if arquivo and arquivo.filename:
-            if not arquivo.filename.lower().endswith(".pdf"):
-                return jsonify({"ok": False, "error": "O arquivo anexado precisa ser um PDF."}), 400
-            fracttal_pdf_bytes = arquivo.read()
-
-        buf = montar_relatorio_handover_usina(dados, fracttal_pdf_bytes)
-
-        usina_slug = re.sub(r"[^A-Za-z0-9]+", "", usina) or "Usina"
-        cliente_slug = re.sub(r"[^A-Za-z0-9]+", "", cliente) or "GridCo"
-        nome_arquivo = f"Handover_{usina_slug}_{cliente_slug}_GridCo.pdf"
-
-        log.info(f"[Relatorio Handover Usina] Gerado para {usina} ({cliente}), "
-                 f"com PDF Fracttal={'sim' if fracttal_pdf_bytes else 'não'}")
-        return send_file(
-            buf, as_attachment=True, download_name=nome_arquivo, mimetype="application/pdf",
-        )
-    except Exception as e:
-        log.error(f"[Relatorio Handover Usina] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
