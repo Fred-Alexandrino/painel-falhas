@@ -28,6 +28,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
                                 listar_usinas_cliente, montar_status_zeladoria_por_usina)
+from relatorio_handover import gerar_handover_docx
 
 # Push notifications (pywebpush)
 try:
@@ -11433,6 +11434,122 @@ def gerar_relatorio_semanal_route():
         )
     except Exception as e:
         log.error(f"[Relatorio Semanal] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Relatório de Handover (por OS, .docx, padrão visual Grid Co.) ──────────
+
+def _buscar_atividade_por_numero_os(numero_os):
+    """
+    Procura uma atividade do Painel de Atividades pelo número da OS.
+    Aceita OS compostas (ex. "8467/9035") — bate se numero_os for
+    qualquer um dos números separados por "/", mesma lógica usada na
+    busca global do topbar do dashboard.
+    """
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    for row in todos[1:]:
+        if not row or not row[0].strip():
+            continue
+        if len(row) < len(ATIV_HEADERS_JSON):
+            row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+        item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+        numeros = [n.strip() for n in (item.get("numeroOS") or "").split("/")]
+        if numero_os in numeros:
+            return item
+    return None
+
+
+def _gerar_resumo_handover_ia(atividade):
+    """
+    Resumo executivo formal (1-2 parágrafos) para o Relatório de Handover
+    do cliente, gerado pela API da Anthropic a partir dos dados da OS.
+    Nunca derruba o relatório: se a chave não estiver configurada ou a
+    chamada falhar, retorna "" e a seção sai omitida no documento.
+    """
+    if not ANTHROPIC_API_KEY:
+        return ""
+
+    system_prompt = (
+        "Você é um engenheiro de O&M de usinas solares fotovoltaicas da Grid Co., "
+        "redigindo o resumo executivo de um Relatório de Handover formal para o "
+        "cliente, referente ao fechamento de uma Ordem de Serviço.\n\n"
+        "Escreva 1 a 2 parágrafos curtos, em português formal e técnico, terceira "
+        "pessoa, sem saudações nem despedidas — apenas o corpo do resumo. Descreva "
+        "o que foi identificado, o que foi executado e o resultado/status final, "
+        "com base exclusivamente nos dados fornecidos. Nunca invente informações "
+        "que não estejam nos dados (se um dado não vier informado, simplesmente "
+        "não o mencione). Não use bullets — texto corrido, separando parágrafos "
+        "com uma linha em branco."
+    )
+    user_content = (
+        f"Cliente: {atividade.get('cliente','') or 'não informado'}\n"
+        f"Usina: {atividade.get('usina','') or 'não informado'}\n"
+        f"Equipamento: {atividade.get('equipamento','') or 'não informado'}\n"
+        f"Nº OS: {atividade.get('numeroOS','') or 'não informado'}\n"
+        f"Descrição da OS: {atividade.get('descricao','') or 'não informado'}\n"
+        f"Status atual: {atividade.get('statusOS') or atividade.get('status','') or 'não informado'}\n"
+        f"Observações: {atividade.get('observacoesOS','') or 'nenhuma'}\n"
+        f"Histórico cronológico:\n{atividade.get('historico','') or 'sem histórico registrado'}"
+    )
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 500,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_content}],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                return block.get("text", "").strip()
+        return ""
+    except Exception as e:
+        log.error(f"[Handover] Erro ao gerar resumo IA: {e}")
+        return ""
+
+
+@app.route("/gerar-relatorio-handover", methods=["POST", "OPTIONS"])
+def gerar_relatorio_handover_route():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+        numero_os = str(body.get("numeroOS", "")).strip()
+        if not numero_os:
+            return jsonify({"ok": False, "error": "numeroOS é obrigatório"}), 400
+
+        atividade = _buscar_atividade_por_numero_os(numero_os)
+        if not atividade:
+            return jsonify({"ok": False,
+                             "error": f"OS {numero_os} não encontrada no Painel de Atividades."}), 404
+
+        resumo_ia = _gerar_resumo_handover_ia(atividade)
+        buf = gerar_handover_docx(atividade, resumo_ia)
+
+        cliente_slug = re.sub(r"[^A-Za-z0-9]+", "", atividade.get("cliente", "") or "") or "GridCo"
+        nome_arquivo = f"Handover_OS_{numero_os.replace('/', '-')}_{cliente_slug}_GridCo.docx"
+
+        log.info(f"[Relatorio Handover] Gerado para OS {numero_os} ({atividade.get('cliente','')})")
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=nome_arquivo,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    except Exception as e:
+        log.error(f"[Relatorio Handover] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
