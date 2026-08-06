@@ -1,0 +1,16 @@
+=== curl /health direto (tempo de resposta) ===
+{"status":"ok","timestamp":"2026-08-06T17:59:06.781835-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
+
+HTTP:200 TIME:0.474264
+
+real	0m0.485s
+user	0m0.028s
+sys	0m0.007s
+
+=== curl /sync-fracttal com secret (tempo de resposta) ===
+
+HTTP:000 TIME:60.000835
+
+real	1m0.011s
+user	0m0.032s
+sys	0m0.008s
