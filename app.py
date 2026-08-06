@@ -29,6 +29,7 @@ from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
                                 listar_usinas_cliente, montar_status_zeladoria_por_usina)
 from relatorio_handover import gerar_handover_docx
+from relatorio_handover_usina import montar_relatorio_handover_usina
 
 # Push notifications (pywebpush)
 try:
@@ -11550,6 +11551,57 @@ def gerar_relatorio_handover_route():
         )
     except Exception as e:
         log.error(f"[Relatorio Handover] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/gerar-relatorio-handover-usina", methods=["POST", "OPTIONS"])
+def gerar_relatorio_handover_usina_route():
+    """
+    Gera o Relatório de Handover EPC->O&M completo (usina inteira, .pdf),
+    no modelo Grid Co.: capa + narrativa + [PDF da Fracttal anexado
+    manualmente, com o checklist/fotos de cada OS de handover] + capacitação
+    + conclusão + quadro de revisões + punch list.
+
+    multipart/form-data:
+      - "dados": JSON (string) com os campos do formulário (ver
+        relatorio_handover_usina.py para o formato esperado)
+      - "fracttalPdf": arquivo PDF (opcional) exportado da Fracttal com as
+        Ordens de Serviço de handover
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        dados_raw = request.form.get("dados", "{}")
+        try:
+            dados = json.loads(dados_raw)
+        except Exception:
+            return jsonify({"ok": False, "error": "Campo 'dados' não é um JSON válido."}), 400
+
+        cliente = (dados.get("cliente") or "").strip()
+        usina = (dados.get("usina") or "").strip()
+        if not cliente or not usina:
+            return jsonify({"ok": False, "error": "cliente e usina são obrigatórios"}), 400
+
+        fracttal_pdf_bytes = None
+        arquivo = request.files.get("fracttalPdf")
+        if arquivo and arquivo.filename:
+            if not arquivo.filename.lower().endswith(".pdf"):
+                return jsonify({"ok": False, "error": "O arquivo anexado precisa ser um PDF."}), 400
+            fracttal_pdf_bytes = arquivo.read()
+
+        buf = montar_relatorio_handover_usina(dados, fracttal_pdf_bytes)
+
+        usina_slug = re.sub(r"[^A-Za-z0-9]+", "", usina) or "Usina"
+        cliente_slug = re.sub(r"[^A-Za-z0-9]+", "", cliente) or "GridCo"
+        nome_arquivo = f"Handover_{usina_slug}_{cliente_slug}_GridCo.pdf"
+
+        log.info(f"[Relatorio Handover Usina] Gerado para {usina} ({cliente}), "
+                 f"com PDF Fracttal={'sim' if fracttal_pdf_bytes else 'não'}")
+        return send_file(
+            buf, as_attachment=True, download_name=nome_arquivo, mimetype="application/pdf",
+        )
+    except Exception as e:
+        log.error(f"[Relatorio Handover Usina] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
