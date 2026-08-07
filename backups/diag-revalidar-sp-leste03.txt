@@ -1,0 +1,3 @@
+{"erros":[],"mudaram":[],"ok":true,"parouPorOrcamento":false,"totalElegiveis":11,"totalMudaram":0,"totalRevalidadas":11,"usinasFiltradas":["Thopen - Caxambu 1 - SP","Thopen - Indaiatuba 1 - SP","Thopen - Piracicaba 1 - SP","Thopen - Santa B\u00e1rbara 1 - SP"]}
+
+STATUS:200
