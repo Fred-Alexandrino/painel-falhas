@@ -1,0 +1,3 @@
+{"error":"503 Server Error: Service Unavailable for url: https://wpp.147.15.66.241.sslip.io/api/enviar-mensagem","ok":false}
+
+HTTP:500
