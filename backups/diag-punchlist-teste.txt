@@ -1,0 +1,3 @@
+{"itens":[{"anormalidade":"O t\u00e9cnico designado n\u00e3o est\u00e1 mapeado para a unidade Hortina (Quixad\u00e1 I), indicando poss\u00edvel erro de aloca\u00e7\u00e3o de equipe.","ativo":"Cl\u00e1udio Ferreira","criticidade":"M\u00e9dia","recomendacoes":"Verificar se a usina est\u00e1 correta e regularizar o mapeamento do t\u00e9cnico no sistema.","responsavel":"EQUIPE T\u00c9CNICA","status":"PENDENTE"}],"ok":true}
+
+STATUS:200
