@@ -1,0 +1,46 @@
+name: Install Poppler VM1 Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH install poppler-utils + pdf2image
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm1_key
+          chmod 600 ~/.ssh/vm1_key
+          mkdir -p backups
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm1_key ubuntu@168.138.232.237 '
+            echo "=== instalando poppler-utils (sistema) ==="
+            sudo apt-get update -y
+            sudo apt-get install -y poppler-utils
+            echo "=== instalando pdf2image no venv ==="
+            cd ~/painel-falhas
+            source venv/bin/activate
+            pip install pdf2image
+            deactivate
+            echo "=== confirmando pdftoppm disponivel ==="
+            which pdftoppm
+            pdftoppm -v
+            echo "=== espaco em disco/memoria ==="
+            free -h
+            df -h /
+          ' > backups/diag-install-poppler.txt 2>&1
+          cat backups/diag-install-poppler.txt
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-install-poppler.txt
+          git commit -m "diag install poppler" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-install-poppler.txt
+          git commit -m "diag install poppler" || echo "nothing2"
+          git push origin HEAD:main
