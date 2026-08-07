@@ -30,6 +30,9 @@ from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, ger
                                 listar_usinas_cliente, montar_status_zeladoria_por_usina)
 from relatorio_handover import gerar_handover_docx
 from relatorio_handover_usina import montar_relatorio_handover_usina
+import pdfplumber
+from pdf2image import convert_from_bytes
+from io import BytesIO
 
 # Push notifications (pywebpush)
 try:
@@ -11774,6 +11777,282 @@ def gerar_punchlist_ia():
         return jsonify({"ok": False, "error": str(e)}), 500
     except Exception as e:
         log.error(f"[gerar-punchlist-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Punch List a partir do PDF ORIGINAL da Fracttal (leitura visual) ──────
+#
+# Diferente de /gerar-punchlist-ia (que só analisa o resumo já salvo no
+# Painel de Atividades), este pipeline lê o PDF que a própria Fracttal
+# exporta pra OS — o mesmo formato "N.º: xxxx / Ordem de Trabalho" com o
+# checklist de subtarefas (cada uma com uma marcação visual Aprovou/
+# Alerta/Falhou) e as anotações de texto do técnico de campo.
+#
+# A marcação do checkbox é só visual (não existe um jeito confiável de
+# extrair "qual das 3 opções foi marcada" como texto puro do PDF — os
+# três rótulos "Aprovou Alerta Falhou" sempre aparecem, só muda o
+# preenchimento do quadradinho) — por isso essa etapa usa IA com visão
+# (Gemini multimodal), não só texto.
+#
+# Pipeline por ativo (equipamento):
+#   1. Localizar os limites de página de cada ativo no PDF (via texto).
+#   2. Dentro desse intervalo, achar só as páginas que têm o checklist
+#      (contêm "Aprovou" e "Falhou") — normalmente 1-2 páginas de cada
+#      ativo, o resto do intervalo é fotos de evidência que não precisam
+#      ser lidas por IA.
+#   3. Renderizar só essas páginas como imagem e mandar pra Gemini junto
+#      com as anotações de texto do técnico (extraídas normalmente, sem
+#      IA) — pede pra consolidar num item de punch list SÓ se houver
+#      Alerta/Falhou real.
+#   4. Ativos inteiramente "Aprovou" não geram nenhum item — resultado
+#      correto, não falha da leitura.
+
+def _fracttal_pdf_extrair_ativos(pdf_bytes):
+    """Retorna lista de {nome, pagina_inicio, pagina_fim} (0-indexed,
+    pagina_fim inclusive) — um item por ativo/equipamento do PDF."""
+    ativos = []
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        total_paginas = len(pdf.pages)
+        marcadores = []
+        for i, page in enumerate(pdf.pages):
+            text = page.extract_text() or ""
+            if "ATIVOS" not in text:
+                continue
+            lines = text.split("\n")
+            for j, l in enumerate(lines):
+                if l.strip() == "ATIVOS":
+                    for k in range(j + 1, min(j + 4, len(lines))):
+                        if lines[k].strip().startswith("DESCRIÇÃO:"):
+                            nome = lines[k].replace("DESCRIÇÃO:", "").strip().split("{")[0].strip()
+                            if nome and "Realizado com" not in nome and "Pág." not in nome:
+                                marcadores.append((i, nome))
+                            break
+                    break
+        for idx, (pagina_inicio, nome) in enumerate(marcadores):
+            pagina_fim = marcadores[idx + 1][0] - 1 if idx + 1 < len(marcadores) else total_paginas - 1
+            ativos.append({"nome": nome, "pagina_inicio": pagina_inicio, "pagina_fim": pagina_fim})
+    return ativos
+
+
+def _fracttal_pdf_paginas_checklist(pdf_bytes, pagina_inicio, pagina_fim):
+    """Páginas (0-indexed) dentro do intervalo que têm o checklist com
+    marcação Aprovou/Alerta/Falhou — ignora páginas de fotos/anexos."""
+    paginas = []
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        fim = min(pagina_fim, len(pdf.pages) - 1)
+        for i in range(pagina_inicio, fim + 1):
+            text = pdf.pages[i].extract_text() or ""
+            if "Aprovou" in text and "Falhou" in text:
+                paginas.append(i)
+    return paginas
+
+
+def _fracttal_pdf_notas_ativo(pdf_bytes, pagina_inicio, pagina_fim):
+    """Extrai as anotações de texto do técnico (tabela 'ANEXOS DO PLANO
+    DE MANUTENÇÃO', coluna Detalhes) dentro do intervalo do ativo —
+    ignora linhas vazias ou 'N/A' (sem informação real).
+
+    Cada página tem DUAS tabelas distintas: 'SUBTAREFAS' (pergunta do
+    checklist + opções Aprovou/Alerta/Falhou) e 'ANEXOS DO PLANO DE
+    MANUTENÇÃO' (Descrição/Detalhes — as notas de verdade). É preciso
+    distinguir pelo título da seção (tabela[0][0]), senão a extração
+    pega a PERGUNTA do checklist como se fosse a resposta do técnico.
+    """
+    notas = []
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        fim = min(pagina_fim, len(pdf.pages) - 1)
+        for i in range(pagina_inicio, fim + 1):
+            for tabela in (pdf.pages[i].extract_tables() or []):
+                if not tabela or not tabela[0]:
+                    continue
+                titulo = str(tabela[0][0] or "").strip()
+                if "ANEXOS DO PLANO DE MANUTENÇÃO" not in titulo:
+                    continue
+                # linha 0 = título da seção, linha 1 = cabeçalho
+                # (Descrição/Detalhes), resto = dados de verdade
+                for linha in tabela[2:]:
+                    if not linha or len(linha) < 2:
+                        continue
+                    detalhe = (linha[1] or "").strip()
+                    if detalhe and detalhe.upper() not in ("N/A", "-", "NENHUM", "NENHUMA"):
+                        if detalhe not in notas:
+                            notas.append(detalhe)
+    return notas
+
+
+def _fracttal_pdf_renderizar_paginas(pdf_bytes, indices_0based, dpi=110):
+    """Renderiza só as páginas pedidas (1-indexed pro poppler) como PNG
+    base64 — DPI moderado de propósito, a VM1 tem só 1GB de RAM."""
+    imagens = []
+    for idx in indices_0based:
+        paginas = convert_from_bytes(pdf_bytes, dpi=dpi, first_page=idx + 1, last_page=idx + 1)
+        for p in paginas:
+            buf = BytesIO()
+            p.save(buf, format="PNG")
+            imagens.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+            buf.close()
+            p.close()
+    return imagens
+
+
+def _montar_prompt_punchlist_visao(nome_ativo, cliente, usina, cluster, notas_texto):
+    notas_bloco = ("\n".join(f"- {n}" for n in notas_texto)) if notas_texto else "(nenhuma anotação de texto registrada)"
+    return (
+        "Você é um engenheiro de O&M de usinas solares fotovoltaicas da Grid Co., revisando "
+        "o checklist de uma Ordem de Serviço de handover pra montar a Punch List (lista de "
+        "pendências) de um Relatório de Handover formal pro cliente.\n\n"
+        f"As imagens anexadas são páginas do checklist de subtarefas do ativo \"{nome_ativo}\" "
+        f"(usina {usina}, cliente {cliente}, cluster {cluster}). Cada linha do checklist tem "
+        "três opções — Aprovou / Alerta / Falhou — com um quadradinho marcado (preenchido) "
+        "indicando qual foi escolhida. Leia CADA linha e identifique quais foram marcadas "
+        "como Alerta ou Falhou (ignore as marcadas como Aprovou — essas estão OK, sem "
+        "pendência).\n\n"
+        f"Anotações de texto que o técnico de campo registrou pra esse ativo (podem ou não "
+        f"se referir a um item específico do checklist):\n{notas_bloco}\n\n"
+        "Se TODOS os itens do checklist foram marcados Aprovou (nenhum Alerta/Falhou), "
+        "retorne {\"itens\": []} — esse é o resultado correto, não uma falha.\n\n"
+        "Se houver item(ns) Alerta/Falhou, consolide em UM item de punch list pra esse ativo "
+        "(uma linha só, juntando as anormalidades encontradas numa frase objetiva — igual ao "
+        "padrão Grid Co., ex.: \"Multimedidor inoperante, ruídos anormais e falha na "
+        "iluminação de emergência\"). Só em casos onde há dois problemas claramente "
+        "independentes e de natureza muito diferente, pode gerar mais de um item.\n\n"
+        "Critérios de CRITICIDADE: Alta/Muito Alta para falhas funcionais, de segurança ou "
+        "que impedem operação (equipamento fora de operação, falha de proteção, ausência de "
+        "supervisório); Média para itens de manutenção/limpeza/cosmético (sujidade, pequenos "
+        "reparos); Baixa para observações menores.\n\n"
+        "Critérios de RESPONSÁVEL: \"EQUIPE TÉCNICA\" para reparos elétricos/mecânicos; "
+        "\"EQUIPE DE CAMPO\" para limpeza/organização/civil; \"CLIENTE/SUPERVISÃO\" quando o "
+        "problema depende de sistema supervisório, contratação externa, ou está fora do "
+        "escopo de campo da Grid Co.\n\n"
+        "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
+        '{"itens": [{"ativo": "<nome do ativo, curto>", '
+        '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
+        '"anormalidade": "<descrição objetiva e consolidada>", '
+        '"recomendacoes": "<ação corretiva recomendada, objetiva>", '
+        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO>"}]}'
+    )
+
+
+def _gerar_punchlist_ativo_via_visao(nome_ativo, cliente, usina, cluster, imagens_base64, notas_texto):
+    """Chama a Gemini com as imagens do checklist + notas de um ativo,
+    devolve lista de itens de punch list (pode ser vazia)."""
+    if not imagens_base64:
+        return []
+    prompt = _montar_prompt_punchlist_visao(nome_ativo, cliente, usina, cluster, notas_texto)
+    parts = [{"text": prompt}]
+    for img_b64 in imagens_base64:
+        parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "temperature": 0.15,
+                "maxOutputTokens": 1024,
+                "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        },
+        timeout=40,
+    )
+    data = resp.json()
+    candidato = data["candidates"][0]
+    texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    parsed = json.loads(texto_limpo)
+    itens = parsed.get("itens", [])
+    normalizados = []
+    for it in itens:
+        normalizados.append({
+            "ativo": (it.get("ativo") or nome_ativo).strip(),
+            "criticidade": it.get("criticidade") if it.get("criticidade") in
+                           ("Baixa", "Média", "Alta", "Muito Alta") else "Média",
+            "status": "PENDENTE",
+            "anormalidade": (it.get("anormalidade") or "").strip(),
+            "recomendacoes": (it.get("recomendacoes") or "").strip(),
+            "responsavel": (it.get("responsavel") or "EQUIPE TÉCNICA").strip(),
+        })
+    return normalizados
+
+
+@app.route("/extrair-punchlist-fracttal-ia", methods=["POST", "OPTIONS"])
+def extrair_punchlist_fracttal_ia():
+    """
+    Lê o PDF original exportado da Fracttal (checklist com marcações
+    Aprovou/Alerta/Falhou + anotações de campo) e gera a Punch List via
+    IA com visão, ativo por ativo. Processa em paralelo (poucos workers
+    — a VM1 tem só 1GB de RAM) e respeita um orçamento de tempo pra não
+    estourar o timeout do Gunicorn (160s).
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+    try:
+        arquivo = request.files.get("fracttalPdf")
+        if not arquivo or not arquivo.filename:
+            return jsonify({"ok": False, "error": "Anexe o PDF exportado da Fracttal (campo fracttalPdf)."}), 400
+        if not arquivo.filename.lower().endswith(".pdf"):
+            return jsonify({"ok": False, "error": "O arquivo precisa ser um PDF."}), 400
+
+        cliente = (request.form.get("cliente") or "").strip()
+        usina = (request.form.get("usina") or "").strip()
+        cluster = (request.form.get("cluster") or "").strip()
+        pdf_bytes = arquivo.read()
+
+        ativos = _fracttal_pdf_extrair_ativos(pdf_bytes)
+        if not ativos:
+            return jsonify({"ok": False, "error": ("Não consegui identificar nenhum ativo nesse PDF — "
+                            "confirme se é o formato de exportação padrão da Fracttal (Ordem de Trabalho).")}), 400
+
+        MAX_ATIVOS_POR_CHAMADA = 40  # segurança — evita processar um PDF gigante além do razoável numa única requisição
+        ativos = ativos[:MAX_ATIVOS_POR_CHAMADA]
+
+        def _processar_ativo(ativo):
+            paginas_check = _fracttal_pdf_paginas_checklist(pdf_bytes, ativo["pagina_inicio"], ativo["pagina_fim"])
+            if not paginas_check:
+                return {"ativo": ativo["nome"], "itens": [], "semChecklist": True}
+            notas = _fracttal_pdf_notas_ativo(pdf_bytes, ativo["pagina_inicio"], ativo["pagina_fim"])
+            imagens = _fracttal_pdf_renderizar_paginas(pdf_bytes, paginas_check)
+            itens = _gerar_punchlist_ativo_via_visao(ativo["nome"], cliente, usina, cluster, imagens, notas)
+            for it in itens:
+                it["cliente"] = cliente
+                it["usina"] = usina
+            return {"ativo": ativo["nome"], "itens": itens, "semChecklist": False}
+
+        ORCAMENTO_SEGUNDOS = 130
+        inicio = time.time()
+        resultados = []
+        erros = []
+        parou_por_orcamento = False
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futuros = {executor.submit(_processar_ativo, a): a for a in ativos}
+            for futuro in as_completed(futuros):
+                ativo = futuros[futuro]
+                if time.time() - inicio > ORCAMENTO_SEGUNDOS:
+                    parou_por_orcamento = True
+                    # não cancela os já em andamento, só para de esperar novos
+                try:
+                    resultados.append(futuro.result())
+                except Exception as e:
+                    log.error(f"[PunchlistFracttalIA] Erro no ativo '{ativo['nome']}': {e}")
+                    erros.append({"ativo": ativo["nome"], "erro": str(e)})
+
+        todos_itens = []
+        for r in resultados:
+            todos_itens.extend(r["itens"])
+
+        return jsonify({
+            "ok": True,
+            "itens": todos_itens,
+            "ativosTotal": len(ativos),
+            "ativosProcessados": len(resultados),
+            "ativosComPendencia": sum(1 for r in resultados if r["itens"]),
+            "erros": erros,
+            "parouPorOrcamento": parou_por_orcamento,
+        }), 200
+    except Exception as e:
+        log.error(f"[PunchlistFracttalIA] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
