@@ -9284,6 +9284,101 @@ def rodar_auditoria_agora():
     return jsonify({"ok": True, **resultado}), 200
 
 
+@app.route("/revalidar-usinas", methods=["POST", "OPTIONS"])
+def revalidar_usinas():
+    """
+    Revalidação ao vivo na Fracttal, filtrada por uma lista de usinas —
+    diferente do "Atualizar OS" (que processa a fila inteira por ordem
+    de desatualização, sem filtro). Útil quando um cluster específico
+    está divergente do real e não se quer esperar o rodízio geral
+    alcançar essas usinas (criado 07/08/2026, pedido do Fred pro
+    cluster SP Leste 03).
+
+    Body JSON: {"usinas": ["Usina A", "Usina B", ...]}
+    Só processa OSs vinculadas à Fracttal (numeroOS preenchido) e ainda
+    não finalizadas/canceladas — reaproveita a mesma função de
+    revalidação usada pela auditoria automática, então o comportamento
+    (o que é considerado "mudou", como o status interno é corrigido
+    etc.) é idêntico ao rodízio normal.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True) or {}
+        usinas_filtro = set(u.strip() for u in body.get("usinas", []) if u.strip())
+        if not usinas_filtro:
+            return jsonify({"ok": False, "error": "campo 'usinas' é obrigatório (lista não vazia)"}), 400
+
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        alvo = []
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < ATIV_TOTAL_COLUNAS:
+                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            usina_row = row[2].strip()
+            numero_os = row[13].strip()
+            status_os_atual = row[14].strip()
+            if usina_row not in usinas_filtro:
+                continue
+            if not numero_os:
+                continue  # não vinculada à Fracttal, nada a revalidar
+            if status_os_atual in ("Finalizada", "Cancelada"):
+                continue
+            alvo.append({"linha": i, "row": row, "numeroOS": numero_os})
+
+        revalidadas = []
+        erros = []
+        ORCAMENTO_SEGUNDOS = 90
+        inicio = time.time()
+        parou_por_orcamento = False
+        for a in alvo:
+            if time.time() - inicio > ORCAMENTO_SEGUNDOS:
+                parou_por_orcamento = True
+                break
+            try:
+                resultado = _fracttal_verificar_e_atualizar_uma_os(ws, a["linha"], a["row"], a["numeroOS"],
+                                                                     enviar_notificacao=False)
+                if resultado:
+                    revalidadas.append(resultado)
+            except Exception as e:
+                erros.append({"numeroOS": a["numeroOS"], "erro": str(e)})
+            time.sleep(0.35)
+
+        mudaram = [r for r in revalidadas if r.get("mudou")]
+        if mudaram:
+            try:
+                def _linha_resumo_cluster(r):
+                    usina = (r.get("usina") or "Usina não informada").strip()
+                    tema = (r.get("descricao") or r.get("equipamento") or "sem descrição").strip()
+                    if len(tema) > 35:
+                        tema = tema[:35].rstrip() + "…"
+                    mudanca = r.get("mudancaResumo") or r.get("statusGeralOS") or ""
+                    base = f"{r['numeroOS']} · {usina} — {tema}"
+                    return f"{base} ({mudanca})" if mudanca else base
+                linhas = "\n".join(_linha_resumo_cluster(r) for r in mudaram[:8])
+                enviar_push(
+                    titulo=f"🔄 Revalidação manual — {len(mudaram)} OS(s) atualizadas",
+                    corpo=f"{linhas}{chr(10) + '...' if len(mudaram) > 8 else ''}",
+                    tipo="fracttal_status",
+                )
+            except Exception as e:
+                log.error(f"[RevalidarUsinas] Falha ao enviar push resumido: {e}")
+
+        return jsonify({
+            "ok": True,
+            "usinasFiltradas": sorted(usinas_filtro),
+            "totalElegiveis": len(alvo),
+            "totalRevalidadas": len(revalidadas),
+            "totalMudaram": len(mudaram),
+            "mudaram": mudaram,
+            "erros": erros,
+            "parouPorOrcamento": parou_por_orcamento,
+        }), 200
+    except Exception as e:
+        log.error(f"[RevalidarUsinas] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/validar-integridade-relatorios", methods=["POST", "GET"])
 def validar_integridade_relatorios():
     """
