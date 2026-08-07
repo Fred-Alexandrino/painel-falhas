@@ -1,0 +1,5 @@
+Warning: Permanently added '147.15.66.241' (ED25519) to the list of known hosts.
+=== stopping service ===
+=== backing up corrupted auth_info locally (safety) ===
+=== confirming auth_info removed ===
+drwxr-xr-x   2 ubuntu ubuntu 114688 Aug  6 18:42 auth_info_corrompida_20260807_115635
