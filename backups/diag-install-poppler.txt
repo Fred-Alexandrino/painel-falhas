@@ -1,0 +1,141 @@
+Warning: Permanently added '168.138.232.237' (ED25519) to the list of known hosts.
+=== instalando poppler-utils (sistema) ===
+Get:1 https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version InRelease [14.8 kB]
+Hit:2 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble InRelease
+Get:3 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+Hit:4 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:5 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-backports InRelease
+Get:6 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1184 kB]
+Get:7 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1682 kB]
+Fetched 3007 kB in 4s (684 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  libcairo2 liblcms2-2 libopenjp2-7 libpixman-1-0 libpoppler134 libxcb-render0
+  libxcb-shm0 libxrender1 poppler-data
+Suggested packages:
+  liblcms2-utils ghostscript fonts-japanese-mincho | fonts-ipafont-mincho
+  fonts-japanese-gothic | fonts-ipafont-gothic fonts-arphic-ukai
+  fonts-arphic-uming fonts-nanum
+The following NEW packages will be installed:
+  libcairo2 liblcms2-2 libopenjp2-7 libpixman-1-0 libpoppler134 libxcb-render0
+  libxcb-shm0 libxrender1 poppler-data poppler-utils
+0 upgraded, 10 newly installed, 0 to remove and 5 not upgraded.
+Need to get 4610 kB of archives.
+After this operation, 21.0 MB of additional disk space will be used.
+Get:1 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble/main amd64 poppler-data all 0.4.12-1 [2060 kB]
+Get:2 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble/main amd64 libpixman-1-0 amd64 0.42.2-1build1 [279 kB]
+Get:3 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble/main amd64 libxcb-render0 amd64 1.15-1ubuntu2 [16.2 kB]
+Get:4 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble/main amd64 libxcb-shm0 amd64 1.15-1ubuntu2 [5756 B]
+Get:5 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble/main amd64 libxrender1 amd64 1:0.9.10-1.1build1 [19.0 kB]
+Get:6 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble/main amd64 libcairo2 amd64 1.18.0-3build1 [566 kB]
+Get:7 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 liblcms2-2 amd64 2.14-2ubuntu0.1 [161 kB]
+Get:8 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 libopenjp2-7 amd64 2.5.0-2ubuntu0.5 [174 kB]
+Get:9 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 libpoppler134 amd64 24.02.0-1ubuntu9.9 [1118 kB]
+Get:10 http://sa-saopaulo-1-ad-1.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 poppler-utils amd64 24.02.0-1ubuntu9.9 [212 kB]
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
+dpkg-preconfigure: unable to re-open stdin: 
+Fetched 4610 kB in 2s (2122 kB/s)
+Selecting previously unselected package poppler-data.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 126813 files and directories currently installed.)
+Preparing to unpack .../0-poppler-data_0.4.12-1_all.deb ...
+Unpacking poppler-data (0.4.12-1) ...
+Selecting previously unselected package libpixman-1-0:amd64.
+Preparing to unpack .../1-libpixman-1-0_0.42.2-1build1_amd64.deb ...
+Unpacking libpixman-1-0:amd64 (0.42.2-1build1) ...
+Selecting previously unselected package libxcb-render0:amd64.
+Preparing to unpack .../2-libxcb-render0_1.15-1ubuntu2_amd64.deb ...
+Unpacking libxcb-render0:amd64 (1.15-1ubuntu2) ...
+Selecting previously unselected package libxcb-shm0:amd64.
+Preparing to unpack .../3-libxcb-shm0_1.15-1ubuntu2_amd64.deb ...
+Unpacking libxcb-shm0:amd64 (1.15-1ubuntu2) ...
+Selecting previously unselected package libxrender1:amd64.
+Preparing to unpack .../4-libxrender1_1%3a0.9.10-1.1build1_amd64.deb ...
+Unpacking libxrender1:amd64 (1:0.9.10-1.1build1) ...
+Selecting previously unselected package libcairo2:amd64.
+Preparing to unpack .../5-libcairo2_1.18.0-3build1_amd64.deb ...
+Unpacking libcairo2:amd64 (1.18.0-3build1) ...
+Selecting previously unselected package liblcms2-2:amd64.
+Preparing to unpack .../6-liblcms2-2_2.14-2ubuntu0.1_amd64.deb ...
+Unpacking liblcms2-2:amd64 (2.14-2ubuntu0.1) ...
+Selecting previously unselected package libopenjp2-7:amd64.
+Preparing to unpack .../7-libopenjp2-7_2.5.0-2ubuntu0.5_amd64.deb ...
+Unpacking libopenjp2-7:amd64 (2.5.0-2ubuntu0.5) ...
+Selecting previously unselected package libpoppler134:amd64.
+Preparing to unpack .../8-libpoppler134_24.02.0-1ubuntu9.9_amd64.deb ...
+Unpacking libpoppler134:amd64 (24.02.0-1ubuntu9.9) ...
+Selecting previously unselected package poppler-utils.
+Preparing to unpack .../9-poppler-utils_24.02.0-1ubuntu9.9_amd64.deb ...
+Unpacking poppler-utils (24.02.0-1ubuntu9.9) ...
+Setting up liblcms2-2:amd64 (2.14-2ubuntu0.1) ...
+Setting up libpixman-1-0:amd64 (0.42.2-1build1) ...
+Setting up libxrender1:amd64 (1:0.9.10-1.1build1) ...
+Setting up libxcb-render0:amd64 (1.15-1ubuntu2) ...
+Setting up libxcb-shm0:amd64 (1.15-1ubuntu2) ...
+Setting up libcairo2:amd64 (1.18.0-3build1) ...
+Setting up poppler-data (0.4.12-1) ...
+Setting up libopenjp2-7:amd64 (2.5.0-2ubuntu0.5) ...
+Setting up libpoppler134:amd64 (24.02.0-1ubuntu9.9) ...
+Setting up poppler-utils (24.02.0-1ubuntu9.9) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.8) ...
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
+
+Restarting services...
+
+Service restarts being deferred:
+ /etc/needrestart/restart.d/dbus.service
+ systemctl restart getty@tty1.service
+ systemctl restart serial-getty@ttyS0.service
+ systemctl restart systemd-logind.service
+ systemctl restart unattended-upgrades.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+Pending kernel upgrade
+----------------------
+
+Newer kernel available
+
+The currently running kernel version is 6.17.0-1011-oracle which is not the 
+expected kernel version 6.17.0-1019-oracle.
+
+Restarting the system to load the new kernel will not be handled automatically, 
+so you should consider rebooting.
+
+=== instalando pdf2image no venv ===
+Collecting pdf2image
+  Downloading pdf2image-1.17.0-py3-none-any.whl.metadata (6.2 kB)
+Requirement already satisfied: pillow in ./venv/lib/python3.12/site-packages (from pdf2image) (10.4.0)
+Downloading pdf2image-1.17.0-py3-none-any.whl (11 kB)
+Installing collected packages: pdf2image
+Successfully installed pdf2image-1.17.0
+
+[notice] A new release of pip is available: 26.1.2 -> 26.2.1
+[notice] To update, run: pip install --upgrade pip
+=== confirmando pdftoppm disponivel ===
+/usr/bin/pdftoppm
+pdftoppm version 24.02.0
+Copyright 2005-2024 The Poppler Developers - http://poppler.freedesktop.org
+Copyright 1996-2011, 2022 Glyph & Cog, LLC
+=== espaco em disco/memoria ===
+               total        used        free      shared  buff/cache   available
+Mem:           954Mi       466Mi       190Mi       4.2Mi       461Mi       487Mi
+Swap:          2.0Gi       125Mi       1.9Gi
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1        45G  6.1G   39G  14% /
