@@ -1,0 +1,46 @@
+Warning: Permanently added '147.15.66.241' (ED25519) to the list of known hosts.
+=== starting service ===
+=== status ===
+● wppconnect.service - Ponte WhatsApp - Baileys
+     Loaded: loaded (/etc/systemd/system/wppconnect.service; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-08-07 11:57:43 UTC; 20s ago
+   Main PID: 262659 (node)
+      Tasks: 11 (limit: 1035)
+     Memory: 86.2M (peak: 96.1M)
+        CPU: 3.781s
+     CGroup: /system.slice/wppconnect.service
+             └─262659 /usr/bin/node /home/ubuntu/wppconnect-server/server.js
+
+=== last 30 log lines ===
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 07 11:56:35 vnic-painel-om-wpp node[262186]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 07 11:56:35 vnic-painel-om-wpp systemd[1]: Stopping wppconnect.service - Ponte WhatsApp - Baileys...
+Aug 07 11:56:35 vnic-painel-om-wpp systemd[1]: wppconnect.service: Deactivated successfully.
+Aug 07 11:56:35 vnic-painel-om-wpp systemd[1]: Stopped wppconnect.service - Ponte WhatsApp - Baileys.
+Aug 07 11:56:35 vnic-painel-om-wpp systemd[1]: wppconnect.service: Consumed 20min 38.246s CPU time, 102.8M memory peak, 0B memory swap peak.
+Aug 07 11:57:43 vnic-painel-om-wpp systemd[1]: Started wppconnect.service - Ponte WhatsApp - Baileys.
+Aug 07 11:57:45 vnic-painel-om-wpp node[262659]: 🚀 Servidor Baileys na porta 3000
+Aug 07 11:57:45 vnic-painel-om-wpp node[262659]: 📡 Modo 1 (tempo real): sempre ativo ao conectar
+Aug 07 11:57:45 vnic-painel-om-wpp node[262659]: 🔍 Modo 2 (histórico):  disponível via GET /api/messages/:grupoId
+Aug 07 11:57:46 vnic-painel-om-wpp node[262659]: ⚠️  [Restore Auth] Falha ao restaurar: Request failed with status code 401
+Aug 07 11:57:46 vnic-painel-om-wpp node[262659]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 07 11:57:47 vnic-painel-om-wpp node[262659]: 📱 QR Code gerado — acesse /qr para escanear
+--- qr health ---
+{"status":"ok","wpp":"desconectado"}
