@@ -1,0 +1,21 @@
+Warning: Permanently added '147.15.66.241' (ED25519) to the list of known hosts.
+=== token length ===
+40
+=== token prefix (first 8 chars only) ===
+ghp_9MDc
+=== whoami (GET /user) ===
+{
+  "message": "Bad credentials",
+  "documentation_url": "https://docs.github.com/rest",
+  "status": "401"
+}
+STATUS:401
+=== access to wppconnect-auth-backup repo ===
+{
+  "message": "Bad credentials",
+  "documentation_url": "https://docs.github.com/rest",
+  "status": "401"
+}
+STATUS:401
+=== rate limit / scopes header ===
+access-control-expose-headers: ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, X-GitHub-Edge-Region, Deprecation, Sunset
