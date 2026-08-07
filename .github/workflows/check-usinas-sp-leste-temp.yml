@@ -1,0 +1,24 @@
+name: Check Usinas SP Leste Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 30 "https://api.168.138.232.237.sslip.io/atividades" > backups/diag-atividades-raw.json
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-atividades-raw.json
+          git commit -m "diag atividades raw" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-atividades-raw.json
+          git commit -m "diag atividades raw" || echo "nothing2"
+          git push origin HEAD:main
