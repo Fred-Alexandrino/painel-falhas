@@ -1,6 +1,0 @@
---- health after token fix ---
-{"status":"ok","wpp":"conectado"}
-STATUS:200
---- trigger manual backup ---
-{"ok":false,"erro":"não autorizado"}
-STATUS:401
