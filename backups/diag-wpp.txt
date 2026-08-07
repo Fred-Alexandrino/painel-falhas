@@ -1,0 +1,23 @@
+--- VM1 health ---
+{"status":"ok","timestamp":"2026-08-07T08:31:53.277727-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
+
+STATUS:200 TIME:0.467220
+--- VM2 (wpp) health ---
+{"status":"ok","wpp":"desconectado"}
+STATUS:200 TIME:0.460902
+--- VM2 root ---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot GET /</pre>
+</body>
+</html>
+
+STATUS:404 TIME:0.488334
+--- VM2 test send (invalid group, expect fast error not timeout) ---
+{"ok":false,"erro":"WhatsApp não conectado"}
+STATUS:503 TIME:0.466449
