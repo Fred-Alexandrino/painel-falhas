@@ -1,0 +1,26 @@
+name: Check Config Raw Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s -H "X-Webhook-Secret: $WEBHOOK_SECRET" "https://api.168.138.232.237.sslip.io/config-ler" > backups/config-raw-check.json
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/config-raw-check.json
+          git commit -m "check config raw" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/config-raw-check.json
+          git commit -m "check config raw" || echo "nothing2"
+          git push origin HEAD:main
