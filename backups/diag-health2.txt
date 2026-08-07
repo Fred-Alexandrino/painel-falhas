@@ -1,1 +1,62 @@
-{"status":"ok","timestamp":"2026-07-24T12:13:23.903293-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
+* Host wpp.147.15.66.241.sslip.io:443 was resolved.
+* IPv6: (none)
+* IPv4: 147.15.66.241
+*   Trying 147.15.66.241:443...
+* Connected to wpp.147.15.66.241.sslip.io (147.15.66.241) port 443
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+*  CAfile: /etc/ssl/certs/ca-certificates.crt
+*  CApath: /etc/ssl/certs
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [19 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [3441 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [78 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [36 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [36 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519 / id-ecPublicKey
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: CN=wpp.147.15.66.241.sslip.io
+*  start date: Jul 17 00:13:01 2026 GMT
+*  expire date: Oct 15 00:13:00 2026 GMT
+*  subjectAltName: host "wpp.147.15.66.241.sslip.io" matched cert's "wpp.147.15.66.241.sslip.io"
+*  issuer: C=US; O=Let's Encrypt; CN=YE2
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type EC/prime256v1 (256/128 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 1: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 2: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 3: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [122 bytes data]
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://wpp.147.15.66.241.sslip.io/health
+* [HTTP/2] [1] [:method: GET]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: wpp.147.15.66.241.sslip.io]
+* [HTTP/2] [1] [:path: /health]
+* [HTTP/2] [1] [user-agent: curl/8.5.0]
+* [HTTP/2] [1] [accept: */*]
+} [5 bytes data]
+> GET /health HTTP/2
+> Host: wpp.147.15.66.241.sslip.io
+> User-Agent: curl/8.5.0
+> Accept: */*
+> 
+{ [5 bytes data]
+* Operation timed out after 20000 milliseconds with 0 bytes received
+* Connection #0 to host wpp.147.15.66.241.sslip.io left intact
+
+STATUS:000
+curl failed rc=28
