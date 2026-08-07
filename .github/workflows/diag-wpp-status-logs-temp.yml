@@ -1,0 +1,37 @@
+name: Diag WPP Status Logs Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH VM2 status+logs
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm2_key
+          chmod 600 ~/.ssh/vm2_key
+          mkdir -p backups
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm2_key ubuntu@147.15.66.241 '
+            echo "=== systemctl status wppconnect ==="
+            sudo systemctl status wppconnect --no-pager | head -20
+            echo "=== last 80 log lines ==="
+            sudo journalctl -u wppconnect -n 80 --no-pager
+          ' > backups/diag-wpp-logs.txt 2>&1
+          cat backups/diag-wpp-logs.txt
+      - name: Commit and push
+        if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-wpp-logs.txt
+          git commit -m "diag wpp logs [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-wpp-logs.txt
+          git commit -m "diag wpp logs [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
