@@ -1,8 +1,0 @@
-name: Check Health After Deploy Temp
-on:
-  workflow_dispatch: {}
-jobs:
-  d:
-    runs-on: ubuntu-latest
-    steps:
-      - run: curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/health"
