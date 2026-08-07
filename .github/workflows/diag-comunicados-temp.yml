@@ -1,0 +1,29 @@
+name: Diag Comunicados Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          echo "--- VM1 health ---" > backups/diag-comunicados.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/health" >> backups/diag-comunicados.txt
+          echo "--- VM2 (wpp) health ---" >> backups/diag-comunicados.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://wpp.147.15.66.241.sslip.io/health" >> backups/diag-comunicados.txt
+          echo "--- comunicados dry_run ---" >> backups/diag-comunicados.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 60 -X POST -H "X-Webhook-Secret: ${{ secrets.FALHAS_WEBHOOK_SECRET }}" \
+            "https://api.168.138.232.237.sslip.io/enviar-comunicados-diarios?dry_run=true" >> backups/diag-comunicados.txt
+      - run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-comunicados.txt
+          git commit -m "diag comunicados [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-comunicados.txt
+          git commit -m "diag comunicados [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
