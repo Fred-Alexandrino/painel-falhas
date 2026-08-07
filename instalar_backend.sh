@@ -23,7 +23,7 @@ free -h
 echo ">> Atualizando pacotes do sistema..."
 sudo apt-get update -y
 sudo apt-get upgrade -y
-sudo apt-get install -y python3 python3-pip python3-venv git curl build-essential
+sudo apt-get install -y python3 python3-pip python3-venv git curl build-essential poppler-utils
 
 # ── 2. Instalar Caddy (HTTPS automático) ───────────────────────────────────
 echo ">> Instalando Caddy..."
