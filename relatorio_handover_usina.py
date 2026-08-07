@@ -172,6 +172,7 @@ def _gerar_parte1(dados):
     story.append(_tabela_campos([
         ("Nome da Usina:", usina),
         ("Cliente:", cliente),
+        ("Localização:", dados.get("localizacao", "")),
         ("Data de Início do Handover:", data_inicio),
         ("Data de Conclusão do Handover:", data_fim),
     ]))
