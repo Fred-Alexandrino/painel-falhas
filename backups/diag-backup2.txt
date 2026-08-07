@@ -1,0 +1,3 @@
+--- trigger manual backup with secret ---
+{"ok":true}
+STATUS:200
