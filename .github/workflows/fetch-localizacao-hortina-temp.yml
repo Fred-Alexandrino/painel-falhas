@@ -1,0 +1,24 @@
+name: Fetch Localizacao Hortina Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s --max-time 20 "https://api.168.138.232.237.sslip.io/localizacoes" > backups/diag-localizacoes.json
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-localizacoes.json
+          git commit -m "diag localizacoes" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-localizacoes.json
+          git commit -m "diag localizacoes" || echo "nothing2"
+          git push origin HEAD:main
