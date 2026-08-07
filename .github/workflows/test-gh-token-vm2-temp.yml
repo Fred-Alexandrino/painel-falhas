@@ -1,0 +1,43 @@
+name: Test GH Token VM2 Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH test token validity (never print token)
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm2_key
+          chmod 600 ~/.ssh/vm2_key
+          mkdir -p backups
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm2_key ubuntu@147.15.66.241 '
+            set -a; source ~/wppconnect-server/.env; set +a
+            echo "=== token length ==="
+            echo -n "$GITHUB_TOKEN" | wc -c
+            echo "=== token prefix (first 8 chars only) ==="
+            echo "$GITHUB_TOKEN" | cut -c1-8
+            echo "=== whoami (GET /user) ==="
+            curl -s -w "\nSTATUS:%{http_code}\n" -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
+            echo "=== access to wppconnect-auth-backup repo ==="
+            curl -s -w "\nSTATUS:%{http_code}\n" -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/Fred-Alexandrino/wppconnect-auth-backup
+            echo "=== rate limit / scopes header ==="
+            curl -s -D - -o /dev/null -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user | grep -i "x-oauth-scopes\|x-accepted"
+          ' > backups/diag-ghtoken-test.txt 2>&1
+          cat backups/diag-ghtoken-test.txt
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-ghtoken-test.txt
+          git commit -m "diag ghtoken test [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-ghtoken-test.txt
+          git commit -m "diag ghtoken test [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
