@@ -10272,7 +10272,7 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363421052607450": "COS — Técnicos O&M Norte",
     "120363405111083249": "Equipe Crateús",
     "120363410081447469": "Equipe Crateús",
-    "120363405244065477": "O&M CE Sítio Bonfim - Grid/Thopen",
+    "120363405244065477": "Equipe Bonfim/Morada Nova/Quixadá",
     "120363427839577268": "Equipe Elias Fausto",
     "120363428268426406": "Equipe Matão/Topázio",
     "120363422795399103": "Equipe Ibaté/Boa Esperança",
