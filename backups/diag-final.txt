@@ -1,7 +1,0 @@
---- VM2 health ---
-{"status":"ok","wpp":"conectado"}
-STATUS:200 TIME:0.474198
---- VM1 health ---
-{"status":"ok","timestamp":"2026-08-07T09:00:54.204122-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
-
-STATUS:200
