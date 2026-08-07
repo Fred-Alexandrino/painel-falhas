@@ -1,0 +1,47 @@
+name: Reset WPP Session Temp Step2
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH start service fresh
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm2_key
+          chmod 600 ~/.ssh/vm2_key
+          mkdir -p backups
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm2_key ubuntu@147.15.66.241 '
+            echo "=== starting service ==="
+            sudo systemctl start wppconnect
+            sleep 20
+            echo "=== status ==="
+            sudo systemctl status wppconnect --no-pager | head -10
+            echo "=== last 30 log lines ==="
+            sudo journalctl -u wppconnect -n 30 --no-pager
+          ' > backups/diag-reset2.txt 2>&1
+          cat backups/diag-reset2.txt
+      - name: Check /qr endpoint
+        run: |
+          sleep 5
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 20 "https://wpp.147.15.66.241.sslip.io/qr" -o backups/qr_page.html
+          grep -o 'aguardando_qr\|Escaneie\|Gerando QR' backups/qr_page.html || echo "sem match" >> backups/diag-reset2.txt
+          echo "--- qr health ---" >> backups/diag-reset2.txt
+          curl -s --max-time 15 "https://wpp.147.15.66.241.sslip.io/health" >> backups/diag-reset2.txt
+      - name: Commit and push
+        if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-reset2.txt
+          git commit -m "diag reset step2 [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-reset2.txt
+          git commit -m "diag reset step2 [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
