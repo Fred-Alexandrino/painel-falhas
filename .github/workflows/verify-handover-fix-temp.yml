@@ -1,0 +1,36 @@
+name: Verify Handover Fix Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          echo "--- health ---" > backups/diag-hv.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 15 "https://api.168.138.232.237.sslip.io/health" >> backups/diag-hv.txt
+          echo "--- gerar-relatorio-handover OS 10285 ---" >> backups/diag-hv.txt
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 30 -X POST -H "Content-Type: application/json" \
+            -d '{"numeroOS":"10285"}' \
+            "https://api.168.138.232.237.sslip.io/gerar-relatorio-handover" -o backups/hv_test_output.bin -D backups/hv_headers.txt >> backups/diag-hv.txt
+          echo "--- headers ---" >> backups/diag-hv.txt
+          cat backups/hv_headers.txt >> backups/diag-hv.txt
+          echo "--- output size/type ---" >> backups/diag-hv.txt
+          file backups/hv_test_output.bin >> backups/diag-hv.txt
+          head -c 300 backups/hv_test_output.bin >> backups/diag-hv.txt
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-hv.txt
+          git rm -f --cached backups/hv_test_output.bin backups/hv_headers.txt 2>/dev/null || true
+          rm -f backups/hv_test_output.bin backups/hv_headers.txt
+          git commit -m "diag handover [skip ci]" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-hv.txt
+          git commit -m "diag handover [skip ci]" || echo "nothing2"
+          git push origin HEAD:main
