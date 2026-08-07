@@ -1,0 +1,27 @@
+name: Revalidar SP Leste 03 Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p backups
+          curl -s -w "\nSTATUS:%{http_code}\n" --max-time 100 -X POST -H "Content-Type: application/json" \
+            -d '{"usinas":["Thopen - Caxambu 1 - SP","Thopen - Indaiatuba 1 - SP","Thopen - Piracicaba 1 - SP","Thopen - Santa Bárbara 1 - SP"]}' \
+            "https://api.168.138.232.237.sslip.io/revalidar-usinas" > backups/diag-revalidar-sp-leste03.txt
+          cat backups/diag-revalidar-sp-leste03.txt
+      - if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-revalidar-sp-leste03.txt
+          git commit -m "revalidar sp leste 03" || echo "nothing"
+          git fetch origin main
+          git reset --soft origin/main
+          git add backups/diag-revalidar-sp-leste03.txt
+          git commit -m "revalidar sp leste 03" || echo "nothing2"
+          git push origin HEAD:main
