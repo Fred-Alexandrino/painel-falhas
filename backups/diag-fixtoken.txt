@@ -1,0 +1,18 @@
+Warning: Permanently added '147.15.66.241' (ED25519) to the list of known hosts.
+=== confirmando (mascarado) ===
+GITHUB_TOKEN=g
+=== testando novo token direto ===
+{
+  "id": 1303056733,
+  "node_id": "R_kgDOTasRXQ",
+  "name": "wppconnect-auth-backup",
+  "full_name": "Fred-Alexandrino/wppconnect-auth-backup",
+=== reiniciando servico ===
+● wppconnect.service - Ponte WhatsApp - Baileys
+     Loaded: loaded (/etc/systemd/system/wppconnect.service; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-08-07 12:17:46 UTC; 8s ago
+   Main PID: 263212 (node)
+      Tasks: 11 (limit: 1035)
+     Memory: 96.7M (peak: 96.7M)
+        CPU: 2.521s
+     CGroup: /system.slice/wppconnect.service
