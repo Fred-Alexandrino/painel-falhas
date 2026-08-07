@@ -1,7 +1,7 @@
 {
   "pares": {
-    "cluster_usina:Guajirú": "CE Leste 03",
-    "cluster_usina:Sol do Norte I": "CE Leste 03",
-    "cluster_usina:Sol do Norte II": "CE Leste 03"
+    "cluster_usina:Guajirú": "CE Norte 01",
+    "cluster_usina:Sol do Norte I": "CE Norte 01",
+    "cluster_usina:Sol do Norte II": "CE Norte 01"
   }
 }
