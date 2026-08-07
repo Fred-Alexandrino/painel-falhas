@@ -11655,6 +11655,120 @@ def gerar_relatorio_handover_route():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _montar_prompt_punchlist(os_lista):
+    """
+    Monta o prompt pra IA sugerir itens de Punch List a partir dos dados
+    já disponíveis no Painel de Atividades para as OSs selecionadas
+    (descrição, histórico, observações, status por equipamento).
+
+    IMPORTANTE — limitação conhecida: a API da Fracttal não expõe os itens
+    individuais do checklist de campo (as perguntas com resposta
+    Aprovou/Alerta/Falhou), só o status agregado por equipamento. Então
+    isso é um RASCUNHO a partir do que está registrado no painel — não
+    substitui a leitura do PDF exportado da Fracttal, que tem o checklist
+    completo. Por isso a instrução é: só apontar pendência quando há
+    evidência textual real (observação, nota de status diferente de
+    concluído, ressalva no histórico); nunca inventar uma anormalidade
+    plausível só porque o equipamento existe.
+    """
+    blocos = []
+    for os_item in os_lista:
+        bloco = (
+            f"OS {os_item.get('numeroOS','?')} — {os_item.get('equipamento','?')}\n"
+            f"Descrição: {os_item.get('descricao','') or 'não informada'}\n"
+            f"Status: {os_item.get('statusOS') or os_item.get('status','') or 'não informado'}\n"
+            f"Observações registradas: {os_item.get('observacoesOS','') or 'nenhuma'}\n"
+            f"Detalhes por equipamento: {os_item.get('detalhesEquipamentosOS','') or 'não informado'}\n"
+            f"Histórico:\n{os_item.get('historico','') or 'sem histórico'}"
+        )
+        blocos.append(bloco)
+    dados_os = "\n\n---\n\n".join(blocos)
+
+    return (
+        "Você é um engenheiro de O&M de usinas solares fotovoltaicas da Grid Co., revisando "
+        "Ordens de Serviço de handover para montar a Punch List (lista de pendências) de um "
+        "Relatório de Handover formal para o cliente.\n\n"
+        "Analise os dados abaixo, extraídos do Painel de Atividades para as OSs selecionadas. "
+        "Aponte como item de punch list SOMENTE quando houver evidência textual real de "
+        "pendência, anormalidade, ressalva ou item não concluído — em uma observação, nota de "
+        "status, ou menção explícita no histórico. NUNCA invente uma anormalidade plausível "
+        "só porque o equipamento existe ou porque handovers costumam ter pendências. Se os "
+        "dados de uma OS mostram tudo concluído, sem observações, sem ressalvas, NÃO gere "
+        "nenhum item de punch list para ela — isso é o resultado correto quando o handover foi "
+        "limpo, não uma falha da análise.\n\n"
+        "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
+        '{"itens": [{"ativo": "<nome do equipamento/ativo>", '
+        '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
+        '"anormalidade": "<descrição objetiva da pendência, baseada só no texto fornecido>", '
+        '"recomendacoes": "<ação recomendada, objetiva>", '
+        '"responsavel": "<EQUIPE TÉCNICA ou o responsável mencionado, se houver>"}]}\n\n'
+        "Se nenhuma OS tiver pendência real identificável, retorne {\"itens\": []}.\n\n"
+        f"DADOS DAS OSs:\n\n{dados_os}"
+    )
+
+
+@app.route("/gerar-punchlist-ia", methods=["POST", "OPTIONS"])
+def gerar_punchlist_ia():
+    """
+    Sugere itens de Punch List via IA a partir dos dados já registrados no
+    Painel de Atividades para as OSs marcadas no formulário de Handover de
+    Usina. É um RASCUNHO — o usuário revisa/edita antes de gerar o PDF
+    final. Não acessa o checklist detalhado da Fracttal (ver limitação no
+    docstring de _montar_prompt_punchlist).
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+    try:
+        body = request.get_json(force=True) or {}
+        os_lista = body.get("os", [])
+        if not os_lista:
+            return jsonify({"ok": False, "error": "Nenhuma OS informada"}), 400
+
+        prompt = _montar_prompt_punchlist(os_lista)
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 2048,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=25,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        parsed = json.loads(texto_limpo)
+        itens = parsed.get("itens", [])
+
+        # normaliza campos pro formato que o frontend já usa na punch list
+        itens_normalizados = []
+        for it in itens:
+            itens_normalizados.append({
+                "ativo": (it.get("ativo") or "").strip(),
+                "criticidade": it.get("criticidade") if it.get("criticidade") in
+                               ("Baixa", "Média", "Alta", "Muito Alta") else "Média",
+                "status": "PENDENTE",
+                "anormalidade": (it.get("anormalidade") or "").strip(),
+                "recomendacoes": (it.get("recomendacoes") or "").strip(),
+                "responsavel": (it.get("responsavel") or "EQUIPE TÉCNICA").strip(),
+            })
+        return jsonify({"ok": True, "itens": itens_normalizados})
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            return jsonify({"ok": False, "error": "IA temporariamente sem cota. Tente novamente em instantes."}), 429
+        log.error(f"[gerar-punchlist-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception as e:
+        log.error(f"[gerar-punchlist-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/gerar-relatorio-handover-usina", methods=["POST", "OPTIONS"])
 def gerar_relatorio_handover_usina_route():
     """
