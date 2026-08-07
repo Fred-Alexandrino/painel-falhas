@@ -1,10 +1,10 @@
 {
   "pares": {
-    "grupo_usina:Guajirú": "120363431221706747@g.us",
-    "grupo_usina:Sol do Norte I": "120363431221706747@g.us",
-    "grupo_usina:Sol do Norte II": "120363431221706747@g.us",
-    "cluster_usina:Guajirú": "CE Norte 02",
-    "cluster_usina:Sol do Norte I": "CE Norte 02",
-    "cluster_usina:Sol do Norte II": "CE Norte 02"
+    "cluster_usina:Guajirú": "CE Leste 01",
+    "cluster_usina:Sol do Norte I": "CE Leste 01",
+    "cluster_usina:Sol do Norte II": "CE Leste 01",
+    "cluster_usina:Carosa (Aquiraz I)": "CE Leste 02",
+    "cluster_usina:Salvales (Aquiraz II)": "CE Leste 02",
+    "cluster_usina:SunPower (Cascavel)": "CE Leste 02"
   }
 }
