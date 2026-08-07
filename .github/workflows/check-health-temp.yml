@@ -1,0 +1,8 @@
+name: Check Health Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -s -w "\nSTATUS:%{http_code}\n" --max-time 20 "https://wpp.147.15.66.241.sslip.io/health"
