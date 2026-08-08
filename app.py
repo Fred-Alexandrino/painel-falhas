@@ -11635,7 +11635,15 @@ def gerar_relatorio_handover_route():
         if not numero_os:
             return jsonify({"ok": False, "error": "numeroOS é obrigatório"}), 400
 
-        atividade = _buscar_atividade_por_numero_os(numero_os)
+        # Preferência: usa a atividade já carregada no dashboard (o frontend
+        # já tem os dados, vindos do /atividades) — evita reler a planilha
+        # inteira do Sheets a cada geração de handover, o que já causou
+        # 429 (quota de leitura excedida) quando o dashboard estava com
+        # bastante atividade simultânea. Só cai pro fallback via Sheets se
+        # o chamador não enviar a atividade (compatibilidade).
+        atividade = body.get("atividade")
+        if not isinstance(atividade, dict) or not atividade:
+            atividade = _buscar_atividade_por_numero_os(numero_os)
         if not atividade:
             return jsonify({"ok": False,
                              "error": f"OS {numero_os} não encontrada no Painel de Atividades."}), 404
