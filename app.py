@@ -7642,6 +7642,46 @@ def atualizar_coords_localizacao():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/localizacoes-adicionar", methods=["POST", "OPTIONS"])
+def adicionar_localizacao():
+    """Adiciona (ou atualiza, se já existir cliente+usina) uma linha na aba
+    'Localizacoes'. Diferente de /localizacoes-atualizar-coords (que só
+    grava lat/lng em usina já cadastrada), este endpoint cria o registro
+    completo do zero — usado quando uma usina nova entra no mapeamento e
+    ainda não tem nenhuma linha na planilha."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    cliente = str(body.get("cliente", "")).strip()
+    usina = str(body.get("usina", "")).strip()
+    endereco = str(body.get("endereco", "")).strip()
+    maps_link = str(body.get("mapsLink", "")).strip()
+    lat = body.get("lat")
+    lng = body.get("lng")
+    if not usina:
+        return jsonify({"ok": False, "error": "usina é obrigatória"}), 400
+    try:
+        ws = get_localizacoes_sheet()
+        todos = ws.get_all_values()
+        linha = None
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) >= 2 and row[1].strip().lower() == usina.lower() and (
+                not cliente or row[0].strip().lower() == cliente.lower()
+            ):
+                linha = i
+                break
+        nova_linha = [cliente, usina, endereco, maps_link,
+                       "" if lat is None else lat, "" if lng is None else lng]
+        if linha:
+            ws.update(f"A{linha}:F{linha}", [nova_linha])
+            return jsonify({"ok": True, "acao": "atualizada", "linha": linha}), 200
+        else:
+            ws.append_row(nova_linha)
+            return jsonify({"ok": True, "acao": "criada"}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 _MAPS_PIN_REGEX = re.compile(r"!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)")
 
 
