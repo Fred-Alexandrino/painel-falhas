@@ -3364,7 +3364,7 @@ def zeladoria_extrair_print():
                 "contents": [{"parts": parts}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": 2048,
+                    "maxOutputTokens": 8192,
                     "responseMimeType": "application/json",
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
@@ -3376,7 +3376,24 @@ def zeladoria_extrair_print():
         candidato = data["candidates"][0]
         texto_bruto = candidato["content"]["parts"][0]["text"].strip()
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
-        parsed = json.loads(texto_limpo)
+        finish_reason = candidato.get("finishReason", "")
+        try:
+            parsed = json.loads(texto_limpo)
+        except json.JSONDecodeError:
+            if finish_reason == "MAX_TOKENS":
+                # resposta cortada pelo limite de tokens antes de fechar o JSON —
+                # tenta recuperar os itens já completos em vez de descartar tudo
+                itens_parciais = re.findall(r"\{[^{}]*\"usina\"[^{}]*\}", texto_limpo)
+                itens_ok = []
+                for bruto in itens_parciais:
+                    try:
+                        itens_ok.append(json.loads(bruto))
+                    except json.JSONDecodeError:
+                        continue
+                if itens_ok:
+                    log.warning(f"[zeladoria-extrair-print] resposta truncada (MAX_TOKENS), recuperados {len(itens_ok)} item(ns) parcial(is)")
+                    return jsonify({"ok": True, "itens": itens_ok, "usinasValidas": usinas_validas, "truncado": True})
+            raise
         itens = parsed.get("itens") or []
         return jsonify({"ok": True, "itens": itens, "usinasValidas": usinas_validas})
     except Exception as e:
