@@ -440,6 +440,10 @@ CATALOGO_USINAS = {
         "cliente": "Thopen",
         "aliases": ["pocone", "poconé", "poconé"],
     },
+    "Diamantino": {
+        "cliente": "Thopen",
+        "aliases": ["diamantino"],
+    },
     "Canarana I": {
         "cliente": "Thopen",
         "aliases": [
