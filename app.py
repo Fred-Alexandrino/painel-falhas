@@ -10566,64 +10566,79 @@ def gerar_resumo_cliente():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
-def _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao):
-    """Monta o prompt pra gerar o resumo de chamados de fabricante (status
-    diferente de 'Finalizado') selecionados manualmente pelo Fred, em
-    linguagem polida voltada ao cliente final — botão 'Gestão Cliente'
-    dentro do Painel de Chamados. Mesmo princípio do resumo de atividades:
-    seleção 100% manual, sem serial number ou código de equipamento cru,
-    linguagem acessível. O ticket/RMA é incluído como referência ao final
-    de cada linha (pedido do Fred em 27/07/2026 — antes era omitido, agora
-    é mantido pra rastreabilidade)."""
+_EQUIP_ABREV_CHAMADO = [
+    (r"invers", "INV"),
+    (r"track", "TKR"),
+    (r"transformador", "TRAFO"),
+    (r"string\s*box|stringbox", "SB"),
+    (r"m[oó]dulo", "MOD"),
+    (r"otimizador", "OTM"),
+    (r"medidor|medi[cç][aã]o", "MED"),
+    (r"cftv|c[aâ]mera", "CAM"),
+    (r"nobreak", "NBK"),
+    (r"seccionadora", "SEC"),
+    (r"combiner", "CMB"),
+]
+
+
+def _codigo_equipamento_chamado(ativo, identificacao):
+    """Monta o código compacto do equipamento pro resumo de chamados pro
+    cliente: INV14, TKR05, etc. — XX é o número do equipamento (inversor,
+    tracker, etc.) extraído de 'Identificação do Equipamento' ou 'Ativo'.
+    Se o tipo não for reconhecido, cai pra identificação bruta (sem
+    espaços). Pedido do Fred em 10/08/2026."""
+    fonte = f"{identificacao or ''} {ativo or ''}".strip()
+    if not fonte:
+        return ""
+    fonte_norm = fonte.lower()
+    numeros = re.findall(r"\d+", fonte)
+    numero = numeros[0].zfill(2) if numeros else ""
+    for padrao, abrev in _EQUIP_ABREV_CHAMADO:
+        if re.search(padrao, fonte_norm):
+            return f"{abrev}{numero}" if numero else abrev
+    bruto = (identificacao or ativo or "").strip()
+    return re.sub(r"\s+", "", bruto).upper() if bruto else ""
+
+
+def _montar_resumo_chamados_cliente(cliente, chamados, saudacao):
+    """Monta o resumo de chamados de fabricante (status != 'Finalizado')
+    pro cliente final, agrupado por usina — botão 'Gestão Cliente' dentro
+    do Painel de Chamados.
+
+    Formato de linha fixo, pedido pelo Fred em 10/08/2026:
+      INVXX - #TICKET - STATUS   (XX = nº do inversor; TKR = tracker)
+
+    Geração 100% determinística (sem IA): o formato agora é totalmente
+    estruturado/mecânico, então template evita variação indesejada de
+    texto e elimina o timeout ocasional que a chamada à IA causava."""
     por_usina = {}
     for c in chamados:
         usina = (c.get("usina") or "").strip() or "não informado"
-        motivo = (c.get("motivo") or "").strip()
-        status = (c.get("status") or "").strip()
-        dias = (c.get("diasCorridos") or "").strip()
+        status = (c.get("status") or "").strip() or "em andamento"
         ticket = (c.get("ticket") or "").strip()
-        if not motivo:
-            continue
-        linha = motivo
-        if status:
-            linha += f" — status atual: {status}"
-        if dias:
-            linha += f" (em aberto há {dias} dia(s))"
+        codigo = _codigo_equipamento_chamado(c.get("ativo"), c.get("equipamento")) or "Equipamento"
+        linha = codigo
         if ticket:
-            linha += f" [ref. Ticket {ticket}]"
-        por_usina.setdefault(usina, []).append(linha)
+            linha += f" - #{ticket}"
+        linha += f" - {status}"
+        por_usina.setdefault(usina, []).append((codigo, linha))
 
     blocos = []
-    for usina, linhas in por_usina.items():
-        linhas_usina = "\n".join(f"  - {l}" for l in linhas)
-        blocos.append(f"Usina: {usina}\n{linhas_usina}")
-    lista_chamados = "\n\n".join(blocos)
+    for usina in sorted(por_usina.keys()):
+        itens = sorted(por_usina[usina], key=lambda x: x[0])
+        linhas_usina = "\n".join(f"• {linha}" for _, linha in itens)
+        blocos.append(f"*{usina}*\n{linhas_usina}")
+    corpo = "\n\n".join(blocos)
 
-    return f"""Aja como Fred Alexandrino, Supervisor de O&M da Grid Co., escrevendo uma mensagem de WhatsApp pro cliente final ({cliente}) com o panorama dos chamados de fabricante (garantia/assistência técnica) em aberto.
-
-Esta mensagem é PRA CLIENTE, não pra equipe técnica interna — o tom deve ser polido, profissional, amigável e direto, como uma comunicação de relacionamento com cliente (não um controle interno de ticket).
-
-Regras obrigatórias de formato:
-- Comece com a saudação seca e direta "{saudacao}, pessoal." — sem exclamação, sem emoji, e sem mencionar o nome do cliente na saudação (o texto já vai ser enviado no grupo certo, não precisa reforçar isso).
-- Uma frase curta de abertura contextualizando que segue o panorama dos chamados de fabricante em andamento.
-- Liste os chamados agrupados por usina (destaque o nome da usina), com marcador "•" para cada chamado daquela usina.
-- Reescreva cada chamado em linguagem clara pro cliente — SEM serial number, SEM código de identificação de equipamento cru, SEM jargão interno. Mantenha o conteúdo real (o que motivou o chamado e o status/andamento atual), só troque a forma como é dito.
-- Quando o chamado tiver uma marcação "[ref. Ticket XXXX]" na informação fornecida, inclua o número do ticket como referência ao final da linha, em formato discreto, ex.: "• Substituição de módulo com defeito de fabricação, em análise com o fabricante (ref. Ticket 4821)". Não invente número de ticket pra chamados que não tiverem essa marcação.
-- Não invente informações que não estejam na lista fornecida — se o status não estiver claro, diga algo como "em andamento com o fabricante", sem inventar prazo ou solução.
-- Não invente prazo de solução nem prometa data — se não houver data confirmada na informação fornecida, deixe claro que ainda está em acompanhamento.
-- Termine com uma frase curta de disponibilidade/cordialidade.
-- Assine ao final com:
-Atenciosamente,
-Fred Alexandrino
-Supervisor de O&M — Grid Co.
-- Pode usar *negrito* do WhatsApp com moderação (nome da usina, nome do Fred na assinatura).
-
-Cliente: {cliente}
-Chamados selecionados (agrupados por usina):
-{lista_chamados}
-
-FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{"texto": "a mensagem pronta pra enviar, com quebras de linha \\n"}}"""
+    return (
+        f"{saudacao}, pessoal.\n\n"
+        f"Segue o panorama dos chamados de fabricante (garantia/assistência técnica) em andamento:\n\n"
+        f"{corpo}\n\n"
+        f"Qualquer novidade, seguimos informando. Estamos à disposição.\n\n"
+        f"Atenciosamente,\n"
+        f"Fred Alexandrino\n"
+        f"Supervisor de O&M — Grid Co."
+    )
 
 
 @app.route("/gerar-resumo-chamados-cliente", methods=["POST", "OPTIONS"])
@@ -10631,7 +10646,10 @@ def gerar_resumo_chamados_cliente():
     """Gera o texto do resumo de chamados de fabricante (status != Finalizado)
     selecionados manualmente pelo Fred pra um cliente específico — botão
     'Gestão Cliente' dentro do Painel de Chamados. Envio feito depois via
-    /disparar-comunicado-livre (mesma infraestrutura já existente)."""
+    /disparar-comunicado-livre (mesma infraestrutura já existente).
+
+    Geração determinística (sem IA) desde 10/08/2026 — ver
+    _montar_resumo_chamados_cliente."""
     if request.method == "OPTIONS":
         return ("", 204)
     body = request.get_json(force=True, silent=True) or {}
@@ -10642,31 +10660,9 @@ def gerar_resumo_chamados_cliente():
     if not chamados or not isinstance(chamados, list):
         return jsonify({"ok": False, "error": "selecione ao menos um chamado"}), 400
 
-    saudacao = _montar_saudacao_cliente()
-    prompt = _montar_prompt_resumo_chamados_cliente(cliente, chamados, saudacao)
-    diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
-        resp = _chamar_gemini_com_retry(
-            {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "maxOutputTokens": 1024,
-                    "responseMimeType": "application/json",
-                    "thinkingConfig": {"thinkingBudget": 0},
-                },
-            },
-            timeout=20,
-            usar_chave_teste=diagnostico,
-        )
-        data = resp.json()
-        candidato = data["candidates"][0]
-        texto_bruto = candidato["content"]["parts"][0]["text"].strip()
-        texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
-        parsed = json.loads(texto_limpo)
-        texto = (parsed.get("texto") or "").strip()
-        if not texto:
-            raise ValueError("A IA não retornou nenhum texto")
+        saudacao = _montar_saudacao_cliente()
+        texto = _montar_resumo_chamados_cliente(cliente, chamados, saudacao)
         return jsonify({"ok": True, "texto": texto})
     except Exception as e:
         log.error(f"[gerar-resumo-chamados-cliente] Erro: {e}")
