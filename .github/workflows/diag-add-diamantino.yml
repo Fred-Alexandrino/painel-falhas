@@ -1,0 +1,24 @@
+name: Diagnostico Temp - Adicionar Localizacao
+on:
+  workflow_dispatch:
+
+jobs:
+  chamar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint localizacoes-adicionar
+        run: |
+          curl -s -X POST "https://api.168.138.232.237.sslip.io/localizacoes-adicionar" \
+            -H "Content-Type: application/json" \
+            -d '{"cliente":"Thopen","usina":"Diamantino","endereco":"Diamantino - MT","mapsLink":"https://maps.app.goo.gl/odP7rpJYjFDecQQc6","lat":-14.4075,"lng":-56.4166389}' \
+            -o resultado.json
+          cat resultado.json
+      - name: Salvar resultado no repo
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "diag-bot@example.com"
+          mkdir -p backups
+          cp resultado.json backups/diag_add_diamantino_result.json
+          git add backups/diag_add_diamantino_result.json
+          git commit -m "diag: resultado add localizacao Diamantino" || echo "nada a commitar"
+          git push
