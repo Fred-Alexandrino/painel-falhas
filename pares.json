@@ -1,7 +1,4 @@
 {
-  "pares": {
-    "cluster_usina:Guajirú": "CE Norte 01",
-    "cluster_usina:Sol do Norte I": "CE Norte 01",
-    "cluster_usina:Sol do Norte II": "CE Norte 01"
-  }
+  "cluster_usina:Diamantino": "MT Sul 03",
+  "grupo_usina:Diamantino": "120363406329162612@g.us"
 }
