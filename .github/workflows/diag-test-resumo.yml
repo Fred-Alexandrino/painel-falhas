@@ -3,15 +3,21 @@ on: workflow_dispatch
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
       - name: test endpoint
         run: |
           curl -s -X POST https://api.168.138.232.237.sslip.io/gerar-resumo-chamados-cliente \
             -H "Content-Type: application/json" \
             -d '{"cliente":"Renogrid","chamados":[{"usina":"Nova Xavantina 1","status":"Aguardando retorno do Fabricante","ticket":"6941935","equipamento":"Inversor 14","ativo":"Inversor"},{"usina":"Nobres 1","status":"Em análise","ticket":"6797320","equipamento":"Tracker 5","ativo":"Tracker"}]}' \
-            -o /tmp/resp.json -w "HTTP:%{http_code}\n"
-          cat /tmp/resp.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: resp
-          path: /tmp/resp.json
+            -o backups/diag_resumo_chamados_resp.json
+          cat backups/diag_resumo_chamados_resp.json
+      - name: commit result
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "diag@bot.local"
+          git add backups/diag_resumo_chamados_resp.json
+          git commit -m "diag: resultado teste resumo chamados" || echo "no changes"
+          git push
