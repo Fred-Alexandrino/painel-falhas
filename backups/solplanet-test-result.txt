@@ -1,0 +1,15 @@
+=== no_token ===
+
+HTTP_STATUS:400
+
+=== appsecret_as_token ===
+
+HTTP_STATUS:400
+
+=== getPlanListPro_no_token ===
+
+HTTP_STATUS:400
+
+=== with_X-Ca-Key_header ===
+
+HTTP_STATUS:400
