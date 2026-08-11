@@ -11874,7 +11874,18 @@ def gerar_punchlist_ia():
 
 def _fracttal_pdf_extrair_ativos(pdf_bytes):
     """Retorna lista de {nome, pagina_inicio, pagina_fim} (0-indexed,
-    pagina_fim inclusive) — um item por ativo/equipamento do PDF."""
+    pagina_fim inclusive) — um item por ativo/equipamento do PDF.
+
+    BUG CORRIGIDO (11/08/2026): quando dois ativos começam na MESMA
+    página (comum em ativos com pouco conteúdo, ex. "Fossa Séptica"
+    seguido de "Infraestrutura Civil" na mesma página), a versão antiga
+    só detectava o PRIMEIRO marcador "ATIVOS" de cada página (tinha um
+    `break` que saía do loop de linhas assim que achava o primeiro) —
+    o segundo ativo simplesmente sumia, e suas páginas ficavam
+    erradamente atribuídas ao ativo anterior. Confirmado comparando a
+    extração com punch lists reais: a pendência de credenciais de
+    acesso (que é do ativo "Infraestrutura Civil") aparecia grudada
+    nas notas da "Fossa Séptica"."""
     ativos = []
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         total_paginas = len(pdf.pages)
@@ -11885,16 +11896,23 @@ def _fracttal_pdf_extrair_ativos(pdf_bytes):
                 continue
             lines = text.split("\n")
             for j, l in enumerate(lines):
-                if l.strip() == "ATIVOS":
-                    for k in range(j + 1, min(j + 4, len(lines))):
-                        if lines[k].strip().startswith("DESCRIÇÃO:"):
-                            nome = lines[k].replace("DESCRIÇÃO:", "").strip().split("{")[0].strip()
-                            if nome and "Realizado com" not in nome and "Pág." not in nome:
-                                marcadores.append((i, nome))
-                            break
-                    break
+                if l.strip() != "ATIVOS":
+                    continue
+                for k in range(j + 1, min(j + 4, len(lines))):
+                    if lines[k].strip().startswith("DESCRIÇÃO:"):
+                        nome = lines[k].replace("DESCRIÇÃO:", "").strip().split("{")[0].strip()
+                        if nome and "Realizado com" not in nome and "Pág." not in nome:
+                            marcadores.append((i, nome))
+                        break
         for idx, (pagina_inicio, nome) in enumerate(marcadores):
-            pagina_fim = marcadores[idx + 1][0] - 1 if idx + 1 < len(marcadores) else total_paginas - 1
+            if idx + 1 < len(marcadores):
+                proximo_inicio = marcadores[idx + 1][0]
+                # Se o próximo ativo começa na MESMA página, esse ativo
+                # fica só com essa página (melhor granularidade possível
+                # sem rastrear posição vertical dentro da página).
+                pagina_fim = proximo_inicio if proximo_inicio == pagina_inicio else proximo_inicio - 1
+            else:
+                pagina_fim = total_paginas - 1
             ativos.append({"nome": nome, "pagina_inicio": pagina_inicio, "pagina_fim": pagina_fim})
     return ativos
 
@@ -11913,35 +11931,74 @@ def _fracttal_pdf_paginas_checklist(pdf_bytes, pagina_inicio, pagina_fim):
 
 
 def _fracttal_pdf_notas_ativo(pdf_bytes, pagina_inicio, pagina_fim):
-    """Extrai as anotações de texto do técnico (tabela 'ANEXOS DO PLANO
-    DE MANUTENÇÃO', coluna Detalhes) dentro do intervalo do ativo —
-    ignora linhas vazias ou 'N/A' (sem informação real).
+    """Extrai as anotações de texto do técnico dentro do intervalo do
+    ativo: a tabela 'ANEXOS DO PLANO DE MANUTENÇÃO' (Descrição/Detalhes)
+    e o campo solto 'Observações' (aparece fora de tabela, ex.:
+    "Observações UFV não tem sistema de ar-condicionado").
 
-    Cada página tem DUAS tabelas distintas: 'SUBTAREFAS' (pergunta do
-    checklist + opções Aprovou/Alerta/Falhou) e 'ANEXOS DO PLANO DE
-    MANUTENÇÃO' (Descrição/Detalhes — as notas de verdade). É preciso
-    distinguir pelo título da seção (tabela[0][0]), senão a extração
-    pega a PERGUNTA do checklist como se fosse a resposta do técnico.
+    BUG CORRIGIDO (11/08/2026, achado comparando com punch lists reais
+    geradas via Gemini a partir dos mesmos PDFs): quando a tabela
+    'ANEXOS DO PLANO DE MANUTENÇÃO' é longa, ela quebra em várias
+    páginas — o pdfplumber devolve cada pedaço como uma tabela
+    SEPARADA, e só a do início tem a linha de título. A versão antiga
+    exigia esse título em CADA fragmento, então os fragmentos de
+    continuação (sem título, só dados) eram descartados inteiros — e é
+    exatamente nas continuações que ficam as notas mais importantes
+    (ex.: "6 câmeras de CFTV inoperantes" só aparecia na 3ª página da
+    tabela). Corrigido com um flag que persiste entre páginas dentro do
+    intervalo do ativo.
+
+    Cada página tem tabelas distintas: 'SUBTAREFAS' (pergunta do
+    checklist + opções Aprovou/Alerta/Falhou — nunca é fonte de nota)
+    e 'ANEXOS DO PLANO DE MANUTENÇÃO' (Descrição/Detalhes — as notas
+    de verdade, só quando o técnico escreveu algo).
+
+    IMPORTANTE: vários achados (ex. "valores implausíveis no medidor",
+    "ruído anormal no ventilador") só existem como marcação VISUAL do
+    checkbox Aprovou/Alerta/Falhou, sem nenhuma nota de texto — esses só
+    são capturados pela leitura visual (ver _montar_prompt_punchlist_visao
+    e _fracttal_pdf_paginas_checklist), não por esta função.
     """
     notas = []
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         fim = min(pagina_fim, len(pdf.pages) - 1)
+        dentro_anexos = False
         for i in range(pagina_inicio, fim + 1):
+            texto_pagina = pdf.pages[i].extract_text() or ""
+            for linha_txt in texto_pagina.split("\n"):
+                linha_txt = linha_txt.strip()
+                if linha_txt.startswith("Observações") and linha_txt != "Observações":
+                    obs = linha_txt.replace("Observações", "", 1).strip()
+                    if obs and obs.upper() not in ("N/A", "-", "NENHUM", "NENHUMA") and obs not in notas:
+                        notas.append(obs)
+
             for tabela in (pdf.pages[i].extract_tables() or []):
                 if not tabela or not tabela[0]:
                     continue
-                titulo = str(tabela[0][0] or "").strip()
-                if "ANEXOS DO PLANO DE MANUTENÇÃO" not in titulo:
+                primeira = [str(c or "").strip() for c in tabela[0]]
+                # Início de uma tabela SUBTAREFAS (3 colunas) — nunca é
+                # fonte de nota, e fecha qualquer "ANEXOS" em aberto.
+                if len(tabela[0]) >= 3 or primeira[0] == "SUBTAREFAS":
+                    dentro_anexos = False
                     continue
-                # linha 0 = título da seção, linha 1 = cabeçalho
-                # (Descrição/Detalhes), resto = dados de verdade
-                for linha in tabela[2:]:
+                linhas = tabela
+                if "ANEXOS DO PLANO DE MANUTENÇÃO" in primeira[0]:
+                    dentro_anexos = True
+                    linhas = tabela[1:]  # pula só a linha de título; o
+                    # resto (cabeçalho + dados) pode estar na MESMA
+                    # tabela quando ela não quebra de página
+                if not dentro_anexos:
+                    continue
+                for linha in linhas:
                     if not linha or len(linha) < 2:
                         continue
-                    detalhe = (linha[1] or "").strip()
-                    if detalhe and detalhe.upper() not in ("N/A", "-", "NENHUM", "NENHUMA"):
-                        if detalhe not in notas:
-                            notas.append(detalhe)
+                    col0 = str(linha[0] or "").strip()
+                    col1 = str(linha[1] or "").strip()
+                    if col0 == "Descrição" and col1 == "Detalhes":
+                        continue  # cabeçalho das colunas
+                    if col1 and col1.upper() not in ("N/A", "-", "NENHUM", "NENHUMA", "N/OK", "OK"):
+                        if col1 not in notas:
+                            notas.append(col1)
     return notas
 
 
@@ -11987,15 +12044,75 @@ def _montar_prompt_punchlist_visao(nome_ativo, cliente, usina, cluster, notas_te
         "reparos); Baixa para observações menores.\n\n"
         "Critérios de RESPONSÁVEL: \"EQUIPE TÉCNICA\" para reparos elétricos/mecânicos; "
         "\"EQUIPE DE CAMPO\" para limpeza/organização/civil; \"CLIENTE/SUPERVISÃO\" quando o "
-        "problema depende de sistema supervisório, contratação externa, ou está fora do "
-        "escopo de campo da Grid Co.\n\n"
+        "problema depende de sistema supervisório, contratação externa, credenciais de acesso, "
+        "ou está fora do escopo de campo da Grid Co.; \"FABRICANTE\" quando exige garantia ou "
+        "peça/serviço do fabricante do equipamento (ex.: fonte interna de TCU/NCU); "
+        "\"FABRICANTE/TÉCNICA\" quando pode precisar de qualquer um dos dois, a depender do "
+        "diagnóstico.\n\n"
+        "No campo \"ativo\", use uma CATEGORIA padrão (o tipo de equipamento), NUNCA o nome "
+        "nem número específico da Fracttal — por exemplo, escreva \"Inversores\" mesmo que o "
+        "ativo se chame \"Inversor 1.3 Huawei\", porque outros inversores da mesma usina podem "
+        "gerar itens separados que serão consolidados depois numa linha só por categoria. "
+        "Categorias padrão (use uma destas sempre que fizer sentido; se nenhuma servir, use uma "
+        "categoria curta e clara própria): Ar Condicionado, Cabine de Medição, Caixa d'água, "
+        "Estação Meteorológica, Fossa Séptica, CFTV / Segurança, Infraestrutura Civil, "
+        "Infraestrutura / Supervisório, Inversores, Trackers, Módulos Fotovoltaicos, QGBT, "
+        "SPDA, Nobreak e Banco de Baterias, Transformador de Potência, Relé de Proteção, "
+        "Sistema de Drenagem, Sistema de Combate a Incêndio.\n\n"
         "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
-        '{"itens": [{"ativo": "<nome do ativo, curto>", '
+        '{"itens": [{"ativo": "<categoria padrão, sem número de unidade>", '
         '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
         '"anormalidade": "<descrição objetiva e consolidada>", '
         '"recomendacoes": "<ação corretiva recomendada, objetiva>", '
-        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO>"}]}'
+        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>"}]}'
     )
+
+
+def _consolidar_itens_punchlist_por_categoria(itens):
+    """
+    Agrupa itens de punch list que vieram de ativos diferentes mas caem
+    na mesma categoria (ex.: 8 chamadas separadas pros ativos "Inversor
+    1.1".."Inversor 1.8" da Fracttal, cada uma podendo gerar seu próprio
+    item porque _montar_prompt_punchlist_visao já pede pra IA usar a
+    categoria — "Inversores" — em vez do nome/número específico do
+    ativo). Sem essa consolidação, o punch list final ficaria com uma
+    linha por unidade em vez de uma linha por categoria, diferente do
+    padrão real da Grid Co. (confirmado comparando com punch lists reais
+    geradas via Gemini a partir dos mesmos PDFs — sempre 1 linha por
+    categoria, nunca 1 por inversor/tracker individual).
+
+    Critério de junção: chave = (usina, categoria) normalizada
+    (case-insensitive). anormalidade/recomendações são concatenadas;
+    criticidade fica a mais alta do grupo; responsável vira a união dos
+    valores distintos (ex.: "EQUIPE TÉCNICA / FABRICANTE").
+    """
+    ORDEM_CRITICIDADE = {"baixa": 0, "média": 1, "media": 1, "alta": 2, "muito alta": 3}
+    grupos = {}
+    ordem_grupos = []
+    for item in itens:
+        chave = ((item.get("usina") or "").strip().lower(), (item.get("ativo") or "").strip().lower())
+        if chave not in grupos:
+            grupos[chave] = []
+            ordem_grupos.append(chave)
+        grupos[chave].append(item)
+
+    consolidados = []
+    for chave in ordem_grupos:
+        grupo = grupos[chave]
+        if len(grupo) == 1:
+            consolidados.append(grupo[0])
+            continue
+        base = dict(grupo[0])
+        anormalidades = [g.get("anormalidade", "").strip() for g in grupo if g.get("anormalidade", "").strip()]
+        recomendacoes = [g.get("recomendacoes", "").strip() for g in grupo if g.get("recomendacoes", "").strip()]
+        responsaveis = list(dict.fromkeys(g.get("responsavel", "").strip() for g in grupo if g.get("responsavel", "").strip()))
+        criticidade_max = max(grupo, key=lambda g: ORDEM_CRITICIDADE.get((g.get("criticidade") or "").strip().lower(), 1))
+        base["anormalidade"] = "; ".join(dict.fromkeys(anormalidades))
+        base["recomendacoes"] = "; ".join(dict.fromkeys(recomendacoes))
+        base["responsavel"] = " / ".join(responsaveis) if responsaveis else base.get("responsavel", "")
+        base["criticidade"] = criticidade_max.get("criticidade", base.get("criticidade"))
+        consolidados.append(base)
+    return consolidados
 
 
 def _gerar_punchlist_ativo_via_visao(nome_ativo, cliente, usina, cluster, imagens_base64, notas_texto):
@@ -12106,6 +12223,8 @@ def extrair_punchlist_fracttal_ia():
         todos_itens = []
         for r in resultados:
             todos_itens.extend(r["itens"])
+
+        todos_itens = _consolidar_itens_punchlist_por_categoria(todos_itens)
 
         return jsonify({
             "ok": True,
