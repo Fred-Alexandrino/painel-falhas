@@ -22,15 +22,21 @@ continua sendo um anexo separado, não embutido neste .docx.
 """
 import copy
 import os
+import subprocess
+import tempfile
 from io import BytesIO
 
 from docx import Document
 from docx.text.paragraph import Paragraph
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_BREAK
 from docx.shared import Cm, Pt, RGBColor
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+
+import pdfplumber
+from pypdf import PdfReader, PdfWriter
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "handover_grid_template.docx")
 
@@ -270,6 +276,18 @@ def gerar_handover_usina_docx(dados):
                     else:
                         celula.paragraphs[0].add_run(valor)
 
+    # Quebra de página logo após o título "3.4 Ordens de Serviço - Handover"
+    # — garante que a seção 4 comece numa página nova, o que deixa o ponto
+    # de corte (pra inserir o PDF da Fracttal, ver gerar_handover_usina_completo)
+    # sem ambiguidade: tudo até a última página que contém esse título vira
+    # a "parte 1", o resto vira "parte 2".
+    p_ordens = _achar_paragrafo(doc, "Ordens de Serviço - Handover")
+    if p_ordens is not None:
+        novo_p_elem = OxmlElement("w:p")
+        p_ordens._p.addnext(novo_p_elem)
+        paragrafo_quebra = Paragraph(novo_p_elem, p_ordens._parent)
+        paragrafo_quebra.add_run().add_break(WD_BREAK.PAGE)
+
     # Punch List (seção nova em paisagem, no final)
     _adicionar_secao_punchlist(doc, dados.get("punchList", []))
 
@@ -277,3 +295,90 @@ def gerar_handover_usina_docx(dados):
     doc.save(buf)
     buf.seek(0)
     return buf
+
+
+# ── Conversão pra PDF + merge com o PDF da Fracttal ─────────────────────
+
+def _converter_docx_para_pdf(docx_bytes):
+    """Converte bytes de um .docx pra PDF via LibreOffice headless. Cada
+    chamada usa um perfil de usuário temporário isolado, pra não haver
+    conflito entre requisições concorrentes na mesma VM."""
+    with tempfile.TemporaryDirectory(prefix="handover_lo_") as tmpdir:
+        docx_path = os.path.join(tmpdir, "entrada.docx")
+        with open(docx_path, "wb") as f:
+            f.write(docx_bytes)
+        perfil = os.path.join(tmpdir, "perfil_lo")
+        os.makedirs(perfil, exist_ok=True)
+
+        resultado = subprocess.run(
+            ["soffice", "--headless", "--norestore",
+             f"-env:UserInstallation=file://{perfil}",
+             "--convert-to", "pdf", "--outdir", tmpdir, docx_path],
+            capture_output=True, timeout=90,
+        )
+        pdf_path = os.path.join(tmpdir, "entrada.pdf")
+        if not os.path.exists(pdf_path):
+            erro = (resultado.stderr or b"").decode(errors="ignore")[:800]
+            raise RuntimeError(f"Falha ao converter o .docx para PDF (LibreOffice): {erro}")
+        with open(pdf_path, "rb") as f:
+            return f.read()
+
+
+def _dividir_pdf_no_marcador(pdf_bytes, texto_marcador="Ordens de Serviço - Handover"):
+    """Divide o PDF em duas partes: tudo até a ÚLTIMA página que contém
+    `texto_marcador` (inclusive) vira a parte 1, o resto vira a parte 2.
+    Como gerar_handover_usina_docx já insere uma quebra de página logo
+    depois desse título, essa página nunca tem conteúdo da seção 4 junto
+    — o corte é limpo. Se o marcador não for encontrado (modelo mudou),
+    não divide: tudo vira parte 1 e a parte 2 fica vazia."""
+    reader = PdfReader(BytesIO(pdf_bytes))
+    pagina_split = None
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        for i, page in enumerate(pdf.pages):
+            if texto_marcador in (page.extract_text() or ""):
+                pagina_split = i
+
+    parte1, parte2 = PdfWriter(), PdfWriter()
+    for i, page in enumerate(reader.pages):
+        alvo = parte1 if (pagina_split is None or i <= pagina_split) else parte2
+        alvo.add_page(page)
+
+    buf1, buf2 = BytesIO(), BytesIO()
+    parte1.write(buf1)
+    parte2.write(buf2)
+    buf1.seek(0)
+    buf2.seek(0)
+    return buf1.getvalue(), buf2.getvalue()
+
+
+def gerar_handover_usina_completo(dados, fracttal_pdf_bytes=None):
+    """
+    Gera o Relatório de Handover completo.
+
+    Sem PDF da Fracttal: retorna (bytes_docx, "docx") — o documento
+    editável, direto do modelo real.
+
+    Com PDF da Fracttal: converte o .docx pra PDF (LibreOffice), corta
+    logo após o título "3.4 Ordens de Serviço - Handover", insere as
+    páginas do PDF da Fracttal ali no meio, e devolve
+    (bytes_pdf_final, "pdf") — documento + OS mesclados, prontos pra
+    enviar ao cliente.
+    """
+    docx_bytes = gerar_handover_usina_docx(dados).read()
+    if not fracttal_pdf_bytes:
+        return docx_bytes, "docx"
+
+    pdf_bytes = _converter_docx_para_pdf(docx_bytes)
+    parte1_bytes, parte2_bytes = _dividir_pdf_no_marcador(pdf_bytes)
+
+    writer = PdfWriter()
+    for chunk in (parte1_bytes, fracttal_pdf_bytes, parte2_bytes):
+        if not chunk:
+            continue
+        for page in PdfReader(BytesIO(chunk)).pages:
+            writer.add_page(page)
+
+    saida = BytesIO()
+    writer.write(saida)
+    saida.seek(0)
+    return saida.read(), "pdf"
