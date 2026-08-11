@@ -128,14 +128,39 @@ def _sombrear_celula(celula, hex_cor):
     tcPr.append(sh)
 
 
+def _bordas_tabela(tabela, cor="D9D9E0"):
+    """Aplica bordas finas em toda a grade da tabela — sem isso, o Word
+    não desenha NENHUMA linha entre as células (fica sem cara de
+    tabela nenhuma, só texto meio alinhado)."""
+    tblPr = tabela._tbl.tblPr
+    bordas = OxmlElement("w:tblBorders")
+    for lado in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{lado}")
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), "4")
+        el.set(qn("w:color"), cor)
+        bordas.append(el)
+    tblPr.append(bordas)
+
+
+def _definir_largura_coluna(tabela, indice, largura_cm):
+    """No python-docx, a largura de coluna só é respeitada de verdade
+    no Word se for setada em CADA célula da coluna, não só no objeto
+    Table — por isso o define_col_widths do table sozinho não bastava
+    e as colunas saíam com larguras arbitrárias/erradas."""
+    for linha in tabela.rows:
+        linha.cells[indice].width = Cm(largura_cm)
+
+
 def _adicionar_secao_punchlist(doc, punch_list):
     """Adiciona uma nova seção em paisagem no final do documento com a
-    tabela de Punch List (mesmo padrão visual: cabeçalho verde, zebra)."""
+    tabela de Punch List (mesmo padrão visual: cabeçalho verde, zebra,
+    bordas finas, colunas com largura fixa proporcional ao conteúdo)."""
     nova_secao = doc.add_section(WD_SECTION.NEW_PAGE)
     nova_secao.orientation = 1  # WD_ORIENT.LANDSCAPE
     largura_antiga, altura_antiga = nova_secao.page_width, nova_secao.page_height
     nova_secao.page_width, nova_secao.page_height = altura_antiga, largura_antiga
-    nova_secao.left_margin = nova_secao.right_margin = Cm(1.4)
+    nova_secao.left_margin = nova_secao.right_margin = Cm(1.2)
     nova_secao.top_margin = nova_secao.bottom_margin = Cm(1.6)
     # a seção nova herda o mesmo cabeçalho — como é paisagem e a punch
     # list é a última página, "linkar ao anterior" (padrão) já é o
@@ -150,8 +175,14 @@ def _adicionar_secao_punchlist(doc, punch_list):
 
     cabecalho = ["CLIENTE", "USINA", "CLUSTER", "ATIVO", "CRITICIDADE",
                  "STATUS", "ANORMALIDADE", "RECOMENDAÇÕES", "RESPONSÁVEL"]
+    # larguras em cm, somando ~25.5cm (A4 paisagem ~29.7cm - 2x1.2cm margem)
+    larguras_cm = [2.6, 2.8, 2.2, 2.6, 2.2, 2.2, 4.8, 4.8, 2.7]
+
     tabela = doc.add_table(rows=1, cols=len(cabecalho))
     tabela.alignment = WD_TABLE_ALIGNMENT.CENTER
+    tabela.autofit = False
+    _bordas_tabela(tabela)
+
     for i, texto in enumerate(cabecalho):
         celula = tabela.rows[0].cells[i]
         celula.text = ""
@@ -177,6 +208,9 @@ def _adicionar_secao_punchlist(doc, punch_list):
             r.font.size = Pt(8.5)
             if idx % 2 == 1:
                 _sombrear_celula(celula, ZEBRA_PUNCHLIST)
+
+    for i, largura in enumerate(larguras_cm):
+        _definir_largura_coluna(tabela, i, largura)
 
 
 # ── Função principal ─────────────────────────────────────────────────
