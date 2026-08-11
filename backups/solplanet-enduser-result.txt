@@ -1,0 +1,24 @@
+=== getPlantOverview ===
+URL: https://eu-api-genergal.aisweicloud.com/getPlantOverview?key=75a973d76e00483c93d6e98fb79da4cc
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
+=== devicelist ===
+URL: https://eu-api-genergal.aisweicloud.com/devicelist?key=75a973d76e00483c93d6e98fb79da4cc
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
+=== getInverterOverview ===
+URL: https://eu-api-genergal.aisweicloud.com/getInverterOverview?key=75a973d76e00483c93d6e98fb79da4cc
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
+=== getPlantOutput ===
+URL: https://eu-api-genergal.aisweicloud.com/getPlantOutput?date=2026-08-11&key=75a973d76e00483c93d6e98fb79da4cc&period=bydays
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
