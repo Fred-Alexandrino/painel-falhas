@@ -12158,9 +12158,10 @@ def gerar_relatorio_handover_usina_route():
 
         buf = montar_relatorio_handover_usina(dados, fracttal_pdf_bytes)
 
-        usina_slug = re.sub(r"[^A-Za-z0-9]+", "", usina) or "Usina"
-        cliente_slug = re.sub(r"[^A-Za-z0-9]+", "", cliente) or "GridCo"
-        nome_arquivo = f"Handover_{usina_slug}_{cliente_slug}_GridCo.pdf"
+        # Nomenclatura confirmada nos PDFs de referência da Grid Co.
+        # (ex.: "UFV ABC MORADA NOVA - Relatório Handover - Grid Co.pdf",
+        # "UFV SOL DO NORTE II - Relatório Handover - Grid Co.pdf").
+        nome_arquivo = f"UFV {usina.upper()} - Relatório Handover - Grid Co.pdf"
 
         log.info(f"[Relatorio Handover Usina] Gerado para {usina} ({cliente}), "
                  f"com PDF Fracttal={'sim' if fracttal_pdf_bytes else 'não'}")
