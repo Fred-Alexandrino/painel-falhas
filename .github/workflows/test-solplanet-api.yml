@@ -1,0 +1,57 @@
+name: test-solplanet-api
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test getPlantOverviewPro (no token)
+        run: |
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
+            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc" \
+            > result_no_token.txt || true
+          cat result_no_token.txt
+
+      - name: Test getPlantOverviewPro (appsecret as token)
+        run: |
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
+            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
+            > result_appsecret_token.txt || true
+          cat result_appsecret_token.txt
+
+      - name: Test getPlanListPro (no token, sanity)
+        run: |
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
+            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlanListPro?pageNum=1&pageSize=10" \
+            > result_planlist.txt || true
+          cat result_planlist.txt
+
+      - name: Test with X-Ca-Key header (appkey) just in case
+        run: |
+          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
+            -H "X-Ca-Key: 204732162" \
+            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc" \
+            > result_with_header.txt || true
+          cat result_with_header.txt
+
+      - name: Save combined results
+        run: |
+          mkdir -p backups
+          {
+            echo "=== no_token ==="; cat result_no_token.txt;
+            echo ""; echo "=== appsecret_as_token ==="; cat result_appsecret_token.txt;
+            echo ""; echo "=== getPlanListPro_no_token ==="; cat result_planlist.txt;
+            echo ""; echo "=== with_X-Ca-Key_header ==="; cat result_with_header.txt;
+          } > backups/solplanet-test-result.txt
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add backups/solplanet-test-result.txt
+          git commit -m "test: solplanet api diagnostic result" || echo "nothing to commit"
+          git push
