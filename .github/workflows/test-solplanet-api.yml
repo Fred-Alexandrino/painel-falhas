@@ -12,39 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test with Accept header + verbose headers - no token
+      - name: Decode and run signature test
         run: |
-          curl -sv -H "Accept: application/json" \
-            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc" \
-            > result_a.txt 2>&1 || true
-
-      - name: Test with Accept header + token=appsecret
-        run: |
-          curl -sv -H "Accept: application/json" \
-            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
-            > result_b.txt 2>&1 || true
-
-      - name: Test getPlanListPro with Accept header
-        run: |
-          curl -sv -H "Accept: application/json" \
-            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlanListPro?pageNum=1&pageSize=10&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
-            > result_c.txt 2>&1 || true
-
-      - name: Test EU domain from library for comparison
-        run: |
-          curl -sv -H "Accept: application/json" \
-            "https://eu-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
-            > result_d.txt 2>&1 || true
-
-      - name: Save combined results
-        run: |
-          mkdir -p backups
-          {
-            echo "=== A: no_token_with_accept_header ==="; cat result_a.txt;
-            echo ""; echo "=== B: appsecret_as_token_with_accept ==="; cat result_b.txt;
-            echo ""; echo "=== C: getPlanListPro_with_token ==="; cat result_c.txt;
-            echo ""; echo "=== D: eu_domain ==="; cat result_d.txt;
-          } > backups/solplanet-test-result2.txt
+          echo "aW1wb3J0IGhtYWMsIGhhc2hsaWIsIGJhc2U2NCwganNvbiwgdXJsbGliLnJlcXVlc3QsIHVybGxpYi5lcnJvcgoKQVBQX0tFWSA9ICIyMDQ3MzIxNjIiCkFQUF9TRUNSRVQgPSAiT0s5b0cwc2JTZWlOWkFLVEI1Vk9hOFI5Q1FxVHFMdVQiCkFQSUtFWSA9ICI3NWE5NzNkNzZlMDA0ODNjOTNkNmU5OGZiNzlkYTRjYyIKQkFTRSA9ICJodHRwczovL2FwLXNvdXRoZWFzdC0xLWFwaS1nZW5lcmdhbC5haXN3ZWljbG91ZC5jb20iCgpkZWYgY2FsbChwYXRoLCBwYXJhbXMsIGxhYmVsKToKICAgICMgc29ydCBwYXJhbXMgYWxwaGFiZXRpY2FsbHkgYnkga2V5CiAgICBpdGVtcyA9IHNvcnRlZChwYXJhbXMuaXRlbXMoKSkKICAgIHF1ZXJ5ID0gIiYiLmpvaW4oZiJ7a309e3Z9IiBmb3IgaywgdiBpbiBpdGVtcykKICAgIGVuZHBvaW50ID0gcGF0aCArICgiPyIgKyBxdWVyeSBpZiBxdWVyeSBlbHNlICIiKQogICAgbWV0aG9kID0gIkdFVCIKICAgIGFjY2VwdCA9ICJhcHBsaWNhdGlvbi9qc29uIgogICAgY29udGVudF90eXBlID0gIiIKICAgIGNvbnRlbnRfbWQ1ID0gIiIKICAgIGRhdGUgPSAiIgogICAgaGVhZGVyc19saW5lID0gZiJYLUNhLUtleTp7QVBQX0tFWX1cbiIKICAgIHN0cmluZ190b19zaWduID0gZiJ7bWV0aG9kfVxue2FjY2VwdH1cbntjb250ZW50X21kNX1cbntjb250ZW50X3R5cGV9XG57ZGF0ZX1cbntoZWFkZXJzX2xpbmV9e2VuZHBvaW50fSIKICAgIHNpZyA9IGJhc2U2NC5iNjRlbmNvZGUoCiAgICAgICAgaG1hYy5uZXcoQVBQX1NFQ1JFVC5lbmNvZGUoInV0Zi04IiksIHN0cmluZ190b19zaWduLmVuY29kZSgidXRmLTgiKSwgaGFzaGxpYi5zaGEyNTYpLmRpZ2VzdCgpCiAgICApLmRlY29kZSgpCgogICAgcmVxX2hlYWRlcnMgPSB7CiAgICAgICAgIkFjY2VwdCI6IGFjY2VwdCwKICAgICAgICAiWC1DYS1LZXkiOiBBUFBfS0VZLAogICAgICAgICJYLUNhLVNpZ25hdHVyZSI6IHNpZywKICAgICAgICAiWC1DYS1TaWduYXR1cmUtSGVhZGVycyI6ICJYLUNhLUtleSIsCiAgICB9CgogICAgdXJsID0gQkFTRSArIGVuZHBvaW50CiAgICByZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz1yZXFfaGVhZGVycywgbWV0aG9kPSJHRVQiKQogICAgcHJpbnQoZiI9PT0ge2xhYmVsfSA9PT0iKQogICAgcHJpbnQoIlVSTDoiLCB1cmwpCiAgICBwcmludCgiU3RyaW5nVG9TaWduIChyZXByKToiLCByZXByKHN0cmluZ190b19zaWduKSkKICAgIHRyeToKICAgICAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTE1KSBhcyByZXNwOgogICAgICAgICAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKGVycm9ycz0icmVwbGFjZSIpCiAgICAgICAgICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMpCiAgICAgICAgICAgIHByaW50KCJCT0RZOiIsIGJvZHkpCiAgICBleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgICAgIGJvZHkgPSBlLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIikKICAgICAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgICAgICBwcmludCgiSEVBREVSUzoiLCBkaWN0KGUuaGVhZGVycykpCiAgICAgICAgcHJpbnQoIkJPRFk6IiwgYm9keSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICBwcmludCgiRVJST1I6Iiwgc3RyKGUpKQogICAgcHJpbnQoKQoKIyBUZXN0IDE6IG5vIHRva2VuIHBhcmFtCmNhbGwoIi9wcm8vZ2V0UGxhbnRPdmVydmlld1BybyIsIHsiYXBpa2V5IjogQVBJS0VZfSwgIm5vX3Rva2VuX3NpZ25lZCIpCgojIFRlc3QgMjogZW1wdHkgdG9rZW4gcGFyYW0KY2FsbCgiL3Byby9nZXRQbGFudE92ZXJ2aWV3UHJvIiwgeyJhcGlrZXkiOiBBUElLRVksICJ0b2tlbiI6ICIifSwgImVtcHR5X3Rva2VuX3NpZ25lZCIpCgojIFRlc3QgMzogZ2V0UGxhbkxpc3RQcm8gbm8gdG9rZW4KY2FsbCgiL3Byby9nZXRQbGFuTGlzdFBybyIsIHsicGFnZU51bSI6ICIxIiwgInBhZ2VTaXplIjogIjEwIn0sICJnZXRQbGFuTGlzdFByb19zaWduZWQiKQo=" | base64 -d > sign_test.py
+          python3 sign_test.py > backups/solplanet-signed-result.txt 2>&1 || true
+          cat backups/solplanet-signed-result.txt
 
       - name: Commit and push results
         env:
@@ -53,6 +25,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
-          git add backups/solplanet-test-result2.txt
-          git commit -m "test: solplanet api diagnostic result v2 verbose" || echo "nothing to commit"
+          mkdir -p backups
+          git add backups/solplanet-signed-result.txt
+          git commit -m "test: solplanet signed api result" || echo "nothing to commit"
           git push origin HEAD:main
