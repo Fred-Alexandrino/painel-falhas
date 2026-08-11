@@ -67,7 +67,7 @@ app = Flask(__name__)
 
 # Permite requisições do GitHub Pages e de qualquer origem
 # (o dashboard fica em fred-alexandrino.github.io)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": "*", "expose_headers": ["Content-Disposition"]}})
 
 
 @app.errorhandler(Exception)
