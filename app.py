@@ -12378,6 +12378,7 @@ def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
             "responsavel": (it.get("responsavel") or "EQUIPE TÉCNICA").strip(),
             "cliente": cliente,
             "usina": usina,
+            "cluster": cluster,
         })
     return normalizados
 
