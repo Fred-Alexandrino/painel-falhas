@@ -23,6 +23,8 @@ jobs:
             venv/bin/pip install -r requirements.txt
             echo "=== garantindo tesseract-ocr (fallback p/ PDFs da Fracttal exportados como imagem) ==="
             sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-por
+            echo "=== garantindo libreoffice-writer (converter docx->pdf p/ mesclar com PDF da Fracttal) ==="
+            sudo apt-get install -y -qq libreoffice-writer
             sudo systemctl restart painel-falhas
             sleep 3
             sudo systemctl status painel-falhas --no-pager
