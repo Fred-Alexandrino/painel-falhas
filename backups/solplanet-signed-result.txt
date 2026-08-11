@@ -1,0 +1,21 @@
+=== no_token_signed ===
+URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc
+StringToSign (repr): 'GET\napplication/json\n\n\n\nX-Ca-Key:204732162\n/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc'
+STATUS: 400
+HEADERS: {'Date': 'Tue, 11 Aug 2026 20:09:51 GMT', 'Content-Type': 'application/oct-stream', 'Content-Length': '0', 'Connection': 'close', 'X-Ca-Error-Message': 'Parameter `token` is required', 'Server': 'Kaede/3.5.3.777 (a1d5aejl1)', 'X-Ca-Error-Code': 'I400MP', 'X-Ca-Request-Id': '6395AEA5-947E-4716-8F8A-B1D56B97FD5D'}
+BODY: 
+
+=== empty_token_signed ===
+URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=
+StringToSign (repr): 'GET\napplication/json\n\n\n\nX-Ca-Key:204732162\n/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token='
+STATUS: 403
+HEADERS: {'Date': 'Tue, 11 Aug 2026 20:09:51 GMT', 'Content-Type': 'application/oct-stream', 'Content-Length': '0', 'Connection': 'close', 'X-Ca-Error-Message': 'Invalid Signature, Server StringToSign:`GET#application/json####X-Ca-Key:204732162#/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token`', 'Server': 'Kaede/3.5.3.777 (a1d5aejl1)', 'X-Ca-Error-Code': 'A403IS', 'X-Ca-Request-Id': 'CB5A35C4-281A-4456-A9E8-6423DA59EF7F'}
+BODY: 
+
+=== getPlanListPro_signed ===
+URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlanListPro?pageNum=1&pageSize=10
+StringToSign (repr): 'GET\napplication/json\n\n\n\nX-Ca-Key:204732162\n/pro/getPlanListPro?pageNum=1&pageSize=10'
+STATUS: 400
+HEADERS: {'Date': 'Tue, 11 Aug 2026 20:09:52 GMT', 'Content-Type': 'application/oct-stream', 'Content-Length': '0', 'Connection': 'close', 'X-Ca-Error-Message': 'Parameter `token` is required', 'Server': 'Kaede/3.5.3.777 (a1d5ak7pt)', 'X-Ca-Error-Code': 'I400MP', 'X-Ca-Request-Id': '11A0E876-EE37-4C3F-8BAE-052103F3CD0C'}
+BODY: 
+
