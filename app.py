@@ -32,6 +32,7 @@ from relatorio_handover import gerar_handover_docx
 from relatorio_handover_usina import montar_relatorio_handover_usina
 import pdfplumber
 from pdf2image import convert_from_bytes
+from pypdf import PdfReader, PdfWriter
 from io import BytesIO
 
 # Push notifications (pywebpush)
@@ -12242,6 +12243,213 @@ def _gerar_punchlist_ativo_via_visao(nome_ativo, cliente, usina, cluster, imagen
             "responsavel": (it.get("responsavel") or "EQUIPE TÉCNICA").strip(),
         })
     return normalizados
+
+
+CLAUDE_PDF_MAX_PAGINAS = 90   # limite real da API: 100 páginas — margem de segurança
+CLAUDE_PDF_MAX_MB = 28        # limite real da API: 32MB por request — margem de segurança
+
+
+def _dividir_pdf_em_chunks(pdf_bytes, max_paginas=CLAUDE_PDF_MAX_PAGINAS, max_mb=CLAUDE_PDF_MAX_MB):
+    """Divide o PDF em pedaços que respeitam os limites da API da
+    Anthropic pra documentos PDF nativos (100 páginas / 32MB por
+    request — usa 90/28 de margem). Cada pedaço é um PDF válido
+    (páginas mantidas na ordem original)."""
+    reader = PdfReader(BytesIO(pdf_bytes))
+    total = len(reader.pages)
+    chunks = []
+    inicio = 0
+    while inicio < total:
+        fim = min(inicio + max_paginas, total)
+        while True:
+            writer = PdfWriter()
+            for i in range(inicio, fim):
+                writer.add_page(reader.pages[i])
+            buf = BytesIO()
+            writer.write(buf)
+            dados = buf.getvalue()
+            if len(dados) <= max_mb * 1024 * 1024 or fim - inicio <= 5:
+                break
+            fim = inicio + max(5, (fim - inicio) // 2)
+        chunks.append({"pagina_inicio": inicio, "pagina_fim": fim - 1, "bytes": dados})
+        inicio = fim
+    return chunks
+
+
+def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, pagina_fim, total_paginas):
+    aviso_trecho = ""
+    if total_paginas > (pagina_fim - pagina_inicio + 1):
+        aviso_trecho = (
+            f"Este é o trecho de página {pagina_inicio + 1} a {pagina_fim + 1} de um documento "
+            f"de {total_paginas} páginas no total (dividido em partes por causa do limite de "
+            "tamanho da API — se um ativo aparecer cortado no início ou no fim desse trecho, "
+            "ignore-o, ele será coberto por completo em outra parte).\n\n"
+        )
+    return (
+        "Você é um engenheiro de O&M de usinas solares fotovoltaicas da Grid Co., analisando "
+        "um PDF exportado da Fracttal (Ordem de Trabalho de handover) pra montar a Punch List "
+        "(lista de pendências) de um Relatório de Handover formal pro cliente.\n\n"
+        f"Esse PDF documenta a inspeção de vários ativos/equipamentos da usina {usina} "
+        f"(cliente {cliente}, cluster {cluster}). Cada ativo tem um checklist de subtarefas "
+        "com três opções — Aprovou / Alerta / Falhou — marcadas com um quadradinho preenchido "
+        "indicando qual foi escolhida, e pode ter uma seção de anotações do técnico "
+        "('ANEXOS DO PLANO DE MANUTENÇÃO' ou linhas 'Nota: ...'). Leia o conteúdo visual das "
+        "páginas (o documento pode ser texto real ou imagem escaneada — leia do mesmo jeito).\n\n"
+        f"{aviso_trecho}"
+        "Para cada ativo/equipamento com pelo menos um item marcado Alerta ou Falhou, ou com "
+        "anotação de pendência do técnico, gere UM item de punch list consolidado (uma linha "
+        "só por ativo, juntando as anormalidades numa frase objetiva, no padrão Grid Co., ex.: "
+        "\"Multimedidor inoperante, ruídos anormais e falha na iluminação de emergência\"). "
+        "Ignore ativos 100% Aprovou, sem nenhuma nota de pendência.\n\n"
+        "Critérios de CRITICIDADE: Alta/Muito Alta para falhas funcionais, de segurança ou que "
+        "impedem operação (equipamento fora de operação, falha de proteção, ausência de "
+        "supervisório); Média para itens de manutenção/limpeza/cosmético; Baixa para "
+        "observações menores.\n\n"
+        "Critérios de RESPONSÁVEL: \"EQUIPE TÉCNICA\" para reparos elétricos/mecânicos; "
+        "\"EQUIPE DE CAMPO\" para limpeza/organização/civil; \"CLIENTE/SUPERVISÃO\" quando o "
+        "problema depende de sistema supervisório, contratação externa, credenciais de acesso, "
+        "ou está fora do escopo de campo da Grid Co.; \"FABRICANTE\" quando exige garantia ou "
+        "peça/serviço do fabricante do equipamento; \"FABRICANTE/TÉCNICA\" quando pode precisar "
+        "de qualquer um dos dois.\n\n"
+        "No campo \"ativo\", use uma CATEGORIA padrão (o tipo de equipamento), NUNCA o "
+        "nome/número específico da unidade — escreva \"Inversores\" mesmo que o ativo se chame "
+        "\"Inversor 1.3\", porque outras partes do documento podem ter achados do mesmo tipo de "
+        "equipamento, que serão consolidados numa linha só depois. Categorias padrão (use uma "
+        "destas sempre que fizer sentido; se nenhuma servir, use uma categoria curta e clara "
+        "própria): Ar Condicionado, Cabine de Medição, Caixa d'água, Estação Meteorológica, "
+        "Fossa Séptica, CFTV / Segurança, Infraestrutura Civil, Infraestrutura / Supervisório, "
+        "Inversores, Trackers, Módulos Fotovoltaicos, QGBT, SPDA, Nobreak e Banco de Baterias, "
+        "Transformador de Potência, Relé de Proteção, Sistema de Drenagem, Sistema de Combate a "
+        "Incêndio.\n\n"
+        "Se não houver NENHUM item Alerta/Falhou ou pendência nesse trecho, retorne "
+        '{"itens": []} — esse é o resultado correto, não uma falha.\n\n'
+        "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
+        '{"itens": [{"ativo": "<categoria padrão, sem número de unidade>", '
+        '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
+        '"anormalidade": "<descrição objetiva e consolidada>", '
+        '"recomendacoes": "<ação corretiva recomendada, objetiva>", '
+        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>"}]}'
+    )
+
+
+def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
+    """Manda um pedaço do PDF direto pra API da Anthropic como documento
+    nativo (Claude lê texto E imagem da página sozinho — sem OCR, sem
+    renderizar página por página, sem precisar achar 'ativos' manualmente
+    antes). Muito mais simples e rápido que o pipeline antigo (OCR +
+    visão por ativo), e funciona igual pra PDF com texto real ou PDF
+    exportado como imagem (mesmo caminho, sem tratamento especial)."""
+    prompt = _montar_prompt_punchlist_pdf_nativo(
+        cliente, usina, cluster, chunk["pagina_inicio"], chunk["pagina_fim"], total_paginas)
+    pdf_b64 = base64.b64encode(chunk["bytes"]).decode()
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 4096,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "document",
+                     "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        },
+        timeout=150,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    texto_bruto = ""
+    for block in data.get("content", []):
+        if block.get("type") == "text":
+            texto_bruto += block.get("text", "")
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    parsed = json.loads(texto_limpo)
+    itens = parsed.get("itens", [])
+
+    normalizados = []
+    for it in itens:
+        normalizados.append({
+            "ativo": (it.get("ativo") or "").strip() or "Não identificado",
+            "criticidade": it.get("criticidade") if it.get("criticidade") in
+                           ("Baixa", "Média", "Alta", "Muito Alta") else "Média",
+            "status": "PENDENTE",
+            "anormalidade": (it.get("anormalidade") or "").strip(),
+            "recomendacoes": (it.get("recomendacoes") or "").strip(),
+            "responsavel": (it.get("responsavel") or "EQUIPE TÉCNICA").strip(),
+            "cliente": cliente,
+            "usina": usina,
+        })
+    return normalizados
+
+
+@app.route("/extrair-punchlist-pdf-nativo", methods=["POST", "OPTIONS"])
+def extrair_punchlist_pdf_nativo_route():
+    """
+    Lê o PDF original exportado da Fracttal e gera a Punch List enviando
+    o PDF direto pra API da Anthropic como documento nativo (Claude lê
+    texto e imagem sozinho, sem OCR e sem pipeline de visão por ativo).
+    Documentos grandes (>90 páginas ou >28MB) são divididos em pedaços e
+    processados em paralelo; os itens de todos os pedaços são
+    consolidados por categoria no final.
+
+    Substitui /extrair-punchlist-fracttal-ia (que dependia de achar
+    "ativos" via texto do PDF + Gemini vision por página — quebrava em
+    PDFs exportados como imagem, que alguns exports da Fracttal geram).
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not ANTHROPIC_API_KEY:
+        return jsonify({"ok": False, "error": "ANTHROPIC_API_KEY não configurada no servidor"}), 500
+    try:
+        arquivo = request.files.get("fracttalPdf")
+        if not arquivo or not arquivo.filename:
+            return jsonify({"ok": False, "error": "Anexe o PDF exportado da Fracttal (campo fracttalPdf)."}), 400
+        if not arquivo.filename.lower().endswith(".pdf"):
+            return jsonify({"ok": False, "error": "O arquivo precisa ser um PDF."}), 400
+
+        cliente = (request.form.get("cliente") or "").strip()
+        usina = (request.form.get("usina") or "").strip()
+        cluster = (request.form.get("cluster") or "").strip()
+        pdf_bytes = arquivo.read()
+
+        total_paginas = len(PdfReader(BytesIO(pdf_bytes)).pages)
+        chunks = _dividir_pdf_em_chunks(pdf_bytes)
+
+        resultados = []
+        erros = []
+        with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
+            futuros = {executor.submit(_processar_chunk_pdf_nativo, c, cliente, usina, cluster, total_paginas): c
+                       for c in chunks}
+            for futuro in as_completed(futuros):
+                chunk = futuros[futuro]
+                try:
+                    resultados.extend(futuro.result())
+                except Exception as e:
+                    log.error(f"[PunchlistPdfNativo] Erro no trecho pg{chunk['pagina_inicio']}-"
+                              f"{chunk['pagina_fim']}: {e}")
+                    erros.append({"trecho": f"{chunk['pagina_inicio']+1}-{chunk['pagina_fim']+1}",
+                                  "erro": str(e)})
+
+        itens_consolidados = _consolidar_itens_punchlist_por_categoria(resultados)
+
+        return jsonify({
+            "ok": True,
+            "itens": itens_consolidados,
+            "totalPaginas": total_paginas,
+            "trechosProcessados": len(chunks) - len(erros),
+            "trechosTotal": len(chunks),
+            "erros": erros,
+        }), 200
+    except Exception as e:
+        log.error(f"[PunchlistPdfNativo] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/extrair-punchlist-fracttal-ia", methods=["POST", "OPTIONS"])
