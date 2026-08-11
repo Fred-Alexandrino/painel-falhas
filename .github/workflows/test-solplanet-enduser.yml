@@ -1,0 +1,31 @@
+name: test-solplanet-enduser
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decode and run End User signature test
+        run: |
+          echo "aW1wb3J0IGhtYWMsIGhhc2hsaWIsIGJhc2U2NCwgdXJsbGliLnJlcXVlc3QsIHVybGxpYi5lcnJvcgoKQVBQX0tFWSA9ICIyMDQ3MzIxNjIiCkFQUF9TRUNSRVQgPSAiT0s5b0cwc2JTZWlOWkFLVEI1Vk9hOFI5Q1FxVHFMdVQiClBMQU5UX0tFWSA9ICI3NWE5NzNkNzZlMDA0ODNjOTNkNmU5OGZiNzlkYTRjYyIKQkFTRSA9ICJodHRwczovL2V1LWFwaS1nZW5lcmdhbC5haXN3ZWljbG91ZC5jb20iCgpkZWYgY2FsbChwYXRoLCBwYXJhbXMsIGxhYmVsKToKICAgIGl0ZW1zID0gc29ydGVkKHBhcmFtcy5pdGVtcygpKQogICAgcXVlcnkgPSAiJiIuam9pbihmIntrfT17dn0iIGZvciBrLCB2IGluIGl0ZW1zKQogICAgZW5kcG9pbnQgPSBwYXRoICsgKCI/IiArIHF1ZXJ5IGlmIHF1ZXJ5IGVsc2UgIiIpCiAgICBtZXRob2QgPSAiR0VUIgogICAgYWNjZXB0ID0gImFwcGxpY2F0aW9uL2pzb24iCiAgICBjb250ZW50X3R5cGUgPSAiIgogICAgY29udGVudF9tZDUgPSAiIgogICAgZGF0ZSA9ICIiCiAgICBoZWFkZXJzX2xpbmUgPSBmIlgtQ2EtS2V5OntBUFBfS0VZfVxuIgogICAgc3RyaW5nX3RvX3NpZ24gPSBmInttZXRob2R9XG57YWNjZXB0fVxue2NvbnRlbnRfbWQ1fVxue2NvbnRlbnRfdHlwZX1cbntkYXRlfVxue2hlYWRlcnNfbGluZX17ZW5kcG9pbnR9IgogICAgc2lnID0gYmFzZTY0LmI2NGVuY29kZSgKICAgICAgICBobWFjLm5ldyhBUFBfU0VDUkVULmVuY29kZSgidXRmLTgiKSwgc3RyaW5nX3RvX3NpZ24uZW5jb2RlKCJ1dGYtOCIpLCBoYXNobGliLnNoYTI1NikuZGlnZXN0KCkKICAgICkuZGVjb2RlKCkKCiAgICByZXFfaGVhZGVycyA9IHsKICAgICAgICAiQWNjZXB0IjogYWNjZXB0LAogICAgICAgICJYLUNhLUtleSI6IEFQUF9LRVksCiAgICAgICAgIlgtQ2EtU2lnbmF0dXJlIjogc2lnLAogICAgICAgICJYLUNhLVNpZ25hdHVyZS1IZWFkZXJzIjogIlgtQ2EtS2V5IiwKICAgIH0KCiAgICB1cmwgPSBCQVNFICsgZW5kcG9pbnQKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXJlcV9oZWFkZXJzLCBtZXRob2Q9IkdFVCIpCiAgICBwcmludChmIj09PSB7bGFiZWx9ID09PSIpCiAgICBwcmludCgiVVJMOiIsIHVybCkKICAgIHRyeToKICAgICAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTE1KSBhcyByZXNwOgogICAgICAgICAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKGVycm9ycz0icmVwbGFjZSIpCiAgICAgICAgICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMpCiAgICAgICAgICAgIHByaW50KCJCT0RZOiIsIGJvZHkpCiAgICBleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgICAgIGJvZHkgPSBlLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIikKICAgICAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgICAgICBwcmludCgiWC1DYS1FcnJvci1NZXNzYWdlOiIsIGUuaGVhZGVycy5nZXQoIlgtQ2EtRXJyb3ItTWVzc2FnZSIpKQogICAgICAgIHByaW50KCJCT0RZOiIsIGJvZHkpCiAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICAgICAgcHJpbnQoIkVSUk9SOiIsIHN0cihlKSkKICAgIHByaW50KCkKCmNhbGwoIi9nZXRQbGFudE92ZXJ2aWV3IiwgeyJrZXkiOiBQTEFOVF9LRVl9LCAiZ2V0UGxhbnRPdmVydmlldyIpCmNhbGwoIi9kZXZpY2VsaXN0IiwgeyJrZXkiOiBQTEFOVF9LRVl9LCAiZGV2aWNlbGlzdCIpCmNhbGwoIi9nZXRJbnZlcnRlck92ZXJ2aWV3IiwgeyJrZXkiOiBQTEFOVF9LRVl9LCAiZ2V0SW52ZXJ0ZXJPdmVydmlldyIpCmNhbGwoIi9nZXRQbGFudE91dHB1dCIsIHsia2V5IjogUExBTlRfS0VZLCAicGVyaW9kIjogImJ5ZGF5cyIsICJkYXRlIjogIjIwMjYtMDgtMTEifSwgImdldFBsYW50T3V0cHV0IikK" | base64 -d > sign_test2.py
+          mkdir -p backups
+          python3 sign_test2.py > backups/solplanet-enduser-result.txt 2>&1 || true
+          cat backups/solplanet-enduser-result.txt
+
+      - name: Commit and push results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/solplanet-enduser-result.txt
+          git commit -m "test: solplanet end-user api result" || echo "nothing to commit"
+          git push origin HEAD:main
