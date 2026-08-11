@@ -1,0 +1,28 @@
+name: Deploy Backend VM1 (auto)
+on:
+  workflow_dispatch: {}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH (git pull + pip install + restart)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/painel-falhas
+            echo "=== commit ANTES do pull ==="
+            git log -1 --format='%H %ci'
+            git fetch --all
+            git reset --hard origin/main
+            echo "=== commit DEPOIS do pull (deve ser igual ao HEAD do GitHub) ==="
+            git log -1 --format='%H %ci'
+            venv/bin/pip install -r requirements.txt
+            sudo systemctl restart painel-falhas
+            sleep 3
+            sudo systemctl status painel-falhas --no-pager
+            echo "=== verificacao pos-restart ==="
+            sudo systemctl is-active painel-falhas
