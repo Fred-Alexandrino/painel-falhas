@@ -12,44 +12,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test getPlantOverviewPro (no token)
+      - name: Test with Accept header + verbose headers - no token
         run: |
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
+          curl -sv -H "Accept: application/json" \
             "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc" \
-            > result_no_token.txt || true
-          cat result_no_token.txt
+            > result_a.txt 2>&1 || true
 
-      - name: Test getPlantOverviewPro (appsecret as token)
+      - name: Test with Accept header + token=appsecret
         run: |
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
+          curl -sv -H "Accept: application/json" \
             "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
-            > result_appsecret_token.txt || true
-          cat result_appsecret_token.txt
+            > result_b.txt 2>&1 || true
 
-      - name: Test getPlanListPro (no token, sanity)
+      - name: Test getPlanListPro with Accept header
         run: |
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
-            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlanListPro?pageNum=1&pageSize=10" \
-            > result_planlist.txt || true
-          cat result_planlist.txt
+          curl -sv -H "Accept: application/json" \
+            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlanListPro?pageNum=1&pageSize=10&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
+            > result_c.txt 2>&1 || true
 
-      - name: Test with X-Ca-Key header (appkey) just in case
+      - name: Test EU domain from library for comparison
         run: |
-          curl -s -w "\nHTTP_STATUS:%{http_code}\n" \
-            -H "X-Ca-Key: 204732162" \
-            "https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc" \
-            > result_with_header.txt || true
-          cat result_with_header.txt
+          curl -sv -H "Accept: application/json" \
+            "https://eu-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT" \
+            > result_d.txt 2>&1 || true
 
       - name: Save combined results
         run: |
           mkdir -p backups
           {
-            echo "=== no_token ==="; cat result_no_token.txt;
-            echo ""; echo "=== appsecret_as_token ==="; cat result_appsecret_token.txt;
-            echo ""; echo "=== getPlanListPro_no_token ==="; cat result_planlist.txt;
-            echo ""; echo "=== with_X-Ca-Key_header ==="; cat result_with_header.txt;
-          } > backups/solplanet-test-result.txt
+            echo "=== A: no_token_with_accept_header ==="; cat result_a.txt;
+            echo ""; echo "=== B: appsecret_as_token_with_accept ==="; cat result_b.txt;
+            echo ""; echo "=== C: getPlanListPro_with_token ==="; cat result_c.txt;
+            echo ""; echo "=== D: eu_domain ==="; cat result_d.txt;
+          } > backups/solplanet-test-result2.txt
 
       - name: Commit and push results
         env:
@@ -58,6 +53,6 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
-          git add backups/solplanet-test-result.txt
-          git commit -m "test: solplanet api diagnostic result" || echo "nothing to commit"
+          git add backups/solplanet-test-result2.txt
+          git commit -m "test: solplanet api diagnostic result v2 verbose" || echo "nothing to commit"
           git push origin HEAD:main
