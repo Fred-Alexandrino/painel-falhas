@@ -1,0 +1,15 @@
+flask==3.0.3
+flask-cors==4.0.1
+gspread==6.1.2
+google-auth==2.29.0
+gunicorn==22.0.0
+pywebpush
+python-pptx==1.0.2
+python-docx==1.1.2
+reportlab==4.4.10
+pypdf==5.9.0
+tzdata
+Pillow==10.4.0
+pdfplumber==0.11.4
+openpyxl==3.1.5
+pdf2image==1.17.0
