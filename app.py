@@ -12553,6 +12553,10 @@ def gerar_relatorio_handover_usina_route():
     if request.method == "OPTIONS":
         return ("", 204)
     try:
+        content_length = request.content_length
+        log.info(f"[Relatorio Handover Usina] Request recebido — Content-Length={content_length}, "
+                 f"form.keys={list(request.form.keys())}, files.keys={list(request.files.keys())}")
+
         dados_raw = request.form.get("dados", "{}")
         try:
             dados = json.loads(dados_raw)
@@ -12566,10 +12570,13 @@ def gerar_relatorio_handover_usina_route():
 
         fracttal_pdf_bytes = None
         arquivo = request.files.get("fracttalPdf")
+        log.info(f"[Relatorio Handover Usina] arquivo fracttalPdf presente={arquivo is not None}, "
+                 f"filename={getattr(arquivo, 'filename', None)}")
         if arquivo and arquivo.filename:
             if not arquivo.filename.lower().endswith(".pdf"):
                 return jsonify({"ok": False, "error": "O arquivo anexado precisa ser um PDF."}), 400
             fracttal_pdf_bytes = arquivo.read()
+            log.info(f"[Relatorio Handover Usina] fracttalPdf lido: {len(fracttal_pdf_bytes)} bytes")
 
         conteudo, tipo = gerar_handover_usina_completo(dados, fracttal_pdf_bytes)
 
