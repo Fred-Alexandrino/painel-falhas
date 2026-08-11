@@ -12245,15 +12245,15 @@ def _gerar_punchlist_ativo_via_visao(nome_ativo, cliente, usina, cluster, imagen
     return normalizados
 
 
-CLAUDE_PDF_MAX_PAGINAS = 90   # limite real da API: 100 páginas — margem de segurança
-CLAUDE_PDF_MAX_MB = 28        # limite real da API: 32MB por request — margem de segurança
+GEMINI_PDF_MAX_PAGINAS = 200   # a Gemini aceita até 1000 páginas — o limite real aqui é tamanho
+GEMINI_PDF_MAX_MB = 14         # dado inline da Gemini: ~20MB de payload total após base64 (+33%);
+# 14MB de arquivo bruto vira ~18.7MB em base64, com margem de segurança
 
 
-def _dividir_pdf_em_chunks(pdf_bytes, max_paginas=CLAUDE_PDF_MAX_PAGINAS, max_mb=CLAUDE_PDF_MAX_MB):
-    """Divide o PDF em pedaços que respeitam os limites da API da
-    Anthropic pra documentos PDF nativos (100 páginas / 32MB por
-    request — usa 90/28 de margem). Cada pedaço é um PDF válido
-    (páginas mantidas na ordem original)."""
+def _dividir_pdf_em_chunks(pdf_bytes, max_paginas=GEMINI_PDF_MAX_PAGINAS, max_mb=GEMINI_PDF_MAX_MB):
+    """Divide o PDF em pedaços que respeitam o limite de payload inline
+    da API da Gemini (~20MB após base64 — usamos 14MB de arquivo bruto
+    de margem). Cada pedaço é um PDF válido (páginas na ordem original)."""
     reader = PdfReader(BytesIO(pdf_bytes))
     total = len(reader.pages)
     chunks = []
@@ -12332,43 +12332,35 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
 
 
 def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
-    """Manda um pedaço do PDF direto pra API da Anthropic como documento
-    nativo (Claude lê texto E imagem da página sozinho — sem OCR, sem
-    renderizar página por página, sem precisar achar 'ativos' manualmente
-    antes). Muito mais simples e rápido que o pipeline antigo (OCR +
-    visão por ativo), e funciona igual pra PDF com texto real ou PDF
-    exportado como imagem (mesmo caminho, sem tratamento especial)."""
+    """Manda um pedaço do PDF direto pra API da Gemini como documento
+    nativo (a Gemini lê texto E imagem da página sozinha — sem OCR, sem
+    renderizar página por página, sem precisar achar 'ativos'
+    manualmente antes). Muito mais simples e rápido que o pipeline
+    antigo (OCR + visão por ativo), e funciona igual pra PDF com texto
+    real ou PDF exportado como imagem (mesmo caminho, sem tratamento
+    especial)."""
     prompt = _montar_prompt_punchlist_pdf_nativo(
         cliente, usina, cluster, chunk["pagina_inicio"], chunk["pagina_fim"], total_paginas)
     pdf_b64 = base64.b64encode(chunk["bytes"]).decode()
 
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 4096,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "document",
-                     "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
-                    {"type": "text", "text": prompt},
-                ],
-            }],
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": "application/pdf", "data": pdf_b64}},
+            ]}],
+            "generationConfig": {
+                "temperature": 0.15,
+                "maxOutputTokens": 4096,
+                "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
         },
         timeout=150,
     )
-    resp.raise_for_status()
     data = resp.json()
-    texto_bruto = ""
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            texto_bruto += block.get("text", "")
+    candidato = data["candidates"][0]
+    texto_bruto = candidato["content"]["parts"][0]["text"].strip()
     texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
     parsed = json.loads(texto_limpo)
     itens = parsed.get("itens", [])
@@ -12405,8 +12397,8 @@ def extrair_punchlist_pdf_nativo_route():
     """
     if request.method == "OPTIONS":
         return ("", 204)
-    if not ANTHROPIC_API_KEY:
-        return jsonify({"ok": False, "error": "ANTHROPIC_API_KEY não configurada no servidor"}), 500
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
     try:
         arquivo = request.files.get("fracttalPdf")
         if not arquivo or not arquivo.filename:
