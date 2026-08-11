@@ -11872,6 +11872,77 @@ def gerar_punchlist_ia():
 #   4. Ativos inteiramente "Aprovou" não geram nenhum item — resultado
 #      correto, não falha da leitura.
 
+_OCR_FRACTTAL_CACHE = {}  # md5(pdf_bytes) -> {"tem_texto": bool, "textos": {pagina_idx: texto}}
+_OCR_FRACTTAL_LIMITE_PAGINAS = 40  # medido na prática: ~2s/página mesmo com 4 threads em
+# paralelo — acima disso o OCR sozinho já estoura o orçamento de tempo da requisição
+# (130s), sem sobrar tempo nenhum pras chamadas de visão que vêm depois.
+
+
+def _fracttal_pdf_texto_paginas(pdf_bytes, indices):
+    """
+    Texto de cada página pedida em `indices` (0-indexed). Usa a camada
+    de texto normal do PDF quando ela existe; se o documento INTEIRO
+    não tiver texto nenhum — alguns exports da Fracttal saem como
+    imagem pura (visto na prática: uma OS exportada assim tinha uma
+    única imagem por página, sem nenhum texto por trás, enquanto a
+    maioria sai com texto real) — faz OCR via tesseract (português) só
+    nas páginas realmente pedidas, com cache por conteúdo do PDF pra
+    não repetir trabalho entre as várias chamadas da mesma requisição
+    (extrair_ativos precisa do documento inteiro; paginas_checklist e
+    notas_ativo só do intervalo de cada ativo, que essa altura já
+    estará cacheado pela primeira passada).
+
+    Levanta RuntimeError se o documento não tiver texto E tiver mais
+    páginas que _OCR_FRACTTAL_LIMITE_PAGINAS — OCR síncrono nesse
+    volume arrisca estourar o timeout do Gunicorn (160s) numa VM com
+    pouca RAM; melhor falhar rápido com mensagem clara do que travar a
+    requisição sem retorno nenhum pro usuário.
+    """
+    import hashlib
+    chave = hashlib.md5(pdf_bytes).hexdigest()
+
+    if chave not in _OCR_FRACTTAL_CACHE:
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            total = len(pdf.pages)
+            amostra_texto = [(pdf.pages[i].extract_text() or "") for i in range(min(5, total))]
+        tem_texto = any(len(t.strip()) > 20 for t in amostra_texto)
+        if not tem_texto and total > _OCR_FRACTTAL_LIMITE_PAGINAS:
+            raise RuntimeError(
+                f"Esse PDF foi exportado como imagem (sem texto real) e tem {total} páginas — "
+                f"acima do limite de {_OCR_FRACTTAL_LIMITE_PAGINAS} páginas que conseguimos "
+                f"processar via OCR numa única requisição sem travar o servidor. Tente reexportar "
+                f"essa OS da Fracttal (o export padrão costuma sair com texto real, bem mais rápido "
+                f"de processar), ou peça pra dividir/reduzir esse PDF antes de anexar."
+            )
+        _OCR_FRACTTAL_CACHE[chave] = {"tem_texto": tem_texto, "total": total, "textos": {}}
+
+    estado = _OCR_FRACTTAL_CACHE[chave]
+    faltando = [i for i in indices if 0 <= i < estado["total"] and i not in estado["textos"]]
+
+    if faltando:
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            if estado["tem_texto"]:
+                for i in faltando:
+                    estado["textos"][i] = pdf.pages[i].extract_text() or ""
+            else:
+                log.info(f"[Fracttal PDF] OCR em {len(faltando)} página(s) (export sem texto/imagem).")
+                import pytesseract
+                imagens = {i: pdf.pages[i].to_image(resolution=150).original for i in faltando}
+
+                def _ocr_pagina(i):
+                    try:
+                        return i, pytesseract.image_to_string(imagens[i], lang="por")
+                    except Exception as e:
+                        log.error(f"[Fracttal PDF OCR] Erro na página {i}: {e}")
+                        return i, ""
+
+                with ThreadPoolExecutor(max_workers=4) as ex:
+                    for i, texto in ex.map(_ocr_pagina, faltando):
+                        estado["textos"][i] = texto
+
+    return {i: estado["textos"].get(i, "") for i in indices}
+
+
 def _fracttal_pdf_extrair_ativos(pdf_bytes):
     """Retorna lista de {nome, pagina_inicio, pagina_fim} (0-indexed,
     pagina_fim inclusive) — um item por ativo/equipamento do PDF.
@@ -11885,48 +11956,62 @@ def _fracttal_pdf_extrair_ativos(pdf_bytes):
     erradamente atribuídas ao ativo anterior. Confirmado comparando a
     extração com punch lists reais: a pendência de credenciais de
     acesso (que é do ativo "Infraestrutura Civil") aparecia grudada
-    nas notas da "Fossa Séptica"."""
-    ativos = []
+    nas notas da "Fossa Séptica".
+
+    Também usa _fracttal_pdf_texto_paginas (com fallback de OCR) em vez
+    de extract_text() direto — alguns exports da Fracttal saem como
+    imagem pura, sem texto nenhum, e sem isso o resultado é sempre
+    lista vazia (erro visto na prática: "Não consegui identificar
+    nenhum ativo nesse PDF" mesmo em PDFs válidos)."""
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         total_paginas = len(pdf.pages)
-        marcadores = []
-        for i, page in enumerate(pdf.pages):
-            text = page.extract_text() or ""
-            if "ATIVOS" not in text:
+    textos = _fracttal_pdf_texto_paginas(pdf_bytes, range(total_paginas))
+
+    marcadores = []
+    for i in range(total_paginas):
+        text = textos[i]
+        if "ATIVOS" not in text:
+            continue
+        lines = text.split("\n")
+        for j, l in enumerate(lines):
+            if l.strip() != "ATIVOS":
                 continue
-            lines = text.split("\n")
-            for j, l in enumerate(lines):
-                if l.strip() != "ATIVOS":
-                    continue
-                for k in range(j + 1, min(j + 4, len(lines))):
-                    if lines[k].strip().startswith("DESCRIÇÃO:"):
-                        nome = lines[k].replace("DESCRIÇÃO:", "").strip().split("{")[0].strip()
-                        if nome and "Realizado com" not in nome and "Pág." not in nome:
-                            marcadores.append((i, nome))
-                        break
-        for idx, (pagina_inicio, nome) in enumerate(marcadores):
-            if idx + 1 < len(marcadores):
-                proximo_inicio = marcadores[idx + 1][0]
-                # Se o próximo ativo começa na MESMA página, esse ativo
-                # fica só com essa página (melhor granularidade possível
-                # sem rastrear posição vertical dentro da página).
-                pagina_fim = proximo_inicio if proximo_inicio == pagina_inicio else proximo_inicio - 1
-            else:
-                pagina_fim = total_paginas - 1
-            ativos.append({"nome": nome, "pagina_inicio": pagina_inicio, "pagina_fim": pagina_fim})
+            for k in range(j + 1, min(j + 4, len(lines))):
+                if lines[k].strip().startswith("DESCRIÇÃO:"):
+                    nome = lines[k].replace("DESCRIÇÃO:", "").strip().split("{")[0].strip()
+                    if nome and "Realizado com" not in nome and "Pág." not in nome:
+                        marcadores.append((i, nome))
+                    break
+
+    ativos = []
+    for idx, (pagina_inicio, nome) in enumerate(marcadores):
+        if idx + 1 < len(marcadores):
+            proximo_inicio = marcadores[idx + 1][0]
+            # Se o próximo ativo começa na MESMA página, esse ativo
+            # fica só com essa página (melhor granularidade possível
+            # sem rastrear posição vertical dentro da página).
+            pagina_fim = proximo_inicio if proximo_inicio == pagina_inicio else proximo_inicio - 1
+        else:
+            pagina_fim = total_paginas - 1
+        ativos.append({"nome": nome, "pagina_inicio": pagina_inicio, "pagina_fim": pagina_fim})
     return ativos
 
 
 def _fracttal_pdf_paginas_checklist(pdf_bytes, pagina_inicio, pagina_fim):
     """Páginas (0-indexed) dentro do intervalo que têm o checklist com
-    marcação Aprovou/Alerta/Falhou — ignora páginas de fotos/anexos."""
+    marcação Aprovou/Alerta/Falhou, OU a tabela/nota de anexos — essas
+    últimas entram também porque em PDFs sem texto (OCR) não dá pra
+    confiar 100% na extração de tabela pra notas (ver
+    _fracttal_pdf_notas_ativo); mandando a página pra visão, a IA
+    consegue ler o texto da nota direto na imagem."""
+    indices = list(range(pagina_inicio, pagina_fim + 1))
+    textos = _fracttal_pdf_texto_paginas(pdf_bytes, indices)
     paginas = []
-    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-        fim = min(pagina_fim, len(pdf.pages) - 1)
-        for i in range(pagina_inicio, fim + 1):
-            text = pdf.pages[i].extract_text() or ""
-            if "Aprovou" in text and "Falhou" in text:
-                paginas.append(i)
+    for i in indices:
+        text = textos.get(i, "")
+        if ("Aprovou" in text and "Falhou" in text) or "ANEXOS DO PLANO DE MANUTENÇÃO" in text \
+                or re.search(r"(?m)^\s*Nota\b", text):
+            paginas.append(i)
     return paginas
 
 
@@ -12028,7 +12113,10 @@ def _montar_prompt_punchlist_visao(nome_ativo, cliente, usina, cluster, notas_te
         "três opções — Aprovou / Alerta / Falhou — com um quadradinho marcado (preenchido) "
         "indicando qual foi escolhida. Leia CADA linha e identifique quais foram marcadas "
         "como Alerta ou Falhou (ignore as marcadas como Aprovou — essas estão OK, sem "
-        "pendência).\n\n"
+        "pendência). Algumas páginas podem mostrar a tabela de anotações do técnico "
+        "('ANEXOS DO PLANO DE MANUTENÇÃO' ou linhas começando com 'Nota') em vez do "
+        "checklist — leia esse texto também, ele é uma fonte de pendência tão válida quanto "
+        "o checkbox marcado.\n\n"
         f"Anotações de texto que o técnico de campo registrou pra esse ativo (podem ou não "
         f"se referir a um item específico do checklist):\n{notas_bloco}\n\n"
         "Se TODOS os itens do checklist foram marcados Aprovou (nenhum Alerta/Falhou), "
@@ -12181,7 +12269,10 @@ def extrair_punchlist_fracttal_ia():
         cluster = (request.form.get("cluster") or "").strip()
         pdf_bytes = arquivo.read()
 
-        ativos = _fracttal_pdf_extrair_ativos(pdf_bytes)
+        try:
+            ativos = _fracttal_pdf_extrair_ativos(pdf_bytes)
+        except RuntimeError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
         if not ativos:
             return jsonify({"ok": False, "error": ("Não consegui identificar nenhum ativo nesse PDF — "
                             "confirme se é o formato de exportação padrão da Fracttal (Ordem de Trabalho).")}), 400
