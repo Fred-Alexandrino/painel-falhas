@@ -30,7 +30,7 @@ from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, ger
                                 listar_usinas_cliente, montar_status_zeladoria_por_usina)
 from relatorio_handover import gerar_handover_docx
 from relatorio_handover_usina import montar_relatorio_handover_usina
-from relatorio_handover_usina_docx import gerar_handover_usina_docx
+from relatorio_handover_usina_docx import gerar_handover_usina_completo
 import pdfplumber
 from pdf2image import convert_from_bytes
 from pypdf import PdfReader, PdfWriter
@@ -12543,11 +12543,12 @@ def gerar_relatorio_handover_usina_route():
     multipart/form-data:
       - "dados": JSON (string) com os campos do formulário (ver
         relatorio_handover_usina_docx.py para o formato esperado)
-      - "fracttalPdf": arquivo PDF (opcional) exportado da Fracttal —
-        hoje só é usado pelo botão de gerar Punch List com IA
-        (/extrair-punchlist-pdf-nativo); o Word não tem como embutir as
-        páginas desse PDF dentro do .docx final, diferente do que a
-        versão em PDF (relatorio_handover_usina.py) fazia.
+      - "fracttalPdf": arquivo PDF (opcional) exportado da Fracttal.
+        Se NÃO for enviado: retorna o .docx editável (modelo real).
+        Se for enviado: converte o .docx pra PDF (LibreOffice) e insere
+        as páginas da Fracttal logo após "3.4 Ordens de Serviço -
+        Handover", retornando o PDF final já mesclado — documento +
+        checklist da OS juntos, prontos pra enviar ao cliente.
     """
     if request.method == "OPTIONS":
         return ("", 204)
@@ -12563,17 +12564,27 @@ def gerar_relatorio_handover_usina_route():
         if not cliente or not usina:
             return jsonify({"ok": False, "error": "cliente e usina são obrigatórios"}), 400
 
-        buf = gerar_handover_usina_docx(dados)
+        fracttal_pdf_bytes = None
+        arquivo = request.files.get("fracttalPdf")
+        if arquivo and arquivo.filename:
+            if not arquivo.filename.lower().endswith(".pdf"):
+                return jsonify({"ok": False, "error": "O arquivo anexado precisa ser um PDF."}), 400
+            fracttal_pdf_bytes = arquivo.read()
+
+        conteudo, tipo = gerar_handover_usina_completo(dados, fracttal_pdf_bytes)
 
         # Nomenclatura confirmada nos arquivos de referência da Grid Co.
         # (ex.: "UFV ABC MORADA NOVA - Relatório Handover - Grid Co.docx",
         # "UFV Hortina - Relatório Handover - Grid Co.docx").
-        nome_arquivo = f"UFV {usina.upper()} - Relatório Handover - Grid Co.docx"
+        extensao = "pdf" if tipo == "pdf" else "docx"
+        mimetype = ("application/pdf" if tipo == "pdf" else
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        nome_arquivo = f"UFV {usina.upper()} - Relatório Handover - Grid Co.{extensao}"
 
-        log.info(f"[Relatorio Handover Usina] Gerado (.docx, modelo real) para {usina} ({cliente})")
+        log.info(f"[Relatorio Handover Usina] Gerado ({tipo}) para {usina} ({cliente}), "
+                 f"com PDF Fracttal={'sim' if fracttal_pdf_bytes else 'não'}")
         return send_file(
-            buf, as_attachment=True, download_name=nome_arquivo,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            BytesIO(conteudo), as_attachment=True, download_name=nome_arquivo, mimetype=mimetype,
         )
     except Exception as e:
         log.error(f"[Relatorio Handover Usina] Erro: {e}")
