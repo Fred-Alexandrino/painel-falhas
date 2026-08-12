@@ -12203,6 +12203,7 @@ def _consolidar_itens_punchlist_por_categoria(itens):
         base["recomendacoes"] = "; ".join(dict.fromkeys(recomendacoes))
         base["responsavel"] = " / ".join(responsaveis) if responsaveis else base.get("responsavel", "")
         base["criticidade"] = criticidade_max.get("criticidade", base.get("criticidade"))
+        base["ressalva"] = any(g.get("ressalva") for g in grupo)
         consolidados.append(base)
     return consolidados
 
@@ -12292,46 +12293,65 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "um PDF exportado da Fracttal (Ordem de Trabalho de handover) pra montar a Punch List "
         "(lista de pendências) de um Relatório de Handover formal pro cliente.\n\n"
         f"Esse PDF documenta a inspeção de vários ativos/equipamentos da usina {usina} "
-        f"(cliente {cliente}, cluster {cluster}). Cada ativo tem um checklist de subtarefas "
+        f"(cliente {cliente}, cluster {cluster}). Cada ativo tem uma seção 'ATIVOS' (com o "
+        "campo DESCRIÇÃO identificando o equipamento) seguida de um checklist de subtarefas "
         "com três opções — Aprovou / Alerta / Falhou — marcadas com um quadradinho preenchido "
         "indicando qual foi escolhida, e pode ter uma seção de anotações do técnico "
         "('ANEXOS DO PLANO DE MANUTENÇÃO' ou linhas 'Nota: ...'). Leia o conteúdo visual das "
         "páginas (o documento pode ser texto real ou imagem escaneada — leia do mesmo jeito).\n\n"
         f"{aviso_trecho}"
-        "Para cada ativo/equipamento com pelo menos um item marcado Alerta ou Falhou, ou com "
-        "anotação de pendência do técnico, gere UM item de punch list consolidado (uma linha "
-        "só por ativo, juntando as anormalidades numa frase objetiva, no padrão Grid Co., ex.: "
-        "\"Multimedidor inoperante, ruídos anormais e falha na iluminação de emergência\"). "
-        "Ignore ativos 100% Aprovou, sem nenhuma nota de pendência.\n\n"
+        "PROCESSO SISTEMÁTICO (siga isso pra CADA seção 'ATIVOS' que aparecer nas páginas deste "
+        "trecho, uma de cada vez, sem pular nenhuma):\n"
+        "1. Identifique o ativo pelo campo DESCRIÇÃO dessa seção.\n"
+        "2. Leia TODAS as subtarefas do checklist (Aprovou/Alerta/Falhou) desse ativo e as "
+        "anotações do técnico associadas a ele (ANEXOS DO PLANO DE MANUTENÇÃO / 'Nota: ...').\n"
+        "3. Classifique o resultado em um destes três casos:\n"
+        "   a) Tudo Aprovado, sem nenhuma nota indicando problema ou ausência → NÃO gere item "
+        "nenhum de punch list pra esse ativo.\n"
+        "   b) Algum item Alerta/Falhou, ou nota do técnico indicando defeito/pendência real de "
+        "funcionamento do equipamento → gere um item NORMAL de punch list (anormalidade "
+        "objetiva, sem prefixo especial).\n"
+        "   c) A nota do técnico indica que o ATIVO EM SI NÃO EXISTE FISICAMENTE em campo (ex.: "
+        "\"não foi localizado\", \"UFV não tem sistema de X\", \"ausência completa do sistema "
+        "Y\"), mesmo esse ativo estando previsto no escopo da OS → gere um item de punch list, "
+        "mas comece o campo \"anormalidade\" com \"Ressalva — \" seguido da descrição da "
+        "ausência, e marque \"ressalva\": true nesse item. Isso é uma constatação de ausência "
+        "do ativo, não uma falha de funcionamento — o Fred vai revisar esses casos manualmente "
+        "antes do relatório sair, porque pode ser um ativo fora de escopo, não instalado por "
+        "decisão de projeto, ou uma pendência real a cobrar do cliente.\n\n"
+        "REGRA MAIS IMPORTANTE DESTE PROMPT: só existe um ativo pra fins desta análise se você "
+        "viu, com os próprios olhos nas páginas deste trecho, uma seção 'ATIVOS' com campo "
+        "DESCRIÇÃO desse equipamento. A lista de categorias padrão mais abaixo é só uma "
+        "referência de NOMENCLATURA pra você usar ao nomear um ativo que você JÁ CONFIRMOU que "
+        "existe no documento — nunca uma lista do que \"deveria\" existir na usina. Se um tipo "
+        "de ativo comum em outras usinas (ex. Estação Meteorológica, Fossa Séptica) não tiver "
+        "seção própria nas páginas deste trecho, ele simplesmente não faz parte desta análise — "
+        "é preferível deixar de fora do que inventar uma pendência pra um equipamento que não "
+        "está no documento.\n\n"
         "Critérios de CRITICIDADE: Alta/Muito Alta para falhas funcionais, de segurança ou que "
         "impedem operação (equipamento fora de operação, falha de proteção, ausência de "
         "supervisório); Média para itens de manutenção/limpeza/cosmético; Baixa para "
-        "observações menores.\n\n"
+        "observações menores. Itens de \"ressalva\" (ausência de ativo) usam Média por padrão, "
+        "a menos que a ausência tenha implicação clara de segurança/operação (aí Alta).\n\n"
         "Critérios de RESPONSÁVEL: \"EQUIPE TÉCNICA\" para reparos elétricos/mecânicos; "
         "\"EQUIPE DE CAMPO\" para limpeza/organização/civil; \"CLIENTE/SUPERVISÃO\" quando o "
         "problema depende de sistema supervisório, contratação externa, credenciais de acesso, "
         "ou está fora do escopo de campo da Grid Co.; \"FABRICANTE\" quando exige garantia ou "
         "peça/serviço do fabricante do equipamento; \"FABRICANTE/TÉCNICA\" quando pode precisar "
-        "de qualquer um dos dois.\n\n"
+        "de qualquer um dos dois. Itens de \"ressalva\" (ausência de ativo) normalmente são "
+        "\"CLIENTE/SUPERVISÃO\", já que é uma decisão de projeto/escopo, não um reparo de campo.\n\n"
         "No campo \"ativo\", use uma CATEGORIA padrão (o tipo de equipamento), NUNCA o "
         "nome/número específico da unidade — escreva \"Inversores\" mesmo que o ativo se chame "
         "\"Inversor 1.3\", porque outras partes do documento podem ter achados do mesmo tipo de "
         "equipamento, que serão consolidados numa linha só depois. Categorias padrão (use uma "
-        "destas sempre que fizer sentido; se nenhuma servir, use uma categoria curta e clara "
-        "própria): Ar Condicionado, Cabine de Medição, Caixa d'água, Estação Meteorológica, "
-        "Fossa Séptica, CFTV / Segurança, Infraestrutura Civil, Infraestrutura / Supervisório, "
-        "Inversores, Trackers, Módulos Fotovoltaicos, QGBT, SPDA, Nobreak e Banco de Baterias, "
-        "Transformador de Potência, Relé de Proteção, Sistema de Drenagem, Sistema de Combate a "
-        "Incêndio.\n\n"
-        "ATENÇÃO — essa lista de categorias é só uma referência de NOMENCLATURA, não uma lista "
-        "do que deveria existir na usina. NUNCA gere um item de punch list pra uma categoria "
-        "que não apareça de fato nas páginas anexadas — se você não viu uma seção 'ATIVOS' com "
-        "'DESCRIÇÃO: <esse ativo>' e conteúdo real nas páginas deste trecho, esse ativo NÃO "
-        "existe pra fins desta análise, mesmo que ele apareça na lista de categorias acima ou "
-        "seja comum em outras usinas. É preferível deixar um ativo de fora do que inventar uma "
-        "pendência pra um equipamento que não está no documento.\n\n"
-        "Se não houver NENHUM item Alerta/Falhou ou pendência nesse trecho, retorne "
-        '{"itens": []} — esse é o resultado correto, não uma falha.\n\n'
+        "destas sempre que fizer sentido pro ativo que você CONFIRMOU existir no documento; se "
+        "nenhuma servir, use uma categoria curta e clara própria): Ar Condicionado, Cabine de "
+        "Medição, Caixa d'água, Estação Meteorológica, Fossa Séptica, CFTV / Segurança, "
+        "Infraestrutura Civil, Infraestrutura / Supervisório, Inversores, Trackers, Módulos "
+        "Fotovoltaicos, QGBT, SPDA, Nobreak e Banco de Baterias, Transformador de Potência, "
+        "Relé de Proteção, Sistema de Drenagem, Sistema de Combate a Incêndio.\n\n"
+        "Se não houver NENHUM item Alerta/Falhou, nota de ausência, ou pendência nesse trecho, "
+        'retorne {"itens": []} — esse é o resultado correto, não uma falha.\n\n'
         "Além da punch list, procure também os campos \"Data e Hora de Início\" e \"Data e "
         "Hora de Fim\" que aparecem no cabeçalho de cada tarefa/ativo do documento (formato "
         "tipo \"2026-08-04 09:40\"). Extraia a MENOR data/hora de início e a MAIOR data/hora "
@@ -12340,9 +12360,10 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
         '{"itens": [{"ativo": "<categoria padrão, sem número de unidade>", '
         '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
-        '"anormalidade": "<descrição objetiva e consolidada>", '
+        '"anormalidade": "<descrição objetiva e consolidada, ou \'Ressalva — ...\' pro caso c>", '
         '"recomendacoes": "<ação corretiva recomendada, objetiva>", '
-        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>"}], '
+        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>", '
+        '"ressalva": <true se for o caso c (ativo não existe em campo), false caso contrário>}], '
         '"dataHoraInicio": "<menor \'Data e Hora de Início\' do trecho, ou \'\'>", '
         '"dataHoraFim": "<maior \'Data e Hora de Fim\' do trecho, ou \'\'>"}'
     )
@@ -12392,6 +12413,7 @@ def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
             "anormalidade": (it.get("anormalidade") or "").strip(),
             "recomendacoes": (it.get("recomendacoes") or "").strip(),
             "responsavel": (it.get("responsavel") or "EQUIPE TÉCNICA").strip(),
+            "ressalva": bool(it.get("ressalva")),
             "cliente": cliente,
             "usina": usina,
             "cluster": cluster,
@@ -12407,8 +12429,8 @@ def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
 def extrair_punchlist_pdf_nativo_route():
     """
     Lê o PDF original exportado da Fracttal e gera a Punch List enviando
-    o PDF direto pra API da Anthropic como documento nativo (Claude lê
-    texto e imagem sozinho, sem OCR e sem pipeline de visão por ativo).
+    o PDF direto pra API da Gemini como documento nativo (a Gemini lê
+    texto e imagem sozinha, sem OCR e sem pipeline de visão por ativo).
     Documentos grandes (>90 páginas ou >28MB) são divididos em pedaços e
     processados em paralelo; os itens de todos os pedaços são
     consolidados por categoria no final.
