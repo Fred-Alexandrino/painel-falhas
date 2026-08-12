@@ -12323,6 +12323,13 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "Inversores, Trackers, Módulos Fotovoltaicos, QGBT, SPDA, Nobreak e Banco de Baterias, "
         "Transformador de Potência, Relé de Proteção, Sistema de Drenagem, Sistema de Combate a "
         "Incêndio.\n\n"
+        "ATENÇÃO — essa lista de categorias é só uma referência de NOMENCLATURA, não uma lista "
+        "do que deveria existir na usina. NUNCA gere um item de punch list pra uma categoria "
+        "que não apareça de fato nas páginas anexadas — se você não viu uma seção 'ATIVOS' com "
+        "'DESCRIÇÃO: <esse ativo>' e conteúdo real nas páginas deste trecho, esse ativo NÃO "
+        "existe pra fins desta análise, mesmo que ele apareça na lista de categorias acima ou "
+        "seja comum em outras usinas. É preferível deixar um ativo de fora do que inventar uma "
+        "pendência pra um equipamento que não está no documento.\n\n"
         "Se não houver NENHUM item Alerta/Falhou ou pendência nesse trecho, retorne "
         '{"itens": []} — esse é o resultado correto, não uma falha.\n\n'
         "Além da punch list, procure também os campos \"Data e Hora de Início\" e \"Data e "
