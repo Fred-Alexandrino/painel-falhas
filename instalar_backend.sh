@@ -108,7 +108,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/painel-falhas
 EnvironmentFile=/home/ubuntu/painel-falhas/.env
-ExecStart=/home/ubuntu/painel-falhas/venv/bin/gunicorn -w 1 -b 127.0.0.1:5000 --timeout 120 app:app
+ExecStart=/home/ubuntu/painel-falhas/venv/bin/gunicorn -w 1 -b 127.0.0.1:5000 --timeout 280 app:app
 Restart=always
 RestartSec=5
 
