@@ -152,6 +152,27 @@ def _definir_largura_coluna(tabela, indice, largura_cm):
         linha.cells[indice].width = Cm(largura_cm)
 
 
+def _repetir_linha_cabecalho(linha):
+    """Marca a linha como cabeçalho repetido em cada página nova da
+    tabela — sem isso, no modelo anterior o cabeçalho só aparecia na
+    primeira página e a linha de dados que caía bem na quebra de página
+    ficava cortada ao meio, sem contexto de coluna nenhum."""
+    trPr = linha._tr.get_or_add_trPr()
+    header = OxmlElement("w:tblHeader")
+    header.set(qn("w:val"), "true")
+    trPr.append(header)
+
+
+def _impedir_quebra_de_linha(linha):
+    """Impede que UMA linha da tabela seja dividida entre duas páginas
+    — sem isso, uma linha de punch list mais longa (texto grande em
+    Anormalidade/Recomendações) podia começar numa página e terminar
+    na seguinte, cortando o texto no meio de forma ilegível."""
+    trPr = linha._tr.get_or_add_trPr()
+    cant_split = OxmlElement("w:cantSplit")
+    trPr.append(cant_split)
+
+
 def _adicionar_secao_punchlist(doc, punch_list):
     """Adiciona uma nova seção em paisagem no final do documento com a
     tabela de Punch List (mesmo padrão visual: cabeçalho verde, zebra,
@@ -182,6 +203,8 @@ def _adicionar_secao_punchlist(doc, punch_list):
     tabela.alignment = WD_TABLE_ALIGNMENT.CENTER
     tabela.autofit = False
     _bordas_tabela(tabela)
+    _repetir_linha_cabecalho(tabela.rows[0])
+    _impedir_quebra_de_linha(tabela.rows[0])
 
     for i, texto in enumerate(cabecalho):
         celula = tabela.rows[0].cells[i]
@@ -195,6 +218,7 @@ def _adicionar_secao_punchlist(doc, punch_list):
 
     for idx, item in enumerate(punch_list):
         linha = tabela.add_row()
+        _impedir_quebra_de_linha(linha)
         valores = [
             item.get("cliente", ""), item.get("usina", ""), item.get("cluster", ""),
             item.get("ativo", ""), item.get("criticidade", ""), item.get("status", "PENDENTE"),
