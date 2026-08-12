@@ -9871,9 +9871,9 @@ REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente:
 Título: [Nome curto e direto da atividade]
 Comentários:
 
-1. [Passo 1 do procedimento]
-2. [Passo 2 do procedimento]
-3. [Passo 3...]
+• [Passo 1 do procedimento]
+• [Passo 2 do procedimento]
+• [Passo 3...]
 
 REGRAS DE ESCRITA E VOCABULÁRIO:
 - O texto deve ser curto na estrutura (frases objetivas, sem enrolação), mas cada passo deve ser DETALHADO E ESPECÍFICO O SUFICIENTE para não deixar margem de interpretação. Escreva pensando que a equipe de campo, se o passo for vago, tende a executar de forma resumida ou pular a etapa — o texto tem que fechar essa brecha.
@@ -9902,6 +9902,7 @@ REGRA PARA MEDIÇÕES ELÉTRICAS CC/CA (OBRIGATÓRIA sempre que a atividade envo
 REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
 - Em qualquer outro caso, NÃO inclua nenhum item sobre o COS — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
+- Sempre que a atividade envolver inspeção de trackers, estruturas de fixação/suporte de módulos fotovoltaicos, ou integridade estrutural/civil da usina de forma geral, inclua um passo avaliando as estruturas de fixação dos módulos quanto a afundamento (verificar se as bases/fundações/perfis de fixação apresentam sinais de afundamento, desnivelamento ou instabilidade no solo).
 
 EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS):
 
@@ -9909,65 +9910,66 @@ Exemplo 1 (Atividade de Execução/Facilities)
 Título: Limpeza de caixa d'água
 Comentários:
 
-1. Fechar o registro de entrada de água (boia) com antecedência e isolar a área de acesso.
-2. Esvaziar a caixa até que reste apenas cerca de um palmo de água no fundo.
-3. Esfregar as paredes e o fundo utilizando escovas macias e exclusivas para este fim, sem uso de produtos químicos não homologados.
-4. Esvaziar a água suja, realizar o enxágue das paredes, reabrir o registro de entrada e fechar a tampa de forma hermética.
+• Fechar o registro de entrada de água (boia) com antecedência e isolar a área de acesso.
+• Esvaziar a caixa até que reste apenas cerca de um palmo de água no fundo.
+• Esfregar as paredes e o fundo utilizando escovas macias e exclusivas para este fim, sem uso de produtos químicos não homologados.
+• Esvaziar a água suja, realizar o enxágue das paredes, reabrir o registro de entrada e fechar a tampa de forma hermética.
 
 Exemplo 2 (Atividade de Diagnóstico/Elétrica)
 Título: Inversor com aparente limitação de potência
 Comentários:
 
-1. Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
-2. Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
-3. Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para garantir que a queda de potência não seja causada por falha nos módulos ou sujeira.
+• Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
+• Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
+• Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para garantir que a queda de potência não seja causada por falha nos módulos ou sujeira.
 
 Exemplo 3 (Atividade de Acompanhamento)
 Título: Acompanhamento de roçagem
 Comentários:
 
-1. Acompanhar a execução da roçagem na área designada, confirmando a delimitação do espaço.
-2. Verificar a sinalização e o uso correto de EPIs pela equipe terceira durante toda a atividade.
-3. Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
-4. Registrar o andamento com evidências fotográficas e anotar eventuais pendências para correção.
+• Acompanhar a execução da roçagem na área designada, confirmando a delimitação do espaço.
+• Verificar a sinalização e o uso correto de EPIs pela equipe terceira durante toda a atividade.
+• Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
+• Registrar o andamento com evidências fotográficas e anotar eventuais pendências para correção.
 
 Exemplo 4 (Atividade de Ajuste — CFTV, várias câmeras da MESMA usina ficam JUNTAS numa OS só)
 Título: Reposicionamento de câmeras de CFTV
 Comentários:
 
-1. Verificar a posição atual de cada câmera e o campo de visão afetado.
-2. Realizar o reposicionamento físico conforme a necessidade operacional, ajustando inclinação e direcionamento.
-3. Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
-4. Registrar a atividade e as evidências de antes e depois da intervenção.
+• Verificar a posição atual de cada câmera e o campo de visão afetado.
+• Realizar o reposicionamento físico conforme a necessidade operacional, ajustando inclinação e direcionamento.
+• Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
+• Registrar a atividade e as evidências de antes e depois da intervenção.
 
 Exemplo 5 (Visita Técnica Semanal — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "visita técnica semanal", "ronda semanal" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
 Título: Visita Técnica Semanal
 Comentários:
 
-1. Realizar inspeção visual da vegetação na área da usina, avaliando a necessidade de roçagem e proximidade com os módulos e equipamentos.
-2. Inspecionar a sujidade dos módulos fotovoltaicos, registrando o nível de acúmulo e a necessidade de limpeza.
-3. Verificar as condições gerais da usina, incluindo vias de acesso, drenagem e integridade das estruturas.
-4. Conferir o cercamento perimetral, identificando pontos de vulnerabilidade ou danos.
-5. Inspecionar visualmente os inversores, verificando a limpeza externa, funcionamento dos ventiladores e ausência de alarmes no display.
-6. Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
-7. Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
-8. Registrar todas as observações e evidências fotográficas para cada item inspecionado.
+• Realizar inspeção visual da vegetação na área da usina, avaliando a necessidade de roçagem e proximidade com os módulos e equipamentos.
+• Inspecionar a sujidade dos módulos fotovoltaicos, registrando o nível de acúmulo e a necessidade de limpeza.
+• Verificar as condições gerais da usina, incluindo vias de acesso, drenagem e integridade das estruturas.
+• Avaliar as estruturas de fixação dos módulos fotovoltaicos quanto a sinais de afundamento, desnivelamento ou instabilidade no solo das bases/fundações.
+• Conferir o cercamento perimetral, identificando pontos de vulnerabilidade ou danos.
+• Inspecionar visualmente os inversores, verificando a limpeza externa, funcionamento dos ventiladores e ausência de alarmes no display.
+• Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
+• Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
+• Registrar todas as observações e evidências fotográficas para cada item inspecionado.
 
 Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
 Título: Inspeção de Inversor para Abertura de Chamado
 Comentários:
 
-1. Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
-2. Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
-3. Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para identificar possíveis anomalias.
-4. Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
-5. Coleta do número de série e posição operacional do inversor.
-6. Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
+• Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
+• Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
+• Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para identificar possíveis anomalias.
+• Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
+• Coleta do número de série e posição operacional do inversor.
+• Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
 
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{"textos": ["Título: ...\\nComentários:\\n\\n1. ...\\n2. ...", "Título: ...\\nComentários:\\n\\n1. ..."]}}
+{{"textos": ["Título: ...\\nComentários:\\n\\n• ...\\n• ...", "Título: ...\\nComentários:\\n\\n• ..."]}}
 Cada item da lista é o texto completo de uma OS, no padrão exato descrito acima. Se só houver uma frente de trabalho, a lista tem um item só.
 
 Dados da solicitação:
@@ -12666,10 +12668,10 @@ def gerar_os():
         "<uma linha, objetiva, descrevendo o diagnóstico/inspeção necessária para o "
         "equipamento e a falha específica>\n\n"
         "Comentários:\n\n"
-        "* <item 1 do checklist técnico>\n"
-        "* <item 2 do checklist técnico>\n"
-        "* <item 3 do checklist técnico>\n"
-        "* <item 4 ou mais itens, conforme necessário — geralmente entre 4 e 6 itens>\n\n"
+        "• <item 1 do checklist técnico>\n"
+        "• <item 2 do checklist técnico>\n"
+        "• <item 3 do checklist técnico>\n"
+        "• <item 4 ou mais itens, conforme necessário — geralmente entre 4 e 6 itens>\n\n"
         "Regras:\n"
         "- O checklist deve ser ESPECÍFICO ao tipo de equipamento (inversor, tracker, "
         "motor, TCU, câmera/CFTV, nobreak, transformador, chave seccionadora, "
@@ -12681,6 +12683,11 @@ def gerar_os():
         "- Considere os equipamentos impactados para garantir que o checklist cubra "
         "todos eles quando relevante.\n"
         "- O título deve mencionar o equipamento/local específico quando disponível.\n"
+        "- Sempre que a falha envolver trackers, estruturas de fixação/suporte de módulos "
+        "fotovoltaicos, ou integridade estrutural/civil de forma geral, inclua um item "
+        "avaliando as estruturas de fixação dos módulos quanto a afundamento (verificar "
+        "sinais de afundamento, desnivelamento ou instabilidade no solo das "
+        "bases/fundações).\n"
         "- Nunca inclua explicações, saudações, ou qualquer texto fora do formato "
         "Título/Comentários especificado."
     )
