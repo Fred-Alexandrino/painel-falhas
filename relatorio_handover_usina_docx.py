@@ -144,12 +144,20 @@ def _bordas_tabela(tabela, cor="D9D9E0"):
 
 
 def _definir_largura_coluna(tabela, indice, largura_cm):
-    """No python-docx, a largura de coluna só é respeitada de verdade
-    no Word se for setada em CADA célula da coluna, não só no objeto
-    Table — por isso o define_col_widths do table sozinho não bastava
-    e as colunas saíam com larguras arbitrárias/erradas."""
+    """Define a largura de uma coluna 'de verdade': atualiza tanto o
+    tblGrid (a definição de colunas da tabela, que é o que o Word usa
+    de fato quando w:tblLayout="fixed") quanto a largura de cada célula
+    dessa coluna. Setar só a célula (como a versão antiga fazia) não
+    tem efeito nenhum em tabelas com tblGrid explícito — caso do
+    Quadro de Revisões, que veio pronto no modelo."""
+    grid = tabela._tbl.find(qn('w:tblGrid'))
+    if grid is not None:
+        cols = grid.findall(qn('w:gridCol'))
+        if indice < len(cols):
+            cols[indice].set(qn('w:w'), str(int(largura_cm * 566.929)))  # cm -> dxa
     for linha in tabela.rows:
-        linha.cells[indice].width = Cm(largura_cm)
+        if indice < len(linha.cells):
+            linha.cells[indice].width = Cm(largura_cm)
 
 
 def _repetir_linha_cabecalho(linha):
@@ -193,6 +201,10 @@ def _adicionar_secao_punchlist(doc, punch_list):
     r.bold = True
     r.font.size = Pt(15)
     titulo.paragraph_format.space_after = Pt(10)
+    # "Manter com o próximo" — sem isso, o LibreOffice às vezes empurra a
+    # tabela inteira pra página seguinte (por causa do cabeçalho repetido +
+    # "não quebrar linha"), deixando o título sozinho numa página em branco.
+    titulo.paragraph_format.keep_with_next = True
 
     cabecalho = ["CLIENTE", "USINA", "CLUSTER", "ATIVO", "CRITICIDADE",
                  "STATUS", "ANORMALIDADE", "RECOMENDAÇÕES", "RESPONSÁVEL"]
@@ -333,6 +345,16 @@ def gerar_handover_usina_docx(dados):
                         celula.paragraphs[0].runs[0].text = valor
                     else:
                         celula.paragraphs[0].add_run(valor)
+            # Larguras explícitas — no modelo original "Elaborador"/"Verificador"
+            # quebravam a palavra ao meio (coluna estreita demais pro texto).
+            tabela_revisoes.autofit = False
+            larguras_revisoes = [2.3, 2.4, 3.2, 3.2, 2.9, 2.3]
+            for i, largura in enumerate(larguras_revisoes):
+                _definir_largura_coluna(tabela_revisoes, i, largura)
+            tblW = tabela_revisoes._tbl.tblPr.find(qn('w:tblW'))
+            if tblW is not None:
+                tblW.set(qn('w:type'), 'dxa')
+                tblW.set(qn('w:w'), str(int(sum(larguras_revisoes) * 566.929)))
 
     # Quebra de página logo após o título "3.4 Ordens de Serviço - Handover"
     # — garante que a seção 4 comece numa página nova, o que deixa o ponto
