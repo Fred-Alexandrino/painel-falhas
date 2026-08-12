@@ -12323,12 +12323,19 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "Incêndio.\n\n"
         "Se não houver NENHUM item Alerta/Falhou ou pendência nesse trecho, retorne "
         '{"itens": []} — esse é o resultado correto, não uma falha.\n\n'
+        "Além da punch list, procure também os campos \"Data e Hora de Início\" e \"Data e "
+        "Hora de Fim\" que aparecem no cabeçalho de cada tarefa/ativo do documento (formato "
+        "tipo \"2026-08-04 09:40\"). Extraia a MENOR data/hora de início e a MAIOR data/hora "
+        "de fim encontradas nesse trecho — isso representa o início e o fim reais do trabalho "
+        "de campo. Se não achar nenhuma, deixe os campos como string vazia.\n\n"
         "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
         '{"itens": [{"ativo": "<categoria padrão, sem número de unidade>", '
         '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
         '"anormalidade": "<descrição objetiva e consolidada>", '
         '"recomendacoes": "<ação corretiva recomendada, objetiva>", '
-        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>"}]}'
+        '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>"}], '
+        '"dataHoraInicio": "<menor \'Data e Hora de Início\' do trecho, ou \'\'>", '
+        '"dataHoraFim": "<maior \'Data e Hora de Fim\' do trecho, ou \'\'>"}'
     )
 
 
@@ -12380,7 +12387,11 @@ def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
             "usina": usina,
             "cluster": cluster,
         })
-    return normalizados
+    return {
+        "itens": normalizados,
+        "dataHoraInicio": (parsed.get("dataHoraInicio") or "").strip(),
+        "dataHoraFim": (parsed.get("dataHoraFim") or "").strip(),
+    }
 
 
 @app.route("/extrair-punchlist-pdf-nativo", methods=["POST", "OPTIONS"])
@@ -12418,13 +12429,20 @@ def extrair_punchlist_pdf_nativo_route():
 
         resultados = []
         erros = []
+        datas_inicio = []
+        datas_fim = []
         with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
             futuros = {executor.submit(_processar_chunk_pdf_nativo, c, cliente, usina, cluster, total_paginas): c
                        for c in chunks}
             for futuro in as_completed(futuros):
                 chunk = futuros[futuro]
                 try:
-                    resultados.extend(futuro.result())
+                    resultado_chunk = futuro.result()
+                    resultados.extend(resultado_chunk["itens"])
+                    if resultado_chunk.get("dataHoraInicio"):
+                        datas_inicio.append(resultado_chunk["dataHoraInicio"])
+                    if resultado_chunk.get("dataHoraFim"):
+                        datas_fim.append(resultado_chunk["dataHoraFim"])
                 except Exception as e:
                     log.error(f"[PunchlistPdfNativo] Erro no trecho pg{chunk['pagina_inicio']}-"
                               f"{chunk['pagina_fim']}: {e}")
@@ -12432,10 +12450,18 @@ def extrair_punchlist_pdf_nativo_route():
                                   "erro": str(e)})
 
         itens_consolidados = _consolidar_itens_punchlist_por_categoria(resultados)
+        # menor "Data e Hora de Início" e maior "Data e Hora de Fim" entre
+        # todos os trechos — comparação por string funciona porque o
+        # formato pedido no prompt é ISO ("aaaa-mm-dd hh:mm"), que ordena
+        # igual a uma comparação de datas de verdade.
+        data_hora_inicio = min(datas_inicio) if datas_inicio else ""
+        data_hora_fim = max(datas_fim) if datas_fim else ""
 
         return jsonify({
             "ok": True,
             "itens": itens_consolidados,
+            "dataHoraInicio": data_hora_inicio,
+            "dataHoraFim": data_hora_fim,
             "totalPaginas": total_paginas,
             "trechosProcessados": len(chunks) - len(erros),
             "trechosTotal": len(chunks),
