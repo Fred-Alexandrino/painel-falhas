@@ -13483,8 +13483,10 @@ def fv_energias_status():
 
 
 def _fv_energias_buscar_historico_geracao(dias=7):
-    """Geração diária dos últimos N dias (kWh/dia), via getPlantOutputPro
-    período=bydays, um dia de cada vez (a API não aceita intervalo)."""
+    """Geração diária real dos últimos N dias (kWh/dia), somando os 3
+    inversores via getInverterETodayPro — esse endpoint devolve energia
+    (kWh) por data, diferente do getPlantOutputPro (que devolve potência
+    de pico, não geração, confirmado por teste real)."""
     resultado = []
     hoje = agora_br().date()
     for i in range(dias - 1, -1, -1):
@@ -13492,22 +13494,22 @@ def _fv_energias_buscar_historico_geracao(dias=7):
         data_str = dia.strftime("%Y-%m-%d")
         try:
             resp = _fv_energias_chamar_api(
-                "/pro/getPlantOutputPro",
+                "/pro/getInverterETodayPro",
                 {
                     "apikey": FV_ENERGIAS_APIKEY,
                     "token": FV_ENERGIAS_TOKEN,
-                    "period": "bydays",
                     "date": data_str,
                 },
             )
             valor = 0.0
             if resp.get("status") == 200:
                 itens = (resp.get("data") or {}).get("result") or []
-                # A API devolve leituras cumulativas ao longo do dia (não
-                # incrementais) — o total do dia é o maior valor, não a
-                # soma de todos os pontos.
-                valores_dia = [float(it.get("value") or 0) for it in itens]
-                valor = max(valores_dia) if valores_dia else 0.0
+                for item in itens:
+                    for sn, v in item.items():
+                        try:
+                            valor += float(v or 0)
+                        except (TypeError, ValueError):
+                            pass
         except Exception:
             valor = None
         resultado.append({"data": data_str, "geracao_kwh": valor})
@@ -13532,38 +13534,39 @@ def fv_energias_historico_geracao():
 
 @app.route("/fv-energias/irradiacao", methods=["GET"])
 def fv_energias_irradiacao():
-    """Irradiação solar diária (GHI, kWh/m²/dia) dos últimos N dias pra
-    comparar com a geração da usina — fonte pública NASA POWER (sem
-    necessidade de chave), usando as coordenadas reais da usina
-    (Aquiraz/CE: lat -4.034966, lon -38.4098811)."""
+    """Irradiação solar diária (kWh/m²/dia) dos últimos N dias (incluindo
+    hoje) pra comparar com a geração da usina — fonte pública Open-Meteo
+    (sem chave, sem custo), usando as coordenadas reais da usina
+    (Aquiraz/CE: lat -4.034966, lon -38.4098811). Diferente da NASA POWER,
+    não tem atraso de dias — os dados de hoje já vêm disponíveis (modelo
+    de previsão/reanálise quase em tempo real)."""
     try:
         dias = min(int(request.args.get("dias", 7)), 30)
     except (TypeError, ValueError):
         dias = 7
 
-    hoje = agora_br().date()
-    data_fim = hoje - timedelta(days=1)  # NASA POWER só tem dados D-1 pra trás
-    data_ini = data_fim - timedelta(days=dias - 1)
-
     url = (
-        "https://power.larc.nasa.gov/api/temporal/daily/point"
-        f"?parameters=ALLSKY_SFC_SW_DWN"
-        f"&community=RE"
-        f"&longitude=-38.4098811&latitude=-4.034966"
-        f"&start={data_ini.strftime('%Y%m%d')}&end={data_fim.strftime('%Y%m%d')}"
-        f"&format=JSON"
+        "https://api.open-meteo.com/v1/forecast"
+        "?latitude=-4.034966&longitude=-38.4098811"
+        "&daily=shortwave_radiation_sum"
+        "&timezone=America%2FSao_Paulo"
+        f"&past_days={dias}"
+        "&forecast_days=1"
     )
     try:
         resp = requests.get(url, timeout=20)
         resp.raise_for_status()
         payload = resp.json()
-        serie = payload.get("properties", {}).get("parameter", {}).get("ALLSKY_SFC_SW_DWN", {})
+        datas = payload.get("daily", {}).get("time", [])
+        valores_mj = payload.get("daily", {}).get("shortwave_radiation_sum", [])
+        # Open-Meteo devolve em MJ/m² — convertendo pra kWh/m² (÷3.6) pra
+        # ficar na mesma unidade usada antes e mais intuitivo de comparar.
         historico = [
-            {"data": f"{k[:4]}-{k[4:6]}-{k[6:8]}", "irradiacao_kwh_m2": v}
-            for k, v in sorted(serie.items())
-            if v is not None and v > -900  # -999 = dado ausente (NASA POWER ainda não processou)
+            {"data": d, "irradiacao_kwh_m2": round(v / 3.6, 3)}
+            for d, v in zip(datas, valores_mj)
+            if v is not None
         ]
-        return jsonify({"ok": True, "historico": historico, "fonte": "NASA POWER (ALLSKY_SFC_SW_DWN)"}), 200
+        return jsonify({"ok": True, "historico": historico, "fonte": "Open-Meteo (shortwave_radiation_sum)"}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
