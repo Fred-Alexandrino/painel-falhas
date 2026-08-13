@@ -1,0 +1,3 @@
+STATUS: 200
+BODY: {"disparado":false,"motivo":"fora da janela","ok":true}
+
