@@ -7271,6 +7271,12 @@ def sync_fracttal():
         body["resumo_diario_check"] = {"erro": str(e)}
 
     try:
+        body["ronda_check"] = _verificar_e_disparar_ronda_se_necessario()
+    except Exception as e:
+        log.error(f"[Ronda] Erro no piggyback: {e}")
+        body["ronda_check"] = {"erro": str(e)}
+
+    try:
         body["resumo_semanal_check"] = _verificar_e_disparar_resumo_semanal_se_necessario()
     except Exception as e:
         log.error(f"[ResumoSemanal] Erro no piggyback: {e}")
@@ -9276,6 +9282,287 @@ def gerar_resumo_semanal():
         return jsonify(resultado), 200
     except Exception as e:
         log.error(f"[ResumoSemanal] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Ronda matinal (pontos de atenção e prioridades do dia) ─────────────────
+
+def _coletar_desligamentos_ativos_agora():
+    """Desligamentos ATUALMENTE ativos, não só os de hoje — cruza Falhas
+    (sem status de resolvida) e Atividades (ainda não concluídas) contra
+    o padrão de texto de desligamento, com o mesmo override manual
+    (_DesligamentoManual) usado no resumo diário. Feito pra Ronda: pedido
+    do Fred pra incluir desligamentos crônicos/de dias anteriores, não só
+    os que começaram hoje."""
+    try:
+        overrides = {}
+        ws_desl = get_desligamento_manual_sheet()
+        for row in ws_desl.get_all_values()[1:]:
+            if len(row) >= 3 and row[0].strip():
+                overrides[f"{row[0].strip()}:{row[1].strip()}"] = row[2].strip()
+
+        padrao_desligamento = re.compile(
+            r"(?:usina|ufv)\s+(?:\w+\s+){0,3}(?:desligad[ao]|parad[ao]|sem\s+energia|desenergizad[ao]|offline|sem\s+comunica[çc][ãa]o)"
+            r"|(?:desligad[ao]|parad[ao]|offline)\s+(?:\w+\s+){0,3}(?:usina|ufv)"
+            r"|desligamento\s+(?:total\s+)?(?:da|de)\s+(?:usina|ufv)",
+            re.IGNORECASE,
+        )
+        ativos = []
+
+        falhas = _falhas_itens()
+        for f in falhas:
+            status = (f.get("status") or "").strip().lower()
+            if any(x in status for x in ("resolvid", "conclu", "fechad")):
+                continue
+            override = overrides.get(f"falha:{f.get('id')}")
+            texto = f.get("falha") or ""
+            if override == "sim" or (override != "nao" and padrao_desligamento.search(texto)):
+                if canonizar_usina(f.get("usina")) is None:
+                    continue
+                ativos.append({"usina": f.get("usina"), "cliente": f.get("cliente"),
+                                "descricao": texto, "origem": "Falha", "desde": f.get("dataAbertura")})
+
+        ws_ativ = get_atividades_sheet()
+        for row in ws_ativ.get_all_values()[1:]:
+            if len(row) < ATIV_TOTAL_COLUNAS:
+                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            status = row[ATIV_CAMPO_COL["status"] - 1].strip()
+            if _is_concluido_atividade(status):
+                continue
+            numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
+            descricao = row[ATIV_CAMPO_COL["descricao"] - 1].strip()
+            usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
+            if canonizar_usina(usina_bruta) is None:
+                continue
+            override = overrides.get(f"atividade:{numero_os}")
+            if override == "sim" or (override != "nao" and padrao_desligamento.search(descricao)):
+                ativos.append({"usina": usina_bruta, "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+                                "descricao": descricao, "origem": f"Atividade OS {numero_os}",
+                                "desde": row[ATIV_CAMPO_COL["dataCriacao"] - 1].strip()})
+        return ativos
+    except Exception as e:
+        log.error(f"[Ronda] Erro ao checar desligamentos ativos: {e}")
+        return []
+
+
+def _coletar_prazos_proximos(data_str, dias_janela=1):
+    """Atividades pendentes com prazo vencendo hoje ou nos próximos
+    `dias_janela` dias (default: hoje e amanhã)."""
+    try:
+        hoje = datetime.strptime(data_str, "%Y-%m-%d").date()
+        limite = hoje + timedelta(days=dias_janela)
+        prazos = []
+        ws_ativ = get_atividades_sheet()
+        for row in ws_ativ.get_all_values()[1:]:
+            if len(row) < ATIV_TOTAL_COLUNAS:
+                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            status = row[ATIV_CAMPO_COL["status"] - 1].strip()
+            if _is_concluido_atividade(status):
+                continue
+            prazo_raw = row[ATIV_CAMPO_COL["prazo"] - 1].strip()
+            if not prazo_raw:
+                continue
+            try:
+                prazo_dt = datetime.strptime(prazo_raw, "%d/%m/%Y").date()
+            except ValueError:
+                continue
+            if not (hoje <= prazo_dt <= limite):
+                continue
+            usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
+            if canonizar_usina(usina_bruta) is None:
+                continue
+            prazos.append({
+                "usina": usina_bruta, "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+                "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
+                "prazo": prazo_raw, "numeroOS": row[ATIV_CAMPO_COL["numeroOS"] - 1].strip(),
+                "vencesHoje": prazo_dt == hoje,
+            })
+        return prazos
+    except Exception as e:
+        log.error(f"[Ronda] Erro ao checar prazos próximos: {e}")
+        return []
+
+
+def _coletar_chamados_fabricante_abertos():
+    """Chamados de fabricante ainda sem status de resolvido — não só os
+    abertos hoje (a Ronda é sobre o que ainda precisa de atenção agora,
+    não um recorte do dia)."""
+    try:
+        chamados = _chamados_fabricante_itens()
+        return [c for c in chamados
+                if not any(x in (c.get("Status") or "").strip().lower()
+                            for x in ("resolvid", "conclu", "fechad", "encerrad"))]
+    except Exception as e:
+        log.error(f"[Ronda] Erro ao ler chamados de fabricante: {e}")
+        return []
+
+
+def _coletar_dados_ronda(data_str):
+    """Junta o que a Ronda precisa: programação do PCM pro dia (o que
+    está previsto), OS de alta prioridade em aberto, desligamentos
+    ativos agora (crônicos inclusive), prazos vencendo hoje/amanhã, e
+    chamados de fabricante ainda sem solução."""
+    resultado = {"data": data_str}
+    resultado["programacaoDoDia"] = _pcm_linhas_do_dia(data_str)
+
+    altas_abertas = []
+    try:
+        ws_ativ = get_atividades_sheet()
+        for row in ws_ativ.get_all_values()[1:]:
+            if len(row) < ATIV_TOTAL_COLUNAS:
+                row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+            usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
+            if (row[ATIV_CAMPO_COL["prioridade"] - 1].strip().lower() == "alta"
+                    and not _is_concluido_atividade(row[ATIV_CAMPO_COL["status"] - 1].strip())
+                    and canonizar_usina(usina_bruta) is not None):
+                altas_abertas.append({
+                    "usina": usina_bruta, "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
+                    "descricao": row[ATIV_CAMPO_COL["descricao"] - 1].strip(),
+                    "prazo": row[ATIV_CAMPO_COL["prazo"] - 1].strip(),
+                })
+    except Exception as e:
+        log.error(f"[Ronda] Erro ao ler Atividades (alta prioridade): {e}")
+    resultado["altaPrioridadeAberta"] = altas_abertas
+
+    resultado["desligamentosAtivos"] = _coletar_desligamentos_ativos_agora()
+    resultado["prazosProximos"] = _coletar_prazos_proximos(data_str)
+    resultado["chamadosAbertos"] = _coletar_chamados_fabricante_abertos()
+    return resultado
+
+
+def _montar_prompt_ronda(dados):
+    data_str = dados["data"]
+    try:
+        data_fmt = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        data_fmt = data_str
+
+    programacao = dados.get("programacaoDoDia", [])
+    altas = dados.get("altaPrioridadeAberta", [])
+    desligamentos = dados.get("desligamentosAtivos", [])
+    prazos = dados.get("prazosProximos", [])
+    chamados = dados.get("chamadosAbertos", [])
+
+    def _fmt_lista(itens, campos):
+        if not itens:
+            return "(nenhum)"
+        linhas = []
+        for it in itens:
+            linhas.append(" | ".join(f"{c}={it.get(c, '')}" for c in campos))
+        return "\n".join(linhas)
+
+    lista_usinas_fred = ", ".join(sorted(CATALOGO_USINAS.keys()))
+
+    return f"""Aja como um Supervisor de O&M Sênior da Grid Co., escrevendo a "Ronda" do dia — uma mensagem curta de PRIORIDADES E PONTOS DE ATENÇÃO pro seu próprio controle, enviada de manhã, ANTES do expediente começar. É pra você se organizar no início do dia, não é um resumo do que já aconteceu (isso é o resumo diário, que roda às 17h) — foque no que precisa de atenção HOJE.
+
+Data da ronda: {data_fmt}
+
+USINAS SOB SUA SUPERVISÃO (lista fechada — só estas): {lista_usinas_fred}
+
+REGRAS DE ESCRITA:
+- Direto e objetivo, sem enrolação, sem saudação.
+- Estruture em tópicos curtos com emojis moderados pra facilitar leitura rápida no celular.
+- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo.
+- Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
+- Priorize: desligamentos ativos e prazos vencendo HOJE vêm primeiro (são os pontos mais urgentes), programação do dia e alta prioridade em aberto vêm depois.
+- Feche com uma linha curta de "prioridade do dia" — se tiver desligamento ativo ou prazo vencendo hoje, essa é a prioridade; senão, aponte a atividade mais importante da programação do dia.
+
+DADOS PRA RONDA DE HOJE:
+
+## Desligamentos ativos agora (inclui casos de dias anteriores, não só de hoje)
+{_fmt_lista(desligamentos, ['usina', 'cliente', 'descricao', 'desde'])}
+
+## Prazos vencendo hoje ou amanhã
+{_fmt_lista(prazos, ['usina', 'cliente', 'descricao', 'numeroOS', 'prazo', 'vencesHoje'])}
+
+## Programação do PCM pra hoje
+{_fmt_lista(programacao, ['usina', 'cliente', 'tarefa', 'os_id', 'h_ini'])}
+
+## OS de alta prioridade em aberto (não necessariamente de hoje)
+{_fmt_lista(altas, ['usina', 'cliente', 'descricao', 'prazo'])}
+
+## Chamados de fabricante ainda sem solução
+{_fmt_lista(chamados, ['UFV', 'Fabricante', 'Motivo da abertura do chamado', 'Status'])}
+
+FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
+{{"texto": "ronda completa, pronta pra enviar no WhatsApp, começando com um cabeçalho tipo '🔔 RONDA — {data_fmt}', terminando com a linha de 'Prioridade do dia' descrita acima"}}"""
+
+
+def _gerar_ronda_core(data_str=None, enviar=True):
+    if not data_str:
+        data_str = agora_br().strftime("%Y-%m-%d")
+    dados = _coletar_dados_ronda(data_str)
+    prompt = _montar_prompt_ronda(dados)
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 2048,
+                "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        },
+        timeout=45,
+    )
+    resp_data = resp.json()
+    texto_bruto = resp_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    texto = json.loads(texto_limpo).get("texto", "").strip()
+    if not texto:
+        raise ValueError("A IA não retornou nenhum texto pra ronda")
+
+    resultado_envio = None
+    if enviar:
+        resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
+
+    try:
+        _salvar_resumo("ronda", texto, data_referencia=data_str, enviado=enviar)
+    except Exception as e:
+        log.error(f"[Ronda] Falha ao salvar no histórico do painel: {e}")
+
+    return {"ok": True, "data": data_str, "texto": texto, "envio": resultado_envio}
+
+
+def _verificar_e_disparar_ronda_se_necessario():
+    """Piggyback no /sync-fracttal, mesmo padrão do resumo diário/semanal
+    (ver docstring de _verificar_e_disparar_resumo_diario_se_necessario):
+    gera e envia a ronda todo dia na janela 08:00-08:30 (Brasília). A
+    trava só é gravada DEPOIS da geração ter sucesso, pelo mesmo motivo
+    documentado lá (worker morto no meio do caminho não pode travar o
+    dia inteiro sem ronda)."""
+    try:
+        agora = agora_br()
+        hoje_str = agora.strftime("%Y-%m-%d")
+        if not (agora.hour == 8 and agora.minute <= 30):
+            return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
+        ja_feito = _ler_trava("ronda_enviada_em")
+        if ja_feito == hoje_str:
+            return {"disparado": False, "motivo": "já enviada hoje"}
+        resultado = _gerar_ronda_core(data_str=hoje_str, enviar=True)
+        _gravar_trava("ronda_enviada_em", hoje_str)
+        return {"disparado": True, "resultado": resultado}
+    except Exception as e:
+        log.error(f"[Ronda] Erro no piggyback: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
+@app.route("/gerar-ronda", methods=["POST", "GET"])
+def gerar_ronda():
+    """Gera (e envia por padrão) a ronda matinal pro grupo Gestão O&M.
+    Query params: ?data=YYYY-MM-DD (default hoje), ?enviar=false (só
+    gera e devolve o texto, sem mandar pro WhatsApp — útil pra testar)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    data_str = request.args.get("data", "").strip() or None
+    enviar = request.args.get("enviar", "true").lower() != "false"
+    try:
+        resultado = _gerar_ronda_core(data_str=data_str, enviar=enviar)
+        return jsonify(resultado), 200
+    except Exception as e:
+        log.error(f"[Ronda] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
