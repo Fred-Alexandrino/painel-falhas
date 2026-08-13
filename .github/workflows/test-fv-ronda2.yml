@@ -1,0 +1,29 @@
+name: test-fv-ronda2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2Z2LWVuZXJnaWFzL3JvbmRhLWRpc3BhcmFyIgpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgbWV0aG9kPSJQT1NUIiwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIiwgIkNvbnRlbnQtVHlwZSI6ICJhcHBsaWNhdGlvbi9qc29uIn0sIGRhdGE9YiJ7fSIpCnRyeToKICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjUpIGFzIHJlc3A6CiAgICAgICAgcHJpbnQoIlNUQVRVUzoiLCByZXNwLnN0YXR1cykKICAgICAgICBwcmludCgiQk9EWToiLCByZXNwLnJlYWQoKS5kZWNvZGUoKSkKZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZToKICAgIHByaW50KCJTVEFUVVM6IiwgZS5jb2RlKQogICAgcHJpbnQoIkJPRFk6IiwgZS5yZWFkKCkuZGVjb2RlKCkpCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgIHByaW50KCJFUlJPUjoiLCBzdHIoZSkpCg==" | base64 -d > test_ronda.py
+          mkdir -p backups
+          python3 test_ronda.py > backups/fv-ronda2-result.txt 2>&1 || true
+          cat backups/fv-ronda2-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/fv-ronda2-result.txt
+          git commit -m "test: fv ronda2" || echo "nothing"
+          git push origin HEAD:main
