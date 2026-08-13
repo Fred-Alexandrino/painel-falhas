@@ -565,6 +565,7 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
         descricao = row[ATIV_COL_DESCRICAO].strip() or "Sem descrição"
         descricao = _descricao_com_mes_se_preventiva_mensal(descricao, row[ATIV_COL_PRAZO])
         equipamento = row[ATIV_COL_EQUIP].strip()
+        descricao = _descricao_com_identificacao_equipamento(descricao, equipamento)
         if len(descricao) > 140:
             descricao = descricao[:137].rstrip() + "..."
 
@@ -583,6 +584,52 @@ _MESES_PT = {
     7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO",
 }
 _RE_PREVENTIVA_MENSAL = re.compile(r"^preventiva\s+mensal$", re.IGNORECASE)
+
+
+_RE_TEM_NUMERO = re.compile(r"\d")
+_RE_NUM_EQUIP = re.compile(r"\d+(?:\.\d+)?")
+_EQUIP_PALAVRA_CHAVE = [
+    re.compile(r"\binversor(es)?\b", re.IGNORECASE),
+    re.compile(r"\btracker(s)?\b", re.IGNORECASE),
+    re.compile(r"\bstring\s*box(es)?\b", re.IGNORECASE),
+    re.compile(r"\btransformador(es)?\b", re.IGNORECASE),
+    re.compile(r"\bm[oó]dulo(s)?\b", re.IGNORECASE),
+    re.compile(r"\bcombiner(s)?\b", re.IGNORECASE),
+]
+
+
+def _descricao_com_identificacao_equipamento(descricao, equipamento):
+    """Combinado com Fred em 13/08/2026: descrições genéricas de atividade
+    (ex.: "Análise de inversor com queda de geração") não deixam claro pro
+    cliente QUAL inversor/tracker/etc. foi analisado — essa informação já
+    existe no campo Equipamento da própria OS (ex.: "Inversor 3.4"), só não
+    estava sendo usada no texto do relatório.
+
+    Se a descrição já cita algum número (ex.: "[Colíder 2][Inversor 3.4] -
+    Recomposição de String"), não mexe — já está identificado. Caso
+    contrário, insere o número do campo Equipamento logo depois da
+    palavra-chave (inversor/tracker/string box/etc.) já presente na
+    descrição; se a descrição não citar nenhuma dessas palavras-chave, mas
+    o campo Equipamento tiver uma identificação útil, acrescenta ela
+    inteira no fim, entre parênteses."""
+    if _RE_TEM_NUMERO.search(descricao):
+        return descricao  # já tem número — já identificado
+    equipamento = (equipamento or "").strip()
+    if not equipamento or equipamento.lower() == "equipamento não informado":
+        return descricao
+    m_num = _RE_NUM_EQUIP.search(equipamento)
+    if not m_num:
+        return descricao  # campo Equipamento também não identifica número específico
+    numero = m_num.group(0)
+
+    for padrao in _EQUIP_PALAVRA_CHAVE:
+        m = padrao.search(descricao)
+        if m:
+            return descricao[:m.end()] + f" {numero}" + descricao[m.end():]
+
+    # não achou palavra-chave de equipamento na descrição — acrescenta a
+    # identificação completa do campo Equipamento no fim, entre parênteses
+    return f"{descricao} ({equipamento})"
 
 
 def _descricao_com_mes_se_preventiva_mensal(descricao, prazo_txt):
