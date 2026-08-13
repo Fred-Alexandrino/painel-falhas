@@ -438,13 +438,35 @@ def _converter_docx_para_pdf(docx_bytes):
             return f.read()
 
 
+def _pagina_so_tem_cabecalho(texto):
+    """Considera 'vazia' (pra fins do corte) uma página que só tem o
+    cabeçalho padrão (logo/título/nº de página) e nenhum conteúdo de
+    corpo — toda página tem o cabeçalho, então checar `if texto` sozinho
+    NUNCA reconhece a página reservada como vazia (bug real, achado num
+    teste com PDF da Fracttal anexado: a página reservada sobrava depois
+    do PDF inserido porque o cabeçalho a fazia parecer 'com conteúdo')."""
+    marcadores_cabecalho = ("relatório de handover", "operação", "de ativos",
+                             "grid co.", "rev.00", "página")
+    for linha in (texto or "").split("\n"):
+        linha_normalizada = linha.strip().lower()
+        if not linha_normalizada:
+            continue
+        if not any(m in linha_normalizada for m in marcadores_cabecalho):
+            return False  # achou uma linha que não é do cabeçalho => tem conteúdo
+    return True
+
+
 def _dividir_pdf_no_marcador(pdf_bytes, texto_marcador="Ordens de Serviço - Handover"):
     """Divide o PDF em duas partes: tudo até a ÚLTIMA página que contém
     `texto_marcador` (inclusive) vira a parte 1, o resto vira a parte 2.
-    Como gerar_handover_usina_docx já insere uma quebra de página logo
-    depois desse título, essa página nunca tem conteúdo da seção 4 junto
-    — o corte é limpo. Se o marcador não for encontrado (modelo mudou),
-    não divide: tudo vira parte 1 e a parte 2 fica vazia."""
+    Como gerar_handover_usina_docx (quando inserir_quebra_para_fracttal=True)
+    insere uma quebra de página em branco logo depois desse título — só
+    pra garantir que essa página não tenha conteúdo da seção 4 junto,
+    protegendo o ponto de corte — essa página em branco cai sempre no
+    INÍCIO da parte 2. Sem removê-la, ela sobra como página em branco
+    DEPOIS do PDF da Fracttal ser inserido no meio (bug real, achado
+    pelo Fred num teste com PDF anexado). Por isso: depois de cortar,
+    remove páginas só-com-cabeçalho do início da parte 2."""
     reader = PdfReader(BytesIO(pdf_bytes))
     pagina_split = None
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
@@ -452,10 +474,23 @@ def _dividir_pdf_no_marcador(pdf_bytes, texto_marcador="Ordens de Serviço - Han
             if texto_marcador in (page.extract_text() or ""):
                 pagina_split = i
 
+    indices_parte1, indices_parte2 = [], []
+    for i in range(len(reader.pages)):
+        (indices_parte1 if (pagina_split is None or i <= pagina_split) else indices_parte2).append(i)
+
+    # remove páginas só-com-cabeçalho do INÍCIO da parte 2 (a quebra reservada)
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        while indices_parte2:
+            texto = pdf.pages[indices_parte2[0]].extract_text() or ""
+            if not _pagina_so_tem_cabecalho(texto):
+                break
+            indices_parte2.pop(0)
+
     parte1, parte2 = PdfWriter(), PdfWriter()
-    for i, page in enumerate(reader.pages):
-        alvo = parte1 if (pagina_split is None or i <= pagina_split) else parte2
-        alvo.add_page(page)
+    for i in indices_parte1:
+        parte1.add_page(reader.pages[i])
+    for i in indices_parte2:
+        parte2.add_page(reader.pages[i])
 
     buf1, buf2 = BytesIO(), BytesIO()
     parte1.write(buf1)
