@@ -1,0 +1,21 @@
+ACCOUNT: {
+  "stat": "ok",
+  "account": {
+    "email": "fredalexandrino.ai@gmail.com",
+    "user_id": 3601581,
+    "firstname": "Fred Alexandrino",
+    "sms_credits": 0,
+    "payment_processor": null,
+    "payment_period": null,
+    "subscription_expiry_date": null,
+    "monitor_limit": 50,
+    "monitor_interval": 5,
+    "up_monitors": 2,
+    "down_monitors": 1,
+    "paused_monitors": 0,
+    "total_monitors_count": 3,
+    "registered_at": "2026-06-25T18:22:37.000Z",
+    "active_subscription": null,
+    "organizations": []
+  }
+}
