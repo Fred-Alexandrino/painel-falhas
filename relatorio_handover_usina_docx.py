@@ -251,7 +251,7 @@ def _adicionar_secao_punchlist(doc, punch_list):
 
 # ── Função principal ─────────────────────────────────────────────────
 
-def gerar_handover_usina_docx(dados):
+def gerar_handover_usina_docx(dados, inserir_quebra_para_fracttal=False):
     """
     Gera o Relatório de Handover (.docx) a partir do modelo real da
     Grid Co., substituindo o conteúdo variável de `dados` (mesmas
@@ -259,6 +259,15 @@ def gerar_handover_usina_docx(dados):
     localizacao, dataInicio, dataFim, equipe, planejamento,
     documentacaoEntregue, equipamentosHandover, capacitacao, conclusao,
     revisao, punchList).
+
+    `inserir_quebra_para_fracttal`: só True quando o resultado vai ser
+    convertido pra PDF e mesclado com o PDF da Fracttal em seguida (ver
+    gerar_handover_usina_completo) — mantém o parágrafo em branco com
+    quebra de página que já vem no modelo entre "3.4 Ordens de Serviço
+    - Handover" e "4. CAPACITAÇÃO" (espaço reservado pra colar as
+    páginas da Fracttal). Sem isso, esse parágrafo é removido, senão
+    sobra uma página quase em branco no meio do .docx quando nenhum PDF
+    é anexado.
 
     Retorna um BytesIO posicionado no início, pronto para send_file.
     """
@@ -345,10 +354,19 @@ def gerar_handover_usina_docx(dados):
                         celula.paragraphs[0].runs[0].text = valor
                     else:
                         celula.paragraphs[0].add_run(valor)
+            # Fonte um pouco menor (cabeçalho e dados) — dá a folga que faltava
+            # pra "Fred Alexandrino"/"Marcelo Martineli"/"13/08/2026" caberem
+            # numa linha só sem precisar de colunas maiores que a largura útil
+            # da página (16cm) comporta.
+            for linha in tabela_revisoes.rows:
+                for celula in linha.cells:
+                    for p in celula.paragraphs:
+                        for r in p.runs:
+                            r.font.size = Pt(9.5)
             # Larguras explícitas — no modelo original "Elaborador"/"Verificador"
             # quebravam a palavra ao meio (coluna estreita demais pro texto).
             tabela_revisoes.autofit = False
-            larguras_revisoes = [2.3, 2.4, 3.2, 3.2, 2.9, 2.3]
+            larguras_revisoes = [1.7, 1.9, 3.3, 3.3, 3.4, 2.4]
             for i, largura in enumerate(larguras_revisoes):
                 _definir_largura_coluna(tabela_revisoes, i, largura)
             tblW = tabela_revisoes._tbl.tblPr.find(qn('w:tblW'))
@@ -367,6 +385,22 @@ def gerar_handover_usina_docx(dados):
         p_ordens._p.addnext(novo_p_elem)
         paragrafo_quebra = Paragraph(novo_p_elem, p_ordens._parent)
         paragrafo_quebra.add_run().add_break(WD_BREAK.PAGE)
+
+    # O modelo original já vem com um parágrafo em branco + quebra de
+    # página entre "3.4 Ordens de Serviço - Handover" e "4. CAPACITAÇÃO
+    # DA EQUIPE" (espaço reservado pra colar as páginas da Fracttal à
+    # mão, no fluxo manual antigo). Quando NÃO vamos mesclar o PDF da
+    # Fracttal, essa quebra sobra e deixa uma página quase em branco no
+    # meio do relatório — então removemos esse parágrafo nesse caso.
+    if not inserir_quebra_para_fracttal:
+        p_ordens = _achar_paragrafo(doc, "Ordens de Serviço - Handover")
+        p_capacitacao = _achar_paragrafo(doc, "CAPACITAÇÃO DA EQUIPE")
+        if p_ordens is not None and p_capacitacao is not None:
+            atual = p_ordens._p.getnext()
+            while atual is not None and atual is not p_capacitacao._p:
+                proximo = atual.getnext()
+                atual.getparent().remove(atual)
+                atual = proximo
 
     # Punch List (seção nova em paisagem, no final)
     _adicionar_secao_punchlist(doc, dados.get("punchList", []))
@@ -444,7 +478,9 @@ def gerar_handover_usina_completo(dados, fracttal_pdf_bytes=None):
     (bytes_pdf_final, "pdf") — documento + OS mesclados, prontos pra
     enviar ao cliente.
     """
-    docx_bytes = gerar_handover_usina_docx(dados).read()
+    docx_bytes = gerar_handover_usina_docx(
+        dados, inserir_quebra_para_fracttal=bool(fracttal_pdf_bytes)
+    ).read()
     if not fracttal_pdf_bytes:
         return docx_bytes, "docx"
 
