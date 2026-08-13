@@ -1,0 +1,3 @@
+STATUS: 200
+BODY: {"alerta":{"alertou":true,"ok":true,"problemas":["INV01 (SP002087G2560054) est\u00e1 OFFLINE / sem comunica\u00e7\u00e3o","INV02 (SP002087G2560052) est\u00e1 OFFLINE / sem comunica\u00e7\u00e3o","INV03 (SP002087G2560056) est\u00e1 OFFLINE / sem comunica\u00e7\u00e3o"]},"ok":true,"ronda_disparada":false,"ronda_resultado":null}
+
