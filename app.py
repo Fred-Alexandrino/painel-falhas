@@ -13184,6 +13184,207 @@ def test_parse():
     return jsonify({"total_blocos": len(blocos), "validos": len(resultados), "resultados": resultados}), 200
 
 
+# ══════════════════════════════════════════════════════════════════════
+# FV ENERGIAS RENOVÁVEIS — painel isolado (usina particular do Fred,
+# integração direta com a API Pro da Solplanet/AISWEI).
+#
+# Este módulo é AUTOCONTIDO de propósito: não usa CATALOGO_USINAS,
+# clusters, mapeamento cliente/equipe, _mapa_grupo_usina nem qualquer
+# outra estrutura do restante do dashboard. As únicas peças reaproveitadas
+# do sistema existente são: (1) WPP_SERVER_URL/WEBHOOK_SECRET pra enviar
+# mensagem pelo mesmo bridge de WhatsApp (Baileys/VM2), e (2) as funções
+# genéricas _ler_trava/_gravar_trava (aba _Sistema) só como mecanismo de
+# lock pra não duplicar envio — usando chaves com prefixo "fv_energias:"
+# exclusivo, sem tocar em nenhuma chave usada pelo resto do sistema.
+# Adicionado 13/08/2026.
+# ══════════════════════════════════════════════════════════════════════
+
+import hmac as _fv_hmac
+import hashlib as _fv_hashlib
+
+FV_ENERGIAS_APP_KEY    = "204732162"
+FV_ENERGIAS_APP_SECRET = "OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT"
+FV_ENERGIAS_APIKEY     = "75a973d76e00483c93d6e98fb79da4cc"
+FV_ENERGIAS_TOKEN      = "UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09"
+FV_ENERGIAS_BASE_URL   = "https://ap-southeast-1-api-genergal.aisweicloud.com"
+FV_ENERGIAS_GRUPO_WHATSAPP = "120363403242246431@g.us"  # "FV Energias Renováveis"
+
+# Horários da ronda automática (HH, hora cheia) e tamanho da janela de
+# tolerância em minutos — mesmo padrão usado pelos comunicados diários
+# (checagem barata a cada 5min via UptimeRobot, só age dentro da janela).
+FV_ENERGIAS_HORARIOS_RONDA = ["08", "12", "15", "17"]
+FV_ENERGIAS_JANELA_MINUTOS = 9
+
+
+def _fv_energias_chamar_api(path, params):
+    """Chamada assinada (HMAC-SHA256) à API Pro da Solplanet/AISWEI.
+    Ver seção 4 da doc AISWEICloud API v1.1 pra detalhe do algoritmo."""
+    items = sorted(params.items())
+    query = "&".join(f"{k}={v}" for k, v in items)
+    endpoint = path + ("?" + query if query else "")
+    accept = "application/json"
+    headers_line = f"X-Ca-Key:{FV_ENERGIAS_APP_KEY}\n"
+    string_to_sign = f"GET\n{accept}\n\n\n\n{headers_line}{endpoint}"
+    sig = base64.b64encode(
+        _fv_hmac.new(
+            FV_ENERGIAS_APP_SECRET.encode("utf-8"),
+            string_to_sign.encode("utf-8"),
+            _fv_hashlib.sha256,
+        ).digest()
+    ).decode()
+
+    resp = requests.get(
+        FV_ENERGIAS_BASE_URL + endpoint,
+        headers={
+            "Accept": accept,
+            "X-Ca-Key": FV_ENERGIAS_APP_KEY,
+            "X-Ca-Signature": sig,
+            "X-Ca-Signature-Headers": "X-Ca-Key",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _fv_energias_buscar_dados():
+    """Busca overview da usina (potência/geração) + status dos 3
+    inversores. Levanta exceção se a Solplanet retornar erro."""
+    overview = _fv_energias_chamar_api(
+        "/pro/getPlantOverviewPro",
+        {"apikey": FV_ENERGIAS_APIKEY, "token": FV_ENERGIAS_TOKEN},
+    )
+    if overview.get("status") != 200:
+        raise RuntimeError(f"Solplanet getPlantOverviewPro erro: {overview}")
+
+    devices = _fv_energias_chamar_api(
+        "/pro/getDeviceListPro",
+        {"apikey": FV_ENERGIAS_APIKEY, "token": FV_ENERGIAS_TOKEN},
+    )
+    if devices.get("status") != 200:
+        raise RuntimeError(f"Solplanet getDeviceListPro erro: {devices}")
+
+    data = overview.get("data", {}) or {}
+    inversores = []
+    for dongle in (devices.get("data") or []):
+        pstate = dongle.get("pstate")
+        for inv in (dongle.get("inverters") or []):
+            inversores.append({
+                "sn": inv.get("isn"),
+                "dongle": dongle.get("psn"),
+                "online": inv.get("istate") == 1 and pstate == 1,
+                "ultima_atualizacao": inv.get("ludt"),
+            })
+
+    return {
+        "potencia_atual_kw": (data.get("Power") or {}).get("value"),
+        "geracao_hoje_kwh":  (data.get("E-Today") or {}).get("value"),
+        "geracao_mes":       data.get("E-Month") or {},
+        "geracao_ano":       data.get("E-Year") or {},
+        "geracao_total":     data.get("E-Total") or {},
+        "co2_evitado":       data.get("CO2Avoided") or {},
+        "ultima_atualizacao": data.get("ludt"),
+        "inversores": inversores,
+    }
+
+
+def _fv_energias_montar_texto_ronda(dados, hora_label):
+    linhas_inv = []
+    for inv in dados["inversores"]:
+        emoji = "✅" if inv["online"] else "⚠️"
+        estado = "normal" if inv["online"] else "offline/atenção"
+        linhas_inv.append(f"{emoji} {inv['sn']} — {estado}")
+    inversores_txt = "\n".join(linhas_inv) if linhas_inv else "Sem dados de inversores."
+
+    geracao = dados.get("geracao_hoje_kwh")
+    geracao_txt = f"{geracao} kWh" if geracao is not None else "indisponível"
+    potencia = dados.get("potencia_atual_kw")
+    potencia_txt = f"{potencia} kW" if potencia is not None else "indisponível"
+
+    return (
+        f"☀️ *FV Energias Renováveis — Ronda {hora_label}*\n\n"
+        f"Geração até agora: {geracao_txt}\n"
+        f"Potência atual: {potencia_txt}\n\n"
+        f"*Inversores:*\n{inversores_txt}\n\n"
+        f"Atualizado às {dados.get('ultima_atualizacao', '—')}"
+    )
+
+
+def _fv_energias_enviar_ronda(hora_label):
+    if not WPP_SERVER_URL:
+        return {"ok": False, "error": "WPP_SERVER_URL não configurado"}
+    try:
+        dados = _fv_energias_buscar_dados()
+    except Exception as e:
+        return {"ok": False, "error": f"Erro ao buscar dados da Solplanet: {e}"}
+
+    texto = _fv_energias_montar_texto_ronda(dados, hora_label)
+    try:
+        r = requests.post(
+            f"{WPP_SERVER_URL}/api/enviar-mensagem",
+            json={"grupoId": FV_ENERGIAS_GRUPO_WHATSAPP, "texto": texto},
+            headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+            timeout=20,
+        )
+        if r.ok and r.json().get("ok"):
+            return {"ok": True, "dados": dados}
+        return {"ok": False, "error": r.text[:300]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.route("/fv-energias/status", methods=["GET"])
+def fv_energias_status():
+    """Leitura pro painel visual isolado — só devolve dados já
+    processados, nunca as credenciais da Solplanet."""
+    try:
+        dados = _fv_energias_buscar_dados()
+        return jsonify({"ok": True, **dados}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@app.route("/fv-energias/ronda-check", methods=["GET", "POST"])
+def fv_energias_ronda_check():
+    """Gatilho barato pra ser chamado a cada 5min por um monitor
+    UptimeRobot DEDICADO (não o mesmo do /sync-fracttal) — só dispara a
+    ronda de verdade dentro da janela de FV_ENERGIAS_JANELA_MINUTOS de
+    cada horário configurado, e no máximo 1x por horário/dia (trava
+    isolada em _Sistema, chave "fv_energias:ronda:<HH>:<data>")."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    agora = agora_br()
+    hora_atual = agora.strftime("%H")
+    hoje_str = agora.strftime("%Y-%m-%d")
+
+    if hora_atual not in FV_ENERGIAS_HORARIOS_RONDA or agora.minute >= FV_ENERGIAS_JANELA_MINUTOS:
+        return jsonify({"ok": True, "disparado": False, "motivo": "fora da janela"}), 200
+
+    chave_trava = f"fv_energias:ronda:{hora_atual}:{hoje_str}"
+    if _ler_trava(chave_trava) == "enviado":
+        return jsonify({"ok": True, "disparado": False, "motivo": "já enviado hoje"}), 200
+
+    resultado = _fv_energias_enviar_ronda(f"{hora_atual}h")
+    if resultado.get("ok"):
+        _gravar_trava(chave_trava, "enviado")
+    return jsonify({"ok": True, "disparado": resultado.get("ok", False), "resultado": resultado}), 200
+
+
+@app.route("/fv-energias/ronda-disparar", methods=["POST"])
+def fv_energias_ronda_disparar():
+    """Disparo manual, sem depender da janela de horário — pro botão no
+    painel FV Energias. Sem exigência de WEBHOOK_SECRET de propósito
+    (mesmo padrão do /disparar-comunicado-cluster): chamado direto do
+    navegador, não tem como o frontend guardar o secret com segurança."""
+    hora_label = agora_br().strftime("%H:%M")
+    resultado = _fv_energias_enviar_ronda(hora_label)
+    status_code = 200 if resultado.get("ok") else 502
+    return jsonify(resultado), status_code
+
+
 try:
     carregar_push_subscriptions()
 except Exception as e:
