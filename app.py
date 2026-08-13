@@ -2796,6 +2796,15 @@ APP_VERSION = "2026-07-01-fix-get_sheet"
 
 @app.route("/health", methods=["GET"])
 def health():
+    # Reaproveita o ping de 5min que o monitor UptimeRobot já faz aqui pra
+    # também rodar o ciclo do FV Energias (ronda + alertas). Roda em
+    # try/except isolado: se a Solplanet estiver fora do ar, o /health
+    # continua respondendo normalmente (não derruba o monitor de uptime).
+    try:
+        _fv_energias_processar_ciclo()
+    except Exception as e:
+        log.error(f"[FV Energias] Erro no ciclo automático via /health: {e}")
+
     return jsonify({
         "status":     "ok",
         "version":    APP_VERSION,
@@ -13079,7 +13088,7 @@ def limpar_duplicatas():
     Limpa duplicatas da planilha.
 
     Acesse direto pelo navegador (GET):
-      https://whatsapp-painel-falhas.onrender.com/limpar-duplicatas?secret=falhas2026
+      https://api.168.138.232.237.sslip.io/limpar-duplicatas?secret=falhas2026
 
     Para cada grupo de linhas com mesmo fingerprint (usina+equip+falha)
     em aberto, mantém apenas a PRIMEIRA (menor ID) e remove as demais,
@@ -13473,19 +13482,11 @@ def fv_energias_status():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
-@app.route("/fv-energias/ronda-check", methods=["GET", "POST"])
-def fv_energias_ronda_check():
-    """Gatilho chamado a cada 5min por um monitor UptimeRobot DEDICADO.
-    Faz duas coisas independentes a cada chamada:
-    1) Checagem de alertas (offline/sem comunicação/desbalanceamento) —
-       roda SEMPRE, a cada 5min, e só envia mensagem quando o estado muda.
-    2) Ronda informativa — só dispara dentro da janela de cada horário
-       configurado (08h/12h/15h/17h), no máximo 1x por horário/dia."""
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-
+def _fv_energias_processar_ciclo():
+    """Roda a checagem de alertas (sempre) + a ronda informativa (só nas
+    janelas de horário). Isolado de propósito — só é acoplado ao restante
+    do sistema pelo PONTO DE DISPARO (reaproveita o monitor UptimeRobot
+    que já bate em /health a cada 5min), não pela lógica em si."""
     resultado_alerta = _fv_energias_verificar_alertas()
 
     agora = agora_br()
@@ -13502,12 +13503,26 @@ def fv_energias_ronda_check():
                 _gravar_trava(chave_trava, "enviado")
                 ronda_disparada = True
 
-    return jsonify({
-        "ok": True,
+    return {
         "ronda_disparada": ronda_disparada,
         "ronda_resultado": ronda_resultado,
         "alerta": resultado_alerta,
-    }), 200
+    }
+
+
+@app.route("/fv-energias/ronda-check", methods=["GET", "POST"])
+def fv_energias_ronda_check():
+    """Endpoint manual/redundante — a automação de verdade roda embutida
+    no /health (ver _fv_energias_processar_ciclo), que já é pingado a
+    cada 5min pelo monitor UptimeRobot existente. Esse endpoint continua
+    aqui só pra testes e disparo manual sob demanda."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    resultado = _fv_energias_processar_ciclo()
+    return jsonify({"ok": True, **resultado}), 200
 
 
 @app.route("/fv-energias/ronda-disparar", methods=["POST"])
