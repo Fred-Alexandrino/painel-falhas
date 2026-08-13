@@ -1,0 +1,28 @@
+name: Checar Config Caddy (temporario)
+on:
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ver Caddyfile e status do servico
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          script: |
+            echo "=== Caddyfile ==="
+            sudo find / -iname "Caddyfile*" 2>/dev/null
+            for f in $(sudo find / -iname "Caddyfile*" 2>/dev/null); do
+              echo "--- $f ---"
+              sudo cat "$f"
+            done
+            echo "=== gunicorn ExecStart atual ==="
+            sudo grep -n "ExecStart" /etc/systemd/system/painel-falhas.service
+            echo "=== processo gunicorn rodando (linha de comando real) ==="
+            ps aux | grep gunicorn | grep -v grep
+            echo "=== memoria disponivel ==="
+            free -h
+            echo "=== ultimas linhas do log do servico (erros recentes) ==="
+            sudo journalctl -u painel-falhas -n 80 --no-pager | grep -i -E "error|timeout|killed|memory|fetch" || echo "nada encontrado nesse filtro"
