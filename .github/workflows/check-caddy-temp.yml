@@ -1,18 +1,19 @@
-name: Checar Config Caddy v2 (temporario)
+name: Checar Config Caddy v3 (temporario)
 on:
   workflow_dispatch: {}
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Coletar diagnostico
+      - name: Coletar diagnostico e commitar via API do GitHub
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: 168.138.232.237
           username: ubuntu
           key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          envs: GH_TOKEN
           script: |
             {
               echo "=== Caddyfile (locais encontrados) ==="
@@ -34,20 +35,30 @@ jobs:
               echo "=== ultimas 150 linhas do log do servico ==="
               sudo journalctl -u painel-falhas -n 150 --no-pager
             } > /tmp/diag_caddy.txt 2>&1
-      - name: Baixar diagnostico via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 168.138.232.237
-          username: ubuntu
-          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
-          source: "/tmp/diag_caddy.txt"
-          target: "."
-      - name: Commitar resultado
-        run: |
-          mkdir -p backups
-          cp diag_caddy.txt backups/diag-caddy-result.txt
-          git config user.name "diagnostico-bot"
-          git config user.email "diagnostico-bot@users.noreply.github.com"
-          git add backups/diag-caddy-result.txt
-          git commit -m "Diagnostico: caddy + gunicorn + logs" || echo "nada pra commitar"
-          git push
+
+            python3 << 'PYEOF'
+import base64, json, os, urllib.request
+
+token = os.environ["GH_TOKEN"]
+url = "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-caddy-result.txt"
+headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
+
+sha = None
+req = urllib.request.Request(url, headers=headers)
+try:
+    with urllib.request.urlopen(req) as resp:
+        sha = json.loads(resp.read())["sha"]
+except Exception:
+    pass
+
+with open("/tmp/diag_caddy.txt", "rb") as f:
+    conteudo = base64.b64encode(f.read()).decode()
+
+payload = {"message": "Diagnostico caddy/gunicorn/logs", "content": conteudo}
+if sha:
+    payload["sha"] = sha
+
+req2 = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={**headers, "Content-Type": "application/json"}, method="PUT")
+with urllib.request.urlopen(req2) as resp:
+    print(resp.status, resp.read()[:200])
+PYEOF
