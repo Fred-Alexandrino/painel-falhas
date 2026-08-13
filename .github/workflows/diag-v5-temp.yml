@@ -1,0 +1,22 @@
+name: Checar Config Caddy v5 (temporario)
+on:
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Coletar diagnostico
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          script: |
+            sudo find / -iname "Caddyfile*" 2>/dev/null > /tmp/diag.txt
+            echo "=== gunicorn ===" >> /tmp/diag.txt
+            sudo grep ExecStart /etc/systemd/system/painel-falhas.service >> /tmp/diag.txt
+            echo "=== free ===" >> /tmp/diag.txt
+            free -h >> /tmp/diag.txt
+            echo "=== logs ===" >> /tmp/diag.txt
+            sudo journalctl -u painel-falhas -n 150 --no-pager >> /tmp/diag.txt
+            curl -s -X PUT -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Content-Type: application/json" -d "{\"message\":\"diag\",\"content\":\"$(base64 -w0 /tmp/diag.txt)\"}" "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-caddy-result.txt"
