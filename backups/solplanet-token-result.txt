@@ -1,0 +1,39 @@
+=== Pro_getPlantOverviewPro_TOKEN_CORP ===
+URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09
+STATUS: 200
+BODY: {"status":200,"info":"success","time":"2026-08-14 02:25:48","data":{"E-Month":{"unit":"MWh","value":4.08},"CO2Avoided":{"unit":"T","value":91.06},"E-Today":{"unit":"KWh","value":463.1},"apikey":"75a973d76e00483c93d6e98fb79da4cc","TotalYield":{"unit":"R$","value":0.0},"E-Total":{"unit":"MWh","value":113.82},"E-Year":{"unit":"MWh","value":79.61},"ludt":"2026-08-13 15:24:27","Power":{"unit":"KW","value":38.19},"status":"1"}}
+
+=== Pro_getDeviceListPro_TOKEN_CORP ===
+URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getDeviceListPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09
+STATUS: 200
+BODY: {"status":200,"info":"success","time":"2026-08-14 02:25:49","data":[{"apikey":"75a973d76e00483c93d6e98fb79da4cc","pstate":1,"inverters":[{"isn":"SP002087G2560054","ludt":"2026-08-13 15:24:27","istate":1}],"psn":"B3200D5507D8"},{"apikey":"75a973d76e00483c93d6e98fb79da4cc","pstate":1,"inverters":[{"isn":"SP002087G2560052","ludt":"2026-08-13 15:24:18","istate":1}],"psn":"B3200D550916"},{"apikey":"75a973d76e00483c93d6e98fb79da4cc","pstate":1,"inverters":[{"isn":"SP002087G2560056","ludt":"2026-08-13 15:21:28","istate":1}],"psn":"B3200D550C0F"}]}
+
+=== Pro_getPlantOverviewPro_TOKEN_ENDUSER ===
+URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=cjFLb2FxTXBpSTg9
+STATUS: 200
+BODY: {"status":500,"info":"用户不存在 - 用户ID:1507273","time":"2026-08-14 02:25:49","data":null}
+
+=== EU_Pro_getPlantOverviewPro_TOKEN_CORP ===
+URL: https://eu-api-genergal.aisweicloud.com/pro/getPlantOverviewPro?apikey=75a973d76e00483c93d6e98fb79da4cc&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
+=== EndUser_getPlantOverview_no_token ===
+URL: https://eu-api-genergal.aisweicloud.com/getPlantOverview?key=75a973d76e00483c93d6e98fb79da4cc
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
+=== EndUser_getPlantOverview_TOKEN_ENDUSER ===
+URL: https://eu-api-genergal.aisweicloud.com/getPlantOverview?key=75a973d76e00483c93d6e98fb79da4cc&token=cjFLb2FxTXBpSTg9
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
+=== EndUser_devicelist_TOKEN_ENDUSER ===
+URL: https://eu-api-genergal.aisweicloud.com/devicelist?key=75a973d76e00483c93d6e98fb79da4cc&token=cjFLb2FxTXBpSTg9
+STATUS: 400
+X-Ca-Error-Message: Invalid AppKey
+BODY: 
+
