@@ -12475,7 +12475,14 @@ def extrair_punchlist_pdf_nativo_route():
         erros = []
         datas_inicio = []
         datas_fim = []
-        with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
+        # max_workers=2 (não 4): a VM1 tem só ~950MB de RAM, dividida com a
+        # auditoria automática e o bot do WhatsApp — 4 pedaços de PDF em
+        # paralelo (cada um até 14MB + overhead da chamada à Gemini) já
+        # causou um "Worker (...) was sent SIGKILL! Perhaps out of memory?"
+        # em produção. Com 2, o pico de memória cai pela metade; o tempo
+        # total sobe um pouco (mais uma "onda" em documentos com muitos
+        # trechos), mas fica bem mais seguro nessa VM.
+        with ThreadPoolExecutor(max_workers=min(2, len(chunks))) as executor:
             futuros = {executor.submit(_processar_chunk_pdf_nativo, c, cliente, usina, cluster, total_paginas): c
                        for c in chunks}
             for futuro in as_completed(futuros):
