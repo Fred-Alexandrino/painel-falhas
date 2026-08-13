@@ -1,28 +1,53 @@
-name: Checar Config Caddy (temporario)
+name: Checar Config Caddy v2 (temporario)
 on:
   workflow_dispatch: {}
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Ver Caddyfile e status do servico
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Coletar diagnostico
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 168.138.232.237
           username: ubuntu
           key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
           script: |
-            echo "=== Caddyfile ==="
-            sudo find / -iname "Caddyfile*" 2>/dev/null
-            for f in $(sudo find / -iname "Caddyfile*" 2>/dev/null); do
-              echo "--- $f ---"
-              sudo cat "$f"
-            done
-            echo "=== gunicorn ExecStart atual ==="
-            sudo grep -n "ExecStart" /etc/systemd/system/painel-falhas.service
-            echo "=== processo gunicorn rodando (linha de comando real) ==="
-            ps aux | grep gunicorn | grep -v grep
-            echo "=== memoria disponivel ==="
-            free -h
-            echo "=== ultimas linhas do log do servico (erros recentes) ==="
-            sudo journalctl -u painel-falhas -n 80 --no-pager | grep -i -E "error|timeout|killed|memory|fetch" || echo "nada encontrado nesse filtro"
+            {
+              echo "=== Caddyfile (locais encontrados) ==="
+              sudo find / -iname "Caddyfile*" 2>/dev/null
+              for f in $(sudo find / -iname "Caddyfile*" 2>/dev/null); do
+                echo "--- $f ---"
+                sudo cat "$f"
+              done
+              echo ""
+              echo "=== gunicorn ExecStart (systemd) ==="
+              sudo grep -n "ExecStart" /etc/systemd/system/painel-falhas.service
+              echo ""
+              echo "=== processo gunicorn rodando (linha de comando real) ==="
+              ps aux | grep gunicorn | grep -v grep
+              echo ""
+              echo "=== memoria ==="
+              free -h
+              echo ""
+              echo "=== ultimas 150 linhas do log do servico ==="
+              sudo journalctl -u painel-falhas -n 150 --no-pager
+            } > /tmp/diag_caddy.txt 2>&1
+      - name: Baixar diagnostico via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          source: "/tmp/diag_caddy.txt"
+          target: "."
+      - name: Commitar resultado
+        run: |
+          mkdir -p backups
+          cp diag_caddy.txt backups/diag-caddy-result.txt
+          git config user.name "diagnostico-bot"
+          git config user.email "diagnostico-bot@users.noreply.github.com"
+          git add backups/diag-caddy-result.txt
+          git commit -m "Diagnostico: caddy + gunicorn + logs" || echo "nada pra commitar"
+          git push
