@@ -13482,6 +13482,87 @@ def fv_energias_status():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
+def _fv_energias_buscar_historico_geracao(dias=7):
+    """Geração diária dos últimos N dias (kWh/dia), via getPlantOutputPro
+    período=bydays, um dia de cada vez (a API não aceita intervalo)."""
+    resultado = []
+    hoje = agora_br().date()
+    for i in range(dias - 1, -1, -1):
+        dia = hoje - timedelta(days=i)
+        data_str = dia.strftime("%Y-%m-%d")
+        try:
+            resp = _fv_energias_chamar_api(
+                "/pro/getPlantOutputPro",
+                {
+                    "apikey": FV_ENERGIAS_APIKEY,
+                    "token": FV_ENERGIAS_TOKEN,
+                    "period": "bydays",
+                    "date": data_str,
+                },
+            )
+            valor = 0.0
+            if resp.get("status") == 200:
+                itens = (resp.get("data") or {}).get("result") or []
+                valor = sum(float(it.get("value") or 0) for it in itens)
+        except Exception:
+            valor = None
+        resultado.append({"data": data_str, "geracao_kwh": valor})
+    return resultado
+
+
+@app.route("/fv-energias/historico-geracao", methods=["GET"])
+def fv_energias_historico_geracao():
+    """Série diária pro gráfico do painel — padrão 7 dias, aceita
+    ?dias=N (limitado a 30 pra não estourar o limite de 100 req/min da
+    Solplanet, já que faz 1 chamada por dia solicitado)."""
+    try:
+        dias = min(int(request.args.get("dias", 7)), 30)
+    except (TypeError, ValueError):
+        dias = 7
+    try:
+        historico = _fv_energias_buscar_historico_geracao(dias)
+        return jsonify({"ok": True, "historico": historico}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@app.route("/fv-energias/irradiacao", methods=["GET"])
+def fv_energias_irradiacao():
+    """Irradiação solar diária (GHI, kWh/m²/dia) dos últimos N dias pra
+    comparar com a geração da usina — fonte pública NASA POWER (sem
+    necessidade de chave), usando as coordenadas reais da usina
+    (Aquiraz/CE: lat -4.034966, lon -38.4098811)."""
+    try:
+        dias = min(int(request.args.get("dias", 7)), 30)
+    except (TypeError, ValueError):
+        dias = 7
+
+    hoje = agora_br().date()
+    data_fim = hoje - timedelta(days=1)  # NASA POWER só tem dados D-1 pra trás
+    data_ini = data_fim - timedelta(days=dias - 1)
+
+    url = (
+        "https://power.larc.nasa.gov/api/temporal/daily/point"
+        f"?parameters=ALLSKY_SFC_SW_DWN"
+        f"&community=RE"
+        f"&longitude=-38.4098811&latitude=-4.034966"
+        f"&start={data_ini.strftime('%Y%m%d')}&end={data_fim.strftime('%Y%m%d')}"
+        f"&format=JSON"
+    )
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+        serie = payload.get("properties", {}).get("parameter", {}).get("ALLSKY_SFC_SW_DWN", {})
+        historico = [
+            {"data": f"{k[:4]}-{k[4:6]}-{k[6:8]}", "irradiacao_kwh_m2": v}
+            for k, v in sorted(serie.items())
+        ]
+        return jsonify({"ok": True, "historico": historico, "fonte": "NASA POWER (ALLSKY_SFC_SW_DWN)"}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
 def _fv_energias_processar_ciclo():
     """Roda a checagem de alertas (sempre) + a ronda informativa (só nas
     janelas de horário). Isolado de propósito — só é acoplado ao restante
