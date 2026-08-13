@@ -13503,7 +13503,11 @@ def _fv_energias_buscar_historico_geracao(dias=7):
             valor = 0.0
             if resp.get("status") == 200:
                 itens = (resp.get("data") or {}).get("result") or []
-                valor = sum(float(it.get("value") or 0) for it in itens)
+                # A API devolve leituras cumulativas ao longo do dia (não
+                # incrementais) — o total do dia é o maior valor, não a
+                # soma de todos os pontos.
+                valores_dia = [float(it.get("value") or 0) for it in itens]
+                valor = max(valores_dia) if valores_dia else 0.0
         except Exception:
             valor = None
         resultado.append({"data": data_str, "geracao_kwh": valor})
@@ -13557,6 +13561,7 @@ def fv_energias_irradiacao():
         historico = [
             {"data": f"{k[:4]}-{k[4:6]}-{k[6:8]}", "irradiacao_kwh_m2": v}
             for k, v in sorted(serie.items())
+            if v is not None and v > -900  # -999 = dado ausente (NASA POWER ainda não processou)
         ]
         return jsonify({"ok": True, "historico": historico, "fonte": "NASA POWER (ALLSKY_SFC_SW_DWN)"}), 200
     except Exception as e:
