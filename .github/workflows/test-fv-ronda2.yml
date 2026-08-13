@@ -1,0 +1,13 @@
+import urllib.request, json
+
+url = "https://api.168.138.232.237.sslip.io/fv-energias/ronda-disparar"
+req = urllib.request.Request(url, method="POST", headers={"Accept": "application/json", "Content-Type": "application/json"}, data=b"{}")
+try:
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        print("STATUS:", resp.status)
+        print("BODY:", resp.read().decode())
+except urllib.error.HTTPError as e:
+    print("STATUS:", e.code)
+    print("BODY:", e.read().decode())
+except Exception as e:
+    print("ERROR:", str(e))
