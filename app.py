@@ -13209,6 +13209,14 @@ FV_ENERGIAS_TOKEN      = "UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09"
 FV_ENERGIAS_BASE_URL   = "https://ap-southeast-1-api-genergal.aisweicloud.com"
 FV_ENERGIAS_GRUPO_WHATSAPP = "120363403242246431@g.us"  # "FV Energias Renováveis"
 
+# Apelido fixo por número de série, pra ronda sempre mostrar na mesma ordem
+# (INV01/INV02/INV03) independente da ordem em que a API devolve os dongles.
+FV_ENERGIAS_APELIDO_INVERSOR = {
+    "SP002087G2560054": "INV01",
+    "SP002087G2560052": "INV02",
+    "SP002087G2560056": "INV03",
+}
+
 # Horários da ronda automática (HH, hora cheia) e tamanho da janela de
 # tolerância em minutos — mesmo padrão usado pelos comunicados diários
 # (checagem barata a cada 5min via UptimeRobot, só age dentro da janela).
@@ -13289,11 +13297,16 @@ def _fv_energias_buscar_dados():
 
 
 def _fv_energias_montar_texto_ronda(dados, hora_label):
+    inversores_ordenados = sorted(
+        dados["inversores"],
+        key=lambda inv: FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"]),
+    )
     linhas_inv = []
-    for inv in dados["inversores"]:
+    for inv in inversores_ordenados:
+        apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"])
         emoji = "✅" if inv["online"] else "⚠️"
-        estado = "normal" if inv["online"] else "offline/atenção"
-        linhas_inv.append(f"{emoji} {inv['sn']} — {estado}")
+        estado = "Em Geração" if inv["online"] else "Offline/Atenção"
+        linhas_inv.append(f"{emoji} {apelido} — {estado}")
     inversores_txt = "\n".join(linhas_inv) if linhas_inv else "Sem dados de inversores."
 
     geracao = dados.get("geracao_hoje_kwh")
