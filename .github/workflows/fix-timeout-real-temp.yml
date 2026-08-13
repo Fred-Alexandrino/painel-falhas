@@ -1,0 +1,23 @@
+name: Fix Timeout Real (temporario)
+on:
+  workflow_dispatch: {}
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Corrigir timeout de verdade (regex, nao valor fixo)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          script: |
+            echo "ANTES:"
+            sudo grep ExecStart /etc/systemd/system/painel-falhas.service
+            sudo sed -i -E 's/--timeout [0-9]+/--timeout 220/' /etc/systemd/system/painel-falhas.service
+            echo "DEPOIS:"
+            sudo grep ExecStart /etc/systemd/system/painel-falhas.service
+            sudo systemctl daemon-reload
+            sudo systemctl restart painel-falhas
+            sleep 3
+            sudo systemctl is-active painel-falhas
