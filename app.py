@@ -13228,6 +13228,13 @@ FV_ENERGIAS_JANELA_MINUTOS = 9
 # gerou no dia, dado como fração (0.15 = 15%).
 FV_ENERGIAS_LIMIAR_DESBALANCEO = 0.15
 
+# Janela de monitoramento diurno — fora dela os inversores desligam
+# naturalmente por falta de geração (sem sol), então "offline" é esperado
+# e NÃO deve gerar alerta. Horário com margem folgada em torno do nascer/
+# pôr do sol no Ceará.
+FV_ENERGIAS_HORA_INICIO_MONITORAMENTO = 6   # 06:00
+FV_ENERGIAS_HORA_FIM_MONITORAMENTO = 19     # 19:00
+
 
 def _fv_energias_buscar_geracao_por_inversor():
     """Retorna {sn: e_today_kwh} usando getInverterOverviewPro — usado só
@@ -13280,10 +13287,15 @@ def _fv_energias_detectar_problemas(dados, geracao_por_inversor):
 
 
 def _fv_energias_verificar_alertas():
-    """Roda a cada checagem (5min). Só envia mensagem quando o conjunto
-    de problemas MUDA em relação à última checagem (novo problema surgiu,
-    problema diferente, ou tudo normalizou) — evita spam repetindo o
-    mesmo alerta a cada 5min enquanto o problema persiste."""
+    """Roda a cada checagem (5min), só dentro da janela diurna. Só envia
+    mensagem quando o conjunto de problemas MUDA em relação à última
+    checagem (novo problema surgiu, problema diferente, ou tudo
+    normalizou) — evita spam repetindo o mesmo alerta a cada 5min
+    enquanto o problema persiste."""
+    agora = agora_br()
+    if not (FV_ENERGIAS_HORA_INICIO_MONITORAMENTO <= agora.hour < FV_ENERGIAS_HORA_FIM_MONITORAMENTO):
+        return {"ok": True, "alertou": False, "motivo": "fora da janela de monitoramento diurno"}
+
     try:
         dados = _fv_energias_buscar_dados()
         geracao = _fv_energias_buscar_geracao_por_inversor()
