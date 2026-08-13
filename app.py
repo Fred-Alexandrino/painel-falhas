@@ -13242,7 +13242,7 @@ FV_ENERGIAS_LIMIAR_DESBALANCEO = 0.15
 # e NÃO deve gerar alerta. Horário com margem folgada em torno do nascer/
 # pôr do sol no Ceará.
 FV_ENERGIAS_HORA_INICIO_MONITORAMENTO = 6   # 06:00
-FV_ENERGIAS_HORA_FIM_MONITORAMENTO = 19     # 19:00
+FV_ENERGIAS_HORA_FIM_MONITORAMENTO = 18     # 18:00 (após isso, offline é natural/esperado)
 
 
 def _fv_energias_buscar_geracao_por_inversor():
