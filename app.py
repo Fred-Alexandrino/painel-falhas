@@ -13223,6 +13223,110 @@ FV_ENERGIAS_APELIDO_INVERSOR = {
 FV_ENERGIAS_HORARIOS_RONDA = ["08", "12", "15", "17"]
 FV_ENERGIAS_JANELA_MINUTOS = 9
 
+# Limiar de desbalanceamento entre inversores (geração do dia) que dispara
+# alerta imediato — 15% de diferença entre o que mais gerou e o que menos
+# gerou no dia, dado como fração (0.15 = 15%).
+FV_ENERGIAS_LIMIAR_DESBALANCEO = 0.15
+
+
+def _fv_energias_buscar_geracao_por_inversor():
+    """Retorna {sn: e_today_kwh} usando getInverterOverviewPro — usado só
+    pra checagem de desbalanceamento entre inversores, não pro painel."""
+    resp = _fv_energias_chamar_api(
+        "/pro/getInverterOverviewPro",
+        {"apikey": FV_ENERGIAS_APIKEY, "token": FV_ENERGIAS_TOKEN},
+    )
+    if resp.get("status") != 200:
+        raise RuntimeError(f"Solplanet getInverterOverviewPro erro: {resp}")
+    geracao = {}
+    for grupo in (resp.get("data") or []):
+        for item in (grupo.get("result") or []):
+            sn = item.get("isno")
+            try:
+                geracao[sn] = float(item.get("e_today") or 0)
+            except (TypeError, ValueError):
+                geracao[sn] = 0.0
+    return geracao
+
+
+def _fv_energias_detectar_problemas(dados, geracao_por_inversor):
+    """Retorna lista de strings descrevendo problemas ativos agora:
+    inversor offline/sem comunicação, ou desbalanceamento de geração
+    acima do limiar entre dois inversores quaisquer."""
+    problemas = []
+
+    for inv in dados["inversores"]:
+        apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"])
+        if not inv["online"]:
+            problemas.append(f"{apelido} ({inv['sn']}) está OFFLINE / sem comunicação")
+
+    valores = [
+        (FV_ENERGIAS_APELIDO_INVERSOR.get(sn, sn), v)
+        for sn, v in geracao_por_inversor.items()
+        if v is not None
+    ]
+    if len(valores) >= 2:
+        maior = max(valores, key=lambda x: x[1])
+        menor = min(valores, key=lambda x: x[1])
+        if maior[1] > 0:
+            diferenca = (maior[1] - menor[1]) / maior[1]
+            if diferenca > FV_ENERGIAS_LIMIAR_DESBALANCEO:
+                problemas.append(
+                    f"Desbalanceamento de geração: {maior[0]} gerou {maior[1]:.1f} kWh "
+                    f"hoje vs {menor[0]} com {menor[1]:.1f} kWh ({diferenca*100:.0f}% de diferença)"
+                )
+
+    return problemas
+
+
+def _fv_energias_verificar_alertas():
+    """Roda a cada checagem (5min). Só envia mensagem quando o conjunto
+    de problemas MUDA em relação à última checagem (novo problema surgiu,
+    problema diferente, ou tudo normalizou) — evita spam repetindo o
+    mesmo alerta a cada 5min enquanto o problema persiste."""
+    try:
+        dados = _fv_energias_buscar_dados()
+        geracao = _fv_energias_buscar_geracao_por_inversor()
+        problemas_atuais = _fv_energias_detectar_problemas(dados, geracao)
+    except Exception as e:
+        # Falha ao consultar a própria API da Solplanet já é, por si só,
+        # um sinal de perda de comunicação com a usina.
+        problemas_atuais = [f"Não foi possível consultar a API da Solplanet: {e}"]
+
+    assinatura_atual = "|".join(sorted(problemas_atuais))
+    assinatura_anterior = _ler_trava("fv_energias:ultima_assinatura_problema") or ""
+
+    if assinatura_atual == assinatura_anterior:
+        return {"ok": True, "alertou": False, "motivo": "sem mudanca de estado"}
+
+    _gravar_trava("fv_energias:ultima_assinatura_problema", assinatura_atual)
+
+    if problemas_atuais:
+        texto = (
+            "🚨 *FV Energias Renováveis — ALERTA*\n\n"
+            + "\n".join(f"⚠️ {p}" for p in problemas_atuais)
+            + f"\n\nDetectado às {agora_br().strftime('%H:%M')}"
+        )
+    else:
+        texto = (
+            "✅ *FV Energias Renováveis — Normalizado*\n\n"
+            "O(s) problema(s) anterior(es) não são mais detectados.\n"
+            f"Verificado às {agora_br().strftime('%H:%M')}"
+        )
+
+    if not WPP_SERVER_URL:
+        return {"ok": False, "alertou": True, "error": "WPP_SERVER_URL não configurado"}
+    try:
+        r = requests.post(
+            f"{WPP_SERVER_URL}/api/enviar-mensagem",
+            json={"grupoId": FV_ENERGIAS_GRUPO_WHATSAPP, "texto": texto},
+            headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+            timeout=20,
+        )
+        return {"ok": r.ok, "alertou": True, "problemas": problemas_atuais}
+    except Exception as e:
+        return {"ok": False, "alertou": True, "error": str(e)}
+
 
 def _fv_energias_chamar_api(path, params):
     """Chamada assinada (HMAC-SHA256) à API Pro da Solplanet/AISWEI.
@@ -13359,31 +13463,39 @@ def fv_energias_status():
 
 @app.route("/fv-energias/ronda-check", methods=["GET", "POST"])
 def fv_energias_ronda_check():
-    """Gatilho barato pra ser chamado a cada 5min por um monitor
-    UptimeRobot DEDICADO (não o mesmo do /sync-fracttal) — só dispara a
-    ronda de verdade dentro da janela de FV_ENERGIAS_JANELA_MINUTOS de
-    cada horário configurado, e no máximo 1x por horário/dia (trava
-    isolada em _Sistema, chave "fv_energias:ronda:<HH>:<data>")."""
+    """Gatilho chamado a cada 5min por um monitor UptimeRobot DEDICADO.
+    Faz duas coisas independentes a cada chamada:
+    1) Checagem de alertas (offline/sem comunicação/desbalanceamento) —
+       roda SEMPRE, a cada 5min, e só envia mensagem quando o estado muda.
+    2) Ronda informativa — só dispara dentro da janela de cada horário
+       configurado (08h/12h/15h/17h), no máximo 1x por horário/dia."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
 
+    resultado_alerta = _fv_energias_verificar_alertas()
+
     agora = agora_br()
     hora_atual = agora.strftime("%H")
     hoje_str = agora.strftime("%Y-%m-%d")
 
-    if hora_atual not in FV_ENERGIAS_HORARIOS_RONDA or agora.minute >= FV_ENERGIAS_JANELA_MINUTOS:
-        return jsonify({"ok": True, "disparado": False, "motivo": "fora da janela"}), 200
+    ronda_disparada = False
+    ronda_resultado = None
+    if hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
+        chave_trava = f"fv_energias:ronda:{hora_atual}:{hoje_str}"
+        if _ler_trava(chave_trava) != "enviado":
+            ronda_resultado = _fv_energias_enviar_ronda(f"{hora_atual}h")
+            if ronda_resultado.get("ok"):
+                _gravar_trava(chave_trava, "enviado")
+                ronda_disparada = True
 
-    chave_trava = f"fv_energias:ronda:{hora_atual}:{hoje_str}"
-    if _ler_trava(chave_trava) == "enviado":
-        return jsonify({"ok": True, "disparado": False, "motivo": "já enviado hoje"}), 200
-
-    resultado = _fv_energias_enviar_ronda(f"{hora_atual}h")
-    if resultado.get("ok"):
-        _gravar_trava(chave_trava, "enviado")
-    return jsonify({"ok": True, "disparado": resultado.get("ok", False), "resultado": resultado}), 200
+    return jsonify({
+        "ok": True,
+        "ronda_disparada": ronda_disparada,
+        "ronda_resultado": ronda_resultado,
+        "alerta": resultado_alerta,
+    }), 200
 
 
 @app.route("/fv-energias/ronda-disparar", methods=["POST"])
