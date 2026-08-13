@@ -1,3 +1,0 @@
-STATUS: 200
-BODY: {"co2_evitado":{"unit":"T","value":91.08},"geracao_ano":{"unit":"MWh","value":79.61},"geracao_hoje_kwh":499.3,"geracao_mes":{"unit":"MWh","value":4.12},"geracao_total":{"unit":"MWh","value":113.86},"inversores":[{"dongle":"B3200D5507D8","online":true,"sn":"SP002087G2560054","ultima_atualizacao":"2026-08-13 16:04:27"},{"dongle":"B3200D550916","online":true,"sn":"SP002087G2560052","ultima_atualizacao":"2026-08-13 16:04:18"},{"dongle":"B3200D550C0F","online":true,"sn":"SP002087G2560056","ultima_atualizacao":"2026-08-13 16:06:28"}],"ok":true,"potencia_atual_kw":22.56,"ultima_atualizacao":"2026-08-13 16:06:28"}
-
