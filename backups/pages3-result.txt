@@ -1,0 +1,3 @@
+STATUS: 200
+Tem diaNav: True
+Tem curva-dia: True
