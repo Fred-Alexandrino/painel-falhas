@@ -1,0 +1,3 @@
+STATUS: 200
+Tem periodoSeletor: True
+Tem type bar: True
