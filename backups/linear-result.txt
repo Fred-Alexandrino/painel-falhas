@@ -1,0 +1,4 @@
+STATUS: 200
+tem type linear: True
+tem stepSize 180: True
+tem paraMinutos: True
