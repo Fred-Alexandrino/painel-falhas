@@ -1,0 +1,2 @@
+STATUS: 200
+Tem verde 2ECC71: True
