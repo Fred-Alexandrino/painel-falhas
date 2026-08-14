@@ -13210,6 +13210,7 @@ def test_parse():
 
 import hmac as _fv_hmac
 import hashlib as _fv_hashlib
+from urllib.parse import quote as _fv_url_quote
 
 FV_ENERGIAS_APP_KEY    = "204732162"
 FV_ENERGIAS_APP_SECRET = "OK9oG0sbSeiNZAKTB5VOa8R9CQqTqLuT"
@@ -13351,9 +13352,12 @@ def _fv_energias_verificar_alertas():
 
 def _fv_energias_chamar_api(path, params):
     """Chamada assinada (HMAC-SHA256) à API Pro da Solplanet/AISWEI.
-    Ver seção 4 da doc AISWEICloud API v1.1 pra detalhe do algoritmo."""
+    Ver seção 4 da doc AISWEICloud API v1.1 pra detalhe do algoritmo.
+    Valores são percent-encoded (necessário pra parâmetros com espaço/
+    dois-pontos, como datas "YYYY-MM-DD HH:MM:SS") — a assinatura precisa
+    ser calculada sobre a MESMA string exata que vai na URL."""
     items = sorted(params.items())
-    query = "&".join(f"{k}={v}" for k, v in items)
+    query = "&".join(f"{k}={_fv_url_quote(str(v))}" for k, v in items)
     endpoint = path + ("?" + query if query else "")
     accept = "application/json"
     headers_line = f"X-Ca-Key:{FV_ENERGIAS_APP_KEY}\n"
@@ -13374,7 +13378,7 @@ def _fv_energias_chamar_api(path, params):
             "X-Ca-Signature": sig,
             "X-Ca-Signature-Headers": "X-Ca-Key",
         },
-        timeout=15,
+        timeout=25,
     )
     resp.raise_for_status()
     return resp.json()
@@ -13469,6 +13473,105 @@ def _fv_energias_enviar_ronda(hora_label):
         return {"ok": False, "error": r.text[:300]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _fv_energias_buscar_curva_potencia(data_str):
+    """Curva de potência (kW) ao longo do dia, somando os 3 inversores
+    por horário — via getInverterDataPagePro, paginado. data_str no
+    formato YYYY-MM-DD."""
+    isnos = ",".join(FV_ENERGIAS_APELIDO_INVERSOR.keys())
+    start = f"{data_str} 00:00:00"
+    end = f"{data_str} 23:59:59"
+
+    agregados = {}
+    page_num = 1
+    page_size = 500
+    while True:
+        resp = _fv_energias_chamar_api(
+            "/pro/getInverterDataPagePro",
+            {
+                "apikey": FV_ENERGIAS_APIKEY,
+                "token": FV_ENERGIAS_TOKEN,
+                "isnos": isnos,
+                "startDate": start,
+                "endDate": end,
+                "pageNum": page_num,
+                "pageSize": page_size,
+            },
+        )
+        if resp.get("status") != 200:
+            raise RuntimeError(f"Solplanet getInverterDataPagePro erro: {resp}")
+        data = resp.get("data") or {}
+        for item in (data.get("result") or []):
+            for ponto in (item.get("dataList") or []):
+                tim = ponto.get("tim")  # "YYYY-MM-DD HH:MM:SS"
+                pac = ponto.get("pac")  # potência ativa, unidade 1W
+                if not tim or pac is None:
+                    continue
+                try:
+                    pac_val = float(pac)
+                except (TypeError, ValueError):
+                    continue
+                agregados[tim] = agregados.get(tim, 0.0) + pac_val
+
+        total_pages = data.get("totalPages") or 1
+        if page_num >= total_pages:
+            break
+        page_num += 1
+
+    serie = sorted(agregados.items())
+    return [
+        {"hora": tim.split(" ")[1][:5] if " " in tim else tim, "potencia_kw": round(pac_soma / 1000, 3)}
+        for tim, pac_soma in serie
+    ]
+
+
+def _fv_energias_buscar_curva_irradiacao(data_str):
+    """Irradiação horária (W/m²) do dia — fonte Open-Meteo, sem atraso
+    (funciona até pro dia de hoje)."""
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        "?latitude=-4.034966&longitude=-38.4098811"
+        "&hourly=shortwave_radiation"
+        "&timezone=America%2FSao_Paulo"
+        f"&start_date={data_str}&end_date={data_str}"
+    )
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    payload = resp.json()
+    horas = payload.get("hourly", {}).get("time", [])
+    valores = payload.get("hourly", {}).get("shortwave_radiation", [])
+    return [
+        {"hora": h.split("T")[1][:5] if "T" in h else h, "irradiancia_w_m2": v}
+        for h, v in zip(horas, valores)
+        if v is not None
+    ]
+
+
+@app.route("/fv-energias/curva-dia", methods=["GET"])
+def fv_energias_curva_dia():
+    """Curva intradiária: potência (kW) por horário + irradiação (W/m²)
+    por horário, pro gráfico estilo 'Dia' do painel — pra comparar se
+    quedas de geração acompanham quedas de irradiação (nuvem) ou têm
+    outra causa (falha de equipamento)."""
+    data_str = request.args.get("data") or agora_br().strftime("%Y-%m-%d")
+    try:
+        datetime.strptime(data_str, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"ok": False, "error": "data invalida, use YYYY-MM-DD"}), 400
+
+    try:
+        potencia = _fv_energias_buscar_curva_potencia(data_str)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"erro ao buscar potencia: {e}"}), 502
+
+    try:
+        irradiancia = _fv_energias_buscar_curva_irradiacao(data_str)
+    except Exception as e:
+        irradiancia = []
+        log.error(f"[FV Energias] Erro ao buscar irradiacao horaria: {e}")
+
+    return jsonify({"ok": True, "data": data_str, "potencia": potencia, "irradiancia": irradiancia}), 200
 
 
 @app.route("/fv-energias/status", methods=["GET"])
