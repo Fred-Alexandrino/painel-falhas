@@ -1,0 +1,29 @@
+name: debug-curva-dia
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debug
+        run: |
+          echo "aW1wb3J0IGhtYWMsIGhhc2hsaWIsIGJhc2U2NCwgdXJsbGliLnJlcXVlc3QsIHVybGxpYi5lcnJvcgpmcm9tIHVybGxpYi5wYXJzZSBpbXBvcnQgcXVvdGUKCkFQUF9LRVkgPSAiMjA0NzMyMTYyIgpBUFBfU0VDUkVUID0gIk9LOW9HMHNiU2VpTlpBS1RCNVZPYThSOUNRcVRxTHVUIgpBUElLRVkgPSAiNzVhOTczZDc2ZTAwNDgzYzkzZDZlOThmYjc5ZGE0Y2MiClRPS0VOID0gIlVVZEpja05GVEVkak1WRlRUbUp2TWpaeU5ERjBRVDA5IgpCQVNFID0gImh0dHBzOi8vYXAtc291dGhlYXN0LTEtYXBpLWdlbmVyZ2FsLmFpc3dlaWNsb3VkLmNvbSIKCmRlZiBjYWxsKHBhdGgsIHBhcmFtcywgbGFiZWwpOgogICAgaXRlbXMgPSBzb3J0ZWQocGFyYW1zLml0ZW1zKCkpCiAgICBxdWVyeSA9ICImIi5qb2luKGYie2t9PXtxdW90ZShzdHIodiksIHNhZmU9JycpfSIgZm9yIGssIHYgaW4gaXRlbXMpCiAgICBlbmRwb2ludCA9IHBhdGggKyAoIj8iICsgcXVlcnkgaWYgcXVlcnkgZWxzZSAiIikKICAgIGFjY2VwdCA9ICJhcHBsaWNhdGlvbi9qc29uIgogICAgaGVhZGVyc19saW5lID0gZiJYLUNhLUtleTp7QVBQX0tFWX1cbiIKICAgIHN0cmluZ190b19zaWduID0gZiJHRVRcbnthY2NlcHR9XG5cblxuXG57aGVhZGVyc19saW5lfXtlbmRwb2ludH0iCiAgICBzaWcgPSBiYXNlNjQuYjY0ZW5jb2RlKAogICAgICAgIGhtYWMubmV3KEFQUF9TRUNSRVQuZW5jb2RlKCJ1dGYtOCIpLCBzdHJpbmdfdG9fc2lnbi5lbmNvZGUoInV0Zi04IiksIGhhc2hsaWIuc2hhMjU2KS5kaWdlc3QoKQogICAgKS5kZWNvZGUoKQoKICAgIHJlcV9oZWFkZXJzID0gewogICAgICAgICJBY2NlcHQiOiBhY2NlcHQsCiAgICAgICAgIlgtQ2EtS2V5IjogQVBQX0tFWSwKICAgICAgICAiWC1DYS1TaWduYXR1cmUiOiBzaWcsCiAgICAgICAgIlgtQ2EtU2lnbmF0dXJlLUhlYWRlcnMiOiAiWC1DYS1LZXkiLAogICAgfQogICAgdXJsID0gQkFTRSArIGVuZHBvaW50CiAgICBwcmludChmIj09PSB7bGFiZWx9ID09PSIpCiAgICBwcmludCgiVVJMOiIsIHVybCkKICAgIHByaW50KCJTdHJpbmdUb1NpZ246IiwgcmVwcihzdHJpbmdfdG9fc2lnbikpCiAgICByZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz1yZXFfaGVhZGVycywgbWV0aG9kPSJHRVQiKQogICAgdHJ5OgogICAgICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjUpIGFzIHJlc3A6CiAgICAgICAgICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMpCiAgICAgICAgICAgIHByaW50KCJCT0RZOiIsIHJlc3AucmVhZCgpLmRlY29kZSgpWzo1MDBdKQogICAgZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZToKICAgICAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgICAgICBwcmludCgiWC1DYS1FcnJvci1NZXNzYWdlOiIsIGUuaGVhZGVycy5nZXQoIlgtQ2EtRXJyb3ItTWVzc2FnZSIpKQogICAgICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZSgpWzo1MDBdKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KCJFUlJPUjoiLCBzdHIoZSkpCiAgICBwcmludCgpCgpjYWxsKAogICAgIi9wcm8vZ2V0SW52ZXJ0ZXJEYXRhUGFnZVBybyIsCiAgICB7CiAgICAgICAgImFwaWtleSI6IEFQSUtFWSwgInRva2VuIjogVE9LRU4sCiAgICAgICAgImlzbm9zIjogIlNQMDAyMDg3RzI1NjAwNTQsU1AwMDIwODdHMjU2MDA1MixTUDAwMjA4N0cyNTYwMDU2IiwKICAgICAgICAic3RhcnREYXRlIjogIjIwMjYtMDgtMTMgMDA6MDA6MDAiLCAiZW5kRGF0ZSI6ICIyMDI2LTA4LTEzIDIzOjU5OjU5IiwKICAgICAgICAicGFnZU51bSI6IDEsICJwYWdlU2l6ZSI6IDUwMCwKICAgIH0sCiAgICAiZ2V0SW52ZXJ0ZXJEYXRhUGFnZVBybyBjb20gZW5jb2RpbmciCikK" | base64 -d > debug_curva.py
+          mkdir -p backups
+          python3 debug_curva.py > backups/debug-curva-result.txt 2>&1 || true
+          cat backups/debug-curva-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/debug-curva-result.txt
+          git commit -m "debug: curva dia signature" || echo "nothing"
+          git push origin HEAD:main
