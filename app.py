@@ -13516,15 +13516,66 @@ def _fv_energias_buscar_historico_geracao(dias=7):
     return resultado
 
 
+@app.route("/fv-energias/historico-proprio", methods=["GET"])
+def fv_energias_historico_proprio():
+    """Lê o histórico construído dia a dia pelo snapshot automático
+    (chaves fv_energias:historico_diario:YYYY-MM-DD em _Sistema) — usado
+    pra períodos longos (ano) sem precisar reconsultar a Solplanet uma
+    vez por dia histórico. Dias anteriores ao início da captura (ou dias
+    sem captura, ex.: sistema fora do ar às 18h) simplesmente não
+    aparecem na resposta."""
+    try:
+        inicio = datetime.strptime(request.args.get("inicio"), "%Y-%m-%d").date()
+        fim = datetime.strptime(request.args.get("fim"), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "parametros inicio e fim (YYYY-MM-DD) sao obrigatorios"}), 400
+
+    if (fim - inicio).days > 400:
+        return jsonify({"ok": False, "error": "intervalo maximo de 400 dias"}), 400
+
+    dias_lista = []
+    d = inicio
+    while d <= fim:
+        dias_lista.append(d.strftime("%Y-%m-%d"))
+        d += timedelta(days=1)
+
+    chaves = [f"fv_energias:historico_diario:{d}" for d in dias_lista]
+    mapa = _ler_travas(chaves)
+
+    historico = []
+    for d in dias_lista:
+        chave = f"fv_energias:historico_diario:{d}"
+        valor = mapa.get(chave)
+        historico.append({"data": d, "geracao_kwh": float(valor) if valor else None})
+
+    return jsonify({"ok": True, "historico": historico}), 200
+
+
 @app.route("/fv-energias/historico-geracao", methods=["GET"])
 def fv_energias_historico_geracao():
-    """Série diária pro gráfico do painel — padrão 7 dias, aceita
-    ?dias=N (limitado a 30 pra não estourar o limite de 100 req/min da
-    Solplanet, já que faz 1 chamada por dia solicitado)."""
-    try:
-        dias = min(int(request.args.get("dias", 7)), 30)
-    except (TypeError, ValueError):
-        dias = 7
+    """Série diária pro gráfico do painel. Aceita ?dias=N (padrão 7,
+    máximo 90 — cada dia é 1 chamada à Solplanet, então não escala pra
+    período anual sob demanda) OU ?inicio=YYYY-MM-DD&fim=YYYY-MM-DD pra
+    um intervalo customizado (também limitado a 90 dias)."""
+    inicio_str = request.args.get("inicio")
+    fim_str = request.args.get("fim")
+
+    if inicio_str and fim_str:
+        try:
+            inicio = datetime.strptime(inicio_str, "%Y-%m-%d").date()
+            fim = datetime.strptime(fim_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"ok": False, "error": "datas invalidas, use YYYY-MM-DD"}), 400
+        dias = (fim - inicio).days + 1
+        if dias < 1:
+            return jsonify({"ok": False, "error": "fim deve ser depois de inicio"}), 400
+        dias = min(dias, 90)
+    else:
+        try:
+            dias = min(int(request.args.get("dias", 7)), 90)
+        except (TypeError, ValueError):
+            dias = 7
+
     try:
         historico = _fv_energias_buscar_historico_geracao(dias)
         return jsonify({"ok": True, "historico": historico}), 200
@@ -13541,7 +13592,7 @@ def fv_energias_irradiacao():
     não tem atraso de dias — os dados de hoje já vêm disponíveis (modelo
     de previsão/reanálise quase em tempo real)."""
     try:
-        dias = min(int(request.args.get("dias", 7)), 30)
+        dias = min(int(request.args.get("dias", 7)), 90)
     except (TypeError, ValueError):
         dias = 7
 
@@ -13571,12 +13622,42 @@ def fv_energias_irradiacao():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
+FV_ENERGIAS_HORA_SNAPSHOT = 18  # captura o total do dia às 18h (fim da janela de geração)
+FV_ENERGIAS_SNAPSHOT_JANELA_MINUTOS = 9
+
+
+def _fv_energias_capturar_snapshot_diario():
+    """Guarda o total de geração do dia (uma vez por dia, perto das 18h)
+    em chave própria _Sistema — constrói um histórico anual real ao
+    longo do tempo, sem depender de reconsultar a Solplanet dia a dia
+    (que não escala pra período de 1 ano)."""
+    agora = agora_br()
+    if not (agora.hour == FV_ENERGIAS_HORA_SNAPSHOT and agora.minute < FV_ENERGIAS_SNAPSHOT_JANELA_MINUTOS):
+        return {"capturado": False, "motivo": "fora da janela de captura"}
+
+    hoje_str = agora.strftime("%Y-%m-%d")
+    chave = f"fv_energias:historico_diario:{hoje_str}"
+    if _ler_trava(chave):
+        return {"capturado": False, "motivo": "ja capturado hoje"}
+
+    try:
+        dados = _fv_energias_buscar_dados()
+        geracao = dados.get("geracao_hoje_kwh")
+        if geracao is not None:
+            _gravar_trava(chave, str(geracao))
+            return {"capturado": True, "geracao_kwh": geracao}
+    except Exception as e:
+        return {"capturado": False, "erro": str(e)}
+    return {"capturado": False, "motivo": "sem dado de geracao"}
+
+
 def _fv_energias_processar_ciclo():
     """Roda a checagem de alertas (sempre) + a ronda informativa (só nas
     janelas de horário). Isolado de propósito — só é acoplado ao restante
     do sistema pelo PONTO DE DISPARO (reaproveita o monitor UptimeRobot
     que já bate em /health a cada 5min), não pela lógica em si."""
     resultado_alerta = _fv_energias_verificar_alertas()
+    resultado_snapshot = _fv_energias_capturar_snapshot_diario()
 
     agora = agora_br()
     hora_atual = agora.strftime("%H")
@@ -13596,6 +13677,7 @@ def _fv_energias_processar_ciclo():
         "ronda_disparada": ronda_disparada,
         "ronda_resultado": ronda_resultado,
         "alerta": resultado_alerta,
+        "snapshot": resultado_snapshot,
     }
 
 
