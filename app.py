@@ -12666,6 +12666,19 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "tipo \"2026-08-04 09:40\"). Extraia a MENOR data/hora de início e a MAIOR data/hora "
         "de fim encontradas nesse trecho — isso representa o início e o fim reais do trabalho "
         "de campo. Se não achar nenhuma, deixe os campos como string vazia.\n\n"
+        "Também monte um INVENTÁRIO de ativos analisados nesse trecho, pro relatório listar "
+        "quais equipamentos passaram por inspeção (a punch list só lista os com pendência — "
+        "esse inventário é de TODOS, com ou sem problema). Pra cada seção 'ATIVOS' que "
+        "aparecer nas páginas deste trecho, procure logo abaixo (ainda dentro da mesma seção, "
+        "geralmente perto de 'TIPO DE TRABALHO: Handover') um segundo campo \"DESCRIÇÃO:\" "
+        "no formato \"Handover — <nome do sistema>\" (ex.: \"Handover — Ar Condicionado\", "
+        "\"Handover — Inversores\") — pegue só o \"<nome do sistema>\" (SEM o prefixo "
+        "\"Handover — \", ele já é adicionado depois automaticamente), exatamente como está "
+        "escrito no documento, sem reescrever ou trocar por uma categoria sua. Esse texto já "
+        "vem certo e já deduplicado pela própria Fracttal (ex.: vários inversores individuais "
+        "já aparecem todos com esse mesmo \"Handover — Inversores\", sem precisar juntar nada "
+        "você mesmo). Se um ativo não tiver esse campo \"Handover — X\", não invente um nome "
+        "pra ele — só inclua os que têm esse rótulo explícito no documento.\n\n"
         "Retorne APENAS um JSON (sem markdown, sem texto fora do JSON) no formato:\n"
         '{"itens": [{"ativo": "<categoria padrão, sem número de unidade>", '
         '"criticidade": "<Baixa|Média|Alta|Muito Alta>", '
@@ -12674,7 +12687,8 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         '"responsavel": "<EQUIPE TÉCNICA|EQUIPE DE CAMPO|CLIENTE/SUPERVISÃO|FABRICANTE|FABRICANTE/TÉCNICA>", '
         '"ressalva": <true se for o caso c (ativo não existe em campo), false caso contrário>}], '
         '"dataHoraInicio": "<menor \'Data e Hora de Início\' do trecho, ou \'\'>", '
-        '"dataHoraFim": "<maior \'Data e Hora de Fim\' do trecho, ou \'\'>"}'
+        '"dataHoraFim": "<maior \'Data e Hora de Fim\' do trecho, ou \'\'>", '
+        '"ativosAnalisados": ["<nome do sistema do 1º ativo, sem o prefixo \'Handover — \'>", "<2º ativo>", "..."]}'
     )
 
 
@@ -12731,6 +12745,7 @@ def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
         "itens": normalizados,
         "dataHoraInicio": (parsed.get("dataHoraInicio") or "").strip(),
         "dataHoraFim": (parsed.get("dataHoraFim") or "").strip(),
+        "ativosAnalisados": [str(a).strip() for a in (parsed.get("ativosAnalisados") or []) if str(a).strip()],
     }
 
 
@@ -12771,6 +12786,7 @@ def extrair_punchlist_pdf_nativo_route():
         erros = []
         datas_inicio = []
         datas_fim = []
+        ativos_analisados = []
         # max_workers=2 (não 4): a VM1 tem só ~950MB de RAM, dividida com a
         # auditoria automática e o bot do WhatsApp — 4 pedaços de PDF em
         # paralelo (cada um até 14MB + overhead da chamada à Gemini) já
@@ -12790,6 +12806,7 @@ def extrair_punchlist_pdf_nativo_route():
                         datas_inicio.append(resultado_chunk["dataHoraInicio"])
                     if resultado_chunk.get("dataHoraFim"):
                         datas_fim.append(resultado_chunk["dataHoraFim"])
+                    ativos_analisados.extend(resultado_chunk.get("ativosAnalisados", []))
                 except Exception as e:
                     log.error(f"[PunchlistPdfNativo] Erro no trecho pg{chunk['pagina_inicio']}-"
                               f"{chunk['pagina_fim']}: {e}")
@@ -12803,12 +12820,20 @@ def extrair_punchlist_pdf_nativo_route():
         # igual a uma comparação de datas de verdade.
         data_hora_inicio = min(datas_inicio) if datas_inicio else ""
         data_hora_fim = max(datas_fim) if datas_fim else ""
+        # dedup case-insensitive preservando a primeira grafia vista
+        vistos = {}
+        for a in ativos_analisados:
+            chave = a.strip().lower()
+            if chave and chave not in vistos:
+                vistos[chave] = a.strip()
+        ativos_analisados_dedup = sorted(vistos.values())
 
         return jsonify({
             "ok": True,
             "itens": itens_consolidados,
             "dataHoraInicio": data_hora_inicio,
             "dataHoraFim": data_hora_fim,
+            "ativosAnalisados": ativos_analisados_dedup,
             "totalPaginas": total_paginas,
             "trechosProcessados": len(chunks) - len(erros),
             "trechosTotal": len(chunks),
