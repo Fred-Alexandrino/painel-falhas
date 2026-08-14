@@ -1,0 +1,29 @@
+name: debug-meio-dia
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debug
+        run: |
+          echo "aW1wb3J0IGhtYWMsIGhhc2hsaWIsIGJhc2U2NCwgdXJsbGliLnJlcXVlc3QsIGpzb24KZnJvbSB1cmxsaWIucGFyc2UgaW1wb3J0IHF1b3RlCgpBUFBfS0VZID0gIjIwNDczMjE2MiIKQVBQX1NFQ1JFVCA9ICJPSzlvRzBzYlNlaU5aQUtUQjVWT2E4UjlDUXFUcUx1VCIKQVBJS0VZID0gIjc1YTk3M2Q3NmUwMDQ4M2M5M2Q2ZTk4ZmI3OWRhNGNjIgpUT0tFTiA9ICJVVWRKY2tORlRFZGpNVkZUVG1Kdk1qWnlOREYwUVQwOSIKQkFTRSA9ICJodHRwczovL2FwLXNvdXRoZWFzdC0xLWFwaS1nZW5lcmdhbC5haXN3ZWljbG91ZC5jb20iCgpkZWYgY2FsbChwYXRoLCBwYXJhbXMpOgogICAgaXRlbXMgPSBzb3J0ZWQocGFyYW1zLml0ZW1zKCkpCiAgICBxdWVyeV9jcnVhID0gIiYiLmpvaW4oZiJ7a309e3Z9IiBmb3IgaywgdiBpbiBpdGVtcykKICAgIHF1ZXJ5X2NvZCA9ICImIi5qb2luKGYie2t9PXtxdW90ZShzdHIodiksIHNhZmU9JycpfSIgZm9yIGssIHYgaW4gaXRlbXMpCiAgICBlbmRwb2ludF9jcnUgPSBwYXRoICsgKCI/IiArIHF1ZXJ5X2NydWEgaWYgcXVlcnlfY3J1YSBlbHNlICIiKQogICAgZW5kcG9pbnRfY29kID0gcGF0aCArICgiPyIgKyBxdWVyeV9jb2QgaWYgcXVlcnlfY29kIGVsc2UgIiIpCiAgICBhY2NlcHQgPSAiYXBwbGljYXRpb24vanNvbiIKICAgIGhlYWRlcnNfbGluZSA9IGYiWC1DYS1LZXk6e0FQUF9LRVl9XG4iCiAgICBzdHJpbmdfdG9fc2lnbiA9IGYiR0VUXG57YWNjZXB0fVxuXG5cblxue2hlYWRlcnNfbGluZX17ZW5kcG9pbnRfY3J1fSIKICAgIHNpZyA9IGJhc2U2NC5iNjRlbmNvZGUoaG1hYy5uZXcoQVBQX1NFQ1JFVC5lbmNvZGUoKSwgc3RyaW5nX3RvX3NpZ24uZW5jb2RlKCksIGhhc2hsaWIuc2hhMjU2KS5kaWdlc3QoKSkuZGVjb2RlKCkKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QoQkFTRSArIGVuZHBvaW50X2NvZCwgaGVhZGVycz17CiAgICAgICAgIkFjY2VwdCI6IGFjY2VwdCwgIlgtQ2EtS2V5IjogQVBQX0tFWSwgIlgtQ2EtU2lnbmF0dXJlIjogc2lnLCAiWC1DYS1TaWduYXR1cmUtSGVhZGVycyI6ICJYLUNhLUtleSIsCiAgICB9KQogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0yNSkgYXMgcmVzcDoKICAgICAgICByZXR1cm4ganNvbi5sb2FkcyhyZXNwLnJlYWQoKS5kZWNvZGUoKSkKCnJlc3AgPSBjYWxsKCIvcHJvL2dldEludmVydGVyRGF0YVBhZ2VQcm8iLCB7CiAgICAiYXBpa2V5IjogQVBJS0VZLCAidG9rZW4iOiBUT0tFTiwKICAgICJpc25vcyI6ICJTUDAwMjA4N0cyNTYwMDU0LFNQMDAyMDg3RzI1NjAwNTIsU1AwMDIwODdHMjU2MDA1NiIsCiAgICAic3RhcnREYXRlIjogIjIwMjYtMDgtMTMgMDA6MDA6MDAiLCAiZW5kRGF0ZSI6ICIyMDI2LTA4LTEzIDIzOjU5OjU5IiwKICAgICJwYWdlTnVtIjogMSwgInBhZ2VTaXplIjogNTAwLAp9KQpkYXRhID0gcmVzcC5nZXQoImRhdGEiLCB7fSkKcmVzdWx0ID0gZGF0YS5nZXQoInJlc3VsdCIsIFtdKQpmb3IgaXRlbSBpbiByZXN1bHQ6CiAgICBkbCA9IGl0ZW0uZ2V0KCJkYXRhTGlzdCIsIFtdKQogICAgcHJpbnQoZiJpc25vPXtpdGVtLmdldCgnaXNubycpfSB0b3RhbD17bGVuKGRsKX0iKQogICAgZm9yIHB0IGluIGRsOgogICAgICAgIGlmICIxMTowIiBpbiBwdC5nZXQoInRpbSIsIiIpIG9yICIxMjowIiBpbiBwdC5nZXQoInRpbSIsIiIpIG9yICIxMzowIiBpbiBwdC5nZXQoInRpbSIsIiIpOgogICAgICAgICAgICBwcmludCgiICAiLCBwdC5nZXQoInRpbSIpLCAicGFjPSIsIHB0LmdldCgicGFjIiksICJzYWM9IiwgcHQuZ2V0KCJzYWMiKSwgInZhMT0iLCBwdC5nZXQoInZhMSIpLCAiaWExPSIsIHB0LmdldCgiaWExIikpCg==" | base64 -d > debug_meio_dia.py
+          mkdir -p backups
+          python3 debug_meio_dia.py > backups/debug-meio-result.txt 2>&1 || true
+          cat backups/debug-meio-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/debug-meio-result.txt
+          git commit -m "debug: meio dia" || echo "nothing"
+          git push origin HEAD:main
