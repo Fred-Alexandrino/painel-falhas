@@ -1,3 +1,0 @@
-STATUS: 200
-tem afterBuildTicks: True
-tem filtro % 36: True
