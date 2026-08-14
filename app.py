@@ -13532,10 +13532,22 @@ def _fv_energias_buscar_curva_potencia(data_str):
         page_num += 1
 
     serie = sorted(agregados.items())
-    return [
-        {"hora": bucket.strftime("%H:%M"), "potencia_kw": round(pac_soma / 1000, 3)}
-        for bucket, pac_soma in serie
-    ]
+    dados_por_bucket = {b: round(soma / 1000, 3) for b, soma in serie}
+
+    # Preenche a grade completa de 5 em 5 minutos do dia inteiro (mesmo
+    # onde não há leitura) — sem isso, o eixo X do gráfico fica com
+    # espaçamento irregular (pontos existentes nem sempre caem em
+    # intervalos uniformes), o que deixa os rótulos de hora sem lógica
+    # aparente. Com a grade completa, cada rótulo representa sempre o
+    # mesmo intervalo de tempo real.
+    dia_base = datetime.strptime(data_str, "%Y-%m-%d")
+    grade_completa = []
+    cursor = dia_base
+    fim_dia = dia_base + timedelta(days=1)
+    while cursor < fim_dia:
+        grade_completa.append({"hora": cursor.strftime("%H:%M"), "potencia_kw": dados_por_bucket.get(cursor)})
+        cursor += timedelta(minutes=5)
+    return grade_completa
 
 
 def _fv_energias_buscar_curva_irradiacao(data_str):
