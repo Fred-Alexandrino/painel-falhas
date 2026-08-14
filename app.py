@@ -9409,8 +9409,10 @@ def _coletar_chamados_fabricante_abertos():
 def _coletar_dados_ronda(data_str):
     """Junta o que a Ronda precisa: programação do PCM pro dia (o que
     está previsto), OS de alta prioridade em aberto, desligamentos
-    ativos agora (crônicos inclusive), prazos vencendo hoje/amanhã, e
-    chamados de fabricante ainda sem solução."""
+    ativos agora (crônicos inclusive), prazos vencendo hoje/amanhã,
+    chamados de fabricante ainda sem solução, e as mensagens dos grupos
+    de ONTEM (a ronda roda de manhã, antes do expediente — o que rolou
+    ontem à tarde/noite ainda não foi coberto por nenhum resumo)."""
     resultado = {"data": data_str}
     resultado["programacaoDoDia"] = _pcm_linhas_do_dia(data_str)
 
@@ -9436,6 +9438,20 @@ def _coletar_dados_ronda(data_str):
     resultado["desligamentosAtivos"] = _coletar_desligamentos_ativos_agora()
     resultado["prazosProximos"] = _coletar_prazos_proximos(data_str)
     resultado["chamadosAbertos"] = _coletar_chamados_fabricante_abertos()
+
+    try:
+        ontem_str = (datetime.strptime(data_str, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        mensagens = _buscar_mensagens_periodo(ontem_str, ontem_str)
+        por_grupo = {}
+        for m in mensagens:
+            por_grupo.setdefault(m["nome_grupo"], []).append(m)
+        resultado["mensagensPorGrupo"] = por_grupo
+        resultado["dataMensagens"] = ontem_str
+    except Exception as e:
+        log.error(f"[Ronda] Erro ao ler mensagens capturadas: {e}")
+        resultado["mensagensPorGrupo"] = {}
+        resultado["dataMensagens"] = ""
+
     return resultado
 
 
@@ -9451,6 +9467,12 @@ def _montar_prompt_ronda(dados):
     desligamentos = dados.get("desligamentosAtivos", [])
     prazos = dados.get("prazosProximos", [])
     chamados = dados.get("chamadosAbertos", [])
+    mensagens_por_grupo = dados.get("mensagensPorGrupo", {})
+    data_mensagens = dados.get("dataMensagens", "")
+    try:
+        data_mensagens_fmt = datetime.strptime(data_mensagens, "%Y-%m-%d").strftime("%d/%m/%Y") if data_mensagens else ""
+    except ValueError:
+        data_mensagens_fmt = data_mensagens
 
     def _fmt_lista(itens, campos):
         if not itens:
@@ -9459,6 +9481,19 @@ def _montar_prompt_ronda(dados):
         for it in itens:
             linhas.append(" | ".join(f"{c}={it.get(c, '')}" for c in campos))
         return "\n".join(linhas)
+
+    # Mesma lógica de cruzamento OS↔mensagens do resumo diário (pedido do
+    # Fred em 28/07/2026: bater OS com as conversas nos grupos) — aqui
+    # aplicada às mensagens de ONTEM, pra achar pontos que ficaram em
+    # aberto/sem resposta e precisam entrar na ronda de hoje.
+    bloco_mensagens = []
+    for nome_grupo, msgs in mensagens_por_grupo.items():
+        bloco_mensagens.append(f"\n--- Grupo: {nome_grupo} ({len(msgs)} mensagens) ---")
+        for m in msgs[:80]:
+            hora = (m.get("data_hora") or "").split(" ")[-1][:5]
+            texto_msg = m.get("texto", "")
+            bloco_mensagens.append(f"[{hora}] {m.get('remetente','?')}: {texto_msg[:300]}")
+    texto_mensagens = "\n".join(bloco_mensagens) if bloco_mensagens else "(nenhuma mensagem capturada nos grupos ontem)"
 
     lista_usinas_fred = ", ".join(sorted(CATALOGO_USINAS.keys()))
 
@@ -9473,8 +9508,13 @@ REGRAS DE ESCRITA:
 - Estruture em tópicos curtos com emojis moderados pra facilitar leitura rápida no celular.
 - NUNCA invente números, nomes ou fatos que não estão nos dados abaixo.
 - Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
-- Priorize: desligamentos ativos e prazos vencendo HOJE vêm primeiro (são os pontos mais urgentes), programação do dia e alta prioridade em aberto vêm depois.
-- Feche com uma linha curta de "prioridade do dia" — se tiver desligamento ativo ou prazo vencendo hoje, essa é a prioridade; senão, aponte a atividade mais importante da programação do dia.
+- Priorize: desligamentos ativos e prazos vencendo HOJE vêm primeiro (são os pontos mais urgentes), depois pontos críticos vindos das conversas dos grupos (ver abaixo), depois programação do dia e alta prioridade em aberto.
+- Critério de PRIORIZAÇÃO por criticidade quando houver mais de um ponto concorrendo por destaque: 1º o que afeta EFICIÊNCIA/GERAÇÃO da usina (equipamento parado, string fora, etc.), 2º o que afeta SEGURANÇA (proteção, EPC, estrutura), 3º o resto.
+- Feche com uma linha curta de "prioridade do dia" — se tiver desligamento ativo, prazo vencendo hoje, ou ponto crítico das conversas, essa é a prioridade; senão, aponte a atividade mais importante da programação do dia.
+
+## Conversas dos grupos de ontem ({data_mensagens_fmt or 'sem data'})
+Leia as mensagens abaixo e identifique PONTOS CRÍTICOS que ficaram em aberto/sem resposta clara de resolução — problema técnico reportado por um técnico de campo sem confirmação de solução, reclamação de cliente sem retorno, pedido de peça/autorização parado, ou qualquer coisa que pareça urgente e não tenha sido claramente encerrada na própria conversa. Adicione esses pontos numa seção própria "🗣️ PONTOS DAS CONVERSAS" na ronda, citando usina/grupo e um resumo curto do que foi dito — NUNCA invente ou complete informação que não está explícita na mensagem; se não achar nada relevante, essa seção pode dizer "Nada crítico identificado nas conversas de ontem."
+{texto_mensagens}
 
 DADOS PRA RONDA DE HOJE:
 
