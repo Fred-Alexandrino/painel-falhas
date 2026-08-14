@@ -1,3 +1,0 @@
-STATUS: 200
-tem grace: True
-tem callback 3h: True
