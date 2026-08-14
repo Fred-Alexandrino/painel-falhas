@@ -1,2 +1,0 @@
-https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js -> HTTP ERROR 404
-https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js -> 200 application/javascript; charset=utf-8 None
