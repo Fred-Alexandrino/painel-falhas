@@ -1,7 +1,7 @@
 STATUS: 200
 ok: True
-qtd pontos potencia: 464
+qtd pontos potencia: 153
 qtd pontos irradiancia: 24
-primeiros 5 potencia: [{'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:30', 'potencia_kw': 0.0}, {'hora': '05:30', 'potencia_kw': 0.0}]
+primeiros 5 potencia: [{'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:30', 'potencia_kw': 0.0}, {'hora': '05:35', 'potencia_kw': 0.0}, {'hora': '05:40', 'potencia_kw': 0.0}, {'hora': '05:45', 'potencia_kw': 0.417}]
 primeiros 5 irradiancia: [{'hora': '00:00', 'irradiancia_w_m2': 0.0}, {'hora': '01:00', 'irradiancia_w_m2': 0.0}, {'hora': '02:00', 'irradiancia_w_m2': 0.0}, {'hora': '03:00', 'irradiancia_w_m2': 0.0}, {'hora': '04:00', 'irradiancia_w_m2': 0.0}]
-max potencia: 21.857
+max potencia: 79.636
