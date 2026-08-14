@@ -1,0 +1,6 @@
+STATUS: 200
+total pontos: 288
+intervalo entre pontos consistente (5min): 00:05 - 00:00
+pontos com dado real: 153
+primeiros 3: [{'hora': '00:00', 'potencia_kw': None}, {'hora': '00:05', 'potencia_kw': None}, {'hora': '00:10', 'potencia_kw': None}]
+por volta meio-dia (idx ~144): [{'hora': '11:40', 'potencia_kw': 60.597}, {'hora': '11:45', 'potencia_kw': 59.152}, {'hora': '11:50', 'potencia_kw': 58.402}, {'hora': '11:55', 'potencia_kw': 60.574}, {'hora': '12:00', 'potencia_kw': 61.248}]
