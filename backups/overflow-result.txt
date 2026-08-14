@@ -1,3 +1,0 @@
-STATUS: 200
-tem overflow visible: True
-tem padding 60px: True
