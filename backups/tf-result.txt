@@ -1,0 +1,3 @@
+STATUS: 200
+tem ticks manuais: True
+tem Math.round no callback: True
