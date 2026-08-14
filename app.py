@@ -13516,9 +13516,15 @@ def _fv_energias_buscar_curva_potencia(data_str):
                     continue
                 try:
                     pac_val = float(pac)
+                    momento = datetime.strptime(tim, "%Y-%m-%d %H:%M:%S")
                 except (TypeError, ValueError):
                     continue
-                agregados[tim] = agregados.get(tim, 0.0) + pac_val
+                # Cada inversor reporta em instantes levemente diferentes
+                # (ex.: um às 11:01:28, outro às 11:04:18) — agrupar por
+                # janela de 5min pra somar os 3 inversores no mesmo ponto,
+                # em vez de criar pontos separados que nunca se somam.
+                bucket = momento - timedelta(minutes=momento.minute % 5, seconds=momento.second, microseconds=momento.microsecond)
+                agregados[bucket] = agregados.get(bucket, 0.0) + pac_val
 
         total_pages = data.get("totalPages") or 1
         if page_num >= total_pages:
@@ -13527,8 +13533,8 @@ def _fv_energias_buscar_curva_potencia(data_str):
 
     serie = sorted(agregados.items())
     return [
-        {"hora": tim.split(" ")[1][:5] if " " in tim else tim, "potencia_kw": round(pac_soma / 1000, 3)}
-        for tim, pac_soma in serie
+        {"hora": bucket.strftime("%H:%M"), "potencia_kw": round(pac_soma / 1000, 3)}
+        for bucket, pac_soma in serie
     ]
 
 
