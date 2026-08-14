@@ -1,0 +1,3 @@
+STATUS: 200
+tem exclusao fv-energias: True
+tem v4: True
