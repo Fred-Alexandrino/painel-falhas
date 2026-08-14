@@ -1,4 +1,0 @@
-STATUS: 200
-tem elipse rx260 ry140: True
-tem geometria rx/ry: True
-tem tooltip total acumulado: True
