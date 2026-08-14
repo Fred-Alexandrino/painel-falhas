@@ -1,0 +1,29 @@
+name: test-curva-dia
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2Z2LWVuZXJnaWFzL2N1cnZhLWRpYT9kYXRhPTIwMjYtMDgtMTMiCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24ifSkKdHJ5OgogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD02MCkgYXMgcmVzcDoKICAgICAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgICAgICBkID0ganNvbi5sb2Fkcyhib2R5KQogICAgICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMpCiAgICAgICAgcHJpbnQoIm9rOiIsIGQuZ2V0KCJvayIpKQogICAgICAgIHByaW50KCJxdGQgcG9udG9zIHBvdGVuY2lhOiIsIGxlbihkLmdldCgicG90ZW5jaWEiLCBbXSkpKQogICAgICAgIHByaW50KCJxdGQgcG9udG9zIGlycmFkaWFuY2lhOiIsIGxlbihkLmdldCgiaXJyYWRpYW5jaWEiLCBbXSkpKQogICAgICAgIHByaW50KCJwcmltZWlyb3MgNSBwb3RlbmNpYToiLCBkLmdldCgicG90ZW5jaWEiLCBbXSlbOjVdKQogICAgICAgIHByaW50KCJwcmltZWlyb3MgNSBpcnJhZGlhbmNpYToiLCBkLmdldCgiaXJyYWRpYW5jaWEiLCBbXSlbOjVdKQogICAgICAgIHByaW50KCJtYXggcG90ZW5jaWE6IiwgbWF4KChwWydwb3RlbmNpYV9rdyddIGZvciBwIGluIGQuZ2V0KCJwb3RlbmNpYSIsIFtdKSksIGRlZmF1bHQ9Tm9uZSkpCmV4Y2VwdCB1cmxsaWIuZXJyb3IuSFRUUEVycm9yIGFzIGU6CiAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZSgpWzoxMDAwXSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoIkVSUk9SOiIsIHN0cihlKSkK" | base64 -d > test_curva.py
+          mkdir -p backups
+          python3 test_curva.py > backups/curva-dia-result.txt 2>&1 || true
+          cat backups/curva-dia-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/curva-dia-result.txt
+          git commit -m "test: curva dia" || echo "nothing"
+          git push origin HEAD:main
