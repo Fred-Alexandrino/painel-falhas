@@ -1,0 +1,4 @@
+STATUS: 200
+Tem no-cache meta: True
+Tem 66kW calibrado: True
+Ainda tem 95.16 na chamada (nao deveria): False
