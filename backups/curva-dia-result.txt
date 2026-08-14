@@ -1,3 +1,7 @@
-STATUS: 502
-BODY: {"error":"erro ao buscar potencia: 403 Client Error: Forbidden for url: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getInverterDataPagePro?apikey=75a973d76e00483c93d6e98fb79da4cc&endDate=2026-08-13%2023%3A59%3A59&isnos=SP002087G2560054%2CSP002087G2560052%2CSP002087G2560056&pageNum=1&pageSize=500&startDate=2026-08-13%2000%3A00%3A00&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09","ok":false}
-
+STATUS: 200
+ok: True
+qtd pontos potencia: 464
+qtd pontos irradiancia: 24
+primeiros 5 potencia: [{'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:25', 'potencia_kw': 0.0}, {'hora': '05:30', 'potencia_kw': 0.0}, {'hora': '05:30', 'potencia_kw': 0.0}]
+primeiros 5 irradiancia: [{'hora': '00:00', 'irradiancia_w_m2': 0.0}, {'hora': '01:00', 'irradiancia_w_m2': 0.0}, {'hora': '02:00', 'irradiancia_w_m2': 0.0}, {'hora': '03:00', 'irradiancia_w_m2': 0.0}, {'hora': '04:00', 'irradiancia_w_m2': 0.0}]
+max potencia: 21.857
