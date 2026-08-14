@@ -13246,54 +13246,60 @@ FV_ENERGIAS_HORA_INICIO_MONITORAMENTO = 6   # 06:00
 FV_ENERGIAS_HORA_FIM_MONITORAMENTO = 18     # 18:00 (após isso, offline é natural/esperado)
 
 
-def _fv_energias_buscar_geracao_por_inversor():
-    """Retorna {sn: e_today_kwh} usando getInverterOverviewPro — usado só
-    pra checagem de desbalanceamento entre inversores, não pro painel."""
+def _fv_energias_buscar_potencia_por_inversor():
+    """Retorna {sn: potencia_kw} usando getLastTsDataPro (leitura mais
+    recente por inversor) — usado só pra checagem de desbalanceamento,
+    não pro painel. Diferente do e_today (acumulado do dia), aqui é a
+    potência instantânea de agora."""
     resp = _fv_energias_chamar_api(
-        "/pro/getInverterOverviewPro",
-        {"apikey": FV_ENERGIAS_APIKEY, "token": FV_ENERGIAS_TOKEN},
+        "/pro/getLastTsDataPro",
+        {"token": FV_ENERGIAS_TOKEN, "isnos": ",".join(FV_ENERGIAS_APELIDO_INVERSOR.keys())},
     )
     if resp.get("status") != 200:
-        raise RuntimeError(f"Solplanet getInverterOverviewPro erro: {resp}")
-    geracao = {}
-    for grupo in (resp.get("data") or []):
-        for item in (grupo.get("result") or []):
-            sn = item.get("isno")
-            try:
-                geracao[sn] = float(item.get("e_today") or 0)
-            except (TypeError, ValueError):
-                geracao[sn] = 0.0
-    return geracao
+        raise RuntimeError(f"Solplanet getLastTsDataPro erro: {resp}")
+    potencias = {}
+    for item in (resp.get("data") or []):
+        sn = item.get("sn")
+        try:
+            potencias[sn] = float(item.get("pac") or 0) / 1000  # W -> kW
+        except (TypeError, ValueError):
+            pass
+    return potencias
 
 
-def _fv_energias_detectar_problemas(dados, geracao_por_inversor):
-    """Retorna lista de strings descrevendo problemas ativos agora:
-    inversor offline/sem comunicação, ou desbalanceamento de geração
-    acima do limiar entre dois inversores quaisquer."""
-    problemas = []
+# Faixa de potência (kW) considerada "próxima do máximo" pra cada
+# inversor (rated 20kW) — desbalanceamento só é avaliado quando AMBOS os
+# inversores comparados estão nessa faixa, evitando ruído em horários de
+# baixa geração (manhã cedo/fim de tarde), onde pequenas diferenças
+# absolutas (ex.: 0.2 vs 0.1 kWh) geram percentuais enganosos.
+FV_ENERGIAS_POTENCIA_MIN_COMPARACAO = 18
+FV_ENERGIAS_POTENCIA_MAX_COMPARACAO = 22
 
-    for inv in dados["inversores"]:
-        apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"])
-        if not inv["online"]:
-            problemas.append(f"{apelido} ({inv['sn']}) está OFFLINE / sem comunicação")
 
-    valores = [
+def _fv_energias_detectar_desbalanceamento_potencia(potencia_por_inversor):
+    """Desbalanceamento de potência instantânea entre inversores — só
+    avaliado quando ambos estão perto da potência máxima (18-22kW)."""
+    proximos_do_maximo = [
         (FV_ENERGIAS_APELIDO_INVERSOR.get(sn, sn), v)
-        for sn, v in geracao_por_inversor.items()
-        if v is not None
+        for sn, v in potencia_por_inversor.items()
+        if v is not None and FV_ENERGIAS_POTENCIA_MIN_COMPARACAO <= v <= FV_ENERGIAS_POTENCIA_MAX_COMPARACAO
     ]
-    if len(valores) >= 2:
-        maior = max(valores, key=lambda x: x[1])
-        menor = min(valores, key=lambda x: x[1])
-        if maior[1] > 0:
-            diferenca = (maior[1] - menor[1]) / maior[1]
-            if diferenca > FV_ENERGIAS_LIMIAR_DESBALANCEO:
-                problemas.append(
-                    f"Desbalanceamento de geração: {maior[0]} gerou {maior[1]:.1f} kWh "
-                    f"hoje vs {menor[0]} com {menor[1]:.1f} kWh ({diferenca*100:.0f}% de diferença)"
-                )
+    if len(proximos_do_maximo) < 2:
+        return []
 
-    return problemas
+    maior = max(proximos_do_maximo, key=lambda x: x[1])
+    menor = min(proximos_do_maximo, key=lambda x: x[1])
+    if maior[1] <= 0:
+        return []
+
+    diferenca = (maior[1] - menor[1]) / maior[1]
+    if diferenca > FV_ENERGIAS_LIMIAR_DESBALANCEO:
+        return [
+            f"Desbalanceamento de potência: {maior[0]} operando a {maior[1]:.1f} kW "
+            f"vs {menor[0]} a {menor[1]:.1f} kW ({diferenca*100:.0f}% de diferença), "
+            f"ambos próximos da potência máxima"
+        ]
+    return []
 
 
 def _fv_energias_verificar_alertas():
@@ -13301,19 +13307,34 @@ def _fv_energias_verificar_alertas():
     mensagem quando o conjunto de problemas MUDA em relação à última
     checagem (novo problema surgiu, problema diferente, ou tudo
     normalizou) — evita spam repetindo o mesmo alerta a cada 5min
-    enquanto o problema persiste."""
+    enquanto o problema persiste.
+
+    Offline/sem comunicação é checado em TODA chamada (a cada 5min).
+    Desbalanceamento de potência só é checado nos horários pré-
+    estabelecidos da ronda (08h/12h/15h/17h) — não a cada 5min."""
     agora = agora_br()
     if not (FV_ENERGIAS_HORA_INICIO_MONITORAMENTO <= agora.hour < FV_ENERGIAS_HORA_FIM_MONITORAMENTO):
         return {"ok": True, "alertou": False, "motivo": "fora da janela de monitoramento diurno"}
 
+    problemas_atuais = []
     try:
         dados = _fv_energias_buscar_dados()
-        geracao = _fv_energias_buscar_geracao_por_inversor()
-        problemas_atuais = _fv_energias_detectar_problemas(dados, geracao)
+        for inv in dados["inversores"]:
+            apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"])
+            if not inv["online"]:
+                problemas_atuais.append(f"{apelido} ({inv['sn']}) está OFFLINE / sem comunicação")
     except Exception as e:
         # Falha ao consultar a própria API da Solplanet já é, por si só,
         # um sinal de perda de comunicação com a usina.
-        problemas_atuais = [f"Não foi possível consultar a API da Solplanet: {e}"]
+        problemas_atuais.append(f"Não foi possível consultar a API da Solplanet: {e}")
+
+    hora_atual = agora.strftime("%H")
+    if hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
+        try:
+            potencias = _fv_energias_buscar_potencia_por_inversor()
+            problemas_atuais.extend(_fv_energias_detectar_desbalanceamento_potencia(potencias))
+        except Exception as e:
+            log.error(f"[FV Energias] Erro ao checar desbalanceamento de potencia: {e}")
 
     assinatura_atual = "|".join(sorted(problemas_atuais))
     assinatura_anterior = _ler_trava("fv_energias:ultima_assinatura_problema") or ""
