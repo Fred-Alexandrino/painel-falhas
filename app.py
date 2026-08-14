@@ -13353,15 +13353,21 @@ def _fv_energias_verificar_alertas():
 def _fv_energias_chamar_api(path, params):
     """Chamada assinada (HMAC-SHA256) à API Pro da Solplanet/AISWEI.
     Ver seção 4 da doc AISWEICloud API v1.1 pra detalhe do algoritmo.
-    Valores são percent-encoded (necessário pra parâmetros com espaço/
-    dois-pontos, como datas "YYYY-MM-DD HH:MM:SS") — a assinatura precisa
-    ser calculada sobre a MESMA string exata que vai na URL."""
+    IMPORTANTE (confirmado testando com erro real do gateway): a
+    assinatura é calculada sobre a URL CRUA (espaço, vírgula, dois-pontos
+    literais, sem percent-encoding) — mas a requisição HTTP de verdade
+    precisa ir codificada (senão não é uma URL válida). Por isso duas
+    versões da query string: uma pra assinar, outra pra enviar."""
     items = sorted(params.items())
-    query = "&".join(f"{k}={_fv_url_quote(str(v))}" for k, v in items)
-    endpoint = path + ("?" + query if query else "")
+    query_crua = "&".join(f"{k}={v}" for k, v in items)
+    query_codificada = "&".join(f"{k}={_fv_url_quote(str(v), safe='')}" for k, v in items)
+
+    endpoint_cru = path + ("?" + query_crua if query_crua else "")
+    endpoint_codificado = path + ("?" + query_codificada if query_codificada else "")
+
     accept = "application/json"
     headers_line = f"X-Ca-Key:{FV_ENERGIAS_APP_KEY}\n"
-    string_to_sign = f"GET\n{accept}\n\n\n\n{headers_line}{endpoint}"
+    string_to_sign = f"GET\n{accept}\n\n\n\n{headers_line}{endpoint_cru}"
     sig = base64.b64encode(
         _fv_hmac.new(
             FV_ENERGIAS_APP_SECRET.encode("utf-8"),
@@ -13371,7 +13377,7 @@ def _fv_energias_chamar_api(path, params):
     ).decode()
 
     resp = requests.get(
-        FV_ENERGIAS_BASE_URL + endpoint,
+        FV_ENERGIAS_BASE_URL + endpoint_codificado,
         headers={
             "Accept": accept,
             "X-Ca-Key": FV_ENERGIAS_APP_KEY,
