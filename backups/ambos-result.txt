@@ -1,9 +1,0 @@
-https://fred-alexandrino.github.io/PAINELDEFALHAS/fv-energias.html -> STATUS: 200
-  tem agoraBR : True
-Traceback (most recent call last):
-  File "/home/runner/work/painel-falhas/painel-falhas/test_ambos.py", line 11, in <module>
-    check("https://fred-alexandrino.github.io/PAINELDEFALHAS/fv-energias.html", [
-  File "/home/runner/work/painel-falhas/painel-falhas/test_ambos.py", line 9, in check
-    print(" ", label, ":", needle in body)
-                           ^^^^^^^^^^^^^^
-TypeError: 'in <string>' requires string as left operand, not bool
