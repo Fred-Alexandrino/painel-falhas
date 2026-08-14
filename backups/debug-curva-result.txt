@@ -1,7 +1,0 @@
-=== getInverterDataPagePro com encoding ===
-URL: https://ap-southeast-1-api-genergal.aisweicloud.com/pro/getInverterDataPagePro?apikey=75a973d76e00483c93d6e98fb79da4cc&endDate=2026-08-13%2023%3A59%3A59&isnos=SP002087G2560054%2CSP002087G2560052%2CSP002087G2560056&pageNum=1&pageSize=500&startDate=2026-08-13%2000%3A00%3A00&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09
-StringToSign: 'GET\napplication/json\n\n\n\nX-Ca-Key:204732162\n/pro/getInverterDataPagePro?apikey=75a973d76e00483c93d6e98fb79da4cc&endDate=2026-08-13%2023%3A59%3A59&isnos=SP002087G2560054%2CSP002087G2560052%2CSP002087G2560056&pageNum=1&pageSize=500&startDate=2026-08-13%2000%3A00%3A00&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09'
-STATUS: 403
-X-Ca-Error-Message: Invalid Signature, Server StringToSign:`GET#application/json####X-Ca-Key:204732162#/pro/getInverterDataPagePro?apikey=75a973d76e00483c93d6e98fb79da4cc&endDate=2026-08-13 23:59:59&isnos=SP002087G2560054,SP002087G2560052,SP002087G2560056&pageNum=1&pageSize=500&startDate=2026-08-13 00:00:00&token=UUdJckNFTEdjMVFTTmJvMjZyNDF0QT09`
-BODY: 
-
