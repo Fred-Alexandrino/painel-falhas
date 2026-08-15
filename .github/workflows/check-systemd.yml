@@ -1,0 +1,15 @@
+name: check-systemd-vm2
+on:
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check systemd unit
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            sudo systemctl cat wppconnect
