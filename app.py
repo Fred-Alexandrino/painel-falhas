@@ -13407,8 +13407,6 @@ def _fv_energias_verificar_alertas():
     if assinatura_atual == assinatura_anterior:
         return {"ok": True, "alertou": False, "motivo": "sem mudanca de estado"}
 
-    _gravar_trava("fv_energias:ultima_assinatura_problema", assinatura_atual)
-
     if problemas_atuais:
         texto = (
             "🚨 *FV Energias Renováveis — ALERTA*\n\n"
@@ -13431,6 +13429,12 @@ def _fv_energias_verificar_alertas():
             headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
             timeout=20,
         )
+        if r.ok:
+            # Só marca como "avisado" DEPOIS de confirmar o envio — se
+            # gravasse antes e o envio falhasse, o sistema achava que já
+            # tinha avisado e nunca mais tentava reenviar (bug real que
+            # causou o alerta de "normalizado" nunca chegar).
+            _gravar_trava("fv_energias:ultima_assinatura_problema", assinatura_atual)
         return {"ok": r.ok, "alertou": True, "problemas": problemas_atuais}
     except Exception as e:
         return {"ok": False, "alertou": True, "error": str(e)}
