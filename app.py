@@ -16,7 +16,7 @@ Suporta:
 - Formato Cos Grid com bullets (·) sem emojis
 """
 
-import os, re, json, logging, time, random, base64, uuid, sqlite3
+import os, re, json, logging, time, random, base64, uuid, sqlite3, threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -7212,33 +7212,19 @@ def reverter_excesso_fuso():
                      "detalhes": alteracoes, "excluidas": list(_EXCLUIR_REVERSAO)}), 200
 
 
-@app.route("/sync-fracttal", methods=["POST", "GET"])
-def sync_fracttal():
-    """
-    Gatilho automático confiável (chamado a cada 5 min via UptimeRobot).
-    Faz quatro coisas com cadências diferentes, de propósito:
-      1. VARREDURA DE STATUS/ESTADO das OSs já no dashboard — roda em
-         TODA chamada (5 em 5 min), porque isso precisa ficar em dia com
-         frequência (é o que o botão "Atualizar OS" também faz sob demanda).
-      2. AUDITORIA COMPLETA (descoberta ampla de 24h + varredura ampla,
-         incluindo detectar cancelamentos/conclusões, + validação de
-         integridade de relatórios) — só roda de fato nas janelas das
-         7h/12h/16h (throttle via _Sistema), porque é mais pesada e não
-         precisa de frequência maior que isso.
-      3. DESCOBERTA RÁPIDA (só descoberta, janela curta de 2h, sem recheck
-         amplo) — roda a cada 30 min (throttle por timestamp via _Sistema),
-         pra reduzir o gap de latência entre a criação de uma OS nova na
-         Fracttal e ela aparecer no dashboard, sem esperar a próxima
-         janela fixa de auditoria completa.
-      4. Comunicados diários das 7h (piggyback, gatilho confiável).
-      5. Resumo diário (17h) e resumo semanal (sexta 17h), migrados do
-         cron do GitHub Actions em 03/08/2026 por atraso recorrente.
-    """
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
+# Estado do último ciclo do piggyback /sync-fracttal, rodado em background
+# (ver nota abaixo). Guardado só em memória do processo — serve pra
+# depuração via /sync-fracttal-status, não é fonte de verdade de nada.
+_sync_fracttal_lock = threading.Lock()
+_sync_fracttal_last_result = {"em_andamento": False, "iniciado_em": None, "concluido_em": None, "body": None}
 
+
+def _sync_fracttal_worker():
+    """
+    Corpo de fato do piggyback (descrito em detalhe no docstring de
+    sync_fracttal). Roda em thread separada — ver nota na rota sobre o
+    motivo de ter virado assíncrono em 15/08/2026.
+    """
     body = {"ok": True}
 
     try:
@@ -7293,7 +7279,84 @@ def sync_fracttal():
         log.error(f"[ResumoSemanal] Erro no piggyback: {e}")
         body["resumo_semanal_check"] = {"erro": str(e)}
 
-    return jsonify(body), 200
+    _sync_fracttal_last_result["body"] = body
+    _sync_fracttal_last_result["concluido_em"] = datetime.now(_TZ_BR).isoformat()
+    _sync_fracttal_last_result["em_andamento"] = False
+    log.info(f"[sync-fracttal] ciclo em background concluído às {_sync_fracttal_last_result['concluido_em']}")
+    _sync_fracttal_lock.release()
+
+
+@app.route("/sync-fracttal", methods=["POST", "GET"])
+def sync_fracttal():
+    """
+    Gatilho automático confiável (chamado a cada 5 min via UptimeRobot).
+    Faz quatro coisas com cadências diferentes, de propósito:
+      1. VARREDURA DE STATUS/ESTADO das OSs já no dashboard — roda em
+         TODA chamada (5 em 5 min), porque isso precisa ficar em dia com
+         frequência (é o que o botão "Atualizar OS" também faz sob demanda).
+      2. AUDITORIA COMPLETA (descoberta ampla de 24h + varredura ampla,
+         incluindo detectar cancelamentos/conclusões, + validação de
+         integridade de relatórios) — só roda de fato nas janelas das
+         7h/12h/16h (throttle via _Sistema), porque é mais pesada e não
+         precisa de frequência maior que isso.
+      3. DESCOBERTA RÁPIDA (só descoberta, janela curta de 2h, sem recheck
+         amplo) — roda a cada 30 min (throttle por timestamp via _Sistema),
+         pra reduzir o gap de latência entre a criação de uma OS nova na
+         Fracttal e ela aparecer no dashboard, sem esperar a próxima
+         janela fixa de auditoria completa.
+      4. Comunicados diários das 7h (piggyback, gatilho confiável).
+      5. Resumo diário (17h) e resumo semanal (sexta 17h), migrados do
+         cron do GitHub Actions em 03/08/2026 por atraso recorrente.
+
+    ASSÍNCRONO desde 15/08/2026: o ciclo completo leva ~60-70s pra rodar
+    (29 usinas), e o monitor do UptimeRobot só tolera timeout de 30s (teto
+    do plano atual, não ajustável via API). Isso fazia o UptimeRobot
+    marcar o endpoint como DOWN por "Connection Timeout" repetidamente,
+    mesmo o servidor respondendo com sucesso — e como resumo diário/ronda
+    dependem desse piggyback rodar até o fim, eles paravam de disparar.
+    Agora a rota devolve 200 quase imediatamente (só dispara a thread) e o
+    trabalho de fato roda em background, sem depender do cliente esperar.
+    Ver /sync-fracttal-status pra inspecionar o resultado do último ciclo.
+    """
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    # Evita sobrepor ciclos: se o anterior ainda está rodando (ex: pico
+    # de latência da Fracttal), só confirma o recebimento sem empilhar
+    # outra thread — o próximo ping em 5 min tenta de novo.
+    if not _sync_fracttal_lock.acquire(blocking=False):
+        return jsonify({
+            "ok": True,
+            "background": True,
+            "status": "ciclo_anterior_ainda_em_andamento",
+            "iniciado_em": _sync_fracttal_last_result.get("iniciado_em"),
+        }), 200
+
+    _sync_fracttal_last_result["em_andamento"] = True
+    _sync_fracttal_last_result["iniciado_em"] = datetime.now(_TZ_BR).isoformat()
+    _sync_fracttal_last_result["concluido_em"] = None
+
+    threading.Thread(target=_sync_fracttal_worker, daemon=True).start()
+
+    return jsonify({
+        "ok": True,
+        "background": True,
+        "status": "ciclo_iniciado",
+        "iniciado_em": _sync_fracttal_last_result["iniciado_em"],
+    }), 200
+
+
+@app.route("/sync-fracttal-status", methods=["GET"])
+def sync_fracttal_status():
+    """Inspeciona o resultado do último ciclo do piggyback /sync-fracttal,
+    já que a rota principal agora responde antes do trabalho terminar."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    return jsonify({"ok": True, **_sync_fracttal_last_result}), 200
 
 
 # ══════════════════════════════════════════════════════════════════════
