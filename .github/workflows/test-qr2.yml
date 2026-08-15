@@ -1,0 +1,26 @@
+name: test-qr2
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0Cgp1cmwgPSAiaHR0cHM6Ly93cHAuMTQ3LjE1LjY2LjI0MS5zc2xpcC5pby9xciIKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAidGV4dC9odG1sIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjApIGFzIHJlc3A6CiAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMpCiAgICBwcmludCgiQWluZGEgJ2FndWFyZGUnOiIsICJBZ3VhcmRlIiBpbiBib2R5KQogICAgcHJpbnQoIlRlbSBpbWcvY2FudmFzIGRlIFFSOiIsICI8aW1nIiBpbiBib2R5IG9yICI8Y2FudmFzIiBpbiBib2R5IG9yICJkYXRhOmltYWdlIiBpbiBib2R5KQogICAgcHJpbnQoYm9keVs6MzAwXSkK" | base64 -d > test_qr2.py
+          mkdir -p backups
+          python3 test_qr2.py > backups/qr2-result.txt 2>&1 || true
+          cat backups/qr2-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/qr2-result.txt
+          git commit -m "test: qr2" || echo "nothing"
+          git push origin HEAD:main
