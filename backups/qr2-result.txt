@@ -1,0 +1,8 @@
+STATUS: 200
+Ainda 'aguarde': False
+Tem img/canvas de QR: False
+
+      <html><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#f0f0f0;">
+        <div style="text-align:center;">
+          <h2 style="color:#25D366;">✅ WhatsApp Conectado!</h2>
+          <p>Monitoramento em tempo real <strong>ati
