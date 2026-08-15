@@ -1,3 +1,0 @@
-STATUS: 502
-BODY: {"error":"{\"ok\":false,\"erro\":\"WhatsApp n\u00e3o conectado\"}","ok":false}
-
