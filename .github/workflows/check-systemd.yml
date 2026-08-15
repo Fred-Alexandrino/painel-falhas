@@ -1,15 +1,24 @@
 name: check-systemd-vm2
 on:
   workflow_dispatch: {}
+permissions:
+  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Check systemd unit
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 147.15.66.241
           username: ubuntu
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script_stop: false
           script: |
-            sudo systemctl cat wppconnect
+            sudo systemctl cat wppconnect > /tmp/systemd-check.txt 2>&1
+            cat /tmp/systemd-check.txt
+      - name: Save output
+        run: |
+          mkdir -p backups
+          echo "Ver logs do step anterior no Actions run" > backups/systemd-check-placeholder.txt
