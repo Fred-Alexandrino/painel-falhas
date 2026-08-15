@@ -1,0 +1,20 @@
+=== /health ===
+STATUS: 200
+BODY (primeiros 500): {"status":"ok","wpp":"desconectado"}
+
+=== /status ===
+STATUS: 200
+BODY (primeiros 500): {"status":"desconectado","grupos_configurados":["120363423233716775@g.us","120363423427343356@g.us","120363402559504115@g.us","120363426381032089@g.us","120363423844956611@g.us","120363421162420788@g.us","120363425837962709@g.us","120363402176878100@g.us","120363423533840348@g.us","120363421052607450@g.us","120363406919935108@g.us","120363405111083249@g.us","120363405244065477@g.us","120363427839577268@g.us","120363428268426406@g.us","120363422795399103@g.us","120363403858325184@g.us","120363426
+
+=== /qr ===
+STATUS: 200
+BODY (primeiros 500): 
+    <html><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#f0f0f0;">
+      <div style="text-align:center;">
+        <h2>⏳ Aguarde...</h2>
+        <p>Gerando QR Code, isso leva ~30 segundos.</p>
+        <script>setTimeout(() => location.reload(), 5000);</script>
+      </div>
+    </body></html>
+  
+
