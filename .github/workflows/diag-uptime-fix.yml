@@ -8,12 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Get monitor id
+      - name: Edit monitor timeout
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCmRhdGEgPSBqc29uLmR1bXBzKHsKICAgICJhcGlfa2V5IjogInUzNjAxNTgxLTFhMGU3OGYzNTUzMTBkY2FlYmUzY2VhZiIsCiAgICAiZm9ybWF0IjogImpzb24iCn0pLmVuY29kZSgpCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QoImh0dHBzOi8vYXBpLnVwdGltZXJvYm90LmNvbS92Mi9nZXRNb25pdG9ycyIsIGRhdGE9ZGF0YSwKICAgIGhlYWRlcnM9eyJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vanNvbiIsICJDYWNoZS1Db250cm9sIjogIm5vLWNhY2hlIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MzApIGFzIHJlc3A6CiAgICBib2R5ID0ganNvbi5sb2FkcyhyZXNwLnJlYWQoKS5kZWNvZGUoKSkKICAgIGZvciBtIGluIGJvZHkuZ2V0KCJtb25pdG9ycyIsIFtdKToKICAgICAgICBwcmludChtLmdldCgiaWQiKSwgInwiLCBtLmdldCgiZnJpZW5kbHlfbmFtZSIpLCAifCB0aW1lb3V0OiIsIG0uZ2V0KCJ0aW1lb3V0IiksICJ8IGludGVydmFsOiIsIG0uZ2V0KCJpbnRlcnZhbCIpKQo=" | base64 -d > get_monitor.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCmRhdGEgPSBqc29uLmR1bXBzKHsKICAgICJhcGlfa2V5IjogInUzNjAxNTgxLTFhMGU3OGYzNTUzMTBkY2FlYmUzY2VhZiIsCiAgICAiZm9ybWF0IjogImpzb24iLAogICAgImlkIjogIjgwMzQ3MzgxOCIsCiAgICAidGltZW91dCI6IDYwCn0pLmVuY29kZSgpCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QoImh0dHBzOi8vYXBpLnVwdGltZXJvYm90LmNvbS92Mi9lZGl0TW9uaXRvciIsIGRhdGE9ZGF0YSwKICAgIGhlYWRlcnM9eyJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vanNvbiIsICJDYWNoZS1Db250cm9sIjogIm5vLWNhY2hlIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MzApIGFzIHJlc3A6CiAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgIHByaW50KCJSRVNQT05TRToiLCBib2R5KQo=" | base64 -d > edit_monitor.py
           mkdir -p backups
-          python3 get_monitor.py > backups/monitor-id.txt 2>&1 || true
-          cat backups/monitor-id.txt
+          python3 edit_monitor.py > backups/edit-result.txt 2>&1 || true
+          cat backups/edit-result.txt
       - name: Push
         if: always()
         env:
@@ -22,6 +22,6 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
-          git add backups/monitor-id.txt || true
-          git commit -m "diag: get monitor id" || echo "nothing"
+          git add backups/edit-result.txt || true
+          git commit -m "diag: edit monitor timeout" || echo "nothing"
           git push origin HEAD:main || true
