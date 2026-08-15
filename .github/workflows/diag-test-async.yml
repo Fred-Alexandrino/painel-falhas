@@ -9,11 +9,11 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Test async sync-fracttal
+      - name: Check final status
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCB0aW1lLCBqc29uCgojIDEpIGNoYW1hIC9zeW5jLWZyYWN0dGFsIGUgbWVkZSB0ZW1wbyBkZSByZXNwb3N0YQp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL3N5bmMtZnJhY3R0YWw/c2VjcmV0PWZhbGhhczIwMjYiCnByaW50KGYiPT09IFBPU1Qge3VybH0gPT09IikKc3RhcnQgPSB0aW1lLnRpbWUoKQpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MzApIGFzIHJlc3A6CiAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgIGVsYXBzZWQgPSB0aW1lLnRpbWUoKSAtIHN0YXJ0CiAgICBwcmludCgiU1RBVFVTOiIsIHJlc3Auc3RhdHVzLCAifCB0ZW1wbzoiLCByb3VuZChlbGFwc2VkLCAyKSwgInMiKQogICAgcHJpbnQoIkJPRFk6IiwgYm9keSkKCnByaW50KCkKIyAyKSBlc3BlcmEgdW0gcG91Y28gZSBjaGVjYSBvIHN0YXR1cyBlbmRwb2ludAp0aW1lLnNsZWVwKDIwKQpzdGF0dXNfdXJsID0gImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pby9zeW5jLWZyYWN0dGFsLXN0YXR1cz9zZWNyZXQ9ZmFsaGFzMjAyNiIKcHJpbnQoZiI9PT0gR0VUIHtzdGF0dXNfdXJsfSAoYXBvcyAyMHMpID09PSIpCnJlcTIgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHN0YXR1c191cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQp3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxMiwgdGltZW91dD0zMCkgYXMgcmVzcDI6CiAgICBib2R5MiA9IHJlc3AyLnJlYWQoKS5kZWNvZGUoKQogICAgcHJpbnQoIlNUQVRVUzoiLCByZXNwMi5zdGF0dXMpCiAgICBwcmludCgiQk9EWSAocHJpbWVpcm9zIDgwMCBjaGFycyk6IiwgYm9keTJbOjgwMF0pCg==" | base64 -d > test_async.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCB0aW1lCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vc3luYy1mcmFjdHRhbC1zdGF0dXM/c2VjcmV0PWZhbGhhczIwMjYiCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24ifSkKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0zMCkgYXMgcmVzcDoKICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoKQogICAgcHJpbnQoIlNUQVRVUzoiLCByZXNwLnN0YXR1cykKICAgIHByaW50KCJCT0RZIChwcmltZWlyb3MgMTIwMCBjaGFycyk6IiwgYm9keVs6MTIwMF0pCg==" | base64 -d > check_final.py
           mkdir -p backups
-          python3 test_async.py > backups/async-test.txt 2>&1 || true
+          python3 check_final.py > backups/async-test.txt 2>&1 || true
           cat backups/async-test.txt
       - name: Push
         if: always()
@@ -24,5 +24,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/async-test.txt || true
-          git commit -m "diag: async test" || echo "nothing"
+          git commit -m "diag: final status check" || echo "nothing"
           git push origin HEAD:main || true
