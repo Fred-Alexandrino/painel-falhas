@@ -1,0 +1,30 @@
+name: diag-daily-summary
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check VM1
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmxzID0gWwogICAgImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pby9oZWFsdGgiLAogICAgImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pby9zeW5jLWZyYWN0dGFsIiwKXQpmb3IgdXJsIGluIHVybHM6CiAgICBwcmludChmIj09PSB7dXJsfSA9PT0iKQogICAgcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiwgdGV4dC9odG1sIn0pCiAgICB0cnk6CiAgICAgICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD02MCkgYXMgcmVzcDoKICAgICAgICAgICAgYm9keSA9IHJlc3AucmVhZCgpLmRlY29kZShlcnJvcnM9InJlcGxhY2UiKQogICAgICAgICAgICBwcmludCgiU1RBVFVTOiIsIHJlc3Auc3RhdHVzKQogICAgICAgICAgICBwcmludCgiQk9EWSAocHJpbWVpcm9zIDEwMDAgY2hhcnMpOiIsIGJvZHlbOjEwMDBdKQogICAgZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZToKICAgICAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgICAgICBwcmludCgiQk9EWToiLCBlLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIilbOjEwMDBdKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KCJFUlJPUjoiLCBzdHIoZSkpCiAgICBwcmludCgpCg==" | base64 -d > check_vm1.py
+          mkdir -p backups
+          python3 check_vm1.py > backups/diag-result.txt 2>&1 || true
+      - name: Check UptimeRobot
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCmRhdGEgPSBqc29uLmR1bXBzKHsKICAgICJhcGlfa2V5IjogInUzNjAxNTgxLTFhMGU3OGYzNTUzMTBkY2FlYmUzY2VhZiIsCiAgICAiZm9ybWF0IjogImpzb24iLAogICAgImxvZ3MiOiAxLAogICAgInJlc3BvbnNlX3RpbWVzIjogMAp9KS5lbmNvZGUoKQpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KCJodHRwczovL2FwaS51cHRpbWVyb2JvdC5jb20vdjIvZ2V0TW9uaXRvcnMiLCBkYXRhPWRhdGEsCiAgICBoZWFkZXJzPXsiQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL2pzb24iLCAiQ2FjaGUtQ29udHJvbCI6ICJuby1jYWNoZSJ9KQp3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTMwKSBhcyByZXNwOgogICAgYm9keSA9IGpzb24ubG9hZHMocmVzcC5yZWFkKCkuZGVjb2RlKCkpCiAgICBmb3IgbSBpbiBib2R5LmdldCgibW9uaXRvcnMiLCBbXSk6CiAgICAgICAgcHJpbnQobS5nZXQoImZyaWVuZGx5X25hbWUiKSwgInwgc3RhdHVzOiIsIG0uZ2V0KCJzdGF0dXMiKSwgInwgdXJsOiIsIG0uZ2V0KCJ1cmwiKSkKICAgICAgICBmb3IgbG9nIGluIG0uZ2V0KCJsb2dzIiwgW10pWzo1XToKICAgICAgICAgICAgcHJpbnQoIiAgIGxvZzoiLCBsb2cpCg==" | base64 -d > check_up.py
+          python3 check_up.py >> backups/diag-result.txt 2>&1 || true
+          cat backups/diag-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/diag-result.txt
+          git commit -m "diag: daily summary check" || echo "nothing"
+          git push origin HEAD:main
