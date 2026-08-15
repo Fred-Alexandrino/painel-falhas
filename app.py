@@ -31,6 +31,8 @@ from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, ger
 from relatorio_handover import gerar_handover_docx
 from relatorio_handover_usina import montar_relatorio_handover_usina
 from relatorio_handover_usina_docx import gerar_handover_usina_completo
+from relatorio_ata_reuniao import gerar_ata_reuniao_docx
+import docx as _docx_lib  # leitura de transcrições .docx (Teams) enviadas pelo usuário
 import pdfplumber
 from pdf2image import convert_from_bytes
 from pypdf import PdfReader, PdfWriter
@@ -13034,6 +13036,166 @@ def gerar_relatorio_handover_usina_route():
         )
     except Exception as e:
         log.error(f"[Relatorio Handover Usina] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Ata de Reunião (Painel de Relatórios) ───────────────────────────────
+
+def _extrair_texto_transcricao(nome_arquivo, conteudo_bytes):
+    """Extrai o texto de uma transcrição de reunião (Teams), aceitando
+    .docx (exportado do Teams/Stream — um parágrafo por fala, com nome do
+    participante e timestamp) ou .txt simples."""
+    nome = (nome_arquivo or "").lower()
+    if nome.endswith(".docx"):
+        doc = _docx_lib.Document(BytesIO(conteudo_bytes))
+        linhas = [p.text for p in doc.paragraphs if p.text.strip()]
+        return "\n".join(linhas)
+    return conteudo_bytes.decode("utf-8", errors="ignore")
+
+
+def _montar_prompt_ata_reuniao(texto_transcricao, cliente_hint=""):
+    contexto_cliente = (
+        f'O cliente/contraparte desta reunião é "{cliente_hint}" (informado pelo usuário) — '
+        f"use esse nome no subtítulo da capa e no rótulo de clientes.\n"
+        if cliente_hint else
+        "O nome do cliente/contraparte não foi informado — identifique-o pelo contexto da "
+        "transcrição (nomes de empresas, e-mails, usinas mencionadas) e use \"Grid Co.\" como "
+        "a outra parte (Grid Co. é a empresa de O&M que participa de todas essas reuniões).\n"
+    )
+    return f"""Você é um Supervisor de O&M da Grid Co. (empresa de operação e manutenção de usinas
+fotovoltaicas no Brasil) redigindo a ATA OFICIAL de uma reunião, a partir da transcrição bruta
+exportada do Microsoft Teams (um parágrafo por fala, geralmente com nome do participante e
+timestamp misturados no texto).
+
+{contexto_cliente}
+TAREFA: leia a transcrição inteira com atenção e estruture uma ata de reunião profissional,
+em terceiro pessoa, seguindo EXATAMENTE o schema JSON abaixo. Cada campo alimenta um componente
+visual fixo do padrão Grid Co. (capa, seções numeradas, cards de tópico numerados, tabela de
+ações, tabela de premissas) — não invente estrutura nova, preencha os campos do schema.
+
+REGRAS DE CONTEÚDO (críticas):
+- NUNCA invente fatos, nomes, datas, números de OS/inversor ou valores que não estejam na
+  transcrição. Se algo estiver ambíguo ou incompleto, descreva como está (ex.: "data a confirmar")
+  em vez de supor.
+- PRESERVE O GRAU DE CERTEZA do texto original: se alguém disse "acho que", "acredito", "talvez",
+  "devemos conseguir", não transforme em afirmação categórica — mantenha a incerteza na redação.
+- Cada tópico em "topicos" deve corresponder a UM assunto discutido, na ordem em que apareceu na
+  conversa. Uma linha "corpo" por tópico, escrita em texto corrido (não em lista), explicando o
+  que foi discutido, decidido ou levantado — com os detalhes técnicos relevantes (números,
+  usinas, prazos, nomes) preservados.
+- Use "callout_label" + "callout_texto" SOMENTE quando o tópico tiver uma decisão clara, ação
+  definida, pendência, ou prazo/próximo passo explícito — rótulos possíveis: "Decisão:",
+  "Ação:", "Próximo passo:", "Pendência:", "Prazo:". Nem todo tópico precisa de callout.
+  callout_tipo = "warn" só para alertas/riscos reais; use "green" pro resto.
+- "responsavel" de cada tópico: quem conduziu/é dono daquele assunto (uma ou mais pessoas,
+  separadas por " / "). Pode ficar vazio se não ficar claro.
+- Preencha "cronograma" APENAS se a reunião tiver claramente uma lista de datas/prazos por
+  usina ou item (ex.: cronograma de poda, cronograma de manutenção) que faça sentido virar
+  tabela separada. Caso contrário, retorne cronograma como null — não force uma tabela.
+- "acoes": consolide TODAS as ações/encaminhamentos combinados na reunião (mesmo os já citados
+  dentro de algum callout de tópico) numa lista objetiva de itens únicos, cada um com um
+  responsável e prazo quando existir.
+- "premissas": 3 a 6 observações gerais/conclusões da reunião como um todo (não repita os
+  tópicos individuais — são takeaways transversais).
+- Textos SEMPRE em português do Brasil, tom técnico e direto, terceira pessoa (nunca "eu").
+- Data e duração da reunião: procure no início da transcrição (o Teams normalmente inclui data/
+  hora/duração antes da primeira fala). Se não encontrar duração, omita-a do objetivo.
+
+TRANSCRIÇÃO:
+---
+{texto_transcricao[:60000]}
+---
+
+FORMATO DE SAÍDA — responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes
+ou depois), EXATAMENTE neste schema:
+{{
+  "titulo_capa": "Reunião Semanal" ou "Reunião de Acompanhamento" (curto, 2-4 palavras),
+  "subtitulo_capa": "NOME CLIENTE & GRID CO." (maiúsculas),
+  "clientes_label": "Nome Cliente & Grid Co.",
+  "data_extenso": "23 de julho de 2026",
+  "data_arquivo": "23-07-2026",
+  "rodape_capa": "Documento de uso interno — Grid Co. / Nome Cliente",
+  "objetivo": "parágrafo único: registra que o documento resume a reunião, data, duração (se souber) e participantes (nomes encontrados na transcrição, com empresa entre parênteses quando identificável).",
+  "topicos": [
+    {{"titulo": "título curto do assunto", "responsavel": "Nome(s)",
+      "corpo": "parágrafo explicando o que foi discutido",
+      "callout_label": "Ação:" ou null, "callout_texto": "..." ou null, "callout_tipo": "green"}}
+  ],
+  "cronograma": null OU {{"titulo": "CRONOGRAMA DE ...", "descricao": "frase intro",
+      "headers": ["Usina","Data prevista","Situação"], "linhas": [["...","...","..."]]}},
+  "acoes": [{{"acao": "...", "resp": "Nome — prazo se houver"}}],
+  "premissas": ["...", "..."]
+}}"""
+
+
+def _gerar_dados_ata_com_ia(texto_transcricao, cliente_hint=""):
+    prompt = _montar_prompt_ata_reuniao(texto_transcricao, cliente_hint)
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 8192,
+                "responseMimeType": "application/json",
+            },
+        },
+        timeout=90,
+    )
+    data = resp.json()
+    candidato = data["candidates"][0]
+    texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    parsed = json.loads(texto_limpo)
+    if not parsed.get("topicos"):
+        raise ValueError("A IA não conseguiu identificar tópicos na transcrição enviada.")
+    return parsed
+
+
+@app.route("/gerar-ata-reuniao", methods=["POST", "OPTIONS"])
+def gerar_ata_reuniao_route():
+    """
+    Gera a "Ata de Reunião" (.docx, padrão visual Grid Co.) a partir de uma
+    transcrição de reunião do Teams enviada pelo usuário no Painel de
+    Relatórios.
+
+    multipart/form-data:
+      - "transcricao": arquivo .docx (exportado do Teams) ou .txt
+      - "cliente": (opcional) nome do cliente/contraparte, pra ajudar a IA
+        a rotular a capa corretamente sem precisar adivinhar do texto.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor."}), 500
+    try:
+        arquivo = request.files.get("transcricao")
+        if not arquivo or not arquivo.filename:
+            return jsonify({"ok": False, "error": "Anexe o arquivo de transcrição (.docx ou .txt)."}), 400
+
+        cliente_hint = (request.form.get("cliente") or "").strip()
+        conteudo_bytes = arquivo.read()
+        texto = _extrair_texto_transcricao(arquivo.filename, conteudo_bytes)
+        if not texto.strip():
+            return jsonify({"ok": False, "error": "Não foi possível extrair texto da transcrição enviada."}), 400
+
+        log.info(f"[Ata Reuniao] Transcrição recebida: {arquivo.filename} "
+                 f"({len(conteudo_bytes)} bytes, {len(texto)} chars extraídos), cliente_hint={cliente_hint!r}")
+
+        dados = _gerar_dados_ata_com_ia(texto, cliente_hint)
+        conteudo = gerar_ata_reuniao_docx(dados)
+
+        subtitulo = (dados.get("subtitulo_capa") or "Grid Co.").strip()
+        data_arquivo = (dados.get("data_arquivo") or "").strip()
+        sufixo = f" - {data_arquivo}" if data_arquivo else ""
+        nome_arquivo = f"Ata de Reunião - {subtitulo}{sufixo}.docx"
+
+        log.info(f"[Ata Reuniao] Gerada com sucesso: {nome_arquivo} ({len(dados.get('topicos', []))} tópicos)")
+        return send_file(
+            BytesIO(conteudo), as_attachment=True, download_name=nome_arquivo,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    except Exception as e:
+        log.error(f"[Ata Reuniao] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
