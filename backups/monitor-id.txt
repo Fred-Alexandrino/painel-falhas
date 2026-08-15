@@ -1,3 +1,0 @@
-803376989 | whatsapp-painel-falhas.onrender.com/health | timeout: 30 | interval: 300
-803473818 | whatsapp-painel-falhas.onrender.com/sync-fracttal?secret=falhas2026 | timeout: 30 | interval: 300
-803377002 | wppconnect-painel.onrender.com/health | timeout: 30 | interval: 300
