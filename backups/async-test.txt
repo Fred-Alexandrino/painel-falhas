@@ -1,9 +1,3 @@
-=== POST https://api.168.138.232.237.sslip.io/sync-fracttal?secret=falhas2026 ===
-STATUS: 200 | tempo: 0.62 s
-BODY: {"background":true,"iniciado_em":"2026-08-15T15:59:43.446013-03:00","ok":true,"status":"ciclo_iniciado"}
-
-
-=== GET https://api.168.138.232.237.sslip.io/sync-fracttal-status?secret=falhas2026 (apos 20s) ===
 STATUS: 200
-BODY (primeiros 800 chars): {"body":null,"concluido_em":null,"em_andamento":true,"iniciado_em":"2026-08-15T15:59:43.446013-03:00","ok":true}
+BODY (primeiros 1200 chars): {"body":null,"concluido_em":null,"em_andamento":true,"iniciado_em":"2026-08-15T15:59:43.446013-03:00","ok":true}
 
