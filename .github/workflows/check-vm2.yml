@@ -1,0 +1,26 @@
+name: check-vm2
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmxzID0gWwogICAgImh0dHBzOi8vd3BwLjE0Ny4xNS42Ni4yNDEuc3NsaXAuaW8vaGVhbHRoIiwKICAgICJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlvL3N0YXR1cyIsCiAgICAiaHR0cHM6Ly93cHAuMTQ3LjE1LjY2LjI0MS5zc2xpcC5pby9xciIsCl0KZm9yIHVybCBpbiB1cmxzOgogICAgcHJpbnQoZiI9PT0ge3VybH0gPT09IikKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24sIHRleHQvaHRtbCJ9KQogICAgdHJ5OgogICAgICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjApIGFzIHJlc3A6CiAgICAgICAgICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIikKICAgICAgICAgICAgcHJpbnQoIlNUQVRVUzoiLCByZXNwLnN0YXR1cykKICAgICAgICAgICAgcHJpbnQoIkJPRFkgKHByaW1laXJvcyA1MDAgY2hhcnMpOiIsIGJvZHlbOjUwMF0pCiAgICBleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgICAgIHByaW50KCJTVEFUVVM6IiwgZS5jb2RlKQogICAgICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZShlcnJvcnM9InJlcGxhY2UiKVs6NTAwXSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICBwcmludCgiRVJST1I6Iiwgc3RyKGUpKQogICAgcHJpbnQoKQo=" | base64 -d > check_vm2.py
+          mkdir -p backups
+          python3 check_vm2.py > backups/vm2-check.txt 2>&1 || true
+          cat backups/vm2-check.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/vm2-check.txt
+          git commit -m "check: vm2" || echo "nothing"
+          git push origin HEAD:main
