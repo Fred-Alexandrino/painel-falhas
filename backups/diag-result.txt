@@ -1,0 +1,28 @@
+=== https://api.168.138.232.237.sslip.io/health ===
+STATUS: 200
+BODY (primeiros 1000 chars): {"status":"ok","timestamp":"2026-08-15T11:53:33.358388-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
+
+
+=== https://api.168.138.232.237.sslip.io/sync-fracttal ===
+STATUS: 401
+BODY: {"error":"unauthorized","ok":false}
+
+
+whatsapp-painel-falhas.onrender.com/health | status: 2 | url: https://api.168.138.232.237.sslip.io/health
+   log: {'type': 2, 'datetime': 1786456319, 'duration': 349296, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786456015, 'duration': 304, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786388050, 'duration': 67965, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786387746, 'duration': 304, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1784286528, 'duration': 2101218, 'reason': {'code': '200', 'detail': 'OK'}}
+whatsapp-painel-falhas.onrender.com/sync-fracttal?secret=falhas2026 | status: 9 | url: https://api.168.138.232.237.sslip.io/sync-fracttal?secret=falhas2026
+   log: {'type': 1, 'datetime': 1786670207, 'duration': 0, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786669763, 'duration': 444, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786457079, 'duration': 212684, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786456325, 'duration': 754, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786366673, 'duration': 89652, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+wppconnect-painel.onrender.com/health | status: 2 | url: https://wpp.147.15.66.241.sslip.io/health
+   log: {'type': 2, 'datetime': 1786047608, 'duration': 758006, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786047302, 'duration': 306, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786039941, 'duration': 7361, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786039636, 'duration': 305, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1785866508, 'duration': 173128, 'reason': {'code': '200', 'detail': 'OK'}}
