@@ -1,5 +1,0 @@
-WPP STATUS ERROR: The read operation timed out
-
-=== /health ===
-{"status":"ok","timestamp":"2026-08-16T09:01:20.642286-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
-
