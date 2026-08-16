@@ -1,1 +1,3 @@
 STATUS: 200
+RAW (primeiros 500): {"ok":true,"pares":{"auditoria_completa_em_12h":"2026-08-15","auditoria_completa_em_16h":"2026-08-15","auditoria_completa_em_7h":"2026-08-15","chamados_ultima_sincronizacao":"14/08/2026 23:02:29","chamados_ultima_tentativa":"28/07/2026 16:53:53","chamados_ultimo_detalhe":"criadas: 0, atualizadas: 0","chamados_ultimo_erro":"","chamados_ultimo_status":"ok","cluster_usina:ABC Morada Nova":"CE Leste 01","cluster_usina:Araputanga":"MT Sul 01","cluster_usina:Boa Esperan\u00e7a do Sul I":"SP Centro 01"
+TYPE hint (primeiros 100): '{"ok":true,"pares":{"auditoria_completa_em_12h":"2026-08-15","auditoria_completa_em_16h":"2026-08-15'
