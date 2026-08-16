@@ -1,0 +1,32 @@
+name: logs-vm1-fv
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get logs
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          script_stop: false
+          script: |
+            sudo journalctl -u painel-falhas --since "2026-08-16 07:55:00" --until "2026-08-16 08:15:00" --no-pager > /tmp/logs_fv.txt 2>&1
+            grep -i "fv" /tmp/logs_fv.txt > /tmp/logs_fv_filtrado.txt || echo "sem linhas com fv" > /tmp/logs_fv_filtrado.txt
+            cat /tmp/logs_fv_filtrado.txt
+      - name: Save marker
+        run: |
+          mkdir -p backups
+          echo "logs no output do step SSH acima" > backups/logs-vm1-marker.txt
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Fred-Alexandrino/painel-falhas.git
+          git pull --rebase origin main
+          git add backups/logs-vm1-marker.txt
+          git commit -m "chore: marker" || echo "nothing"
+          git push origin HEAD:main
