@@ -1,0 +1,26 @@
+name: test-sh
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0Cgp1cmwgPSAiaHR0cHM6Ly93cHAuMTQ3LjE1LjY2LjI0MS5zc2xpcC5pby9zdGF0dXMiCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24ifSkKdHJ5OgogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0yMCkgYXMgcmVzcDoKICAgICAgICBwcmludCgiU1RBVFVTIEhUVFA6IiwgcmVzcC5zdGF0dXMpCiAgICAgICAgcHJpbnQoIkJPRFk6IiwgcmVzcC5yZWFkKCkuZGVjb2RlKClbOjMwMF0pCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgIHByaW50KCJFUlJPUjoiLCBzdHIoZSkpCg==" | base64 -d > test_status_hoje.py
+          mkdir -p backups
+          python3 test_status_hoje.py > backups/sh-result.txt 2>&1 || true
+          cat backups/sh-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/sh-result.txt
+          git commit -m "test: status hoje" || echo "nothing"
+          git push origin HEAD:main
