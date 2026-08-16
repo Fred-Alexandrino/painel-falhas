@@ -1,12 +1,8 @@
-auditoria_completa_em_12h = 2026-08-15
-auditoria_completa_em_16h = 2026-08-15
-auditoria_completa_em_7h = 2026-08-15
-comunicados_enviados_em = 2026-07-15
-descoberta_os_em = 2026-07-12T17:16:35
-descoberta_rapida_ultima_em = 2026-08-16 08:49:48
-fv_energias:ronda:08:2026-08-14 = enviado
-fv_energias:ronda:12:2026-08-15 = enviado
-fv_energias:ronda:15:2026-08-15 = enviado
-fv_energias:ronda:17:2026-08-15 = enviado
-resumo_diario_enviado_em = 2026-08-15
-ronda_enviada_em = 2026-08-14
+whatsapp-painel-falhas.onrender.com/sync-fracttal?secret=falhas2026
+   rt: {'datetime': 1786879980, 'value': 392}
+   rt: {'datetime': 1786879680, 'value': 890}
+   rt: {'datetime': 1786879320, 'value': 388}
+   rt: {'datetime': 1786879020, 'value': 617}
+   rt: {'datetime': 1786878720, 'value': 390}
+   rt: {'datetime': 1786878420, 'value': 349}
+   rt: {'datetime': 1786878120, 'value': 390}
