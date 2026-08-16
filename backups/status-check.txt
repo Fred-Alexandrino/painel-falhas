@@ -1,8 +1,0 @@
-whatsapp-painel-falhas.onrender.com/sync-fracttal?secret=falhas2026
-   rt: {'datetime': 1786879980, 'value': 392}
-   rt: {'datetime': 1786879680, 'value': 890}
-   rt: {'datetime': 1786879320, 'value': 388}
-   rt: {'datetime': 1786879020, 'value': 617}
-   rt: {'datetime': 1786878720, 'value': 390}
-   rt: {'datetime': 1786878420, 'value': 349}
-   rt: {'datetime': 1786878120, 'value': 390}
