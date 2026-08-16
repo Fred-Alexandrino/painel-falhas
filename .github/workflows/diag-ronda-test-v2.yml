@@ -8,24 +8,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
-      - uses: actions/checkout@v4
-      - name: Test gerar-ronda
-        run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2dlcmFyLXJvbmRhP2Vudmlhcj1mYWxzZSZzZWNyZXQ9ZmFsaGFzMjAyNiIKcHJpbnQoZiI9PT0gR0VUIHt1cmx9ID09PSIpCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24ifSkKdHJ5OgogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD05MCkgYXMgcmVzcDoKICAgICAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgICAgICBwcmludCgiU1RBVFVTOiIsIHJlc3Auc3RhdHVzKQogICAgICAgIHByaW50KCJCT0RZIChwcmltZWlyb3MgMjAwMCBjaGFycyk6IiwgYm9keVs6MjAwMF0pCmV4Y2VwdCB1cmxsaWIuZXJyb3IuSFRUUEVycm9yIGFzIGU6CiAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZShlcnJvcnM9InJlcGxhY2UiKVs6MjAwMF0pCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgIHByaW50KCJFUlJPUjoiLCBzdHIoZSkpCg==" | base64 -d > check.py
-          mkdir -p backups
-          python3 check.py > backups/ronda-test-result.txt 2>&1 || true
-          cat backups/ronda-test-result.txt
-      - name: Push
-        if: always()
+      - name: Test gerar-ronda and push via API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
-          git fetch origin main
-          git reset --mixed origin/main
-          git add backups/ronda-test-result.txt
-          git status
-          git commit -m "diag: ronda test v2" || echo "nothing to commit"
-          git push origin HEAD:main -v || (echo "PUSH_FAILED"; git log -3; git remote -v)
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2dlcmFyLXJvbmRhP2Vudmlhcj1mYWxzZSZzZWNyZXQ9ZmFsaGFzMjAyNiIKcHJpbnQoZiI9PT0gR0VUIHt1cmx9ID09PSIpCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24ifSkKdHJ5OgogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD05MCkgYXMgcmVzcDoKICAgICAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgICAgICBwcmludCgiU1RBVFVTOiIsIHJlc3Auc3RhdHVzKQogICAgICAgIHByaW50KCJCT0RZIChwcmltZWlyb3MgMjAwMCBjaGFycyk6IiwgYm9keVs6MjAwMF0pCmV4Y2VwdCB1cmxsaWIuZXJyb3IuSFRUUEVycm9yIGFzIGU6CiAgICBwcmludCgiU1RBVFVTOiIsIGUuY29kZSkKICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZShlcnJvcnM9InJlcGxhY2UiKVs6MjAwMF0pCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgIHByaW50KCJFUlJPUjoiLCBzdHIoZSkpCg==" | base64 -d > check.py
+          python3 check.py > result.txt 2>&1 || true
+          cat result.txt
+          CONTENT_B64=$(base64 -w0 result.txt)
+          EXISTING_SHA=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/ronda-test-result.txt" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha',''))")
+          if [ -n "$EXISTING_SHA" ]; then
+            PAYLOAD="{\"message\":\"diag: ronda test v2 result\",\"content\":\"$CONTENT_B64\",\"sha\":\"$EXISTING_SHA\"}"
+          else
+            PAYLOAD="{\"message\":\"diag: ronda test v2 result\",\"content\":\"$CONTENT_B64\"}"
+          fi
+          echo "$PAYLOAD" > /tmp/payload.json
+          curl -s -X PUT -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/ronda-test-result.txt" \
+            -d @/tmp/payload.json -w "\nHTTP:%{http_code}\n"
