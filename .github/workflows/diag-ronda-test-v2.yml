@@ -23,6 +23,9 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git fetch origin main
+          git reset --mixed origin/main
           git add backups/ronda-test-result.txt
+          git status
           git commit -m "diag: ronda test v2" || echo "nothing to commit"
-          git push origin HEAD:main
+          git push origin HEAD:main -v || (echo "PUSH_FAILED"; git log -3; git remote -v)
