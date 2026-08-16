@@ -1,0 +1,26 @@
+name: diag-ronda
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diag
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgojIDEuIFN0YXR1cyBkbyBXaGF0c0FwcApwcmludCgiPT09IFN0YXR1cyBXaGF0c0FwcCAoVk0yKSA9PT0iKQp0cnk6CiAgICByZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KCJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlvL3N0YXR1cyIsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0yMCkgYXMgcmVzcDoKICAgICAgICBwcmludChyZXNwLnJlYWQoKS5kZWNvZGUoKVs6MzAwXSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoIkVSUk86Iiwgc3RyKGUpKQoKcHJpbnQoKQpwcmludCgiPT09IEhlYWx0aCBWTTEgKGRpc3BhcmEgbyBjaWNsbyBGViBFbmVyZ2lhcykgPT09IikKdHJ5OgogICAgcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2hlYWx0aCIsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0yMCkgYXMgcmVzcDoKICAgICAgICBwcmludChyZXNwLnJlYWQoKS5kZWNvZGUoKSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoIkVSUk86Iiwgc3RyKGUpKQo=" | base64 -d > diag_ronda.py
+          mkdir -p backups
+          python3 diag_ronda.py > backups/diag-ronda-result.txt 2>&1 || true
+          cat backups/diag-ronda-result.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/diag-ronda-result.txt
+          git commit -m "diag: ronda 8h" || echo "nothing"
+          git push origin HEAD:main
