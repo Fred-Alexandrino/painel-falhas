@@ -7227,34 +7227,17 @@ def _sync_fracttal_worker():
     """
     body = {"ok": True}
 
-    try:
-        body["atualizacao_status"] = _auditoria_consistencia_os_core(aplicar=True)
-    except Exception as e:
-        log.error(f"[Atualizacao] Erro no piggyback: {e}")
-        body["atualizacao_status"] = {"erro": str(e)}
-
-    # DESATIVADO a pedido do Fred em 15/07/2026: o disparo automático não
-    # estava rodando de forma confiável às 7h (mesmo com a janela alargada
-    # pra 90min) e, quando ele intervinha manualmente pra investigar, às
-    # vezes resultava em envio em duplicidade (até 3x o mesmo comunicado
-    # pras mesmas equipes) — prejudicando a credibilidade da ferramenta.
-    # O botão "Comunicados" no painel continua funcionando normalmente,
-    # sob demanda — só o gatilho automático (piggyback no /sync-fracttal)
-    # foi desligado.
-    body["comunicados_check"] = {"disparado": False, "motivo": "disparo automático desativado — use o botão Comunicados"}
-
-    try:
-        body["auditoria_completa_check"] = _verificar_e_disparar_auditoria_completa_se_necessario()
-    except Exception as e:
-        log.error(f"[AuditoriaCompleta] Erro no piggyback: {e}")
-        body["auditoria_completa_check"] = {"erro": str(e)}
-
-    try:
-        body["descoberta_rapida_check"] = _verificar_e_disparar_descoberta_rapida_se_necessario()
-    except Exception as e:
-        log.error(f"[DescobertaRapida] Erro no piggyback: {e}")
-        body["descoberta_rapida_check"] = {"erro": str(e)}
-
+    # ORDEM IMPORTA (corrigido em 16/08/2026): ronda e resumo diário/semanal
+    # têm janela ESTREITA de 30min (08:00-08:30 e 17:00-17:30) e reavaliam
+    # a hora atual só quando chegam a rodar — se rodassem depois da
+    # varredura de status (atualizacao_status, abaixo, que sozinha já leva
+    # 60-90s+ e pode ser seguida de auditoria completa/descoberta rápida,
+    # ambas potencialmente demoradas), o acúmulo de tempo das etapas
+    # anteriores podia empurrar a hora pra fora da janela antes da ronda
+    # sequer ser tentada — foi exatamente o que aconteceu na janela de
+    # ronda de 16/08, gerando um dia inteiro sem ronda mesmo com o piggyback
+    # rodando normalmente a cada 5min. Daqui pra frente, tudo que depende de
+    # janela estreita roda ANTES da varredura pesada de status.
     try:
         body["compromissos_check"] = _verificar_compromissos_se_necessario()
     except Exception as e:
@@ -7278,6 +7261,37 @@ def _sync_fracttal_worker():
     except Exception as e:
         log.error(f"[ResumoSemanal] Erro no piggyback: {e}")
         body["resumo_semanal_check"] = {"erro": str(e)}
+
+    # DESATIVADO a pedido do Fred em 15/07/2026: o disparo automático não
+    # estava rodando de forma confiável às 7h (mesmo com a janela alargada
+    # pra 90min) e, quando ele intervinha manualmente pra investigar, às
+    # vezes resultava em envio em duplicidade (até 3x o mesmo comunicado
+    # pras mesmas equipes) — prejudicando a credibilidade da ferramenta.
+    # O botão "Comunicados" no painel continua funcionando normalmente,
+    # sob demanda — só o gatilho automático (piggyback no /sync-fracttal)
+    # foi desligado.
+    body["comunicados_check"] = {"disparado": False, "motivo": "disparo automático desativado — use o botão Comunicados"}
+
+    # A partir daqui, etapas mais lentas e/ou de janela larga (ou sem
+    # janela) — não travam mais nada de horário estreito, já que as
+    # checagens acima já rodaram primeiro.
+    try:
+        body["atualizacao_status"] = _auditoria_consistencia_os_core(aplicar=True)
+    except Exception as e:
+        log.error(f"[Atualizacao] Erro no piggyback: {e}")
+        body["atualizacao_status"] = {"erro": str(e)}
+
+    try:
+        body["auditoria_completa_check"] = _verificar_e_disparar_auditoria_completa_se_necessario()
+    except Exception as e:
+        log.error(f"[AuditoriaCompleta] Erro no piggyback: {e}")
+        body["auditoria_completa_check"] = {"erro": str(e)}
+
+    try:
+        body["descoberta_rapida_check"] = _verificar_e_disparar_descoberta_rapida_se_necessario()
+    except Exception as e:
+        log.error(f"[DescobertaRapida] Erro no piggyback: {e}")
+        body["descoberta_rapida_check"] = {"erro": str(e)}
 
     _sync_fracttal_last_result["body"] = body
     _sync_fracttal_last_result["concluido_em"] = datetime.now(_TZ_BR).isoformat()
