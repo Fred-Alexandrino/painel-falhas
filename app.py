@@ -14094,26 +14094,39 @@ def _fv_energias_capturar_snapshot_diario():
 
 
 def _fv_energias_processar_ciclo():
-    """Roda a checagem de alertas (sempre) + a ronda informativa (só nas
-    janelas de horário). Isolado de propósito — só é acoplado ao restante
-    do sistema pelo PONTO DE DISPARO (reaproveita o monitor UptimeRobot
-    que já bate em /health a cada 5min), não pela lógica em si."""
+    """Roda a checagem de alertas (sempre) + a ronda informativa. Isolado
+    de propósito — só é acoplado ao restante do sistema pelo PONTO DE
+    DISPARO (reaproveita o monitor UptimeRobot que já bate em /health a
+    cada 5min), não pela lógica em si.
+
+    A ronda usa lógica de RECUPERAÇÃO: em vez de só tentar dentro de uma
+    janela estreita (ex.: 08:00-08:09) e desistir até o dia seguinte se
+    perder essa janela (ex.: por instabilidade do WhatsApp bem naquele
+    momento), verifica TODOS os horários de hoje que já passaram e ainda
+    não foram confirmados como enviados, e tenta o mais atrasado deles —
+    até um limite de 3h de atraso, pra não mandar uma "ronda das 8h"
+    describida à tardezinha."""
     resultado_alerta = _fv_energias_verificar_alertas()
     resultado_snapshot = _fv_energias_capturar_snapshot_diario()
 
     agora = agora_br()
-    hora_atual = agora.strftime("%H")
     hoje_str = agora.strftime("%Y-%m-%d")
 
     ronda_disparada = False
     ronda_resultado = None
-    if hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
-        chave_trava = f"fv_energias:ronda:{hora_atual}:{hoje_str}"
-        if _ler_trava(chave_trava) != "enviado":
-            ronda_resultado = _fv_energias_enviar_ronda(f"{hora_atual}h")
-            if ronda_resultado.get("ok"):
-                _gravar_trava(chave_trava, "enviado")
-                ronda_disparada = True
+    LIMITE_ATRASO_HORAS = 3
+
+    for hora_str in FV_ENERGIAS_HORARIOS_RONDA:
+        hora_agendada = agora.replace(hour=int(hora_str), minute=0, second=0, microsecond=0)
+        atraso = agora - hora_agendada
+        if timedelta(0) <= atraso <= timedelta(hours=LIMITE_ATRASO_HORAS):
+            chave_trava = f"fv_energias:ronda:{hora_str}:{hoje_str}"
+            if _ler_trava(chave_trava) != "enviado":
+                ronda_resultado = _fv_energias_enviar_ronda(f"{hora_str}h")
+                if ronda_resultado.get("ok"):
+                    _gravar_trava(chave_trava, "enviado")
+                    ronda_disparada = True
+                break  # só uma tentativa de envio por ciclo, mesmo que haja mais de uma pendente
 
     return {
         "ronda_disparada": ronda_disparada,
