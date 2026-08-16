@@ -1,0 +1,6 @@
+=== Status WhatsApp (VM2) ===
+{"status":"conectado","grupos_configurados":["120363423233716775@g.us","120363423427343356@g.us","120363402559504115@g.us","120363426381032089@g.us","120363423844956611@g.us","120363421162420788@g.us","120363425837962709@g.us","120363402176878100@g.us","120363423533840348@g.us","120363421052607450@g
+
+=== Health VM1 (dispara o ciclo FV Energias) ===
+{"status":"ok","timestamp":"2026-08-16T09:08:02.982612-03:00","version":"2026-07-01-fix-get_sheet","wpp_server":"https://wpp.147.15.66.241.sslip.io"}
+
