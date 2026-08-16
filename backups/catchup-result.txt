@@ -1,0 +1,3 @@
+STATUS: 200
+BODY: {"alerta":{"alertou":false,"motivo":"sem mudanca de estado","ok":true},"ok":true,"ronda_disparada":false,"ronda_resultado":null,"snapshot":{"capturado":false,"motivo":"fora da janela de captura"}}
+
