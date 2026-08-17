@@ -1,0 +1,2 @@
+STATUS: 200 | tempo: 4.14 s
+BODY: {"co2_evitado":{"unit":"T","value":92.41},"geracao_ano":{"unit":"MWh","value":81.36},"geracao_hoje_kwh":409.4,"geracao_mes":{"unit":"MWh","value":5.77},"geracao_total":{"unit":"MWh","value":115.51},"inversores":[{"dongle":"B3200D5507D8","online":true,"sn":"SP002087G2560054","ultima_atualizacao":"2026-08-17 17:56:46"},{"dongle":"B3200D550916","online":true,"sn":"SP002087G2560052","ultima_atualizaca
