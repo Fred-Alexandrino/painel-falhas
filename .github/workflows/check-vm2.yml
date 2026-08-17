@@ -9,10 +9,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmxzID0gWwogICAgImh0dHBzOi8vd3BwLjE0Ny4xNS42Ni4yNDEuc3NsaXAuaW8vaGVhbHRoIiwKICAgICJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlvL3N0YXR1cyIsCiAgICAiaHR0cHM6Ly93cHAuMTQ3LjE1LjY2LjI0MS5zc2xpcC5pby9xciIsCl0KZm9yIHVybCBpbiB1cmxzOgogICAgcHJpbnQoZiI9PT0ge3VybH0gPT09IikKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24sIHRleHQvaHRtbCJ9KQogICAgdHJ5OgogICAgICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjApIGFzIHJlc3A6CiAgICAgICAgICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIikKICAgICAgICAgICAgcHJpbnQoIlNUQVRVUzoiLCByZXNwLnN0YXR1cykKICAgICAgICAgICAgcHJpbnQoIkJPRFkgKHByaW1laXJvcyA1MDAgY2hhcnMpOiIsIGJvZHlbOjUwMF0pCiAgICBleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgICAgIHByaW50KCJTVEFUVVM6IiwgZS5jb2RlKQogICAgICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZShlcnJvcnM9InJlcGxhY2UiKVs6NTAwXSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICBwcmludCgiRVJST1I6Iiwgc3RyKGUpKQogICAgcHJpbnQoKQo=" | base64 -d > check_vm2.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uLCBiYXNlNjQsIG9zCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL3Jlc3Vtb3M/dGlwbz1yb25kYSZsaW1pdD01JnNlY3JldD1mYWxoYXMyMDI2IgpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCmxpbmVzID0gW10Kd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0zMCkgYXMgcmVzcDoKICAgIGRhdGEgPSBqc29uLmxvYWRzKHJlc3AucmVhZCgpLmRlY29kZSgpKQogICAgZm9yIGl0ZW0gaW4gZGF0YS5nZXQoIml0ZW5zIiwgW10pOgogICAgICAgIGxpbmVzLmFwcGVuZChmIntpdGVtLmdldCgnZGF0YV9yZWZlcmVuY2lhJyl9IHwgZW52aWFkbzoge2l0ZW0uZ2V0KCdlbnZpYWRvX3doYXRzYXBwJyl9IHwgY3JpYWRvOiB7aXRlbS5nZXQoJ2NyaWFkb19lbScpfSIpCgpyZXN1bHRfdGV4dCA9ICJcbiIuam9pbihsaW5lcykKcHJpbnQocmVzdWx0X3RleHQpCgp0b2tlbiA9IG9zLmVudmlyb25bIkdIX1RPS0VOIl0KY29udGVudF9iNjQgPSBiYXNlNjQuYjY0ZW5jb2RlKHJlc3VsdF90ZXh0LmVuY29kZSgpKS5kZWNvZGUoKQpwYXlsb2FkID0ganNvbi5kdW1wcyh7Im1lc3NhZ2UiOiAiZGlhZzogY2hlY2sgaGlzdG9yeSIsICJjb250ZW50IjogY29udGVudF9iNjR9KS5lbmNvZGUoKQpyZXEyID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgKICAgICJodHRwczovL2FwaS5naXRodWIuY29tL3JlcG9zL0ZyZWQtQWxleGFuZHJpbm8vcGFpbmVsLWZhbGhhcy9jb250ZW50cy9iYWNrdXBzL2hpc3QtY2hlY2sudHh0IiwKICAgIGRhdGE9cGF5bG9hZCwgbWV0aG9kPSJQVVQiLAogICAgaGVhZGVycz17IkF1dGhvcml6YXRpb24iOiBmInRva2VuIHt0b2tlbn0iLCAiQWNjZXB0IjogImFwcGxpY2F0aW9uL3ZuZC5naXRodWIranNvbiIsICJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vanNvbiJ9CikKdHJ5OgogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcTIsIHRpbWVvdXQ9MzApIGFzIHJlc3AyOgogICAgICAgIHByaW50KCJQVVQgT0siLCByZXNwMi5zdGF0dXMpCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgIHByaW50KCJQVVQgRkFJTEVEIiwgc3RyKGUpKQo=" | base64 -d > check.py
           mkdir -p backups
-          python3 check_vm2.py > backups/vm2-check.txt 2>&1 || true
+          python3 check.py > backups/vm2-check.txt 2>&1 || true
           cat backups/vm2-check.txt
       - name: Push
         env:
@@ -22,5 +24,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/vm2-check.txt
-          git commit -m "check: vm2" || echo "nothing"
+          git commit -m "check: history" || echo "nothing"
           git push origin HEAD:main
