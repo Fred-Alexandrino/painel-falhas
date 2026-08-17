@@ -1,35 +1,51 @@
-STATUS: 200 | tempo: 36.5 s
-TEXTO:
-📋 RESUMO DIÁRIO — 17/08/2026
+=== CUMPRIDO ===
+{'cliente': 'RenoGrid', 'hIni': '07:30', 'os': '9850', 'statusOSReal': 'Em Revisão', 'statusReal': 'Em Aberto', 'tarefa': 'Acompanhamento - Limpeza de Módulos (Termografia se aplicável)', 'usina': 'RenoGrid - Nova Xavantina 2 - MT'}
+{'cliente': 'Thopen', 'hIni': '13:12', 'os': '10301', 'statusOSReal': 'Em Revisão', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Inversor', 'usina': 'Thopen - Topázio (Matão 2) - SP'}
+{'cliente': 'Thopen', 'hIni': '14:33', 'os': '10301', 'statusOSReal': 'Em Revisão', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Cabos CA/CC', 'usina': 'Thopen - Topázio (Matão 2) - SP'}
 
-✅ ATIVIDADES CONCLUÍDAS
-• ABC Morada Nova: Preventiva Mensal (OS 10320).
-• Colíder I: Preventiva Mensal (OS 10142).
-• Colíder II: Preventiva Anual (OS 10245).
-• Crateús: Religamento do Inversor 1.7 (OS 11334) — Confirmado pelo técnico Railson.
-• Diamantino: Religamento da Cabine 2 (OS 11306) — Confirmado pelo técnico Valmir após trip 51N/86.
-• Ibaté I: Preventiva Mensal (OS 10232).
-• Nova Xavantina II: Limpeza de Módulos (OS 9850).
-• Salvales (Aquiraz II): Handover Transformador (OS 11301).
+=== PENDENTE ===
+{'cliente': 'GD Energy', 'hIni': '09:30', 'os': '10332', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - String e Conjunto de Módulos', 'usina': 'GD Energy - Sol do Norte 1 - CE'}
+{'cliente': 'GD Energy', 'hIni': '10:51', 'os': '10332', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Quadro de Junção', 'usina': 'GD Energy - Sol do Norte 1 - CE'}
+{'cliente': 'GD Energy', 'hIni': '13:12', 'os': '10332', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Quadro de Junção', 'usina': 'GD Energy - Sol do Norte 1 - CE'}
+{'cliente': 'GD Energy', 'hIni': '14:33', 'os': '10332', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Quadro de Junção', 'usina': 'GD Energy - Sol do Norte 1 - CE'}
+{'cliente': 'GD Energy', 'hIni': '15:54', 'os': '10332', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Quadro de Junção', 'usina': 'GD Energy - Sol do Norte 1 - CE'}
+{'cliente': '2C', 'hIni': '07:30', 'os': '10728', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Limpeza das valas de drenagem', 'usina': '2C - Sete Lagoas 2 - MG'}
+{'cliente': '2C', 'hIni': '09:30', 'os': '10149', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Tracker 38.200] - Chamado STI — tcu', 'usina': '2C - Sete Lagoas 2 - MG'}
+{'cliente': 'RenoGrid', 'hIni': '09:30', 'os': '8812', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Inspeção do Inversor 18 com baixa resistência de isolamento — localização do circuito afetado', 'usina': 'RenoGrid - Colíder 1 - MT'}
+{'cliente': 'RenoGrid', 'hIni': '15:30', 'os': '10245', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPA - Transformador', 'usina': 'RenoGrid - Colíder 2 - MT'}
+{'cliente': 'RenoGrid', 'hIni': '19:45', 'os': '10245', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPA - Transformador', 'usina': 'RenoGrid - Colíder 2 - MT'}
+{'cliente': '2C', 'hIni': '07:30', 'os': '10634', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Acompanhamento - Supressão Vegetal', 'usina': '2C - Araputanga 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '07:30', 'os': '11185', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Acompanhamento - Limpeza de Módulos (Termografia se aplicável)', 'usina': 'Thopen - Poconé 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '09:30', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '10:24', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '11:18', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '13:12', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '14:06', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '15:00', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '15:54', 'os': '10971', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Handover – Inversores', 'usina': 'Thopen - Diamantino 1 - MT'}
+{'cliente': 'Thopen', 'hIni': '07:30', 'os': '10744', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Acompanhamento - Limpeza de Módulos (Termografia se aplicável)', 'usina': 'Thopen - Ibaté 2 - SP'}
+{'cliente': 'Thopen', 'hIni': '09:30', 'os': '10016', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Inspeção de integridade dos módulos fotovoltaicos', 'usina': 'Thopen - Boa Esperança do Sul 1 e 2 - SP'}
+{'cliente': 'Thopen', 'hIni': '09:45', 'os': '10743', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Acompanhamento - Limpeza de Módulos (Termografia se aplicável)', 'usina': 'Thopen - Ibaté 1 - SP'}
+{'cliente': 'Thopen', 'hIni': '10:45', 'os': '10284', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': "[Grid Co.] - MPM - Caixa d'água", 'usina': 'Thopen - Boa Esperança do Sul 1 e 2 - SP'}
+{'cliente': 'Thopen', 'hIni': '13:12', 'os': '10284', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Inversor', 'usina': 'Thopen - Boa Esperança do Sul 1 e 2 - SP'}
+{'cliente': 'Thopen', 'hIni': '14:33', 'os': '10284', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Transformador', 'usina': 'Thopen - Boa Esperança do Sul 1 e 2 - SP'}
+{'cliente': 'Thopen', 'hIni': '15:54', 'os': '10284', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPM - Transformador', 'usina': 'Thopen - Boa Esperança do Sul 1 e 2 - SP'}
+{'cliente': 'Thopen', 'hIni': '07:30', 'os': '10030', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': 'Acompanhamento - Limpeza de Módulos (Termografia se aplicável)', 'usina': 'Thopen - Matão 1 - SP'}
+{'cliente': 'Thopen', 'hIni': '15:54', 'os': '8626', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPA - String e Conjunto de Módulos', 'usina': 'Thopen - Topázio (Matão 2) - SP'}
+{'cliente': 'Thopen', 'hIni': '20:09', 'os': '8626', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPA - Transformador', 'usina': 'Thopen - Topázio (Matão 2) - SP'}
 
-⚙️ ATIVIDADES EM PROGRESSO
-• Araputanga: Testes de religamento (OS 10297) e supressão vegetal (OS 10634).
-• Boa Esperança do Sul I: Recomposição de String (OS 11231) — 100% concluída, aguardando fechamento.
-• Carosa (Aquiraz I): Handover Transformador (OS 11304).
-• Guajirú: Inspeção Inversor 1.1 (OS 10831).
-• Nobres: Religamento da Usina (OS 11260) — Em revisão.
-• Poconé: Limpeza de Módulos (OS 11185).
-• Sete Lagoas: Limpeza de valas de drenagem (OS 10728).
-• SunPower (Cascavel): Configuração de Firewall (OS 11365).
+=== EXTRAS (nao programadas) ===
+{'cliente': 'RENOGRID', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10142', 'usina': 'Colíder I'}
+{'cliente': 'THOPEN', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10232', 'usina': 'Ibaté I'}
+{'cliente': 'Alves Lima', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10320', 'usina': 'ABC Morada Nova'}
+{'cliente': 'Sal Energia', 'descricao': 'Handover – Transformador de Potência (Seco/Óleo)', 'equipamento': 'Múltiplas atividades', 'numeroOS': '11301', 'usina': 'Salvales (Aquiraz II)'}
+{'cliente': 'Thopen', 'descricao': '[Cabine 2] - Religamento da Cabine 2', 'equipamento': 'THPN-DMT100-CABN2', 'numeroOS': '11306', 'usina': 'Diamantino'}
+{'cliente': 'Renogrid', 'descricao': '[Inversor 1.7] - Religamento do Inversor 1.7', 'equipamento': 'CTS100-INVR1.7', 'numeroOS': '11334', 'usina': 'Crateús'}
+{'cliente': 'Sal Energia', 'descricao': 'Configuração de Firewall de sistema de operação remota', 'equipamento': 'SALE-SNP100-SSPV1', 'numeroOS': '11365', 'usina': 'SunPower (Cascavel)'}
 
-⚠️ ALERTAS E PENDÊNCIAS
-• OS sem correspondência: Foram mencionadas diversas OSs (ex: 11354, 11363, 11362) que não constam na minha lista de supervisão; ignorar.
-• Divergência: OS 11260 (Nobres) consta como 'Em progresso' no sistema, mas o COS reportou falha de comunicação ativa hoje.
-
-RESUMO POR EQUIPE
-• Equipe Matão/Topázio: Eduardo Elias reportou pendências de manutenção (monitor, câmera, drone) e aguarda agenda para finalizar OSs em Matão 1.
-• Equipe Sete Lagoas: Técnico finalizou a limpeza das valas de drenagem hoje.
-• Equipe Araputanga/Poconé: Equipe atuando na supressão vegetal e limpeza de trackers.
-• Equipe Crateús: Railson realizou ronda, verificação de óleo e análise do Inversor 3.7; religamento do Inversor 7 sem sucesso.
-• Equipe Aquiraz/Cascavel: Adriano e Alisson seguem com a instalação de Mikrotik em SunPower e Sal Energia.
-• Demais grupos (COS/Thopen/Renogrid): Sem assuntos relevantes para minha gestão direta além das oc
+=== PROGRESSO DO DIA ===
+{'cliente': '2C', 'descricao': 'Analise e testes de religamento remoto UFV - Araputanga', 'equipamento': '2C-APG100', 'numeroOS': '10297', 'percentualAtual': '0', 'statusAtual': 'Em Processo', 'usina': 'Araputanga'}
+{'cliente': 'GD Energy', 'descricao': '[Inversor 1.1] - Inspeção Geral do Inversor', 'equipamento': 'GDEN-GJR100-INVR1.1', 'numeroOS': '10831', 'percentualAtual': '0', 'statusAtual': 'Em Processo', 'usina': 'Guajirú'}
+{'cliente': 'Thopen', 'descricao': '[Inversor 1.9] - Recomposição de String', 'equipamento': 'BES100-INVR1.9', 'numeroOS': '11231', 'percentualAtual': '100', 'statusAtual': 'Finalizada', 'usina': 'Boa Esperança do Sul I'}
+{'cliente': 'Renogrid', 'descricao': '[Usina] - Religamento da Usina', 'equipamento': 'RNGD-NBS100', 'numeroOS': '11260', 'percentualAtual': '100', 'statusAtual': 'Em Revisão', 'usina': 'Nobres'}
+{'cliente': 'Sal Energia', 'descricao': 'Handover – Transformador de Potência (Seco/Óleo)', 'equipamento': 'Múltiplas atividades', 'numeroOS': '11304', 'percentualAtual': '0', 'statusAtual': 'Em Processo', 'usina': 'Carosa (Aquiraz I)'}
