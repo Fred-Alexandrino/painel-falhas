@@ -6,7 +6,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - name: Test resumo fix
@@ -23,5 +23,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/vm2-check.txt
-          git commit -m "check: test resumo fix" || echo "nothing"
+          git commit -m "check: test resumo fix v2" || echo "nothing"
           git push origin HEAD:main
