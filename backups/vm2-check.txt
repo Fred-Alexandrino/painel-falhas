@@ -1,3 +1,1 @@
-OS 10142: status='Em Aberto' | statusOS='Em Processo' | percentualOS='68' | ultimaVerificacaoOS='2026-08-17 17:03:51' | usina='Colíder I'
-OS 10232: status='Em Aberto' | statusOS='Em Processo' | percentualOS='76' | ultimaVerificacaoOS='2026-08-17 16:53:24' | usina='Ibaté I'
-OS 10245: status='Em Aberto' | statusOS='Em Processo' | percentualOS='12' | ultimaVerificacaoOS='2026-08-17 17:04:05' | usina='Colíder II'
+ERROR: The read operation timed out | tempo: 90.5
