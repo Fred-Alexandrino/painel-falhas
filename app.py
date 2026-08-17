@@ -8853,12 +8853,32 @@ def _coletar_dados_resumo_diario(data_str):
         todos_ativ = []
 
     por_numero_os = {}
-    for row in todos_ativ[1:]:
+    for i, row in enumerate(todos_ativ[1:], start=2):
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
         numero_os = row[ATIV_CAMPO_COL["numeroOS"] - 1].strip()
         if numero_os:
-            por_numero_os[numero_os] = row
+            por_numero_os[numero_os] = (i, row)
+
+    # ── Revalidação AO VIVO na Fracttal antes de classificar cumprido/pendente
+    # (corrigido em 17/08/2026, relatado pelo Fred): o resumo antes confiava
+    # cegamente no statusOS já gravado na planilha — mas esse campo só é
+    # tão fresco quanto a última vez que o rodízio de 5min passou por
+    # aquela OS específica. Numa janela de recuperação de backlog grande
+    # (ex.: dias de sync quebrado sendo processados de uma vez), dava pra
+    # o resumo rodar e ler "Em Revisão"/"Finalizada" desatualizado
+    # SEGUNDOS antes da auditoria corrigir aquele mesmo registro pra
+    # "Em Processo" de verdade (ex.: 17/08/2026 — 3 OSs viradas como
+    # concluídas às 17h, só que a Fracttal mostrava 12%-76% concluído,
+    # porque a correção da auditoria pra essas 3 OSs específicas aconteceu
+    # minutos DEPOIS do resumo já ter sido gerado e enviado). Como a
+    # programação do dia é tipicamente uma lista curta (poucas dezenas de
+    # itens), vale a pena confirmar CADA UMA ao vivo na hora de montar o
+    # resumo, em vez de reaproveitar o cache — elimina esse tipo de corrida
+    # de vez, não só nesse caso específico.
+    ORCAMENTO_RECHECK_RESUMO_SEGUNDOS = 40
+    inicio_recheck_resumo = time.time()
+    parou_por_orcamento_resumo = False
 
     programado_cumprido, programado_pendente = [], []
     for r in linhas_pcm:
@@ -8867,19 +8887,40 @@ def _coletar_dados_resumo_diario(data_str):
             "usina": r.get("usina"), "cliente": r.get("cliente"), "tarefa": r.get("tarefa"),
             "os": os_id, "hIni": r.get("h_ini"),
         }
-        row_real = por_numero_os.get(os_id) if os_id else None
-        if row_real is not None:
-            status_real = row_real[ATIV_CAMPO_COL["status"] - 1].strip()
-            status_os_real = row_real[ATIV_CAMPO_COL["statusOS"] - 1].strip()
-            item["statusReal"] = status_real
-            item["statusOSReal"] = status_os_real
-            if _is_concluido_atividade(status_real) or status_os_real in ("Em Revisão", "Finalizada"):
+        entry = por_numero_os.get(os_id) if os_id else None
+        if entry is not None:
+            linha_idx, row_real = entry
+            status_interno_cache = row_real[ATIV_CAMPO_COL["status"] - 1].strip()
+            status_os_cache = row_real[ATIV_CAMPO_COL["statusOS"] - 1].strip()
+
+            status_os_fresco = status_os_cache
+            status_interno_fresco = status_interno_cache
+            if not parou_por_orcamento_resumo and (time.time() - inicio_recheck_resumo) <= ORCAMENTO_RECHECK_RESUMO_SEGUNDOS:
+                try:
+                    resultado_live = _fracttal_verificar_e_atualizar_uma_os(
+                        ws_ativ, linha_idx, row_real, os_id, enviar_notificacao=False)
+                    if resultado_live:
+                        status_os_fresco = resultado_live.get("statusOS") or status_os_cache
+                        status_interno_fresco = _status_interno_esperado(status_os_fresco, status_interno_cache) or status_interno_cache
+                    time.sleep(0.3)
+                except Exception as e:
+                    log.error(f"[ResumoDiario] Erro ao revalidar OS {os_id} ao vivo (usando cache): {e}")
+            else:
+                parou_por_orcamento_resumo = True
+
+            item["statusReal"] = status_interno_fresco
+            item["statusOSReal"] = status_os_fresco
+            if _is_concluido_atividade(status_interno_fresco) or status_os_fresco in ("Em Revisão", "Finalizada"):
                 programado_cumprido.append(item)
             else:
                 programado_pendente.append(item)
         else:
             item["statusReal"] = "sem OS correspondente no painel"
             programado_pendente.append(item)
+
+    if parou_por_orcamento_resumo:
+        log.warning(f"[ResumoDiario] Orçamento de {ORCAMENTO_RECHECK_RESUMO_SEGUNDOS}s pra revalidação ao vivo "
+                    f"esgotado — parte da programação do dia usou o cache já salvo em vez de checar a Fracttal na hora.")
 
     resultado["programacao"] = {"cumprido": programado_cumprido, "pendente": programado_pendente}
 
