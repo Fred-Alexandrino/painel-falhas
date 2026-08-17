@@ -1,4 +1,12 @@
-=== GET https://api.168.138.232.237.sslip.io/gerar-ronda?enviar=true&secret=falhas2026 ===
-STATUS: 500
-BODY: {"error":"503 Server Error: Service Unavailable for url: https://wpp.147.15.66.241.sslip.io/api/enviar-mensagem","ok":false}
-
+--- tentativa 1 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 2 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 3 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 4 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 5 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 6 ---
+QR CODE REAL DISPONIVEL!
