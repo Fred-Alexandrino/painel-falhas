@@ -1,7 +1,14 @@
-=== baileys version ===
-  "version": "6.7.24",
-=== node version ===
-v20.20.2
-=== package.json declared ===
-  "name": "baileys-painel-falhas",
-    "@whiskeysockets/baileys": "^6.7.24",
+--- tentativa 1 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 2 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 3 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 4 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 5 ---
+QR CODE REAL DISPONIVEL!
+--- tentativa 6 ---
+QR CODE REAL DISPONIVEL!
+/health: {"status":"ok","wpp":"desconectado"}
+/status: {"status":"desconectado","grupos_configurados":["120363423233716775@g.us","120363423427343356@g.us","120363402559504115@g.us","120363426381032089@g.us","120363423844956611@g.us","120363421162420788@g.
