@@ -7,20 +7,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Check QR now
-        run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0CnVybCA9ICJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlvL3FyIgpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz17IkFjY2VwdCI6ICJ0ZXh0L2h0bWwifSkKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0zMCkgYXMgcmVzcDoKICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoKQogICAgaWYgIkVzY2FuZWllIG8gUVIiIGluIGJvZHk6CiAgICAgICAgcHJpbnQoIlFSIENPREUgUkVBTCBESVNQT05JVkVMISIpCiAgICAgICAgIyBleHRyYWkgbyBzcmMgZGEgaW1hZ2VtIGJhc2U2NCBwcmEgY29uZmlybWFyIHF1ZSB0ZW0gY29udGV1ZG8KICAgICAgICBpbXBvcnQgcmUKICAgICAgICBtID0gcmUuc2VhcmNoKHInc3JjPSIoW14iXSspIicsIGJvZHkpCiAgICAgICAgaWYgbToKICAgICAgICAgICAgcHJpbnQoInRhbWFuaG8gZG8gZGF0YS11cmwgZGEgaW1hZ2VtOiIsIGxlbihtLmdyb3VwKDEpKSkKICAgIGVsaWYgIkNvbmVjdGFkbyIgaW4gYm9keToKICAgICAgICBwcmludCgiSkEgQ09ORUNUQURPIikKICAgIGVsc2U6CiAgICAgICAgcHJpbnQoImFpbmRhIGdlcmFuZG8gb3Ugb3V0cm8gZXN0YWRvIikKICAgICAgICBwcmludChib2R5WzozMDBdKQo=" | base64 -d > check.py
-          mkdir -p backups
-          python3 check.py > backups/vm2-check.txt 2>&1 || true
-          cat backups/vm2-check.txt
-      - name: Push
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
-          git add backups/vm2-check.txt
-          git commit -m "check: qr now" || echo "nothing"
-          git push origin HEAD:main
+      - name: Check baileys version on VM2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            cat node_modules/@whiskeysockets/baileys/package.json | grep '"version"'
+            node --version
