@@ -35,17 +35,17 @@
 {'cliente': 'Thopen', 'hIni': '20:09', 'os': '8626', 'statusOSReal': 'Em Processo', 'statusReal': 'Em Aberto', 'tarefa': '[Grid Co.] - MPA - Transformador', 'usina': 'Thopen - Topázio (Matão 2) - SP'}
 
 === EXTRAS (nao programadas) ===
-{'cliente': 'RENOGRID', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10142', 'usina': 'Colíder I'}
-{'cliente': 'THOPEN', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10232', 'usina': 'Ibaté I'}
 {'cliente': 'Alves Lima', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10320', 'usina': 'ABC Morada Nova'}
-{'cliente': 'Sal Energia', 'descricao': 'Handover – Transformador de Potência (Seco/Óleo)', 'equipamento': 'Múltiplas atividades', 'numeroOS': '11301', 'usina': 'Salvales (Aquiraz II)'}
 {'cliente': 'Thopen', 'descricao': '[Cabine 2] - Religamento da Cabine 2', 'equipamento': 'THPN-DMT100-CABN2', 'numeroOS': '11306', 'usina': 'Diamantino'}
 {'cliente': 'Renogrid', 'descricao': '[Inversor 1.7] - Religamento do Inversor 1.7', 'equipamento': 'CTS100-INVR1.7', 'numeroOS': '11334', 'usina': 'Crateús'}
 {'cliente': 'Sal Energia', 'descricao': 'Configuração de Firewall de sistema de operação remota', 'equipamento': 'SALE-SNP100-SSPV1', 'numeroOS': '11365', 'usina': 'SunPower (Cascavel)'}
 
 === PROGRESSO DO DIA ===
+{'cliente': 'RENOGRID', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10142', 'percentualAtual': '68', 'statusAtual': 'Em Processo', 'usina': 'Colíder I'}
+{'cliente': 'THOPEN', 'descricao': 'PREVENTIVA MENSAL', 'equipamento': 'Múltiplos equipamentos (Preventiva Mensal)', 'numeroOS': '10232', 'percentualAtual': '76', 'statusAtual': 'Em Processo', 'usina': 'Ibaté I'}
 {'cliente': '2C', 'descricao': 'Analise e testes de religamento remoto UFV - Araputanga', 'equipamento': '2C-APG100', 'numeroOS': '10297', 'percentualAtual': '0', 'statusAtual': 'Em Processo', 'usina': 'Araputanga'}
 {'cliente': 'GD Energy', 'descricao': '[Inversor 1.1] - Inspeção Geral do Inversor', 'equipamento': 'GDEN-GJR100-INVR1.1', 'numeroOS': '10831', 'percentualAtual': '0', 'statusAtual': 'Em Processo', 'usina': 'Guajirú'}
 {'cliente': 'Thopen', 'descricao': '[Inversor 1.9] - Recomposição de String', 'equipamento': 'BES100-INVR1.9', 'numeroOS': '11231', 'percentualAtual': '100', 'statusAtual': 'Finalizada', 'usina': 'Boa Esperança do Sul I'}
 {'cliente': 'Renogrid', 'descricao': '[Usina] - Religamento da Usina', 'equipamento': 'RNGD-NBS100', 'numeroOS': '11260', 'percentualAtual': '100', 'statusAtual': 'Em Revisão', 'usina': 'Nobres'}
 {'cliente': 'Sal Energia', 'descricao': 'Handover – Transformador de Potência (Seco/Óleo)', 'equipamento': 'Múltiplas atividades', 'numeroOS': '11304', 'percentualAtual': '0', 'statusAtual': 'Em Processo', 'usina': 'Carosa (Aquiraz I)'}
+{'cliente': 'Sal Energia', 'descricao': 'Handover – Transformador de Potência (Seco/Óleo)', 'equipamento': 'Múltiplas atividades', 'numeroOS': '11301', 'percentualAtual': '11', 'statusAtual': 'Em Processo', 'usina': 'Salvales (Aquiraz II)'}
