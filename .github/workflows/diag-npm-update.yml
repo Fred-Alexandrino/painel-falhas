@@ -1,0 +1,22 @@
+name: diag-npm-update
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update baileys and restart
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            sudo systemctl stop wppconnect
+            npm install @whiskeysockets/baileys@6.7.24 2>&1 | tail -20
+            cat node_modules/@whiskeysockets/baileys/package.json | grep '"version"'
+            rm -rf auth_info
+            sudo systemctl start wppconnect
+            sleep 5
+            sudo systemctl status wppconnect --no-pager
