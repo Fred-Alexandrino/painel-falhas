@@ -8705,6 +8705,35 @@ def capturar_mensagem_grupo():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/mensagens-capturadas", methods=["GET"])
+def mensagens_capturadas():
+    """Consulta de diagnóstico: lista as mensagens realmente capturadas
+    no banco local (via /capturar-mensagem-grupo, tempo real) num
+    período/grupo, pra investigar buracos de captura — ex.: quando a
+    ponte do WhatsApp (VM2) fica desconectada, nenhuma mensagem chega
+    nesse período, independente da janela que a ronda/resumo consulte
+    depois. Query params: ?data_inicio=YYYY-MM-DD (obrigatório),
+    ?data_fim=YYYY-MM-DD (default = data_inicio), ?grupo_id=... (opcional)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    data_inicio = request.args.get("data_inicio", "").strip()
+    data_fim = request.args.get("data_fim", "").strip() or data_inicio
+    grupo_id = request.args.get("grupo_id", "").strip() or None
+    if not data_inicio:
+        return jsonify({"ok": False, "error": "data_inicio é obrigatório (YYYY-MM-DD)"}), 400
+    try:
+        msgs = _buscar_mensagens_periodo(data_inicio, data_fim, grupo_id=grupo_id)
+        por_grupo = {}
+        for m in msgs:
+            por_grupo.setdefault(m["nome_grupo"], 0)
+            por_grupo[m["nome_grupo"]] += 1
+        return jsonify({"ok": True, "total": len(msgs), "por_grupo": por_grupo, "mensagens": msgs}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _buscar_mensagens_periodo(data_inicio, data_fim, grupo_id=None):
     """Busca mensagens capturadas entre data_inicio e data_fim (strings
     'YYYY-MM-DD', inclusive dos dois lados), opcionalmente filtrando por
