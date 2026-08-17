@@ -7,17 +7,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Stop, clear local auth, restart
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: 147.15.66.241
-          username: ubuntu
-          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
-          script: |
-            sudo systemctl stop wppconnect
-            sleep 2
-            cd ~/wppconnect-server
-            rm -rf auth_info
-            sudo systemctl start wppconnect
-            sleep 5
-            sudo systemctl status wppconnect --no-pager
+      - uses: actions/checkout@v4
+      - name: Check QR
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCB0aW1lCgpmb3IgdGVudGF0aXZhIGluIHJhbmdlKDYpOgogICAgdGltZS5zbGVlcCgxMCkKICAgIHVybCA9ICJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlvL3FyIgogICAgcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAidGV4dC9odG1sIn0pCiAgICB0cnk6CiAgICAgICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0zMCkgYXMgcmVzcDoKICAgICAgICAgICAgYm9keSA9IHJlc3AucmVhZCgpLmRlY29kZSgpCiAgICAgICAgICAgIHByaW50KGYiLS0tIHRlbnRhdGl2YSB7dGVudGF0aXZhKzF9IC0tLSIpCiAgICAgICAgICAgIGlmICJFc2NhbmVpZSBvIFFSIiBpbiBib2R5OgogICAgICAgICAgICAgICAgcHJpbnQoIlFSIENPREUgUkVBTCBESVNQT05JVkVMISIpCiAgICAgICAgICAgIGVsaWYgIkNvbmVjdGFkbyIgaW4gYm9keToKICAgICAgICAgICAgICAgIHByaW50KCJKQSBDT05FQ1RBRE8iKQogICAgICAgICAgICBlbHNlOgogICAgICAgICAgICAgICAgcHJpbnQoImFpbmRhIGdlcmFuZG8uLi4iKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYiLS0tIHRlbnRhdGl2YSB7dGVudGF0aXZhKzF9IC0tLSBFUlJPUjoiLCBzdHIoZSkpCgpmb3IgcGF0aCBpbiBbIi9oZWFsdGgiLCAiL3N0YXR1cyJdOgogICAgdXJsID0gZiJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlve3BhdGh9IgogICAgcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQogICAgdHJ5OgogICAgICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjApIGFzIHJlc3A6CiAgICAgICAgICAgIHByaW50KGYie3BhdGh9OiIsIHJlc3AucmVhZCgpLmRlY29kZSgpWzoyMDBdKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYie3BhdGh9OiBFUlJPUiIsIHN0cihlKSkK" | base64 -d > check_qr.py
+          mkdir -p backups
+          python3 check_qr.py > backups/vm2-check.txt 2>&1 || true
+          cat backups/vm2-check.txt
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
+          git add backups/vm2-check.txt
+          git commit -m "check: qr status v2" || echo "nothing"
+          git push origin HEAD:main
