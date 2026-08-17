@@ -7340,6 +7340,35 @@ def sync_fracttal():
     # Evita sobrepor ciclos: se o anterior ainda está rodando (ex: pico
     # de latência da Fracttal), só confirma o recebimento sem empilhar
     # outra thread — o próximo ping em 5 min tenta de novo.
+    #
+    # PROTEÇÃO CONTRA LOCK TRAVADO (adicionada 17/08/2026): se uma thread
+    # travar de vez (ex.: chamada de rede sem timeout que nunca retorna —
+    # Sheets, Gemini, Fracttal), o lock nunca seria liberado e TODO o
+    # piggyback ficaria "vivo" pro UptimeRobot (responde rápido, parece
+    # saudável) mas sem processar mais nada — foi exatamente esse padrão
+    # observado na manhã de 17/08: gap de quase 1h sem nenhum ciclo real
+    # rodando, respostas idênticas e rápidas (só o "ciclo anterior ainda em
+    # andamento"), e a ronda das 08h nunca chegou a ser tentada dentro da
+    # janela. Se o lock estiver preso há mais de LOCK_TIMEOUT_SEGUNDOS,
+    # tratamos como travado e liberamos à força pra não perder o dia
+    # inteiro de novo.
+    LOCK_TIMEOUT_SEGUNDOS = 300  # ciclo normal leva ~60-90s; auditoria completa pode passar de 4min — 5min de folga
+    if _sync_fracttal_lock.locked():
+        iniciado_str = _sync_fracttal_last_result.get("iniciado_em")
+        travado_ha_muito = False
+        if iniciado_str:
+            try:
+                iniciado_dt = datetime.fromisoformat(iniciado_str)
+                travado_ha_muito = (datetime.now(_TZ_BR) - iniciado_dt).total_seconds() > LOCK_TIMEOUT_SEGUNDOS
+            except Exception:
+                pass
+        if travado_ha_muito:
+            log.error(f"[sync-fracttal] lock travado desde {iniciado_str} (> {LOCK_TIMEOUT_SEGUNDOS}s) — liberando à força")
+            try:
+                _sync_fracttal_lock.release()
+            except RuntimeError:
+                pass
+
     if not _sync_fracttal_lock.acquire(blocking=False):
         return jsonify({
             "ok": True,
