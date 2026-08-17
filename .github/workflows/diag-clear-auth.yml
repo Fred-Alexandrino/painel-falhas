@@ -1,0 +1,21 @@
+name: diag-clear-auth
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stop, clear auth, restart
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            sudo systemctl stop wppconnect
+            sleep 2
+            cd ~/wppconnect-server
+            rm -rf auth_info
+            sudo systemctl start wppconnect
+            sleep 5
+            sudo systemctl status wppconnect --no-pager
