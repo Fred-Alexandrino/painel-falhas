@@ -8,9 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check history
+      - name: Query messages
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vcmVzdW1vcz90aXBvPXJvbmRhJmxpbWl0PTUmc2VjcmV0PWZhbGhhczIwMjYiCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24ifSkKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD0zMCkgYXMgcmVzcDoKICAgIGRhdGEgPSBqc29uLmxvYWRzKHJlc3AucmVhZCgpLmRlY29kZSgpKQogICAgZm9yIGl0ZW0gaW4gZGF0YS5nZXQoIml0ZW5zIiwgW10pOgogICAgICAgIHByaW50KGl0ZW0uZ2V0KCJkYXRhX3JlZmVyZW5jaWEiKSwgInwgZW52aWFkbzoiLCBpdGVtLmdldCgiZW52aWFkb193aGF0c2FwcCIpLCAifCBjcmlhZG86IiwgaXRlbS5nZXQoImNyaWFkb19lbSIpKQo=" | base64 -d > check.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vbWVuc2FnZW5zLWNhcHR1cmFkYXM/Z3J1cG9faWQ9MTIwMzYzNDIzMjMzNzE2Nzc1QGcudXMmZGF0YV9pbmljaW89MjAyNi0wOC0xNCZkYXRhX2ZpbT0yMDI2LTA4LTE3JnNlY3JldD1mYWxoYXMyMDI2IgpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MzApIGFzIHJlc3A6CiAgICBkYXRhID0ganNvbi5sb2FkcyhyZXNwLnJlYWQoKS5kZWNvZGUoKSkKICAgIHByaW50KCJ0b3RhbDoiLCBkYXRhLmdldCgidG90YWwiKSkKICAgIHByaW50KCJwb3JfZ3J1cG86IiwgZGF0YS5nZXQoInBvcl9ncnVwbyIpKQogICAgcHJpbnQoKQogICAgZm9yIG0gaW4gZGF0YS5nZXQoIm1lbnNhZ2VucyIsIFtdKToKICAgICAgICBwcmludChtLmdldCgiZGF0YV9ob3JhIiksICJ8IiwgbS5nZXQoInJlbWV0ZW50ZSIpLCAifCIsIChtLmdldCgidGV4dG8iKSBvciAiIilbOjEwMF0pCg==" | base64 -d > check.py
           mkdir -p backups
           python3 check.py > backups/vm2-check.txt 2>&1 || true
           cat backups/vm2-check.txt
@@ -22,5 +22,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/vm2-check.txt
-          git commit -m "check: history today" || echo "nothing"
+          git commit -m "check: query messages" || echo "nothing"
           git push origin HEAD:main
