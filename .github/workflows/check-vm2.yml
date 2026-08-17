@@ -14,6 +14,32 @@ jobs:
           username: ubuntu
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
           script: |
+            echo "=== baileys version ===" > /tmp/verdiag.txt
             cd ~/wppconnect-server
-            cat node_modules/@whiskeysockets/baileys/package.json | grep '"version"'
-            node --version
+            grep '"version"' node_modules/@whiskeysockets/baileys/package.json >> /tmp/verdiag.txt 2>&1
+            echo "=== node version ===" >> /tmp/verdiag.txt
+            node --version >> /tmp/verdiag.txt 2>&1
+            echo "=== package.json declared ===" >> /tmp/verdiag.txt
+            grep baileys package.json >> /tmp/verdiag.txt 2>&1
+      - name: Fetch and push result
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ORACLE_VM2_SSH_KEY }}" > /tmp/key.pem
+          chmod 600 /tmp/key.pem
+          scp -o StrictHostKeyChecking=no -i /tmp/key.pem ubuntu@147.15.66.241:/tmp/verdiag.txt /tmp/verdiag.txt
+          cat /tmp/verdiag.txt
+          python3 -c "
+import base64, json, urllib.request, os
+content = open('/tmp/verdiag.txt','rb').read()
+b64 = base64.b64encode(content).decode()
+token = os.environ['GH_TOKEN']
+payload = json.dumps({'message':'diag: baileys version', 'content': b64}).encode()
+req = urllib.request.Request('https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/vm2-check.txt', data=payload, method='PUT', headers={'Authorization':f'token {token}','Accept':'application/vnd.github+json','Content-Type':'application/json'})
+try:
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        print('PUT OK', resp.status)
+except Exception as e:
+    print('PUT FAILED', str(e))
+"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
