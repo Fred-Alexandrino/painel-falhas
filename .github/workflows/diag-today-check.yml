@@ -1,0 +1,28 @@
+name: diag-today-check
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check today
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2NvbmZpZy1sZXIiCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiWC1XZWJob29rLVNlY3JldCI6ICJmYWxoYXMyMDI2IiwgIkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9NjApIGFzIHJlc3A6CiAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgIGRhdGEgPSBqc29uLmxvYWRzKGJvZHkpCiAgICBwYXJlcyA9IGRhdGEuZ2V0KCJwYXJlcyIsIHt9KQogICAgZm9yIGssIHYgaW4gc29ydGVkKHBhcmVzLml0ZW1zKCkpOgogICAgICAgIGtsID0gay5sb3dlcigpCiAgICAgICAgaWYgInJvbmRhIiBpbiBrbCBvciAicmVzdW1vIiBpbiBrbCBvciAiYXVkaXRvcmlhIiBpbiBrbDoKICAgICAgICAgICAgcHJpbnQoaywgIj0iLCB2KQoKcHJpbnQoKQp1cmwyID0gImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pby9zeW5jLWZyYWN0dGFsLXN0YXR1cz9zZWNyZXQ9ZmFsaGFzMjAyNiIKcmVxMiA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsMiwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEyLCB0aW1lb3V0PTMwKSBhcyByZXNwMjoKICAgIHByaW50KCJTVEFUVVMgRU5EUE9JTlQ6IiwgcmVzcDIucmVhZCgpLmRlY29kZSgpWzozMDAwXSkK" | base64 -d > check.py
+          python3 check.py > result.txt 2>&1 || true
+          cat result.txt
+          CONTENT_B64=$(base64 -w0 result.txt)
+          EXISTING_SHA=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/today-check.txt" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha',''))")
+          if [ -n "$EXISTING_SHA" ]; then
+            PAYLOAD="{\"message\":\"diag: today check\",\"content\":\"$CONTENT_B64\",\"sha\":\"$EXISTING_SHA\"}"
+          else
+            PAYLOAD="{\"message\":\"diag: today check\",\"content\":\"$CONTENT_B64\"}"
+          fi
+          echo "$PAYLOAD" > /tmp/payload.json
+          curl -s -X PUT -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/today-check.txt" \
+            -d @/tmp/payload.json -w "\nHTTP:%{http_code}\n"
