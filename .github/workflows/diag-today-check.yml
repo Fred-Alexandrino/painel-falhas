@@ -8,19 +8,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Check today
+      - name: Check ronda status
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2NvbmZpZy1sZXIiCnJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiWC1XZWJob29rLVNlY3JldCI6ICJmYWxoYXMyMDI2IiwgIkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9NjApIGFzIHJlc3A6CiAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgIGRhdGEgPSBqc29uLmxvYWRzKGJvZHkpCiAgICBwYXJlcyA9IGRhdGEuZ2V0KCJwYXJlcyIsIHt9KQogICAgZm9yIGssIHYgaW4gc29ydGVkKHBhcmVzLml0ZW1zKCkpOgogICAgICAgIGtsID0gay5sb3dlcigpCiAgICAgICAgaWYgInJvbmRhIiBpbiBrbCBvciAicmVzdW1vIiBpbiBrbCBvciAiYXVkaXRvcmlhIiBpbiBrbDoKICAgICAgICAgICAgcHJpbnQoaywgIj0iLCB2KQoKcHJpbnQoKQp1cmwyID0gImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pby9zeW5jLWZyYWN0dGFsLXN0YXR1cz9zZWNyZXQ9ZmFsaGFzMjAyNiIKcmVxMiA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsMiwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEyLCB0aW1lb3V0PTMwKSBhcyByZXNwMjoKICAgIHByaW50KCJTVEFUVVMgRU5EUE9JTlQ6IiwgcmVzcDIucmVhZCgpLmRlY29kZSgpWzozMDAwXSkK" | base64 -d > check.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL3N5bmMtZnJhY3R0YWwtc3RhdHVzP3NlY3JldD1mYWxoYXMyMDI2IgpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MzApIGFzIHJlc3A6CiAgICBkYXRhID0ganNvbi5sb2FkcyhyZXNwLnJlYWQoKS5kZWNvZGUoKSkKICAgIHByaW50KCJlbV9hbmRhbWVudG86IiwgZGF0YS5nZXQoImVtX2FuZGFtZW50byIpKQogICAgcHJpbnQoImluaWNpYWRvX2VtOiIsIGRhdGEuZ2V0KCJpbmljaWFkb19lbSIpKQogICAgcHJpbnQoImNvbmNsdWlkb19lbToiLCBkYXRhLmdldCgiY29uY2x1aWRvX2VtIikpCiAgICBib2R5ID0gZGF0YS5nZXQoImJvZHkiKSBvciB7fQogICAgZm9yIGsgaW4gWyJjb21wcm9taXNzb3NfY2hlY2siLCAicmVzdW1vX2RpYXJpb19jaGVjayIsICJyb25kYV9jaGVjayIsICJyZXN1bW9fc2VtYW5hbF9jaGVjayIsICJjb211bmljYWRvc19jaGVjayJdOgogICAgICAgIHByaW50KGssICI9IiwganNvbi5kdW1wcyhib2R5LmdldChrKSwgZW5zdXJlX2FzY2lpPUZhbHNlKSkK" | base64 -d > check.py
           python3 check.py > result.txt 2>&1 || true
           cat result.txt
           CONTENT_B64=$(base64 -w0 result.txt)
           EXISTING_SHA=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/today-check.txt" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha',''))")
           if [ -n "$EXISTING_SHA" ]; then
-            PAYLOAD="{\"message\":\"diag: today check\",\"content\":\"$CONTENT_B64\",\"sha\":\"$EXISTING_SHA\"}"
+            PAYLOAD="{\"message\":\"diag: ronda status\",\"content\":\"$CONTENT_B64\",\"sha\":\"$EXISTING_SHA\"}"
           else
-            PAYLOAD="{\"message\":\"diag: today check\",\"content\":\"$CONTENT_B64\"}"
+            PAYLOAD="{\"message\":\"diag: ronda status\",\"content\":\"$CONTENT_B64\"}"
           fi
           echo "$PAYLOAD" > /tmp/payload.json
           curl -s -X PUT -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" \
