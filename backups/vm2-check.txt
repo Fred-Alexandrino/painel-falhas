@@ -1,5 +1,7 @@
-2026-08-17 | enviado: 1 | criado: 2026-08-17 14:46:02
-2026-08-16 | enviado: 1 | criado: 2026-08-16 09:14:39
-2026-08-16 | enviado: 0 | criado: 2026-08-16 09:10:04
-2026-08-16 | enviado: 0 | criado: 2026-08-16 09:08:49
-2026-08-16 | enviado: 0 | criado: 2026-08-16 09:07:41
+total: 1
+por_grupo: {'[O&M] - Grid Co. | Renogrid': 1}
+
+2026-08-14 05:45:06 | Cos Grid - 02 | ⚠️ Segue o status operacional das usinas Renogrid.
+
+📅 Data: 14/08/2026•
+📊 COS – Grid Co. | Status do
