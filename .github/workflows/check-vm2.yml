@@ -22,24 +22,13 @@ jobs:
             echo "=== package.json declared ===" >> /tmp/verdiag.txt
             grep baileys package.json >> /tmp/verdiag.txt 2>&1
       - name: Fetch and push result
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.ORACLE_VM2_SSH_KEY }}" > /tmp/key.pem
           chmod 600 /tmp/key.pem
           scp -o StrictHostKeyChecking=no -i /tmp/key.pem ubuntu@147.15.66.241:/tmp/verdiag.txt /tmp/verdiag.txt
           cat /tmp/verdiag.txt
-          python3 -c "
-import base64, json, urllib.request, os
-content = open('/tmp/verdiag.txt','rb').read()
-b64 = base64.b64encode(content).decode()
-token = os.environ['GH_TOKEN']
-payload = json.dumps({'message':'diag: baileys version', 'content': b64}).encode()
-req = urllib.request.Request('https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/vm2-check.txt', data=payload, method='PUT', headers={'Authorization':f'token {token}','Accept':'application/vnd.github+json','Content-Type':'application/json'})
-try:
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        print('PUT OK', resp.status)
-except Exception as e:
-    print('PUT FAILED', str(e))
-"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "aW1wb3J0IGJhc2U2NCwganNvbiwgdXJsbGliLnJlcXVlc3QsIG9zLCBzeXMKY29udGVudCA9IG9wZW4oJy90bXAvdmVyZGlhZy50eHQnLCAncmInKS5yZWFkKCkKYjY0ID0gYmFzZTY0LmI2NGVuY29kZShjb250ZW50KS5kZWNvZGUoKQp0b2tlbiA9IG9zLmVudmlyb25bJ0dIX1RPS0VOJ10KcGF5bG9hZCA9IGpzb24uZHVtcHMoeydtZXNzYWdlJzogJ2RpYWc6IGJhaWxleXMgdmVyc2lvbicsICdjb250ZW50JzogYjY0fSkuZW5jb2RlKCkKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgKICAgICdodHRwczovL2FwaS5naXRodWIuY29tL3JlcG9zL0ZyZWQtQWxleGFuZHJpbm8vcGFpbmVsLWZhbGhhcy9jb250ZW50cy9iYWNrdXBzL3ZtMi1jaGVjay50eHQnLAogICAgZGF0YT1wYXlsb2FkLCBtZXRob2Q9J1BVVCcsCiAgICBoZWFkZXJzPXsnQXV0aG9yaXphdGlvbic6IGYndG9rZW4ge3Rva2VufScsICdBY2NlcHQnOiAnYXBwbGljYXRpb24vdm5kLmdpdGh1Yitqc29uJywgJ0NvbnRlbnQtVHlwZSc6ICdhcHBsaWNhdGlvbi9qc29uJ30KKQp0cnk6CiAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTMwKSBhcyByZXNwOgogICAgICAgIHByaW50KCdQVVQgT0snLCByZXNwLnN0YXR1cykKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoJ1BVVCBGQUlMRUQnLCBzdHIoZSkpCg==" | base64 -d > /tmp/push_result.py
+          python3 /tmp/push_result.py
