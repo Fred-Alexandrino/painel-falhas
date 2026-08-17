@@ -9302,13 +9302,22 @@ def _gerar_resumo_diario_core(data_str=None, enviar=True):
 def gerar_resumo_diario():
     """Gera (e envia por padrão) o resumo diário pro grupo Gestão O&M.
     Query params: ?data=YYYY-MM-DD (default hoje), ?enviar=false (só
-    gera e devolve o texto, sem mandar pro WhatsApp — útil pra testar)."""
+    gera e devolve o texto, sem mandar pro WhatsApp — útil pra testar).
+    ?debug_dados=true devolve só os dados coletados (pré-IA), pra
+    depurar classificação sem gastar chamada de Gemini."""
     if WEBHOOK_SECRET:
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     data_str = request.args.get("data", "").strip() or None
     enviar = request.args.get("enviar", "true").lower() != "false"
+    if request.args.get("debug_dados", "").lower() == "true":
+        try:
+            dados = _coletar_dados_resumo_diario(data_str or agora_br().strftime("%Y-%m-%d"))
+            dados.pop("mensagensPorGrupo", None)  # ruído grande, não precisa pro debug de classificação
+            return jsonify({"ok": True, "dados": dados}), 200
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
     try:
         resultado = _gerar_resumo_diario_core(data_str=data_str, enviar=enviar)
         return jsonify(resultado), 200
