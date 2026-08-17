@@ -1,8 +1,4 @@
-em_andamento: True
-iniciado_em: 2026-08-17T09:17:29.448698-03:00
-concluido_em: None
-compromissos_check = {"disparado": false, "motivo": "fora da janela (agora 09:07)"}
-resumo_diario_check = {"disparado": false, "motivo": "fora da janela (agora 09:07)"}
-ronda_check = {"disparado": false, "motivo": "fora da janela (agora 09:07)"}
-resumo_semanal_check = {"disparado": false, "motivo": "não é sexta-feira"}
-comunicados_check = {"disparado": false, "motivo": "disparo automático desativado — use o botão Comunicados"}
+whatsapp-painel-falhas.onrender.com/sync-fracttal?secret=falhas2026 | status: 2
+   rt: {'datetime': 1786966260, 'value': 388}
+   rt: {'datetime': 1786965960, 'value': 350}
+   rt: {'datetime': 1786965660, 'value': 388}
