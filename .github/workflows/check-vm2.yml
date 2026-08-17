@@ -6,11 +6,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
-      - name: Check OS status
+      - name: Test resumo fix
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vYXRpdmlkYWRlcz9zZWNyZXQ9ZmFsaGFzMjAyNiIKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQp3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTYwKSBhcyByZXNwOgogICAgZGF0YSA9IGpzb24ubG9hZHMocmVzcC5yZWFkKCkuZGVjb2RlKCkpCiAgICBpdGVucyA9IGRhdGEuZ2V0KCJpdGVucyIpIG9yIGRhdGEuZ2V0KCJhdGl2aWRhZGVzIikgb3IgKGRhdGEgaWYgaXNpbnN0YW5jZShkYXRhLCBsaXN0KSBlbHNlIFtdKQogICAgaWYgaXNpbnN0YW5jZShkYXRhLCBkaWN0KSBhbmQgbm90IGl0ZW5zOgogICAgICAgIHByaW50KCJjaGF2ZXMgZG8gSlNPTjoiLCBsaXN0KGRhdGEua2V5cygpKSkKICAgIGFsdm8gPSB7IjEwMTQyIiwgIjEwMjMyIiwgIjEwMjQ1In0KICAgIGZvciBpdCBpbiBpdGVuczoKICAgICAgICBudW1lcm9fb3MgPSBzdHIoaXQuZ2V0KCJudW1lcm9PUyIpIG9yIGl0LmdldCgibnVtZXJvX29zIikgb3IgIiIpCiAgICAgICAgaWYgbnVtZXJvX29zIGluIGFsdm86CiAgICAgICAgICAgIHByaW50KGYiT1Mge251bWVyb19vc306IHN0YXR1cz17aXQuZ2V0KCdzdGF0dXMnKSFyfSB8IHN0YXR1c09TPXtpdC5nZXQoJ3N0YXR1c09TJykhcn0gfCAiCiAgICAgICAgICAgICAgICAgIGYicGVyY2VudHVhbE9TPXtpdC5nZXQoJ3BlcmNlbnR1YWxPUycpIXJ9IHwgdWx0aW1hVmVyaWZpY2FjYW9PUz17aXQuZ2V0KCd1bHRpbWFWZXJpZmljYWNhb09TJykhcn0gfCAiCiAgICAgICAgICAgICAgICAgIGYidXNpbmE9e2l0LmdldCgndXNpbmEnKSFyfSIpCg==" | base64 -d > check.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uLCB0aW1lCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vZ2VyYXItcmVzdW1vLWRpYXJpbz9lbnZpYXI9ZmFsc2Umc2VjcmV0PWZhbGhhczIwMjYiCnN0YXJ0ID0gdGltZS50aW1lKCkKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQp0cnk6CiAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTkwKSBhcyByZXNwOgogICAgICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoKQogICAgICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMsICJ8IHRlbXBvOiIsIHJvdW5kKHRpbWUudGltZSgpLXN0YXJ0LDEpLCAicyIpCiAgICAgICAgZGF0YSA9IGpzb24ubG9hZHMoYm9keSkKICAgICAgICBwcmludCgiVEVYVE86IikKICAgICAgICBwcmludChkYXRhLmdldCgidGV4dG8iLCAiIilbOjIwMDBdKQpleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgcHJpbnQoIlNUQVRVUzoiLCBlLmNvZGUpCiAgICBwcmludCgiQk9EWToiLCBlLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIilbOjE1MDBdKQpleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICBwcmludCgiRVJST1I6Iiwgc3RyKGUpLCAifCB0ZW1wbzoiLCByb3VuZCh0aW1lLnRpbWUoKS1zdGFydCwxKSkK" | base64 -d > check.py
           mkdir -p backups
           python3 check.py > backups/vm2-check.txt 2>&1 || true
           cat backups/vm2-check.txt
@@ -22,5 +23,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/vm2-check.txt
-          git commit -m "check: os status" || echo "nothing"
+          git commit -m "check: test resumo fix" || echo "nothing"
           git push origin HEAD:main
