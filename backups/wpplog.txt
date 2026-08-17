@@ -1,60 +1,80 @@
-Aug 17 13:42:05 vnic-painel-om-wpp node[376769]:    ✅ Gravado: {"atualizados":[],"ignorados":1,"normalizados":[],"novos":[],"status":"ok"}
-Aug 17 13:42:11 vnic-painel-om-wpp node[376769]: 📨 [Tempo real] Falha recebida de 120363402176878100@g.us
-Aug 17 13:42:11 vnic-painel-om-wpp node[376769]:    🔴 Usina: Ouro Branco 3
-Aug 17 13:42:11 vnic-painel-om-wpp node[376769]: * Problema: Usina desligada
-Aug 17 13:42:11 vnic-painel-om-wpp node[376769]: * Descrição: Usina desliga...
-Aug 17 13:42:16 vnic-painel-om-wpp node[376769]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
-Aug 17 13:42:16 vnic-painel-om-wpp node[376769]:    ✅ Gravado: {"atualizados":[],"ignorados":1,"normalizados":[],"novos":[],"status":"ok"}
-Aug 17 13:42:57 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:43:00 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 405). Reconectando: true
-Aug 17 13:43:33 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:43:34 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 408). Reconectando: true
-Aug 17 13:44:07 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:44:12 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 405). Reconectando: true
-Aug 17 13:45:01 vnic-painel-om-wpp node[376769]: 💾 [Backup Auth] 195 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
-Aug 17 13:45:16 vnic-painel-om-wpp node[376769]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
-Aug 17 13:45:21 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:45:22 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 405). Reconectando: true
-Aug 17 13:45:25 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:45:29 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 405). Reconectando: true
-Aug 17 13:45:31 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 401). Reconectando: false
-Aug 17 13:45:35 vnic-painel-om-wpp node[376769]: ♻️  [Restore Auth] 195 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
-Aug 17 13:45:36 vnic-painel-om-wpp node[376769]: ♻️  [Restore Auth] 195 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
-Aug 17 13:46:15 vnic-painel-om-wpp node[376769]: 💾 [Backup Auth] 195 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
-Aug 17 13:46:24 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:46:29 vnic-painel-om-wpp node[376769]: ⚠️  Conexão encerrada (código 401). Reconectando: false
-Aug 17 13:46:33 vnic-painel-om-wpp node[376769]: ♻️  [Restore Auth] 195 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
-Aug 17 13:47:14 vnic-painel-om-wpp node[376769]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:47:14 vnic-painel-om-wpp systemd[1]: Stopping wppconnect.service - Ponte WhatsApp - Baileys...
-Aug 17 13:47:15 vnic-painel-om-wpp systemd[1]: wppconnect.service: Deactivated successfully.
-Aug 17 13:47:15 vnic-painel-om-wpp systemd[1]: Stopped wppconnect.service - Ponte WhatsApp - Baileys.
-Aug 17 13:47:15 vnic-painel-om-wpp systemd[1]: wppconnect.service: Consumed 1min 16.013s CPU time, 105.4M memory peak, 0B memory swap peak.
-Aug 17 13:47:15 vnic-painel-om-wpp systemd[1]: Started wppconnect.service - Ponte WhatsApp - Baileys.
-Aug 17 13:47:17 vnic-painel-om-wpp node[377321]: 🚀 Servidor Baileys na porta 3000
-Aug 17 13:47:17 vnic-painel-om-wpp node[377321]: 📡 Modo 1 (tempo real): sempre ativo ao conectar
-Aug 17 13:47:17 vnic-painel-om-wpp node[377321]: 🔍 Modo 2 (histórico):  disponível via GET /api/messages/:grupoId
-Aug 17 13:49:08 vnic-painel-om-wpp node[377321]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:49:10 vnic-painel-om-wpp node[377321]: ⚠️  Conexão encerrada (código 401). Reconectando: false
-Aug 17 13:49:15 vnic-painel-om-wpp node[377321]: ♻️  [Restore Auth] 195 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
-Aug 17 13:51:15 vnic-painel-om-wpp node[377321]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:51:18 vnic-painel-om-wpp node[377321]: ⚠️  Conexão encerrada (código 401). Reconectando: false
-Aug 17 13:51:22 vnic-painel-om-wpp node[377321]: ♻️  [Restore Auth] 195 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
-Aug 17 13:52:17 vnic-painel-om-wpp node[377321]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
-Aug 17 13:52:17 vnic-painel-om-wpp node[377321]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
-Aug 17 13:53:54 vnic-painel-om-wpp node[377321]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:54:00 vnic-painel-om-wpp node[377321]: ⚠️  Conexão encerrada (código 401). Reconectando: false
-Aug 17 13:54:04 vnic-painel-om-wpp systemd[1]: Stopping wppconnect.service - Ponte WhatsApp - Baileys...
-Aug 17 13:54:04 vnic-painel-om-wpp systemd[1]: wppconnect.service: Deactivated successfully.
-Aug 17 13:54:04 vnic-painel-om-wpp systemd[1]: Stopped wppconnect.service - Ponte WhatsApp - Baileys.
-Aug 17 13:54:04 vnic-painel-om-wpp systemd[1]: wppconnect.service: Consumed 4.254s CPU time, 94.0M memory peak, 0B memory swap peak.
-Aug 17 13:54:06 vnic-painel-om-wpp systemd[1]: Started wppconnect.service - Ponte WhatsApp - Baileys.
-Aug 17 13:54:08 vnic-painel-om-wpp node[377733]: 🚀 Servidor Baileys na porta 3000
-Aug 17 13:54:08 vnic-painel-om-wpp node[377733]: 📡 Modo 1 (tempo real): sempre ativo ao conectar
-Aug 17 13:54:08 vnic-painel-om-wpp node[377733]: 🔍 Modo 2 (histórico):  disponível via GET /api/messages/:grupoId
-Aug 17 13:54:10 vnic-painel-om-wpp node[377733]: ℹ️  [Restore Auth] Nenhum backup encontrado no GitHub — sessão nova, QR necessário
-Aug 17 13:56:12 vnic-painel-om-wpp node[377733]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:56:15 vnic-painel-om-wpp node[377733]: ⚠️  Conexão encerrada (código 405). Reconectando: true
-Aug 17 13:56:21 vnic-painel-om-wpp node[377733]: ℹ️  [Restore Auth] Nenhum backup encontrado no GitHub — sessão nova, QR necessário
-Aug 17 13:58:40 vnic-painel-om-wpp node[377733]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
-Aug 17 13:58:45 vnic-painel-om-wpp node[377733]: ⚠️  Conexão encerrada (código 405). Reconectando: true
-Aug 17 13:58:52 vnic-painel-om-wpp node[377733]: ℹ️  [Restore Auth] Nenhum backup encontrado no GitHub — sessão nova, QR necessário
+Aug 17 14:18:12 vnic-painel-om-wpp node[377733]: ℹ️  [Restore Auth] Nenhum backup encontrado no GitHub — sessão nova, QR necessário
+Aug 17 14:18:55 vnic-painel-om-wpp systemd[1]: Stopping wppconnect.service - Ponte WhatsApp - Baileys...
+Aug 17 14:18:55 vnic-painel-om-wpp systemd[1]: wppconnect.service: Deactivated successfully.
+Aug 17 14:18:55 vnic-painel-om-wpp systemd[1]: Stopped wppconnect.service - Ponte WhatsApp - Baileys.
+Aug 17 14:18:55 vnic-painel-om-wpp systemd[1]: wppconnect.service: Consumed 4.769s CPU time, 108.9M memory peak, 0B memory swap peak.
+Aug 17 14:19:02 vnic-painel-om-wpp systemd[1]: Started wppconnect.service - Ponte WhatsApp - Baileys.
+Aug 17 14:19:04 vnic-painel-om-wpp node[378860]: 🚀 Servidor Baileys na porta 3000
+Aug 17 14:19:04 vnic-painel-om-wpp node[378860]: 📡 Modo 1 (tempo real): sempre ativo ao conectar
+Aug 17 14:19:04 vnic-painel-om-wpp node[378860]: 🔍 Modo 2 (histórico):  disponível via GET /api/messages/:grupoId
+Aug 17 14:19:06 vnic-painel-om-wpp node[378860]: ℹ️  [Restore Auth] Nenhum backup encontrado no GitHub — sessão nova, QR necessário
+Aug 17 14:21:32 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:21:33 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:22:33 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:22:53 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:23:13 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:23:33 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:23:53 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:24:13 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 408). Reconectando: true
+Aug 17 14:24:19 vnic-painel-om-wpp node[378860]: ℹ️  [Restore Auth] Nenhum backup encontrado no GitHub — sessão nova, QR necessário
+Aug 17 14:26:24 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:26:25 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:27:25 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:27:45 vnic-painel-om-wpp node[378860]: 📱 QR Code gerado — acesse /qr para escanear
+Aug 17 14:28:02 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 515). Reconectando: true
+Aug 17 14:28:04 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:28:07 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:28:48 vnic-painel-om-wpp node[378860]: 💾 [Backup Auth] 1 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 17 14:30:03 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:30:05 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:30:09 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:31:04 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:31:04 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:31:46 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:31:48 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:31:53 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:34:04 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:34:04 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:34:15 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:34:20 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:34:24 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:36:13 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:36:16 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:36:20 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:37:04 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:37:04 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:38:02 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:38:07 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:38:13 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:40:04 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:40:04 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:40:22 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:40:26 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:40:31 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:42:10 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:42:13 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:42:17 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:43:04 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:43:04 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:43:53 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:43:58 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:44:02 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:45:32 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:45:35 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:45:40 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:45:42 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:45:44 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:45:48 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:46:05 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:46:05 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:46:51 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:46:52 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:46:56 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:48:37 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:48:38 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:48:43 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
+Aug 17 14:49:05 vnic-painel-om-wpp node[378860]: 🔧 [Vigia] Desconectado há mais de 3min — forçando reconexão do zero.
+Aug 17 14:49:05 vnic-painel-om-wpp node[378860]: ⏭️  [conectar] Já há uma conexão em andamento — ignorando chamada duplicada.
+Aug 17 14:49:49 vnic-painel-om-wpp node[378860]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 17 14:49:54 vnic-painel-om-wpp node[378860]: ⚠️  Conexão encerrada (código 401). Reconectando: false
+Aug 17 14:49:58 vnic-painel-om-wpp node[378860]: ♻️  [Restore Auth] 1 arquivo(s) restaurados do GitHub — sessão recuperada sem precisar de QR
