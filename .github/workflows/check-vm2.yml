@@ -8,9 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Query messages
+      - name: Check OS status
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vbWVuc2FnZW5zLWNhcHR1cmFkYXM/Z3J1cG9faWQ9MTIwMzYzNDIzMjMzNzE2Nzc1QGcudXMmZGF0YV9pbmljaW89MjAyNi0wOC0xNCZkYXRhX2ZpbT0yMDI2LTA4LTE3JnNlY3JldD1mYWxoYXMyMDI2IgpyZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHVybCwgaGVhZGVycz17IkFjY2VwdCI6ICJhcHBsaWNhdGlvbi9qc29uIn0pCndpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MzApIGFzIHJlc3A6CiAgICBkYXRhID0ganNvbi5sb2FkcyhyZXNwLnJlYWQoKS5kZWNvZGUoKSkKICAgIHByaW50KCJ0b3RhbDoiLCBkYXRhLmdldCgidG90YWwiKSkKICAgIHByaW50KCJwb3JfZ3J1cG86IiwgZGF0YS5nZXQoInBvcl9ncnVwbyIpKQogICAgcHJpbnQoKQogICAgZm9yIG0gaW4gZGF0YS5nZXQoIm1lbnNhZ2VucyIsIFtdKToKICAgICAgICBwcmludChtLmdldCgiZGF0YV9ob3JhIiksICJ8IiwgbS5nZXQoInJlbWV0ZW50ZSIpLCAifCIsIChtLmdldCgidGV4dG8iKSBvciAiIilbOjEwMF0pCg==" | base64 -d > check.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vYXRpdmlkYWRlcz9zZWNyZXQ9ZmFsaGFzMjAyNiIKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQp3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTYwKSBhcyByZXNwOgogICAgZGF0YSA9IGpzb24ubG9hZHMocmVzcC5yZWFkKCkuZGVjb2RlKCkpCiAgICBpdGVucyA9IGRhdGEuZ2V0KCJpdGVucyIpIG9yIGRhdGEuZ2V0KCJhdGl2aWRhZGVzIikgb3IgKGRhdGEgaWYgaXNpbnN0YW5jZShkYXRhLCBsaXN0KSBlbHNlIFtdKQogICAgaWYgaXNpbnN0YW5jZShkYXRhLCBkaWN0KSBhbmQgbm90IGl0ZW5zOgogICAgICAgIHByaW50KCJjaGF2ZXMgZG8gSlNPTjoiLCBsaXN0KGRhdGEua2V5cygpKSkKICAgIGFsdm8gPSB7IjEwMTQyIiwgIjEwMjMyIiwgIjEwMjQ1In0KICAgIGZvciBpdCBpbiBpdGVuczoKICAgICAgICBudW1lcm9fb3MgPSBzdHIoaXQuZ2V0KCJudW1lcm9PUyIpIG9yIGl0LmdldCgibnVtZXJvX29zIikgb3IgIiIpCiAgICAgICAgaWYgbnVtZXJvX29zIGluIGFsdm86CiAgICAgICAgICAgIHByaW50KGYiT1Mge251bWVyb19vc306IHN0YXR1cz17aXQuZ2V0KCdzdGF0dXMnKSFyfSB8IHN0YXR1c09TPXtpdC5nZXQoJ3N0YXR1c09TJykhcn0gfCAiCiAgICAgICAgICAgICAgICAgIGYicGVyY2VudHVhbE9TPXtpdC5nZXQoJ3BlcmNlbnR1YWxPUycpIXJ9IHwgdWx0aW1hVmVyaWZpY2FjYW9PUz17aXQuZ2V0KCd1bHRpbWFWZXJpZmljYWNhb09TJykhcn0gfCAiCiAgICAgICAgICAgICAgICAgIGYidXNpbmE9e2l0LmdldCgndXNpbmEnKSFyfSIpCg==" | base64 -d > check.py
           mkdir -p backups
           python3 check.py > backups/vm2-check.txt 2>&1 || true
           cat backups/vm2-check.txt
@@ -22,5 +22,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/vm2-check.txt
-          git commit -m "check: query messages" || echo "nothing"
+          git commit -m "check: os status" || echo "nothing"
           git push origin HEAD:main
