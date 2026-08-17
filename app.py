@@ -8950,7 +8950,17 @@ def _coletar_dados_resumo_diario(data_str):
     data_str_br = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
     numeros_programados = {str(r.get("os_id") or "").strip() for r in linhas_pcm if r.get("os_id")}
     extras_nao_programadas = []
-    for row in todos_ativ[1:]:
+    # mesmo orçamento/lógica de revalidação ao vivo do bloco de programação
+    # acima (corrigido 17/08/2026) — esse bloco também decide "concluída"
+    # só olhando o HISTÓRICO salvo (padrão de texto batendo com a data de
+    # hoje), sem nunca confirmar contra o estado atual da Fracttal. Mesmo
+    # risco de corrida: se o histórico registrou "mudou pra Em Revisão"
+    # hoje de manhã e a OS foi reaberta hoje à tarde (checklist reprovado,
+    # trabalho incompleto), esse bloco reportava como concluída mesmo já
+    # reaberta.
+    inicio_recheck_extras = time.time()
+    parou_por_orcamento_extras = False
+    for i, row in enumerate(todos_ativ[1:], start=2):
         if len(row) < ATIV_TOTAL_COLUNAS:
             row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
         historico = row[ATIV_CAMPO_COL["historico"] - 1] if len(row) > ATIV_CAMPO_COL["historico"] - 1 else ""
@@ -8963,6 +8973,31 @@ def _coletar_dados_resumo_diario(data_str):
         usina_bruta = row[ATIV_CAMPO_COL["usina"] - 1].strip()
         if canonizar_usina(usina_bruta) is None:
             continue  # usina de outro cliente/supervisor vazada no painel — não é do Fred, ignora
+
+        status_os_fresco = row[ATIV_CAMPO_COL["statusOS"] - 1].strip()
+        if numero_os and not parou_por_orcamento_extras and (time.time() - inicio_recheck_extras) <= 20:
+            try:
+                resultado_live = _fracttal_verificar_e_atualizar_uma_os(
+                    ws_ativ, i, row, numero_os, enviar_notificacao=False)
+                if resultado_live:
+                    status_os_fresco = resultado_live.get("statusOS") or status_os_fresco
+                    # reflete no registro em memória pra qualquer loop
+                    # seguinte (ex.: progresso do dia, logo abaixo) já
+                    # enxergar o dado atualizado, sem precisar reler a
+                    # planilha inteira de novo.
+                    row[ATIV_CAMPO_COL["statusOS"] - 1] = status_os_fresco
+                    row[ATIV_CAMPO_COL["percentualOS"] - 1] = resultado_live.get("percentualOS") or row[ATIV_CAMPO_COL["percentualOS"] - 1]
+                    row[ATIV_CAMPO_COL["statusGeralOS"] - 1] = resultado_live.get("statusGeralOS") or row[ATIV_CAMPO_COL["statusGeralOS"] - 1]
+                    todos_ativ[i - 1] = row
+                time.sleep(0.3)
+            except Exception as e:
+                log.error(f"[ResumoDiario] Erro ao revalidar OS {numero_os} (extras) ao vivo (usando cache): {e}")
+        else:
+            parou_por_orcamento_extras = True
+
+        if status_os_fresco not in ("Em Revisão", "Finalizada"):
+            continue  # reaberta/ainda incompleta — não é notícia de conclusão do dia, cai pro bloco de progresso abaixo
+
         extras_nao_programadas.append({
             "usina": usina_bruta,
             "cliente": row[ATIV_CAMPO_COL["cliente"] - 1].strip(),
