@@ -1,4 +1,41 @@
 whatsapp-painel-falhas.onrender.com/sync-fracttal?secret=falhas2026 | status: 2
-   rt: {'datetime': 1786966260, 'value': 388}
-   rt: {'datetime': 1786965960, 'value': 350}
+   rt: {'datetime': 1786957200, 'value': 389}
+   rt: {'datetime': 1786957500, 'value': 754}
+   rt: {'datetime': 1786957800, 'value': 387}
+   rt: {'datetime': 1786958100, 'value': 393}
+   rt: {'datetime': 1786958400, 'value': 766}
+   rt: {'datetime': 1786958700, 'value': 686}
+   rt: {'datetime': 1786959000, 'value': 418}
+   rt: {'datetime': 1786959300, 'value': 621}
+   rt: {'datetime': 1786959600, 'value': 388}
+   rt: {'datetime': 1786959900, 'value': 389}
+   rt: {'datetime': 1786960500, 'value': 459}
+   rt: {'datetime': 1786960800, 'value': 388}
+   rt: {'datetime': 1786961100, 'value': 394}
+   rt: {'datetime': 1786961400, 'value': 388}
+   rt: {'datetime': 1786961700, 'value': 932}
+   rt: {'datetime': 1786962000, 'value': 353}
+   rt: {'datetime': 1786962300, 'value': 391}
    rt: {'datetime': 1786965660, 'value': 388}
+   rt: {'datetime': 1786965960, 'value': 350}
+   rt: {'datetime': 1786966260, 'value': 388}
+   rt: {'datetime': 1786966560, 'value': 495}
+   rt: {'datetime': 1786966860, 'value': 452}
+   rt: {'datetime': 1786967160, 'value': 419}
+   rt: {'datetime': 1786967460, 'value': 824}
+   rt: {'datetime': 1786967820, 'value': 475}
+   rt: {'datetime': 1786968120, 'value': 511}
+   rt: {'datetime': 1786968420, 'value': 5149}
+   rt: {'datetime': 1786968720, 'value': 387}
+   rt: {'datetime': 1786969020, 'value': 587}
+logs:
+   log: {'type': 2, 'datetime': 1786820424, 'duration': 148740, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786670207, 'duration': 150217, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786669763, 'duration': 444, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786457079, 'duration': 212684, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786456325, 'duration': 754, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786366673, 'duration': 89652, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786366228, 'duration': 445, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786135413, 'duration': 230815, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
+   log: {'type': 2, 'datetime': 1786134310, 'duration': 1103, 'reason': {'code': '200', 'detail': 'OK'}}
+   log: {'type': 1, 'datetime': 1786046655, 'duration': 87655, 'reason': {'code': '333333', 'detail': 'Connection Timeout'}}
