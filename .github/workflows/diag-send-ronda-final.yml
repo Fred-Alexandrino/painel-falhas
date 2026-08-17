@@ -13,9 +13,15 @@ jobs:
           echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmwgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvL2dlcmFyLXJvbmRhP2Vudmlhcj10cnVlJnNlY3JldD1mYWxoYXMyMDI2IgpwcmludChmIj09PSBHRVQge3VybH0gPT09IikKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQp0cnk6CiAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTkwKSBhcyByZXNwOgogICAgICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoKQogICAgICAgIHByaW50KCJTVEFUVVM6IiwgcmVzcC5zdGF0dXMpCiAgICAgICAgcHJpbnQoIkJPRFkgKHByaW1laXJvcyAyMDAwIGNoYXJzKToiLCBib2R5WzoyMDAwXSkKZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZToKICAgIHByaW50KCJTVEFUVVM6IiwgZS5jb2RlKQogICAgcHJpbnQoIkJPRFk6IiwgZS5yZWFkKCkuZGVjb2RlKGVycm9ycz0icmVwbGFjZSIpWzoyMDAwXSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoIkVSUk9SOiIsIHN0cihlKSkK" | base64 -d > check.py
           python3 check.py > result.txt 2>&1 || true
           cat result.txt
-          CONTENT_B64=$(base64 -w0 result.txt)
-          PAYLOAD="{\"message\":\"diag: send final ronda\",\"content\":\"$CONTENT_B64\"}"
-          echo "$PAYLOAD" > /tmp/payload.json
-          curl -s -X PUT -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/ronda-final-result.txt" \
-            -d @/tmp/payload.json -w "\nHTTP:%{http_code}\n"
+          python3 -c "
+import base64, json, urllib.request
+content = open('result.txt','rb').read()
+b64 = base64.b64encode(content).decode()
+payload = json.dumps({'message':'diag: send final ronda v2', 'content': b64}).encode()
+req = urllib.request.Request('https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/ronda-final-result.txt', data=payload, method='PUT', headers={'Authorization':'token ${{ secrets.GITHUB_TOKEN }}','Accept':'application/vnd.github+json','Content-Type':'application/json'})
+try:
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        print('PUT OK', resp.status)
+except Exception as e:
+    print('PUT FAILED', str(e))
+"
