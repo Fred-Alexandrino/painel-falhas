@@ -1,3 +1,4 @@
-em_andamento: False
-iniciado_em: 2026-08-17T09:17:29.448698-03:00
-concluido_em: 2026-08-17T09:18:39.403556-03:00
+=== GET https://api.168.138.232.237.sslip.io/gerar-ronda?enviar=true&secret=falhas2026 ===
+STATUS: 500
+BODY: {"error":"HTTPSConnectionPool(host='wpp.147.15.66.241.sslip.io', port=443): Read timed out. (read timeout=20)","ok":false}
+
