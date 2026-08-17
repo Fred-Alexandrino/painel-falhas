@@ -7,28 +7,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Get logs via SSH
+      - name: Stop, clear local auth, restart
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 147.15.66.241
           username: ubuntu
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
           script: |
-            sudo journalctl -u wppconnect -n 80 --no-pager > /tmp/wpplog.txt 2>&1
-      - name: Fetch logs to runner
-        run: |
-          mkdir -p ~/.ssh backups
-          echo "${{ secrets.ORACLE_VM2_SSH_KEY }}" > /tmp/key.pem
-          chmod 600 /tmp/key.pem
-          scp -o StrictHostKeyChecking=no -i /tmp/key.pem ubuntu@147.15.66.241:/tmp/wpplog.txt ./backups/wpplog.txt
-      - name: Push
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
-          git add backups/wpplog.txt
-          git commit -m "check: vm2 logs after scan attempt" || echo "nothing"
-          git push origin HEAD:main
+            sudo systemctl stop wppconnect
+            sleep 2
+            cd ~/wppconnect-server
+            rm -rf auth_info
+            sudo systemctl start wppconnect
+            sleep 5
+            sudo systemctl status wppconnect --no-pager
