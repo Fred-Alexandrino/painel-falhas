@@ -1,7 +1,7 @@
-ainda gerando ou outro estado
-
-    <html><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#f0f0f0;">
-      <div style="text-align:center;">
-        <h2>⏳ Aguarde...</h2>
-        <p>Gerando QR Code, isso leva ~30 segundos.</p>
-        <script>setTimeout(() => l
+=== baileys version ===
+  "version": "6.7.23",
+=== node version ===
+v20.20.2
+=== package.json declared ===
+  "name": "baileys-painel-falhas",
+    "@whiskeysockets/baileys": "^6.7.0",
