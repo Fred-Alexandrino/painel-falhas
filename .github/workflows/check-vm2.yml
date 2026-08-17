@@ -6,14 +6,13 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
-      - name: Test resumo fix
+      - name: Check
         run: |
-          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uLCB0aW1lCnVybCA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8vZ2VyYXItcmVzdW1vLWRpYXJpbz9lbnZpYXI9ZmFsc2Umc2VjcmV0PWZhbGhhczIwMjYiCnN0YXJ0ID0gdGltZS50aW1lKCkKcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIGhlYWRlcnM9eyJBY2NlcHQiOiAiYXBwbGljYXRpb24vanNvbiJ9KQp0cnk6CiAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTE1MCkgYXMgcmVzcDoKICAgICAgICBib2R5ID0gcmVzcC5yZWFkKCkuZGVjb2RlKCkKICAgICAgICBwcmludCgiU1RBVFVTOiIsIHJlc3Auc3RhdHVzLCAifCB0ZW1wbzoiLCByb3VuZCh0aW1lLnRpbWUoKS1zdGFydCwxKSwgInMiKQogICAgICAgIGRhdGEgPSBqc29uLmxvYWRzKGJvZHkpCiAgICAgICAgcHJpbnQoIlRFWFRPOiIpCiAgICAgICAgcHJpbnQoZGF0YS5nZXQoInRleHRvIiwgIiIpWzoyMDAwXSkKZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZToKICAgIHByaW50KCJTVEFUVVM6IiwgZS5jb2RlKQogICAgcHJpbnQoIkJPRFk6IiwgZS5yZWFkKCkuZGVjb2RlKGVycm9ycz0icmVwbGFjZSIpWzoxNTAwXSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoIkVSUk9SOiIsIHN0cihlKSwgInwgdGVtcG86Iiwgcm91bmQodGltZS50aW1lKCktc3RhcnQsMSkpCg==" | base64 -d > check.py
+          echo "aW1wb3J0IHVybGxpYi5yZXF1ZXN0LCBqc29uCgp1cmxzID0gWwogICAgImh0dHBzOi8vd3BwLjE0Ny4xNS42Ni4yNDEuc3NsaXAuaW8vaGVhbHRoIiwKICAgICJodHRwczovL3dwcC4xNDcuMTUuNjYuMjQxLnNzbGlwLmlvL3N0YXR1cyIsCiAgICAiaHR0cHM6Ly93cHAuMTQ3LjE1LjY2LjI0MS5zc2xpcC5pby9xciIsCl0KZm9yIHVybCBpbiB1cmxzOgogICAgcHJpbnQoZiI9PT0ge3VybH0gPT09IikKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24sIHRleHQvaHRtbCJ9KQogICAgdHJ5OgogICAgICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjApIGFzIHJlc3A6CiAgICAgICAgICAgIGJvZHkgPSByZXNwLnJlYWQoKS5kZWNvZGUoZXJyb3JzPSJyZXBsYWNlIikKICAgICAgICAgICAgcHJpbnQoIlNUQVRVUzoiLCByZXNwLnN0YXR1cykKICAgICAgICAgICAgcHJpbnQoIkJPRFkgKHByaW1laXJvcyA1MDAgY2hhcnMpOiIsIGJvZHlbOjUwMF0pCiAgICBleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgICAgIHByaW50KCJTVEFUVVM6IiwgZS5jb2RlKQogICAgICAgIHByaW50KCJCT0RZOiIsIGUucmVhZCgpLmRlY29kZShlcnJvcnM9InJlcGxhY2UiKVs6NTAwXSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICBwcmludCgiRVJST1I6Iiwgc3RyKGUpKQogICAgcHJpbnQoKQo=" | base64 -d > check_vm2.py
           mkdir -p backups
-          python3 check.py > backups/vm2-check.txt 2>&1 || true
+          python3 check_vm2.py > backups/vm2-check.txt 2>&1 || true
           cat backups/vm2-check.txt
       - name: Push
         env:
@@ -23,5 +22,5 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/Fred-Alexandrino/painel-falhas.git
           git add backups/vm2-check.txt
-          git commit -m "check: test resumo fix v2" || echo "nothing"
+          git commit -m "check: vm2" || echo "nothing"
           git push origin HEAD:main
