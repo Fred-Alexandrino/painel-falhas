@@ -1,0 +1,28 @@
+name: diag-vm2-logs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Get VM2 service status and logs
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            echo "=== systemctl status ===" > /tmp/vm2diag.txt
+            sudo systemctl status wppconnect --no-pager -l >> /tmp/vm2diag.txt 2>&1
+            echo "" >> /tmp/vm2diag.txt
+            echo "=== last 100 lines journalctl ===" >> /tmp/vm2diag.txt
+            sudo journalctl -u wppconnect -n 100 --no-pager >> /tmp/vm2diag.txt 2>&1
+            cat /tmp/vm2diag.txt
+      - name: Fetch and push result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "placeholder - result already printed in previous step logs"
