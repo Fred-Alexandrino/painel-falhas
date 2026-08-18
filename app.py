@@ -13798,6 +13798,21 @@ def _fv_energias_detectar_desbalanceamento_potencia(potencia_por_inversor):
     return []
 
 
+def _fv_energias_traduzir_erro(e):
+    """Traduz exceções técnicas (timeout, conexão, etc.) pra uma frase em
+    português simples, sem jargão de programação — a mensagem crua do
+    Python (tipo 'HTTPSConnectionPool... Read timed out') não faz sentido
+    pra quem não é da área e aparecia direto no grupo do WhatsApp."""
+    texto = str(e)
+    if "timed out" in texto or "timeout" in texto.lower():
+        return "o sistema do fabricante (Solplanet) demorou demais pra responder"
+    if "Connection" in texto or "connection" in texto:
+        return "não foi possível se conectar ao sistema do fabricante (Solplanet) agora"
+    if "status" in texto.lower() and ("401" in texto or "403" in texto):
+        return "o sistema do fabricante (Solplanet) recusou o acesso — pode ser um problema de credencial"
+    return "o sistema do fabricante (Solplanet) não respondeu corretamente"
+
+
 def _fv_energias_verificar_alertas():
     """Roda a cada checagem (5min), só dentro da janela diurna. Só envia
     mensagem quando o conjunto de problemas MUDA em relação à última
@@ -13821,8 +13836,15 @@ def _fv_energias_verificar_alertas():
                 problemas_atuais.append(f"{apelido} ({inv['sn']}) está OFFLINE / sem comunicação")
     except Exception as e:
         # Falha ao consultar a própria API da Solplanet já é, por si só,
-        # um sinal de perda de comunicação com a usina.
-        problemas_atuais.append(f"Não foi possível consultar a API da Solplanet: {e}")
+        # um sinal de perda de comunicação com a usina. Log técnico
+        # completo fica só no servidor; a mensagem do grupo é em
+        # linguagem simples (ver _fv_energias_traduzir_erro).
+        log.error(f"[FV Energias] Erro tecnico ao consultar Solplanet: {e}")
+        problemas_atuais.append(
+            f"Não conseguimos ler os dados da usina agora — {_fv_energias_traduzir_erro(e)}. "
+            "Não é uma falha na usina, é só uma instabilidade temporária de consulta; "
+            "o sistema vai tentar de novo automaticamente."
+        )
 
     hora_atual = agora.strftime("%H")
     if hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
