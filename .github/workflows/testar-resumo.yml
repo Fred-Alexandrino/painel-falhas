@@ -1,0 +1,36 @@
+name: Testar Resumo Diario (temporario)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Buscar dados de debug (sem gastar IA) e texto final (sem enviar)
+        run: |
+          set -e
+          mkdir -p backups
+          curl -sS "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?debug_dados=true" \
+            -o backups/teste-resumo-debug.json
+          curl -sS "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?enviar=false" \
+            -o backups/teste-resumo-texto.json
+          echo "--- debug ---"
+          cat backups/teste-resumo-debug.json | head -c 2000
+          echo ""
+          echo "--- texto ---"
+          cat backups/teste-resumo-texto.json | head -c 2000
+
+      - name: Commit e push dos resultados
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups/teste-resumo-debug.json backups/teste-resumo-texto.json
+          git commit -m "Teste temporario: resumo diario pos-correcao usinas removidas" || echo "Nada para commitar"
+          git push
