@@ -6572,6 +6572,34 @@ def _mapa_grupo_usina():
     return mapa
 
 
+def _grupos_ids_ativos():
+    """Retorna o conjunto de grupo_id do WhatsApp que correspondem a
+    usinas ATUALMENTE reconhecidas (catálogo permanente OU sob
+    Supervisão Temporária ativa agora), mais o grupo pessoal de gestão
+    (que não é atrelado a nenhuma usina específica).
+
+    Corrigido 18/08/2026, relatado pelo Fred: quando uma usina é
+    removida da Supervisão Temporária, o /atividades já parava de
+    mostrar as atividades dela (correção de 31/07/2026, usina_permitida
+    aplicada linha a linha), mas resumo diário/semanal e ronda liam as
+    mensagens capturadas do WhatsApp DIRETO do banco sqlite
+    (_buscar_mensagens_periodo), sem checar se o grupo da mensagem ainda
+    correspondia a uma usina válida — então o grupo da usina devolvida
+    (ex.: "O&M - San. Bárb./Pirac. - SP LESTE 03") continuava sendo
+    resumido normalmente na seção "RESUMO POR EQUIPE" e entrando no
+    cruzamento de OS por número, trazendo a usina de volta pro relatório
+    mesmo depois de removida. Esta função é o filtro que faltava — use
+    sempre antes de agrupar mensagens pra IA num resumo/ronda."""
+    grupos = {GRUPO_GESTAO_OM_ID}
+    try:
+        for usina, grupo_id in _mapa_grupo_usina().items():
+            if grupo_id and usina_permitida(usina):
+                grupos.add(grupo_id)
+    except Exception as e:
+        log.error(f"[GruposAtivos] Erro ao montar lista de grupos válidos: {e}")
+    return grupos
+
+
 def _nome_amigavel_grupo(grupo_id):
     """Resolve um ID bruto de grupo do WhatsApp (ex.: '120363...@g.us')
     pro nome da(s) usina(s) que esse grupo atende, usando o mapeamento já
@@ -9130,8 +9158,15 @@ def _coletar_dados_resumo_diario(data_str):
     # ── Mensagens capturadas nos grupos, nesse dia ───────────────────────
     try:
         mensagens = _buscar_mensagens_periodo(data_str, data_str)
+        # Corrigido 18/08/2026: só entra no resumo mensagem de grupo cuja
+        # usina ainda é reconhecida agora (catálogo permanente ou
+        # Supervisão Temporária ativa) — senão usina já devolvida
+        # continuava aparecendo no resumo via mensagens do grupo dela.
+        grupos_validos = _grupos_ids_ativos()
         por_grupo = {}
         for m in mensagens:
+            if m.get("grupo_id") not in grupos_validos:
+                continue
             por_grupo.setdefault(m["nome_grupo"], []).append(m)
         resultado["mensagensPorGrupo"] = por_grupo
     except Exception as e:
@@ -9223,7 +9258,13 @@ def _montar_prompt_resumo_diario(dados):
             bloco_mensagens.append(f"[{hora}] {m.get('remetente','?')}: {m.get('texto','')[:300]}")
     texto_mensagens = "\n".join(bloco_mensagens) if bloco_mensagens else "(nenhuma mensagem capturada nos grupos hoje)"
 
-    lista_usinas_fred = ", ".join(sorted(CATALOGO_USINAS.keys()))
+    # Corrigido 18/08/2026: a lista de escopo tinha só o catálogo
+    # permanente, deixando de fora usina sob Supervisão Temporária ainda
+    # ATIVA — o que fazia a IA tratar como "não é sua" uma usina que na
+    # verdade ainda é (contraditório com os dados de programação/extras
+    # que já filtram corretamente por usina_permitida).
+    usinas_temp_ativas = {item["usina"] for item in _usinas_temporarias()}
+    lista_usinas_fred = ", ".join(sorted(set(CATALOGO_USINAS.keys()) | usinas_temp_ativas))
 
     return f"""Aja como um Supervisor de O&M Sênior da Grid Co., escrevendo o resumo diário das usinas pro seu próprio controle — vai ser enviado só pra você mesmo, num grupo pessoal de gestão (não é um comunicado pra equipe nem pra cliente).
 
@@ -9664,8 +9705,13 @@ def _coletar_dados_ronda(data_str):
     try:
         ontem_str = (datetime.strptime(data_str, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
         mensagens = _buscar_mensagens_periodo(ontem_str, ontem_str)
+        # Mesma correção de 18/08/2026 aplicada ao resumo diário: filtra
+        # pra só entrar mensagem de grupo cuja usina ainda é reconhecida.
+        grupos_validos = _grupos_ids_ativos()
         por_grupo = {}
         for m in mensagens:
+            if m.get("grupo_id") not in grupos_validos:
+                continue
             por_grupo.setdefault(m["nome_grupo"], []).append(m)
         resultado["mensagensPorGrupo"] = por_grupo
         resultado["dataMensagens"] = ontem_str
@@ -9717,7 +9763,10 @@ def _montar_prompt_ronda(dados):
             bloco_mensagens.append(f"[{hora}] {m.get('remetente','?')}: {texto_msg[:300]}")
     texto_mensagens = "\n".join(bloco_mensagens) if bloco_mensagens else "(nenhuma mensagem capturada nos grupos ontem)"
 
-    lista_usinas_fred = ", ".join(sorted(CATALOGO_USINAS.keys()))
+    # Corrigido 18/08/2026 (mesmo motivo do resumo diário): inclui usina
+    # sob Supervisão Temporária ainda ATIVA na lista de escopo.
+    usinas_temp_ativas = {item["usina"] for item in _usinas_temporarias()}
+    lista_usinas_fred = ", ".join(sorted(set(CATALOGO_USINAS.keys()) | usinas_temp_ativas))
 
     return f"""Aja como um Supervisor de O&M Sênior da Grid Co., escrevendo a "Ronda" do dia — uma mensagem curta de PRIORIDADES E PONTOS DE ATENÇÃO pro seu próprio controle, enviada de manhã, ANTES do expediente começar. É pra você se organizar no início do dia, não é um resumo do que já aconteceu (isso é o resumo diário, que roda às 17h) — foque no que precisa de atenção HOJE.
 
