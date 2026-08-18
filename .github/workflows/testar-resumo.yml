@@ -14,12 +14,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Buscar dados de debug (sem gastar IA) e texto final (sem enviar)
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
           set -e
           mkdir -p backups
           curl -sS "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?debug_dados=true" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
             -o backups/teste-resumo-debug.json
           curl -sS "https://api.168.138.232.237.sslip.io/gerar-resumo-diario?enviar=false" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
             -o backups/teste-resumo-texto.json
           echo "--- debug ---"
           cat backups/teste-resumo-debug.json | head -c 2000
