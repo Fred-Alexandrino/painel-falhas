@@ -7549,15 +7549,30 @@ def programacao_pcm():
         if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt
     ]
 
+    mapa_cluster_pcm = _mapa_cluster_usina()
     por_usina = {}
     for r in linhas_dia:
         usina = r.get("usina") or "(sem usina)"
         estado = _PCM_STATUS_NORMALIZADO.get(r.get("status"), r.get("status") or "")
         atrasado = data_filtro < hoje_str and estado != "Finalizada"
+        # O campo "cluster" que vem no banco_dados.json é da fonte do PCM
+        # (Power Automate do Fillipe) e pode ficar desatualizado depois de
+        # uma reorganização de cluster feita só no nosso lado (ex.:
+        # GD Energy migrou de "CE Leste 01" pra "CE Norte 01" em 07/08/2026
+        # e a fonte do PCM continuou mandando "CE Leste 01" — isso fazia o
+        # cluster "CE Norte 01" nunca aparecer nos Comunicados de
+        # Programação, mesmo com atividades abertas). Corrigido 19/08/2026:
+        # sempre que a usina for reconhecida no nosso catálogo, o cluster
+        # usado é o do NOSSO mapeamento interno (_mapa_cluster_usina,
+        # fonte de verdade); só cai no valor cru do PCM como fallback
+        # quando a usina não é reconhecida (ex.: usina temporária de outro
+        # supervisor sem cluster configurado ainda).
+        usina_canonica = canonizar_usina(_extrair_nome_usina_fracttal(usina) or usina)
+        cluster_correto = mapa_cluster_pcm.get(usina_canonica) if usina_canonica else None
         por_usina.setdefault(usina, []).append({
             "os": r.get("os_id"),
             "cliente": r.get("cliente"),
-            "cluster": r.get("cluster"),
+            "cluster": cluster_correto or r.get("cluster"),
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
             "estado": estado,
