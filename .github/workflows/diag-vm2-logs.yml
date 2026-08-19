@@ -1,0 +1,18 @@
+name: diag-vm2-logs
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch recent journal for wppconnect
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            echo "=== systemctl status ==="
+            sudo systemctl status wppconnect --no-pager | head -20
+            echo "=== journal since 30 min ago ==="
+            sudo journalctl -u wppconnect --since "-40min" --no-pager | tail -300
