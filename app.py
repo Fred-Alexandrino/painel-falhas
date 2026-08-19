@@ -12871,9 +12871,14 @@ def _gerar_punchlist_ativo_via_visao(nome_ativo, cliente, usina, cluster, imagen
     return normalizados
 
 
-GEMINI_PDF_MAX_PAGINAS = 200   # a Gemini aceita até 1000 páginas — o limite real aqui é tamanho
-GEMINI_PDF_MAX_MB = 14         # dado inline da Gemini: ~20MB de payload total após base64 (+33%);
-# 14MB de arquivo bruto vira ~18.7MB em base64, com margem de segurança
+GEMINI_PDF_MAX_PAGINAS = 60    # limite de segurança, raramente é o fator decisivo (ver MAX_MB abaixo)
+GEMINI_PDF_MAX_MB = 7          # reduzido de 14 pra 7 (11/08/2026): pedaços grandes demais faziam a
+# IA perder pendências reais no meio do documento (confirmado por revisão humana página a
+# página — SCADA, Relé, QGBT, EPCs, Incêndio inteiros ficaram de fora da punch list em dois
+# relatórios reais). Como os PDFs da Fracttal costumam ser pesados em imagem, o limite de MB
+# (não o de páginas) é o que de fato determina o tamanho de cada pedaço — reduzir aqui é o
+# que realmente força pedaços menores/mais focados. Custo: mais chamadas e mais tempo total.
+# 7MB de arquivo bruto vira ~9.3MB em base64, com boa margem de segurança
 
 
 def _dividir_pdf_em_chunks(pdf_bytes, max_paginas=GEMINI_PDF_MAX_PAGINAS, max_mb=GEMINI_PDF_MAX_MB):
@@ -12907,13 +12912,25 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         aviso_trecho = (
             f"Este é o trecho de página {pagina_inicio + 1} a {pagina_fim + 1} de um documento "
             f"de {total_paginas} páginas no total (dividido em partes por causa do limite de "
-            "tamanho da API — se um ativo aparecer cortado no início ou no fim desse trecho, "
-            "ignore-o, ele será coberto por completo em outra parte).\n\n"
+            "tamanho da API). Só ignore um ativo se a seção 'ATIVOS' dele estiver GENUINAMENTE "
+            "incompleta nesse trecho (ex.: começa nas últimas linhas da última página, sem "
+            "nenhuma subtarefa visível ainda) — nesse caso raro, ele será coberto por completo "
+            "em outro trecho. Não use isso como desculpa pra pular ativos só porque estão perto "
+            "do início ou fim do trecho: se você consegue ver a seção 'ATIVOS' completa (nome + "
+            "todas as subtarefas + notas), analise ela normalmente, mesmo que seja a primeira ou "
+            "última do trecho.\n\n"
         )
     return (
         "Você é um engenheiro de O&M de usinas solares fotovoltaicas da Grid Co., analisando "
         "um PDF exportado da Fracttal (Ordem de Trabalho de handover) pra montar a Punch List "
-        "(lista de pendências) de um Relatório de Handover formal pro cliente.\n\n"
+        "(lista de pendências) de um Relatório de Handover FORMAL pro cliente — esse documento "
+        "vai ser assinado e entregue de verdade. Uma punch list incompleta gera retrabalho "
+        "sério (o coordenador do Fred já rejeitou relatórios duas vezes por punch list "
+        "incompleta, com achados reais de SCADA, Relé de Proteção, QGBT, EPCs de segurança, "
+        "Combate a Incêndio e SPDA faltando). É MUITO melhor incluir um item que depois se "
+        "mostre menor do que deixar de fora uma pendência real — não subestime a quantidade "
+        "de itens esperados: é normal e comum um documento ter pendências em VÁRIOS sistemas "
+        "diferentes ao mesmo tempo (elétrico, civil, segurança, supervisório), não só em 1 ou 2.\n\n"
         f"Esse PDF documenta a inspeção de vários ativos/equipamentos da usina {usina} "
         f"(cliente {cliente}, cluster {cluster}). Cada ativo tem uma seção 'ATIVOS' (com o "
         "campo DESCRIÇÃO identificando o equipamento) seguida de um checklist de subtarefas "
@@ -12923,16 +12940,24 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "páginas (o documento pode ser texto real ou imagem escaneada — leia do mesmo jeito).\n\n"
         f"{aviso_trecho}"
         "PROCESSO SISTEMÁTICO (siga isso pra CADA seção 'ATIVOS' que aparecer nas páginas deste "
-        "trecho, uma de cada vez, sem pular nenhuma):\n"
+        "trecho, uma de cada vez, sem pular nenhuma — inclusive ativos que pareçam menos "
+        "críticos à primeira vista, como Relé de Proteção, QGBT, EPCs, Sistema de Combate a "
+        "Incêndio, Sistema Supervisório/SCADA — esses já ficaram de fora em análises anteriores "
+        "e são exatamente os que mais importam pro cliente aprovar o relatório):\n"
         "1. Identifique o ativo pelo campo DESCRIÇÃO dessa seção.\n"
-        "2. Leia TODAS as subtarefas do checklist (Aprovou/Alerta/Falhou) desse ativo e as "
-        "anotações do técnico associadas a ele (ANEXOS DO PLANO DE MANUTENÇÃO / 'Nota: ...').\n"
+        "2. Leia TODAS as subtarefas do checklist (Aprovou/Alerta/Falhou) desse ativo, uma por "
+        "uma, sem pular nenhuma — mesmo que a lista seja longa (5, 7, 10+ subtarefas). Se o "
+        "ativo tem MÚLTIPLAS subtarefas marcadas Falhou/Alerta, capture TODAS elas na "
+        "anormalidade (ex.: se o Sistema Supervisório reprovou alarmes, memória, comunicação, "
+        "medições E câmeras — as 5 entram na mesma frase, não só a primeira que você notar). "
+        "Leia também as anotações do técnico associadas (ANEXOS DO PLANO DE MANUTENÇÃO / "
+        "'Nota: ...').\n"
         "3. Classifique o resultado em um destes três casos:\n"
         "   a) Tudo Aprovado, sem nenhuma nota indicando problema ou ausência → NÃO gere item "
         "nenhum de punch list pra esse ativo.\n"
         "   b) Algum item Alerta/Falhou, ou nota do técnico indicando defeito/pendência real de "
         "funcionamento do equipamento → gere um item NORMAL de punch list (anormalidade "
-        "objetiva, sem prefixo especial).\n"
+        "objetiva, sem prefixo especial), cobrindo TODAS as subtarefas reprovadas desse ativo.\n"
         "   c) A nota do técnico indica que o ATIVO EM SI NÃO EXISTE FISICAMENTE em campo (ex.: "
         "\"não foi localizado\", \"UFV não tem sistema de X\", \"ausência completa do sistema "
         "Y\"), mesmo esse ativo estando previsto no escopo da OS → gere um item de punch list, "
@@ -12949,12 +12974,21 @@ def _montar_prompt_punchlist_pdf_nativo(cliente, usina, cluster, pagina_inicio, 
         "de ativo comum em outras usinas (ex. Estação Meteorológica, Fossa Séptica) não tiver "
         "seção própria nas páginas deste trecho, ele simplesmente não faz parte desta análise — "
         "é preferível deixar de fora do que inventar uma pendência pra um equipamento que não "
-        "está no documento.\n\n"
-        "Critérios de CRITICIDADE: Alta/Muito Alta para falhas funcionais, de segurança ou que "
-        "impedem operação (equipamento fora de operação, falha de proteção, ausência de "
-        "supervisório); Média para itens de manutenção/limpeza/cosmético; Baixa para "
-        "observações menores. Itens de \"ressalva\" (ausência de ativo) usam Média por padrão, "
-        "a menos que a ausência tenha implicação clara de segurança/operação (aí Alta).\n\n"
+        "está no documento. (Essa regra é sobre INVENTAR ativos que não existem — não confunda "
+        "com pular ativos que EXISTEM mas parecem menos importantes; esses você sempre analisa.)\n\n"
+        "Critérios de CRITICIDADE — siga à risca, não subestime:\n"
+        "- Alta/Muito Alta: falhas funcionais que afetam operação/eficiência (equipamento fora "
+        "de operação, string parada), falhas de SEGURANÇA (proteção elétrica falhando, EPCs de "
+        "segurança da equipe — luva, tapete isolante, vara de manobra — reprovados em estado/"
+        "validade/calibração, sistema de combate a incêndio falhando), e falha TOTAL ou "
+        "generalizada de um sistema inteiro (ex.: Sistema Supervisório/SCADA reprovando "
+        "múltiplas subtarefas ao mesmo tempo — isso é o monitoramento central da usina "
+        "falhando, sempre Alta, nunca Média, mesmo que cada subtarefa isolada pareça pequena).\n"
+        "- Média: itens de manutenção/limpeza/cosmético isolados (ex.: limpeza de ventilador de "
+        "inversor, sujidade).\n"
+        "- Baixa: observações menores sem impacto funcional ou de segurança.\n"
+        "- Itens de \"ressalva\" (ausência de ativo) usam Média por padrão, a menos que a "
+        "ausência tenha implicação clara de segurança/operação (aí Alta).\n\n"
         "Critérios de RESPONSÁVEL: \"EQUIPE TÉCNICA\" para reparos elétricos/mecânicos; "
         "\"EQUIPE DE CAMPO\" para limpeza/organização/civil; \"CLIENTE/SUPERVISÃO\" quando o "
         "problema depende de sistema supervisório, contratação externa, credenciais de acesso, "
@@ -13038,9 +13072,9 @@ def _processar_chunk_pdf_nativo(chunk, cliente, usina, cluster, total_paginas):
             ]}],
             "generationConfig": {
                 "temperature": 0.15,
-                "maxOutputTokens": 4096,
+                "maxOutputTokens": 16384,
                 "responseMimeType": "application/json",
-                "thinkingConfig": {"thinkingBudget": 0},
+                "thinkingConfig": {"thinkingBudget": 8192},
             },
         },
         timeout=150,
@@ -13113,14 +13147,14 @@ def extrair_punchlist_pdf_nativo_route():
         datas_inicio = []
         datas_fim = []
         ativos_analisados = []
-        # max_workers=2 (não 4): a VM1 tem só ~950MB de RAM, dividida com a
-        # auditoria automática e o bot do WhatsApp — 4 pedaços de PDF em
-        # paralelo (cada um até 14MB + overhead da chamada à Gemini) já
-        # causou um "Worker (...) was sent SIGKILL! Perhaps out of memory?"
-        # em produção. Com 2, o pico de memória cai pela metade; o tempo
-        # total sobe um pouco (mais uma "onda" em documentos com muitos
-        # trechos), mas fica bem mais seguro nessa VM.
-        with ThreadPoolExecutor(max_workers=min(2, len(chunks))) as executor:
+        # max_workers=3: cada pedaço agora é ~7MB (não mais 14MB — reduzido
+        # pra melhorar a precisão da leitura, ver GEMINI_PDF_MAX_MB acima),
+        # então o pico de memória por pedaço caiu bastante — dá pra rodar 3
+        # em paralelo sem voltar ao risco de falta de memória que já causou
+        # um "Worker (...) was sent SIGKILL!" em produção com pedaços
+        # maiores. Com pedaços menores E mais chamadas, manter só 2 em
+        # paralelo deixaria o tempo total alto demais.
+        with ThreadPoolExecutor(max_workers=min(3, len(chunks))) as executor:
             futuros = {executor.submit(_processar_chunk_pdf_nativo, c, cliente, usina, cluster, total_paginas): c
                        for c in chunks}
             for futuro in as_completed(futuros):
