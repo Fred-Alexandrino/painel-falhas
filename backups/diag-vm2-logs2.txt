@@ -1,0 +1,322 @@
+Warning: Permanently added '147.15.66.241' (ED25519) to the list of known hosts.
+Aug 19 19:11:27 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1069 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 19 19:12:52 vnic-painel-om-wpp node[380735]: ⚠️  Conexão encerrada (código 500). Reconectando: true
+Aug 19 19:12:57 vnic-painel-om-wpp node[380735]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 19 19:12:58 vnic-painel-om-wpp node[380735]: ✅ WhatsApp conectado!
+Aug 19 19:12:58 vnic-painel-om-wpp node[380735]: 📡 Monitoramento em tempo real ATIVO
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Failed to decrypt message with any known session...
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:29 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Failed to decrypt message with any known session...
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Session error:Error: Bad MAC Error: Bad MAC
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at Object.verifyMAC (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/crypto.js:87:15)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at SessionCipher.doDecryptWhisperMessage (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:250:16)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async SessionCipher.decryptWithSessions (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:147:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async 33419912286288.0 [as awaitable] (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/session_cipher.js:171:28)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     at async _asyncQueueExecutor (/home/ubuntu/wppconnect-server/node_modules/libsignal/src/queue_job.js:20:29)
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Closing open session in favor of incoming prekey bundle
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: Closing session: SessionEntry {
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   _chains: {
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     BXmFcDQKhOhFoOTJYKbH8QeTfyE4eVquyynaIZmU0kgK: { chainKey: [Object], chainType: 2, messageKeys: {} },
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     'BSrP/rNGp6D9/emhyZpekfGpJryMpAzSw+p4kzgjsGpe': { chainKey: [Object], chainType: 1, messageKeys: {} }
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   },
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   registrationId: 1169073939,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   currentRatchet: {
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     ephemeralKeyPair: {
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:       pubKey: <Buffer 05 2a cf fe b3 46 a7 a0 fd fd e9 a1 c9 9a 5e 91 f1 a9 26 bc 8c a4 0c d2 c3 ea 78 93 38 23 b0 6a 5e>,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:       privKey: <Buffer a8 90 e7 2c 90 0c 7b be 62 28 f6 01 5d f7 38 03 5a 04 57 17 c0 49 04 ae 34 cf 79 1f 1d 07 8c 68>
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     },
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     lastRemoteEphemeralKey: <Buffer 05 79 85 70 34 0a 84 e8 45 a0 e4 c9 60 a6 c7 f1 07 93 7f 21 38 79 5a ae cb 29 da 21 99 94 d2 48 0a>,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     previousCounter: 0,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     rootKey: <Buffer 5d b8 b6 2f db 53 76 45 8a 9f a5 d2 2e 75 7d c4 ab bf 28 a2 36 e4 26 ce 00 39 52 0d da 9e e8 d1>
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   },
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   indexInfo: {
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     baseKey: <Buffer 05 bd 3e e8 20 4c ed 72 25 ae 80 78 b3 f3 f4 2c 64 b2 75 78 6a e4 fd ce 0b 61 04 c4 83 ea 4a 84 21>,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     baseKeyType: 2,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     closed: -1,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     used: 1787142981476,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     created: 1787142981476,
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:     remoteIdentityKey: <Buffer 05 03 ba fd 9c 40 de 6b 8e f2 f7 20 3c 5d 52 02 c2 2f 37 ab ca cf 1f 07 8a 4e ee bb 61 c1 67 d5 47>
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]:   }
+Aug 19 19:13:35 vnic-painel-om-wpp node[380735]: }
+Aug 19 19:14:22 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1101 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 19 19:19:45 vnic-painel-om-wpp node[380735]: 📨 [Tempo real] Falha recebida de 120363402176878100@g.us
+Aug 19 19:19:45 vnic-painel-om-wpp node[380735]:    ✅ Usina: Itaja 2 *Normalizado* MANUTENÇÃO TERCEIRA
+Aug 19 19:19:45 vnic-painel-om-wpp node[380735]: * Problemas: Inversor 3 desli...
+Aug 19 19:19:49 vnic-painel-om-wpp node[380735]:    ✅ Gravado: {"atualizados":[],"ignorados":1,"normalizados":[],"novos":[],"status":"ok"}
+Aug 19 19:23:46 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1102 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]: Closing open session in favor of incoming prekey bundle
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]: Closing session: SessionEntry {
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   _chains: {
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     BdGRhqJoxnStk9GPr0XatEUKJOwPsOrS9VcQ5fHapJ41: { chainKey: [Object], chainType: 2, messageKeys: [Object] },
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     'BR7NJtg20Tc1ejqNK/QQQPIP+2VIBDgGUnYKz814Q+E9': { chainKey: [Object], chainType: 1, messageKeys: {} }
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   },
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   registrationId: 1303540391,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   currentRatchet: {
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     ephemeralKeyPair: {
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:       pubKey: <Buffer 05 1e cd 26 d8 36 d1 37 35 7a 3a 8d 2b f4 10 40 f2 0f fb 65 48 04 38 06 52 76 0a cf cd 78 43 e1 3d>,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:       privKey: <Buffer 28 92 c7 a5 3a 94 df 14 31 26 6a c3 72 e3 4b 19 29 71 fb 4b 96 ee 66 0e f6 2d 42 e1 85 a2 e9 47>
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     },
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     lastRemoteEphemeralKey: <Buffer 05 d1 91 86 a2 68 c6 74 ad 93 d1 8f af 45 da b4 45 0a 24 ec 0f b0 ea d2 f5 57 10 e5 f1 da a4 9e 35>,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     previousCounter: 0,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     rootKey: <Buffer 5a be 34 d0 78 f5 07 67 3b a4 49 ef f0 11 36 e5 b2 9c a6 e4 fc d9 41 9d ec 5e 09 b0 f9 01 50 35>
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   },
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   indexInfo: {
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     baseKey: <Buffer 05 bb 5d 16 d2 c4 28 58 2c 59 61 fa ef 86 0c d9 87 ba a7 eb b4 36 30 72 52 ad e5 d9 c9 52 df 23 43>,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     baseKeyType: 2,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     closed: -1,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     used: 1786996986503,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     created: 1786996986503,
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:     remoteIdentityKey: <Buffer 05 24 fb c7 8e 19 75 d2 e1 99 d2 04 96 66 2a fd d1 a8 cd c0 88 d4 9a 50 32 ce 0b 9f 5d 29 0f 30 6a>
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]:   }
+Aug 19 19:24:39 vnic-painel-om-wpp node[380735]: }
+Aug 19 19:28:48 vnic-painel-om-wpp node[380735]: 📨 [Tempo real] Falha recebida de 120363423427343356@g.us
+Aug 19 19:28:48 vnic-painel-om-wpp node[380735]:    ✅ Usina: Nova Londrina 1 e 2 *Normalizado* Comunicação normalizada.
+Aug 19 19:28:48 vnic-painel-om-wpp node[380735]: * Problema: ...
+Aug 19 19:28:51 vnic-painel-om-wpp node[380735]:    ✅ Gravado: {"atualizados":[],"ignorados":1,"normalizados":[],"novos":[],"status":"ok"}
+Aug 19 19:28:58 vnic-painel-om-wpp node[380735]: 📨 [Tempo real] Falha recebida de 120363425837962709@g.us
+Aug 19 19:28:58 vnic-painel-om-wpp node[380735]:    ✅ Usina: Nova Londrina 1 e 2 *Normalizado* Comunicação normalizada.
+Aug 19 19:28:58 vnic-painel-om-wpp node[380735]: * Problema: ...
+Aug 19 19:29:01 vnic-painel-om-wpp node[380735]:    ✅ Gravado: {"atualizados":[],"ignorados":1,"normalizados":[],"novos":[],"status":"ok"}
+Aug 19 19:31:28 vnic-painel-om-wpp node[380735]: ⚠️  Conexão encerrada (código 503). Reconectando: true
+Aug 19 19:31:33 vnic-painel-om-wpp node[380735]: ⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.
+Aug 19 19:31:34 vnic-painel-om-wpp node[380735]: ✅ WhatsApp conectado!
+Aug 19 19:31:34 vnic-painel-om-wpp node[380735]: 📡 Monitoramento em tempo real ATIVO
+Aug 19 19:32:21 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1101 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 19 19:39:28 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1102 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 19 19:42:22 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1104 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]: PayloadTooLargeError: request entity too large
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at readStream (/home/ubuntu/wppconnect-server/node_modules/raw-body/index.js:163:17)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at getRawBody (/home/ubuntu/wppconnect-server/node_modules/raw-body/index.js:116:12)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at read (/home/ubuntu/wppconnect-server/node_modules/body-parser/lib/read.js:79:3)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at jsonParser (/home/ubuntu/wppconnect-server/node_modules/body-parser/lib/types/json.js:142:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at Layer.handle [as handle_request] (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/layer.js:95:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at trim_prefix (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:328:13)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at /home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:286:9
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at Function.process_params (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:346:12)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at next (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:280:10)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at expressInit (/home/ubuntu/wppconnect-server/node_modules/express/lib/middleware/init.js:40:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]: PayloadTooLargeError: request entity too large
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at readStream (/home/ubuntu/wppconnect-server/node_modules/raw-body/index.js:163:17)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at getRawBody (/home/ubuntu/wppconnect-server/node_modules/raw-body/index.js:116:12)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at read (/home/ubuntu/wppconnect-server/node_modules/body-parser/lib/read.js:79:3)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at jsonParser (/home/ubuntu/wppconnect-server/node_modules/body-parser/lib/types/json.js:142:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at Layer.handle [as handle_request] (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/layer.js:95:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at trim_prefix (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:328:13)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at /home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:286:9
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at Function.process_params (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:346:12)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at next (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:280:10)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at expressInit (/home/ubuntu/wppconnect-server/node_modules/express/lib/middleware/init.js:40:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]: PayloadTooLargeError: request entity too large
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at readStream (/home/ubuntu/wppconnect-server/node_modules/raw-body/index.js:163:17)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at getRawBody (/home/ubuntu/wppconnect-server/node_modules/raw-body/index.js:116:12)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at read (/home/ubuntu/wppconnect-server/node_modules/body-parser/lib/read.js:79:3)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at jsonParser (/home/ubuntu/wppconnect-server/node_modules/body-parser/lib/types/json.js:142:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at Layer.handle [as handle_request] (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/layer.js:95:5)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at trim_prefix (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:328:13)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at /home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:286:9
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at Function.process_params (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:346:12)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at next (/home/ubuntu/wppconnect-server/node_modules/express/lib/router/index.js:280:10)
+Aug 19 19:50:23 vnic-painel-om-wpp node[380735]:     at expressInit (/home/ubuntu/wppconnect-server/node_modules/express/lib/middleware/init.js:40:5)
+Aug 19 19:51:18 vnic-painel-om-wpp node[380735]: 📨 [Tempo real] Falha recebida de 120363425837962709@g.us
+Aug 19 19:51:18 vnic-painel-om-wpp node[380735]:    ✅🟡 Usina: Nova Londrina 1 e 2 *Normalizado*
+Aug 19 19:51:18 vnic-painel-om-wpp node[380735]: * Problema: Falha na comunicação
+Aug 19 19:51:18 vnic-painel-om-wpp node[380735]: * ...
+Aug 19 19:51:20 vnic-painel-om-wpp node[380735]:    ✅ Gravado: {"atualizados":[],"ignorados":1,"normalizados":[],"novos":[],"status":"ok"}
+Aug 19 19:52:22 vnic-painel-om-wpp node[380735]: 💾 [Backup Auth] 1104 arquivo(s) salvos no GitHub (Fred-Alexandrino/wppconnect-auth-backup)
