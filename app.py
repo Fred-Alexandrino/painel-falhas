@@ -13384,6 +13384,11 @@ REGRAS DE CONTEÚDO (críticas):
 - Textos SEMPRE em português do Brasil, tom técnico e direto, terceira pessoa (nunca "eu").
 - Data e duração da reunião: procure no início da transcrição (o Teams normalmente inclui data/
   hora/duração antes da primeira fala). Se não encontrar duração, omita-a do objetivo.
+- "cliente_nome" e "data_iso" são OBRIGATÓRIOS e usados para montar o nome do arquivo final —
+  capriche na identificação: "cliente_nome" nunca deve ser "Grid Co." (ela é sempre uma das
+  partes, nunca a contraparte) nem ficar vazio — se realmente não conseguir identificar o
+  cliente pelo contexto, use "Cliente". "data_iso" deve ser a data em que a reunião ocorreu,
+  no formato AAAA-MM-DD.
 
 TRANSCRIÇÃO:
 ---
@@ -13396,8 +13401,11 @@ ou depois), EXATAMENTE neste schema:
   "titulo_capa": "Reunião Semanal" ou "Reunião de Acompanhamento" (curto, 2-4 palavras),
   "subtitulo_capa": "NOME CLIENTE & GRID CO." (maiúsculas),
   "clientes_label": "Nome Cliente & Grid Co.",
+  "cliente_nome": "Nome Cliente" (Title Case, só o nome do cliente/contraparte, sem "Grid Co." —
+      ex.: "Renogrid", "Alves Lima", "GD Energy", "2C Energia" — usado no nome do arquivo),
   "data_extenso": "23 de julho de 2026",
   "data_arquivo": "23-07-2026",
+  "data_iso": "2026-07-23" (data da reunião em AAAA-MM-DD, pra calcular o número da semana do ano),
   "rodape_capa": "Documento de uso interno — Grid Co. / Nome Cliente",
   "objetivo": "parágrafo único: registra que o documento resume a reunião, data, duração (se souber) e participantes (nomes encontrados na transcrição, com empresa entre parênteses quando identificável).",
   "topicos": [
@@ -13435,6 +13443,30 @@ def _gerar_dados_ata_com_ia(texto_transcricao, cliente_hint=""):
     return parsed
 
 
+def _montar_nome_arquivo_ata(dados):
+    """Padrão de nomenclatura fixo (definido pelo Fred, 15/08/2026), usado
+    por TODOS os arquivos de Ata de Reunião gerados pelo sistema:
+        "Ata de Reuniao - {Cliente} x Grid Co - O&M - Semana {N}.docx"
+    (sem acento em "Reuniao" de propósito, pra manter compatibilidade com
+    sistemas de arquivo/e-mail mais sensíveis a caracteres especiais)."""
+    cliente = (dados.get("cliente_nome") or "").strip() or "Cliente"
+
+    semana = None
+    data_iso = (dados.get("data_iso") or "").strip()
+    if data_iso:
+        try:
+            semana = datetime.strptime(data_iso, "%Y-%m-%d").isocalendar()[1]
+        except Exception:
+            semana = None
+    if semana is None:
+        # fallback: usa a semana atual do calendário se a IA não conseguiu
+        # extrair a data da transcrição (não deveria acontecer, mas evita
+        # quebrar o download por causa só do número da semana).
+        semana = datetime.now(ZoneInfo("America/Fortaleza")).isocalendar()[1]
+
+    return f"Ata de Reuniao - {cliente} x Grid Co - O&M - Semana {semana}.docx"
+
+
 @app.route("/gerar-ata-reuniao", methods=["POST", "OPTIONS"])
 def gerar_ata_reuniao_route():
     """
@@ -13468,10 +13500,7 @@ def gerar_ata_reuniao_route():
         dados = _gerar_dados_ata_com_ia(texto, cliente_hint)
         conteudo = gerar_ata_reuniao_docx(dados)
 
-        subtitulo = (dados.get("subtitulo_capa") or "Grid Co.").strip()
-        data_arquivo = (dados.get("data_arquivo") or "").strip()
-        sufixo = f" - {data_arquivo}" if data_arquivo else ""
-        nome_arquivo = f"Ata de Reunião - {subtitulo}{sufixo}.docx"
+        nome_arquivo = _montar_nome_arquivo_ata(dados)
 
         log.info(f"[Ata Reuniao] Gerada com sucesso: {nome_arquivo} ({len(dados.get('topicos', []))} tópicos)")
         return send_file(
