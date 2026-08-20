@@ -3605,6 +3605,18 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
         numero_os = row[13].strip()
         if not numero_os:
             continue  # só audita quem está vinculado a uma OS da Fracttal
+        # Corrigido 20/08/2026, relatado pelo Fred: OS de uma usina que
+        # já foi devolvida (removida da Supervisão Temporária) continuava
+        # sendo revalidada ao vivo na Fracttal e gerando push de "OS
+        # atualizada" indefinidamente — porque essa auditoria varre TODA
+        # linha com numeroOS, sem checar se a usina ainda é reconhecida
+        # agora (a linha antiga fica pra sempre na planilha, só o
+        # cadastro da usina que sai do catálogo temporário). Mesmo
+        # princípio da correção de 31/07/2026 no /atividades e de
+        # 18/08/2026 no resumo/ronda — aplicado aqui pra fechar o último
+        # caminho que ainda vazava usina devolvida.
+        if canonizar_usina(row[2].strip()) is None:
+            continue
         status_interno_atual = row[8].strip()
         status_os_atual = row[14].strip()
 
