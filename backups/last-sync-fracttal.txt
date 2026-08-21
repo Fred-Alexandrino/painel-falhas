@@ -1,4 +1,4 @@
-Timestamp: 2026-08-21T04:11:00Z
+Timestamp: 2026-08-21T05:06:29Z
 Status HTTP: 200
 Resposta:
-{"background":true,"iniciado_em":"2026-08-21T01:11:00.548608-03:00","ok":true,"status":"ciclo_iniciado"}
+{"background":true,"iniciado_em":"2026-08-21T02:05:35.212125-03:00","ok":true,"status":"ciclo_anterior_ainda_em_andamento"}
