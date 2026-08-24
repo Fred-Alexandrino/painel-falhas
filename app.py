@@ -14492,6 +14492,257 @@ def fv_energias_ronda_disparar():
     return jsonify(resultado), status_code
 
 
+# ── Assistente IA do dashboard (/chat-ia) ────────────────────────────────
+# Balão de chat flutuante, visível só pro Fred (roles admin/manager) no
+# frontend, que responde perguntas sobre os dados operacionais do Central
+# O&M usando function calling do Gemini: o modelo escolhe qual ferramenta
+# chamar (atividades, zeladoria, chamados, programação PCM) e a gente
+# executa a consulta de verdade nos dados (Sheets/PCM) — o Gemini nunca
+# inventa números, só interpreta o que a consulta trouxe.
+
+_CHAT_IA_MAX_RODADAS = 5
+
+_CHAT_IA_TOOLS = [{
+    "functionDeclarations": [
+        {
+            "name": "consultar_atividades",
+            "description": "Consulta o Painel de Atividades (ordens de serviço / atividades de campo). Retorna lista de atividades filtradas.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina, ex: 'Nova Xavantina I'. Deixe vazio para todas."},
+                    "cliente": {"type": "string", "description": "Nome do cliente, ex: 'RENOGRID'. Deixe vazio para todos."},
+                    "status": {"type": "string", "description": "Status da atividade, ex: 'Em Aberto', 'Concluído', 'Em Andamento'. Deixe vazio para todos."},
+                    "numeroOS": {"type": "string", "description": "Número da OS específica, se souber."},
+                },
+            },
+        },
+        {
+            "name": "consultar_zeladoria",
+            "description": "Consulta a situação de zeladoria (roçada/supressão vegetal, poda química, lavagem de módulos, controle de pragas) por usina.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
+                },
+            },
+        },
+        {
+            "name": "consultar_chamados",
+            "description": "Consulta chamados/protocolos abertos com fabricantes de equipamentos (inversores, etc).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina (campo UFV). Deixe vazio para todas."},
+                },
+            },
+        },
+        {
+            "name": "consultar_programacao_pcm",
+            "description": "Consulta a programação semanal do PCM (Power Automate) para um dia específico — o que está agendado para execução.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data": {"type": "string", "description": "Data no formato YYYY-MM-DD. Se vazio, usa hoje."},
+                },
+            },
+        },
+    ]
+}]
+
+
+def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS=""):
+    ws = get_atividades_sheet()
+    todos = ws.get_all_values()
+    mapa_cluster = _mapa_cluster_usina()
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for row in todos[1:]:
+        if len(row) < len(ATIV_HEADERS_JSON):
+            row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+        if not row[0].strip():
+            continue
+        item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+        if not usina_permitida(item.get("usina", "")):
+            continue
+        if usina_norm and canonizar_usina(item.get("usina", "")) != usina_norm:
+            continue
+        if cliente and cliente.strip().lower() not in item.get("cliente", "").strip().lower():
+            continue
+        if status and status.strip().lower() not in item.get("status", "").strip().lower():
+            continue
+        if numeroOS and numeroOS.strip() != item.get("numeroOS", "").strip():
+            continue
+        item["cluster"] = mapa_cluster.get(item.get("usina", "").strip(), "")
+        out.append(item)
+    # limita pra não estourar o contexto do Gemini em consultas amplas
+    limitado = out[:60]
+    return {"total_encontrado": len(out), "mostrando": len(limitado), "atividades": limitado}
+
+
+def _ia_consultar_zeladoria(usina=""):
+    ws = get_zeladoria_sheet()
+    todos = ws.get_all_values()
+    indice_cols = _zel_montar_indice_colunas(ws)
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for row in todos[2:]:
+        if len(row) < 2 or not row[1].strip():
+            continue
+        nome_usina = row[1].strip()
+        if usina_norm and canonizar_usina(nome_usina) != usina_norm:
+            continue
+        if not usina_permitida(nome_usina):
+            continue
+        grupos = {}
+        for grupo, subcols in indice_cols.items():
+            dados_grupo = {}
+            for subcol, col_idx in subcols.items():
+                valor = row[col_idx - 1].strip() if col_idx - 1 < len(row) else ""
+                if valor:
+                    dados_grupo[subcol] = valor
+            if dados_grupo:
+                grupos[grupo] = dados_grupo
+        out.append({"usina": nome_usina, "grupos": grupos})
+    return {"total": len(out), "zeladoria": out}
+
+
+def _ia_consultar_chamados(usina=""):
+    itens = _chamados_fabricante_itens()
+    usina_norm = canonizar_usina(usina) if usina else None
+    if usina_norm:
+        itens = [it for it in itens if canonizar_usina(it.get("UFV", "")) == usina_norm]
+    limitado = itens[:60]
+    return {"total_encontrado": len(itens), "mostrando": len(limitado), "chamados": limitado}
+
+
+def _ia_consultar_programacao_pcm(data=""):
+    data_filtro = (data or "").strip() or datetime.now(_TZ_BR).strftime("%Y-%m-%d")
+    try:
+        dt = datetime.strptime(data_filtro, "%Y-%m-%d").date()
+    except ValueError:
+        return {"erro": "data inválida, use YYYY-MM-DD"}
+    cache = _buscar_programacao_pcm_core()
+    dados = cache.get("dados") or {}
+    semanas = dados.get("semanas", [])
+    iso_year, iso_week, _ = dt.isocalendar()
+    semana_alvo = f"{iso_year}-W{iso_week:02d}"
+    semana = next((s for s in semanas if s.get("week") == semana_alvo), None)
+    if semana is None:
+        return {"aviso": f"Sem programação publicada pelo PCM pra semana {semana_alvo}."}
+    dia_pt = _DIA_SEMANA_PT[dt.weekday()]
+    usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
+    linhas_dia = [
+        r for r in semana.get("rows", [])
+        if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt
+    ]
+    itens = [{
+        "usina": r.get("usina"), "cliente": r.get("cliente"), "tipo": r.get("tipo"),
+        "tarefa": r.get("tarefa"), "status": r.get("status"),
+        "hIni": r.get("h_ini"), "hFim": r.get("h_fim"),
+    } for r in linhas_dia]
+    return {"data": data_filtro, "diaSemana": dia_pt, "total": len(itens), "programacao": itens}
+
+
+_CHAT_IA_FERRAMENTAS_PYTHON = {
+    "consultar_atividades": _ia_consultar_atividades,
+    "consultar_zeladoria": _ia_consultar_zeladoria,
+    "consultar_chamados": _ia_consultar_chamados,
+    "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
+}
+
+
+def _chat_ia_system_prompt():
+    hoje = agora_br().strftime("%d/%m/%Y (%A)")
+    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, zeladoria, chamados de fabricante e programação do PCM.
+
+Hoje é {hoje}, horário de Brasília.
+
+REGRAS OBRIGATÓRIAS:
+- Use SEMPRE as ferramentas disponíveis para consultar dados reais antes de responder qualquer pergunta sobre números, status, OS, usinas, prazos ou pendências. NUNCA invente ou estime dados que não vieram de uma chamada de ferramenta.
+- Se uma pergunta puder ser respondida com mais de uma ferramenta (ex: "o que está pendente na usina X"), chame todas as ferramentas relevantes.
+- Se a ferramenta não retornar nada relevante, diga claramente que não encontrou, em vez de supor.
+- Responda em português, de forma direta e objetiva — sem rodeios, sem saudações desnecessárias. Fred prefere respostas curtas e factuais, com números e nomes específicos.
+- Nomes de usina usam numeração romana (ex: Matão I, Sol do Norte I) — normalize antes de comparar.
+- Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas."""
+
+
+@app.route("/chat-ia", methods=["POST"])
+def chat_ia():
+    """Assistente de IA do dashboard: recebe uma pergunta em linguagem
+    natural e responde consultando os dados reais do painel (Atividades,
+    Zeladoria, Chamados, Programação PCM) via function calling do Gemini
+    — nunca gera números "de memória". Uso interno (widget flutuante,
+    visível só pro Fred no frontend)."""
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor"}), 500
+
+    body = request.get_json(force=True, silent=True) or {}
+    pergunta = (body.get("pergunta") or "").strip()
+    historico = body.get("historico") or []  # [{role:'user'|'model', texto:'...'}]
+    if not pergunta:
+        return jsonify({"ok": False, "error": "informe 'pergunta'"}), 400
+
+    contents = []
+    for turno in historico[-10:]:  # limita histórico pra não estourar contexto
+        role = turno.get("role")
+        texto = turno.get("texto", "")
+        if role in ("user", "model") and texto:
+            contents.append({"role": role, "parts": [{"text": texto}]})
+    contents.append({"role": "user", "parts": [{"text": pergunta}]})
+
+    ferramentas_chamadas = []
+    try:
+        for _rodada in range(_CHAT_IA_MAX_RODADAS):
+            payload = {
+                "system_instruction": {"parts": [{"text": _chat_ia_system_prompt()}]},
+                "contents": contents,
+                "tools": _CHAT_IA_TOOLS,
+            }
+            resp = _chamar_gemini_com_retry(payload, timeout=60)
+            data = resp.json()
+            candidatos = data.get("candidates") or []
+            if not candidatos:
+                return jsonify({"ok": False, "error": "Gemini não retornou resposta"}), 502
+            content = candidatos[0].get("content") or {}
+            parts = content.get("parts") or []
+            chamadas_funcao = [p["functionCall"] for p in parts if "functionCall" in p]
+
+            if not chamadas_funcao:
+                texto_final = "".join(p.get("text", "") for p in parts).strip()
+                return jsonify({
+                    "ok": True,
+                    "resposta": texto_final or "Não consegui gerar uma resposta.",
+                    "ferramentasUsadas": ferramentas_chamadas,
+                }), 200
+
+            contents.append(content)
+            partes_resposta = []
+            for chamada in chamadas_funcao:
+                nome = chamada.get("name")
+                args = chamada.get("args") or {}
+                fn = _CHAT_IA_FERRAMENTAS_PYTHON.get(nome)
+                if fn is None:
+                    resultado = {"erro": f"ferramenta '{nome}' não existe"}
+                else:
+                    try:
+                        resultado = fn(**args)
+                    except Exception as e:
+                        resultado = {"erro": str(e)}
+                    ferramentas_chamadas.append({"nome": nome, "args": args})
+                partes_resposta.append({"functionResponse": {"name": nome, "response": resultado}})
+            contents.append({"role": "user", "parts": partes_resposta})
+
+        return jsonify({"ok": False, "error": "Limite de rodadas de consulta atingido sem resposta final"}), 500
+    except requests.exceptions.HTTPError as e:
+        log.error(f"[chat-ia] Erro HTTP do Gemini: {e}")
+        return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
+    except Exception as e:
+        log.error(f"[chat-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+
 try:
     carregar_push_subscriptions()
 except Exception as e:
