@@ -522,13 +522,24 @@ CATALOGO_USINAS = {
         "cliente": "Sal Energia",
         "aliases": ["vitesse", "quixada ii", "quixada 2", "quixadá ii", "quixadá 2"],
     },
-    "Carosa (Aquiraz I)": {
+    "Salvales (Aquiraz I)": {
         "cliente": "Sal Energia",
-        "aliases": ["carosa", "aquiraz i", "aquiraz 1"],
+        "aliases": ["salvales", "aquiraz i", "aquiraz 1"],
     },
-    "Salvales (Aquiraz II)": {
+    "Carosa (Aquiraz II)": {
         "cliente": "Sal Energia",
-        "aliases": ["salvales", "aquiraz ii", "aquiraz 2"],
+        # Corrigido 24/08/2026: o par estava invertido (Carosa/Aquiraz I,
+        # Salvales/Aquiraz II) desde a criação do catálogo em 27/07/2026,
+        # nunca atualizado após a correção de nomenclatura confirmada com
+        # o Fred em 18/08/2026. Isso fazia canonizar_usina() nunca achar
+        # match exato pro texto real vindo do groups_1_description da
+        # Fracttal ("Carosa (Aquiraz II)"), caindo no fallback de busca
+        # parcial (passo 2) — que score por tamanho de alias e escolhia
+        # "aquiraz ii" (10 chars, olhando o cadastro errado de Salvales)
+        # em vez de "carosa" (6 chars), classificando incorretamente como
+        # Salvales. Ex.: OS 11713 (ativo SALE-CRS200-TRFR1, prefixo CRS =
+        # Carosa) caiu como "Salvales (Aquiraz II)" por causa disso.
+        "aliases": ["carosa", "aquiraz ii", "aquiraz 2"],
     },
 }
 
@@ -1353,8 +1364,8 @@ LOCALIZACOES_SEED = [
     ('Sal Energia', 'SunPower (Cascavel)', 'Zona Rural, s/n – Cascavel - CE', 'https://maps.app.goo.gl/gogYXrktX8D3TfFPA', -4.105639, -38.319028),
     ('Sal Energia', 'Hortina (Quixadá I)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
     ('Sal Energia', 'Vitesse (Quixadá II)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
-    ('Sal Energia', 'Carosa (Aquiraz I)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
-    ('Sal Energia', 'Salvales (Aquiraz II)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
+    ('Sal Energia', 'Salvales (Aquiraz I)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
+    ('Sal Energia', 'Carosa (Aquiraz II)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
 ]
 
 
