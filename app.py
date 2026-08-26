@@ -4102,7 +4102,7 @@ def resumo_widget():
 def listar_atividades():
     try:
         ws = get_atividades_sheet()
-        todos = ws.get_all_values()
+        todos = _gspread_retry(lambda: ws.get_all_values())
         mapa_cluster = _mapa_cluster_usina()
         out = []
         for row in todos[1:]:
@@ -10178,7 +10178,7 @@ def atualizar_campo_atividade():
     try:
         ws = get_atividades_sheet()
         _garantir_headers_atividades(ws)
-        todos = ws.get_all_values()
+        todos = _gspread_retry(lambda: ws.get_all_values())
         linha_idx = None
         linha_atual = None
         for i, row in enumerate(todos[1:], start=2):
