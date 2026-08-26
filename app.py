@@ -6910,6 +6910,47 @@ def _mapa_cluster_usina():
     return mapa
 
 
+_mapa_coordenador_cluster_cache = {"dados": None, "expira_em": 0}
+
+
+def _mapa_coordenador_cluster():
+    """Mapeia cluster -> coordenador/técnico responsável, configurado na
+    aba _Sistema como 'coordenador_cluster:<Cluster>' (ex.: gravado via
+    /config-set-lote). Levantado por vistoria em 26/08/2026, cruzando o
+    campo 'responsavel' das atividades reais com o cluster de cada usina
+    — substitui uma tabela fixa que existia hardcoded no prompt do
+    chat-ia (ficava desatualizada sem ninguém perceber). Mesmo padrão de
+    cache de _mapa_cluster_usina."""
+    agora_ts = time.time()
+    if _mapa_coordenador_cluster_cache["dados"] is not None and agora_ts < _mapa_coordenador_cluster_cache["expira_em"]:
+        return _mapa_coordenador_cluster_cache["dados"]
+    try:
+        ws_cfg = _get_config_sheet()
+        valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+    except Exception as e:
+        if _mapa_coordenador_cluster_cache["dados"] is not None:
+            log.error(f"[_mapa_coordenador_cluster] Falha ao atualizar ({e}) — usando cache em memória")
+            return _mapa_coordenador_cluster_cache["dados"]
+        do_disco = _mapa_cache_disco_carregar("coordenador_cluster")
+        if do_disco is not None:
+            log.error(f"[_mapa_coordenador_cluster] Falha ao atualizar ({e}) — usando cache salvo em disco")
+            _mapa_coordenador_cluster_cache["dados"] = do_disco
+            _mapa_coordenador_cluster_cache["expira_em"] = agora_ts + 60
+            return do_disco
+        raise
+    mapa = {}
+    for row in valores[1:]:
+        if row and row[0].strip().startswith("coordenador_cluster:"):
+            cluster = row[0].strip()[len("coordenador_cluster:"):].strip()
+            nome = row[1].strip() if len(row) > 1 else ""
+            if cluster and nome:
+                mapa[cluster] = nome
+    _mapa_coordenador_cluster_cache["dados"] = mapa
+    _mapa_coordenador_cluster_cache["expira_em"] = agora_ts + 600
+    _mapa_cache_disco_salvar("coordenador_cluster", mapa)
+    return mapa
+
+
 def _montar_texto_comunicado_usina(usina, atividades):
     def dias_atraso(prazo):
         m = re.match(r"(\d{2})/(\d{2})/(\d{4})", prazo or "")
@@ -14662,23 +14703,32 @@ _CHAT_IA_FERRAMENTAS_PYTHON = {
 
 def _chat_ia_system_prompt():
     hoje = agora_br().strftime("%d/%m/%Y (%A)")
+    try:
+        mapa_coord = _mapa_coordenador_cluster()
+    except Exception as e:
+        log.error(f"[chat-ia] Falha ao carregar coordenador_cluster: {e}")
+        mapa_coord = {}
+    if mapa_coord:
+        linhas_tabela = "\n".join(f"- {cluster}: {nome}" for cluster, nome in sorted(mapa_coord.items()))
+        bloco_clusters = f"""TABELA DE CLUSTERS E COORDENADORES/TÉCNICOS PRINCIPAIS (lida ao vivo da configuração — se a organização mudar, é atualizada na aba _Sistema, chave "coordenador_cluster:<Cluster>", sem precisar de deploy):
+{linhas_tabela}
+
+Alguns clusters têm mais de um nome listado (separados por "/") porque a vistoria de 26/08/2026 encontrou mais de um técnico com volume relevante de atividades e não achou um responsável único óbvio — considere ambos ao investigar."""
+    else:
+        bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
+
     return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, zeladoria, chamados de fabricante e programação do PCM.
 
 Hoje é {hoje}, horário de Brasília.
 
-TABELA DE CLUSTERS E EQUIPES (referência estática — pode ficar desatualizada se a organização mudar; se a resposta parecer inconsistente com o que o Fred espera, avise que essa tabela pode precisar de atualização):
-- CE Leste 01: coordenação de Cláudio Ferreira / Isake Costa
-- CE Leste 02: equipe de Adriano Silva, Felipe Xavier, Alesson Sousa
-- CE Norte 01: técnico Felipe Xavier
-- MT Sul 03: técnico Valmir
-- SP Centro 02: técnico Eduardo Souza
+{bloco_clusters}
 
-IMPORTANTE SOBRE NOMES DE PESSOAS: coordenadores/líderes de cluster (ex.: Cláudio Ferreira) normalmente NÃO aparecem no campo "responsavel" de cada atividade — esse campo tem o técnico de campo que executou (ex.: Deivity, Eduardo Souza, Railson Gomes...), não o coordenador. Se perguntarem sobre atividades "do Cláudio Ferreira" ou "da equipe dele", NÃO filtre por responsavel="Cláudio Ferreira" (não vai achar nada) — em vez disso, use a tabela acima pra identificar o cluster da pessoa e chame consultar_atividades com o parâmetro cluster (ex.: cluster="CE Leste 01"). Só use o filtro responsavel quando a pergunta for sobre um técnico de campo específico.
+IMPORTANTE SOBRE NOMES DE PESSOAS: uma vistoria cruzando atividades reais com clusters (26/08/2026) mostrou que coordenadores de cluster GERALMENTE também aparecem como "responsavel" em várias atividades (eles executam campo também, não só coordenam). Por isso, ao perguntarem sobre "atividades do Fulano": (1) primeiro chame consultar_atividades com responsavel="Fulano" pra pegar o que está diretamente atribuído a ele; (2) SE Fulano for um coordenador de cluster (está na tabela acima), chame TAMBÉM consultar_atividades com cluster="<cluster dele>" pra não perder atividades de outros técnicos da equipe dele que ele também acompanha; (3) apresente os dois resultados de forma clara, deixando explícito o que é "atribuído diretamente a ele" vs "da equipe/cluster dele".
 
 REGRAS OBRIGATÓRIAS:
 - Use SEMPRE as ferramentas disponíveis para consultar dados reais antes de responder qualquer pergunta sobre números, status, OS, usinas, prazos ou pendências. NUNCA invente ou estime dados que não vieram de uma chamada de ferramenta.
 - Se uma pergunta puder ser respondida com mais de uma ferramenta (ex: "o que está pendente na usina X"), chame todas as ferramentas relevantes.
-- Se a ferramenta não retornar nada relevante, diga claramente que não encontrou, em vez de supor. Antes de concluir que não há nada, confira se a pergunta é sobre um coordenador de cluster (ver acima) — nesse caso, filtre por cluster, não por responsavel.
+- Se a ferramenta não retornar nada relevante, diga claramente que não encontrou, em vez de supor. Antes de concluir que não há nada sobre uma pessoa, confira se ela é coordenadora de cluster (ver acima) e tente também pelo cluster.
 - Responda em português, de forma direta e objetiva — sem rodeios, sem saudações desnecessárias. Fred prefere respostas curtas e factuais, com números e nomes específicos.
 - Nomes de usina usam numeração romana (ex: Matão I, Sol do Norte I) — normalize antes de comparar.
 - Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas."""
