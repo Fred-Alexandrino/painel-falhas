@@ -14553,7 +14553,7 @@ _CHAT_IA_TOOLS = [{
 
 def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS=""):
     ws = get_atividades_sheet()
-    todos = ws.get_all_values()
+    todos = _gspread_retry(lambda: ws.get_all_values())
     mapa_cluster = _mapa_cluster_usina()
     usina_norm = canonizar_usina(usina) if usina else None
     out = []
@@ -14582,8 +14582,8 @@ def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS=""):
 
 def _ia_consultar_zeladoria(usina=""):
     ws = get_zeladoria_sheet()
-    todos = ws.get_all_values()
-    indice_cols = _zel_montar_indice_colunas(ws)
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    indice_cols = _gspread_retry(lambda: _zel_montar_indice_colunas(ws))
     usina_norm = canonizar_usina(usina) if usina else None
     out = []
     for row in todos[2:]:
