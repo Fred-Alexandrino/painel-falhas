@@ -14514,6 +14514,8 @@ _CHAT_IA_TOOLS = [{
                     "cliente": {"type": "string", "description": "Nome do cliente, ex: 'RENOGRID'. Deixe vazio para todos."},
                     "status": {"type": "string", "description": "Status da atividade, ex: 'Em Aberto', 'Concluído', 'Em Andamento'. Deixe vazio para todos."},
                     "numeroOS": {"type": "string", "description": "Número da OS específica, se souber."},
+                    "cluster": {"type": "string", "description": "Código do cluster/equipe regional, ex: 'CE Leste 01'. Use quando a pergunta for sobre um coordenador de equipe/cluster (veja a tabela de clusters no prompt do sistema) em vez de uma usina específica. Deixe vazio se não aplicável."},
+                    "responsavel": {"type": "string", "description": "Nome (ou parte do nome) do técnico responsável pela atividade, campo 'Responsável' — use pra perguntas sobre um técnico de campo específico. Deixe vazio se não aplicável."},
                 },
             },
         },
@@ -14551,11 +14553,12 @@ _CHAT_IA_TOOLS = [{
 }]
 
 
-def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS=""):
+def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS="", cluster="", responsavel=""):
     ws = get_atividades_sheet()
     todos = _gspread_retry(lambda: ws.get_all_values())
     mapa_cluster = _mapa_cluster_usina()
     usina_norm = canonizar_usina(usina) if usina else None
+    cluster_norm = _normalizar_tema_comunicado(cluster) if cluster else None
     out = []
     for row in todos[1:]:
         if len(row) < len(ATIV_HEADERS_JSON):
@@ -14573,7 +14576,12 @@ def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS=""):
             continue
         if numeroOS and numeroOS.strip() != item.get("numeroOS", "").strip():
             continue
-        item["cluster"] = mapa_cluster.get(item.get("usina", "").strip(), "")
+        if responsavel and responsavel.strip().lower() not in item.get("responsavel", "").strip().lower():
+            continue
+        item_cluster = mapa_cluster.get(item.get("usina", "").strip(), "")
+        if cluster_norm and _normalizar_tema_comunicado(item_cluster) != cluster_norm:
+            continue
+        item["cluster"] = item_cluster
         out.append(item)
     # limita pra não estourar o contexto do Gemini em consultas amplas
     limitado = out[:60]
@@ -14658,10 +14666,19 @@ def _chat_ia_system_prompt():
 
 Hoje é {hoje}, horário de Brasília.
 
+TABELA DE CLUSTERS E EQUIPES (referência estática — pode ficar desatualizada se a organização mudar; se a resposta parecer inconsistente com o que o Fred espera, avise que essa tabela pode precisar de atualização):
+- CE Leste 01: coordenação de Cláudio Ferreira / Isake Costa
+- CE Leste 02: equipe de Adriano Silva, Felipe Xavier, Alesson Sousa
+- CE Norte 01: técnico Felipe Xavier
+- MT Sul 03: técnico Valmir
+- SP Centro 02: técnico Eduardo Souza
+
+IMPORTANTE SOBRE NOMES DE PESSOAS: coordenadores/líderes de cluster (ex.: Cláudio Ferreira) normalmente NÃO aparecem no campo "responsavel" de cada atividade — esse campo tem o técnico de campo que executou (ex.: Deivity, Eduardo Souza, Railson Gomes...), não o coordenador. Se perguntarem sobre atividades "do Cláudio Ferreira" ou "da equipe dele", NÃO filtre por responsavel="Cláudio Ferreira" (não vai achar nada) — em vez disso, use a tabela acima pra identificar o cluster da pessoa e chame consultar_atividades com o parâmetro cluster (ex.: cluster="CE Leste 01"). Só use o filtro responsavel quando a pergunta for sobre um técnico de campo específico.
+
 REGRAS OBRIGATÓRIAS:
 - Use SEMPRE as ferramentas disponíveis para consultar dados reais antes de responder qualquer pergunta sobre números, status, OS, usinas, prazos ou pendências. NUNCA invente ou estime dados que não vieram de uma chamada de ferramenta.
 - Se uma pergunta puder ser respondida com mais de uma ferramenta (ex: "o que está pendente na usina X"), chame todas as ferramentas relevantes.
-- Se a ferramenta não retornar nada relevante, diga claramente que não encontrou, em vez de supor.
+- Se a ferramenta não retornar nada relevante, diga claramente que não encontrou, em vez de supor. Antes de concluir que não há nada, confira se a pergunta é sobre um coordenador de cluster (ver acima) — nesse caso, filtre por cluster, não por responsavel.
 - Responda em português, de forma direta e objetiva — sem rodeios, sem saudações desnecessárias. Fred prefere respostas curtas e factuais, com números e nomes específicos.
 - Nomes de usina usam numeração romana (ex: Matão I, Sol do Norte I) — normalize antes de comparar.
 - Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas."""
