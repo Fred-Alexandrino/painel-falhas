@@ -8992,7 +8992,7 @@ def _coletar_dados_resumo_diario(data_str):
         os_id = str(r.get("os_id") or "").strip()
         item = {
             "usina": r.get("usina"), "cliente": r.get("cliente"), "tarefa": r.get("tarefa"),
-            "os": os_id, "hIni": r.get("h_ini"),
+            "os": os_id, "hIni": r.get("h_ini"), "tipo": r.get("tipo"),
         }
         entry = por_numero_os.get(os_id) if os_id else None
         if entry is not None:
@@ -9017,6 +9017,8 @@ def _coletar_dados_resumo_diario(data_str):
 
             item["statusReal"] = status_interno_fresco
             item["statusOSReal"] = status_os_fresco
+            item["equipamento"] = row_real[ATIV_CAMPO_COL["equipamento"] - 1].strip()
+            item["responsavel"] = row_real[ATIV_CAMPO_COL["responsavel"] - 1].strip() if len(row_real) > ATIV_CAMPO_COL["responsavel"] - 1 else ""
             if _is_concluido_atividade(status_interno_fresco) or status_os_fresco in ("Em Revisão", "Finalizada"):
                 programado_cumprido.append(item)
             else:
@@ -9354,24 +9356,24 @@ USINAS SOB SUA SUPERVISÃO (lista fechada — só estas): {lista_usinas_fred}
 REGRA CRÍTICA — ESCOPO DE USINA: alguns grupos de WhatsApp (principalmente os grupos de cliente, ex. "[O&M] - Grid Co. | 2C") são compartilhados com técnicos/supervisores de OUTRAS usinas do mesmo cliente que NÃO são suas. Se uma mensagem mencionar uma usina que NÃO está na lista acima (ex.: "Tupi Paulista", "Macaíba", "Santarém", "Aparecida" — nomes de exemplo, qualquer nome fora da lista se aplica), essa usina NÃO é sua responsabilidade — não mencione ela em NENHUMA seção do resumo (nem em alertas, nem em "OS sem correspondência", nem no resumo por equipe), mesmo que pareça relevante ou urgente. Trate como ruído de outro supervisor e ignore completamente. Isso vale pra toda a lista de usinas acima, e só pra essa lista.
 
 REGRAS DE ESCRITA:
-- Direto e objetivo, sem enrolação, sem saudação.
-- Estruture em tópicos curtos com emojis moderados pra facilitar leitura rápida no celular.
-- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo. Cada dado abaixo já foi validado como evidência real do dia — não generalize nem "arredonde" a descrição da tarefa (ex.: se a descrição cita religamento mas isso é só parte de uma tarefa maior, não resuma como "fizemos religamentos" sem mais contexto).
+- Direto e sem enrolação, mas COMPLETO — não é pra ser um título de uma linha por item. Pra cada OS/atividade relevante, diga o que foi feito de fato (não só citar código de tarefa/OS), com o detalhe técnico disponível nos dados (equipamento, responsável, o que o histórico ou a mensagem do técnico realmente diz). Duas ou três frases por item quando o dado sustentar isso é preferível a uma linha genérica tipo "Preventiva mensal realizada" sem contexto.
+- Sem saudação. Estruture em tópicos com emojis moderados pra facilitar leitura rápida no celular, mas não sacrifique informação por brevidade artificial — o Fred prefere um resumo mais longo e completo a um curto e raso.
+- NUNCA invente números, nomes ou fatos que não estão nos dados abaixo. Cada dado abaixo já foi validado como evidência real do dia — não generalize nem "arredonde" a descrição da tarefa (ex.: se a descrição cita religamento mas isso é só parte de uma tarefa maior, não resuma como "fizemos religamentos" sem mais contexto). Ao mesmo tempo, USE todo campo disponível (responsável, equipamento, tipo de tarefa, trecho de mensagem) pra dar substância — não descarte detalhe só pra encurtar.
 - Se uma seção não tiver nada a reportar, diga isso em uma linha curta, não pule a seção.
 - IMPORTANTE — cruzamento por NÚMERO DE OS: as seções "OS confirmadas por mensagem" e "OS mencionadas sem correspondência" abaixo já foram cruzadas automaticamente por número (não precisa procurar número de OS no bloco de mensagens sozinho).
 - IMPORTANTE — cruzamento por EQUIPAMENTO/USINA (faça você mesmo, é o cruzamento mais comum): o técnico raramente fala o número da OS no grupo — ele fala do EQUIPAMENTO ou da USINA ("o inversor 1.6 de Ibaté", "religamos o trafo de Araputanga", "terminamos a preventiva de Crateús"). Cruze o que foi dito nas mensagens com o campo "equipamento"/"usina" das OS listadas acima (programação, concluídas, progresso). Se uma mensagem falar de um equipamento/usina que bate com uma OS do dia, uma dessas coisas:
-  (a) CONFIRMA o que já está registrado (cite isso junto da OS correspondente, ex.: "Ibaté I, inversor 1.10 (OS 9781) — confirmado pelo técnico no grupo: 'terminei a inspeção do 1.10'"), ou
+  (a) CONFIRMA o que já está registrado (cite isso junto da OS correspondente, incluindo um trecho literal relevante da mensagem, ex.: "Ibaté I, inversor 1.10 (OS 9781, responsável Fulano) — confirmado pelo técnico no grupo: 'terminei a inspeção do 1.10, encontrei string 3 com baixa geração'"), ou
   (b) CONTRADIZ o que está registrado (ex.: técnico diz que não terminou algo que o sistema mostra concluído, ou vice-versa) — isso é importante, aponte como um alerta de divergência pro Fred verificar, ou
   (c) é uma menção nova sem OS correspondente no sistema — mesma lógica das OS sem correspondência: vale mencionar como algo pra conferir.
-- RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo curto e específico do que foi tratado NAQUELE grupo — não um resumo genérico misturando tudo. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato. Lembre da REGRA CRÍTICA DE ESCOPO acima: se um grupo compartilhado só teve mensagens sobre usina(s) fora da sua lista, trate como "sem assunto relevante hoje" pra você — não resuma o assunto de outra usina.
+- RESUMO POR EQUIPE (obrigatório, seção própria no final, antes do fechamento): pra cada grupo do WhatsApp que teve mensagem hoje, escreva um parágrafo específico do que foi tratado NAQUELE grupo — traga contexto real (o que foi reportado, por quem, qual o desfecho se houver), não uma linha genérica. Se o grupo não teve mensagem relevante hoje ("bom dia", figurinha, coisa sem conteúdo), diga isso em uma linha ("Equipe X: sem assunto relevante hoje"). Ignore mensagens só de cortesia/figurinha ao montar o resumo, mas não invente conteúdo se não houver nada de fato. Lembre da REGRA CRÍTICA DE ESCOPO acima: se um grupo compartilhado só teve mensagens sobre usina(s) fora da sua lista, trate como "sem assunto relevante hoje" pra você — não resuma o assunto de outra usina.
 
 DADOS DO DIA:
 
 ## Programação do PCM — cumprida
-{_fmt_lista(cumprido, ['usina', 'cliente', 'tarefa', 'os'])}
+{_fmt_lista(cumprido, ['usina', 'cliente', 'tarefa', 'tipo', 'os', 'equipamento', 'responsavel'])}
 
 ## Programação do PCM — pendente/não cumprida hoje
-{_fmt_lista(pendente, ['usina', 'cliente', 'tarefa', 'os', 'statusReal'])}
+{_fmt_lista(pendente, ['usina', 'cliente', 'tarefa', 'tipo', 'os', 'equipamento', 'responsavel', 'statusReal', 'statusOSReal'])}
 
 ## Atividades CONCLUÍDAS hoje fora da programação (evidência real de trabalho no histórico, não só mudança administrativa de status)
 {_fmt_lista(extras, ['usina', 'cliente', 'equipamento', 'descricao', 'numeroOS'])}
@@ -9401,7 +9403,7 @@ DADOS DO DIA:
 {texto_mensagens}
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{"texto": "resumo diário completo, pronto pra enviar no WhatsApp, começando com um cabeçalho tipo '📋 RESUMO DIÁRIO — {data_fmt}', e terminando com a seção 'RESUMO POR EQUIPE' descrita acima"}}"""
+{{"texto": "resumo diário completo e detalhado, pronto pra enviar no WhatsApp, começando com um cabeçalho tipo '📋 RESUMO DIÁRIO — {data_fmt}', e terminando com a seção 'RESUMO POR EQUIPE' descrita acima"}}"""
 
 
 def _enviar_mensagem_grupo(grupo_id, texto):
@@ -9422,17 +9424,26 @@ def _gerar_resumo_diario_core(data_str=None, enviar=True):
         data_str = agora_br().strftime("%Y-%m-%d")
     dados = _coletar_dados_resumo_diario(data_str)
     prompt = _montar_prompt_resumo_diario(dados)
+    # Corrigido em 27/08/2026 (relatado pelo Fred: "resumos muito
+    # resumidos e pobres de informação"): maxOutputTokens estava em 3072
+    # — baixo o bastante pra cortar o resumo no meio em dias mais
+    # movimentados, forçando a IA a comprimir demais mesmo com dados ricos
+    # disponíveis. thinkingBudget=0 (sem raciocínio antes de escrever)
+    # também empurrava pra respostas mais rasas. Subido pra 8192 tokens de
+    # saída e 1536 de thinking — timeout do Gemini também subiu de 45s
+    # pra 70s pra dar espaço a essa etapa extra sem arriscar cortar a
+    # chamada pela metade.
     resp = _chamar_gemini_com_retry(
         {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 3072,
+                "maxOutputTokens": 8192,
                 "responseMimeType": "application/json",
-                "thinkingConfig": {"thinkingBudget": 0},
+                "thinkingConfig": {"thinkingBudget": 1536},
             },
         },
-        timeout=45,
+        timeout=70,
     )
     resp_data = resp.json()
     texto_bruto = resp_data["candidates"][0]["content"]["parts"][0]["text"].strip()
