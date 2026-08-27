@@ -1,0 +1,30 @@
+name: Testar Outras Usinas Supervisores (temporario)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Chamar endpoint real
+        run: |
+          set -e
+          mkdir -p backups
+          curl -sS "https://api.168.138.232.237.sslip.io/outras-usinas-supervisores" \
+            -o backups/teste-outras-usinas.json
+          cat backups/teste-outras-usinas.json | head -c 500
+
+      - name: Commit e push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups/teste-outras-usinas.json
+          git commit -m "Teste temporario: outras-usinas-supervisores" || echo "Nada para commitar"
+          git push
