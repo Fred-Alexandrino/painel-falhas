@@ -1,0 +1,60 @@
+name: Adicionar Usinas RN Camila (temporario)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  adicionar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Adicionar Rodrigues 2
+        run: |
+          curl -sS -X POST "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" \
+            -H "Content-Type: application/json" \
+            -d '{"cliente":"Thopen","usina":"Thopen - Rodrigues 2 - RN","cluster":"RN Sul 01","responsavelOriginal":"Camila Viana"}' \
+            -o resp1.json
+          cat resp1.json
+          echo ""
+
+      - name: Aguardar
+        run: sleep 10
+
+      - name: Adicionar Senador Elói
+        run: |
+          curl -sS -X POST "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" \
+            -H "Content-Type: application/json" \
+            -d '{"cliente":"Thopen","usina":"Thopen - Senador Elói 1 - RN","cluster":"RN Sul 01","responsavelOriginal":"Camila Viana"}' \
+            -o resp2.json
+          cat resp2.json
+          echo ""
+
+      - name: Aguardar
+        run: sleep 10
+
+      - name: Adicionar Jucurutu
+        run: |
+          curl -sS -X POST "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" \
+            -H "Content-Type: application/json" \
+            -d '{"cliente":"Thopen","usina":"Thopen - Jucurutu 1 - RN","cluster":"RN Sul 01","responsavelOriginal":"Camila Viana"}' \
+            -o resp3.json
+          cat resp3.json
+          echo ""
+
+      - name: Salvar resultados
+        run: |
+          mkdir -p backups
+          cat resp1.json resp2.json resp3.json > backups/resultado-add-rn.json || true
+
+      - name: Commit e push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups/resultado-add-rn.json
+          git commit -m "Teste temporario: resultado ao adicionar usinas RN da Camila" || echo "Nada para commitar"
+          git push
