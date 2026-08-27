@@ -1,0 +1,29 @@
+name: Vincular Grupo Camila RN v2 temporario
+on:
+  workflow_dispatch: {}
+jobs:
+  vincular:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vincular grupo as 6 usinas
+        run: |
+          mkdir -p backups
+          echo "" > backups/resultado-vincular-grupo.json
+          for i in 1 2 3 4 5 6; do
+            echo "=== payload $i ===" >> backups/resultado-vincular-grupo.json
+            curl -s -X POST "https://api.168.138.232.237.sslip.io/supervisao-temporaria/adicionar" -H "Content-Type: application/json" --data @backups/payload_${i}.json >> backups/resultado-vincular-grupo.json
+            echo "" >> backups/resultado-vincular-grupo.json
+            sleep 10
+          done
+          cat backups/resultado-vincular-grupo.json
+      - name: Salvar
+        if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/resultado-vincular-grupo.json
+          git diff --quiet --cached || git commit -m "Resultado vincular grupo Camila RN [skip ci]"
+          git push
