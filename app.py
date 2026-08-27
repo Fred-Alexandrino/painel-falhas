@@ -11037,6 +11037,8 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363406329162612": "Equipe Nobres",
     "120363424804307945": "Thopen & GridCo. | Usinas FRED ALEXANDRINO",
     "120363428178674382": "Equipe - Aquiraz/Cascavel",
+    "120363406919935108": "Arquivos NVX",
+    "120363423651075316": "Equipe Camila O&M",
 }
 
 
