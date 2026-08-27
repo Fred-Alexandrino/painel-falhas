@@ -1,14 +1,64 @@
-total: 2
-2026-08-17 17:16:51 | Cos Grid - 02 | 📊 COS – Grid Co. | Status do Dia
-📅 Data: 17/08/2026 • ⏰16:50
-👤 Operador:  Italo Lustosa
-
-✅ USINAS OK
-
-UFV ELIAS FAUSTO -
-
-🔴 CRÍTICOS
-
-🔴 Usina: Nobres
-
-2026-08-17 18:22:23 | Cos Grid - 02 | Boa noite pessoal, Operador David Nascimento assumindo o turno de 18:00 às 06:00
+fv_energias:historico_diario:2026-08-14 = 315.2
+fv_energias:historico_diario:2026-08-15 = 453.4
+fv_energias:historico_diario:2026-08-16 = 460.9
+fv_energias:historico_diario:2026-08-17 = 409.4
+fv_energias:historico_diario:2026-08-18 = 511.6
+fv_energias:historico_diario:2026-08-19 = 398.3
+fv_energias:historico_diario:2026-08-20 = 512.2
+fv_energias:historico_diario:2026-08-21 = 523.0
+fv_energias:historico_diario:2026-08-22 = 438.2
+fv_energias:historico_diario:2026-08-23 = 475.6
+fv_energias:historico_diario:2026-08-24 = 506.6
+fv_energias:historico_diario:2026-08-25 = 514.0
+fv_energias:historico_diario:2026-08-26 = 515.8
+fv_energias:ronda:08:2026-08-14 = enviado
+fv_energias:ronda:08:2026-08-16 = enviado
+fv_energias:ronda:08:2026-08-17 = enviado
+fv_energias:ronda:08:2026-08-18 = enviado
+fv_energias:ronda:08:2026-08-19 = enviado
+fv_energias:ronda:08:2026-08-20 = enviado
+fv_energias:ronda:08:2026-08-21 = enviado
+fv_energias:ronda:08:2026-08-22 = enviado
+fv_energias:ronda:08:2026-08-23 = enviado
+fv_energias:ronda:08:2026-08-24 = enviado
+fv_energias:ronda:08:2026-08-25 = enviado
+fv_energias:ronda:08:2026-08-26 = enviado
+fv_energias:ronda:08:2026-08-27 = enviado
+fv_energias:ronda:12:2026-08-15 = enviado
+fv_energias:ronda:12:2026-08-16 = enviado
+fv_energias:ronda:12:2026-08-17 = enviado
+fv_energias:ronda:12:2026-08-18 = enviado
+fv_energias:ronda:12:2026-08-19 = enviado
+fv_energias:ronda:12:2026-08-20 = enviado
+fv_energias:ronda:12:2026-08-21 = enviado
+fv_energias:ronda:12:2026-08-22 = enviado
+fv_energias:ronda:12:2026-08-23 = enviado
+fv_energias:ronda:12:2026-08-24 = enviado
+fv_energias:ronda:12:2026-08-25 = enviado
+fv_energias:ronda:12:2026-08-26 = enviado
+fv_energias:ronda:12:2026-08-27 = enviado
+fv_energias:ronda:15:2026-08-15 = enviado
+fv_energias:ronda:15:2026-08-16 = enviado
+fv_energias:ronda:15:2026-08-17 = enviado
+fv_energias:ronda:15:2026-08-18 = enviado
+fv_energias:ronda:15:2026-08-19 = enviado
+fv_energias:ronda:15:2026-08-20 = enviado
+fv_energias:ronda:15:2026-08-21 = enviado
+fv_energias:ronda:15:2026-08-22 = enviado
+fv_energias:ronda:15:2026-08-23 = enviado
+fv_energias:ronda:15:2026-08-24 = enviado
+fv_energias:ronda:15:2026-08-25 = enviado
+fv_energias:ronda:15:2026-08-26 = enviado
+fv_energias:ronda:17:2026-08-15 = enviado
+fv_energias:ronda:17:2026-08-16 = enviado
+fv_energias:ronda:17:2026-08-17 = enviado
+fv_energias:ronda:17:2026-08-18 = enviado
+fv_energias:ronda:17:2026-08-19 = enviado
+fv_energias:ronda:17:2026-08-20 = enviado
+fv_energias:ronda:17:2026-08-21 = enviado
+fv_energias:ronda:17:2026-08-22 = enviado
+fv_energias:ronda:17:2026-08-23 = enviado
+fv_energias:ronda:17:2026-08-24 = enviado
+fv_energias:ronda:17:2026-08-25 = enviado
+fv_energias:ronda:17:2026-08-26 = enviado
+fv_energias:ultima_assinatura_problema = 
