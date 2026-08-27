@@ -1,0 +1,44 @@
+STATUS: 200 | tempo: 116.8 s
+TAMANHO DO TEXTO: 3058 caracteres
+
+📋 RESUMO DIÁRIO — 27/08/2026
+
+✅ ATIVIDADES CONCLUÍDAS
+- Colíder I: Inspeção de inversor (OS 11511, Deivity Jhon) e teste de nobreak (OS 12287). Religamento da usina (OS 12299) realizado com sucesso.
+- Elias Fausto 1: Inspeção de inversor (OS 11545, Felipe Lima).
+- Rodrigues 1: Ronda Curta (OS 12317, Cláudio Silva).
+- Sol do Norte I: Inspeção geral do inversor 1.1 (OS 10835).
+- Guajirú: Inspeção geral dos inversores 1.3 e 1.4 (OS 10833, 10834).
+- Sete Lagoas: Caminhada mensal de segurança/PPCI (OS 11681).
+- Crateús: Religamento da usina (OS 12298, 12300) e da Cabine 1 (OS 12333).
+- Araputanga: Religamento da usina (OS 12303).
+- SunPower (Cascavel): Reinstalação e testes de inversor em garantia (OS 12319).
+
+⚙️ ATIVIDADES EM PROGRESSO
+- Poconé: Ronda curta (OS 11723) e verificação de câmeras (OS 11769, 11770) em revisão. Limpeza de sensores (OS 11768) cancelada.
+- Sol do Norte I e II: Coleta e análise de dados de geração (OS 11777, 11778) em revisão. Inspeção do inversor 1.2 (OS 10836) em processo.
+- Crateús: Ronda curta (OS 11792) em revisão. Religamento da usina (OS 11804) finalizado.
+- Ibaté I e II: Religamento das usinas (OS 11850, 11829) finalizado.
+- Matão I: Ronda curta (OS 11865) em revisão.
+- Salvales (Aquiraz I): Ronda curta (OS 11864) em revisão.
+- Caicó e Parelhas 1: Rondas curtas (OS 12253, 12223) em revisão.
+- SunPower (Cascavel): Rondas longas (OS 12308, 12309) em revisão.
+- Araputanga: Ronda curta (OS 12330) em revisão.
+- Boa Esperança do Sul I: Ronda curta (OS 12334) em revisão.
+- Rodrigues 1: Recomposição de string no inversor 1.1 (OS 12340) em processo.
+- Elias Fausto: Inspeção de nobreaks (OS 12341) em processo (33%).
+
+⚠️ ALERTAS E PENDÊNCIAS
+- Araputanga: Usina desligou por tensão elevada (38.2kV). Moraes fixou aviso no portão de entrada.
+- Crateús: Nobreaks da cabine primária e racks de CFTV apresentam baterias gastas sem autonomia. Necessária substituição de unidades.
+- Colíder 2: 4 câmeras de CFTV offline. Deivity em contato com Leonildo para verificação.
+- Colíder 1: Nobreak interno sem autonomia, falhou em todos os testes. Não compensa reparo.
+
+RESUMO POR EQUIPE
+- Equipe Crateús: Railson realizou o restabelecimento da usina e testes nos nobreaks da cabine e racks de CFTV. Confirmada a necessidade de novos nobreaks devido ao desgaste das baterias. Amanhã o técnico segue para Castelo do Piauí.
+- Equipe Araputanga/Poconé: Reportado desligamento de Araputanga por tensão elevada. Moraes confirmou a fixação de aviso no portão da usina.
+- Equipe Aquiraz/Cascavel: Alinhada a abertura de OS para substituição de inversor SunPower.
+- Equipe Colíder: Deivity reportou falha no nobreak de Colíder 1 e câmeras offline em Colíder 2. Leonildo (terceiro) foi acionado para suporte técnico.
+- Equipe Sítio Bonfim: Tratativas sobre compra de suprimentos (pilhas) para multímetro.
+- Equipe Nova Xavantina: Discussão técnica sobre priorização de nobreaks versus inversores em garantia.
+- Equipe Nobres: Valmir reportou abastecimento de reservatório em Diamantino e alinhamento de pagamentos de despesas locais.
