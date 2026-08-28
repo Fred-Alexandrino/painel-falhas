@@ -515,18 +515,47 @@ STATUS_OS_ELEGIVEIS_RELATORIO = ["finalizada", "em revisão", "em revisao"]
 VERDE_STATUS = "00B050"  # verde do relatório PPTX de cliente — não é o A1CA40 da marca
 AMBAR_STATUS = "F5A623"  # âmbar de "em andamento" — mesma cor usada no dashboard (--amber)
 
+# ── Rondas (Curta/Longa) — exigência do cliente confirmada com Fred
+# (28/08/2026): relatório semanal de TODOS os clientes precisa de uma
+# seção própria mostrando o que foi feito nas OS de Ronda Curta e Ronda
+# Longa, resumido apenas como o TIPO de checklist coberto (não o
+# detalhe subtarefa-a-subtarefa). A API da Fracttal expõe cada subtarefa
+# (ver _fracttal_detalhes_equipamentos em app.py), mas essas duas rondas
+# seguem um checklist PADRÃO e fixo — por isso, e para manter a mesma
+# decisão de 23/07/2026 (nunca consultar a Fracttal ao vivo por OS
+# dentro da geração do relatório — só dado já salvo na planilha), o
+# texto do checklist é fixo por tipo, não buscado subtarefa a subtarefa.
+_RE_RONDA_LONGA = re.compile(r"\bronda\s+longa\b", re.IGNORECASE)
+_RE_RONDA_CURTA = re.compile(r"\bronda\s+curta\b", re.IGNORECASE)
+
+RONDA_ITENS_CHECKLIST = {
+    "Curta": "inspeção de CFTV, sujidade, vegetação e sensores da ETM",
+    "Longa": "inspeção de CFTV, sujidade, vegetação, sensores da ETM, almoxarifado, sala O&M e banheiros",
+}
+
+
+def _classificar_ronda(descricao):
+    """Retorna 'Curta', 'Longa' ou None a partir da descrição/tarefa da OS."""
+    texto = descricao or ""
+    if _RE_RONDA_LONGA.search(texto):
+        return "Longa"
+    if _RE_RONDA_CURTA.search(texto):
+        return "Curta"
+    return None
+
 
 def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_inicio, data_fim):
     """
     todos_valores: ws.get_all_values() do Painel de Atividades (linha 0 = cabeçalho).
 
-    Retorna (atividades_por_usina, desligamentos_por_usina), cada um um
-    dict {usina: [{"descricao":, "numero_os":}, ...]}. Itens cuja
+    Retorna (atividades_por_usina, desligamentos_por_usina, rondas_por_usina),
+    cada um um dict {usina: [{"descricao":, "numero_os":}, ...]}. Itens cuja
     categoria (equipamento+descrição) bate no padrão de desligamento vão
-    para o segundo dict em vez do primeiro — nunca duplicados.
+    para o segundo dict, e OS de Ronda Curta/Ronda Longa vão para o
+    terceiro (rondas_por_usina) — nunca duplicados entre os três.
     """
     cliente_norm = _norm(cliente)
-    atividades, desligamentos = {}, {}
+    atividades, desligamentos, rondas = {}, {}, {}
     min_cols = ATIV_COL_STATUSOS + 1
 
     for row in todos_valores[1:]:
@@ -569,14 +598,18 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
         if len(descricao) > 140:
             descricao = descricao[:137].rstrip() + "..."
 
-        item = {"descricao": descricao, "numero_os": numero_os, "progresso_pct": progresso_pct}
+        tipo_ronda = _classificar_ronda(descricao)
+        item = {"descricao": descricao, "numero_os": numero_os, "progresso_pct": progresso_pct,
+                "tipo_ronda": tipo_ronda}
 
-        if _e_desligamento_atividade(descricao, equipamento):
+        if tipo_ronda:
+            rondas.setdefault(usina, []).append(item)
+        elif _e_desligamento_atividade(descricao, equipamento):
             desligamentos.setdefault(usina, []).append(item)
         else:
             atividades.setdefault(usina, []).append(item)
 
-    return atividades, desligamentos
+    return atividades, desligamentos, rondas
 
 
 _MESES_PT = {
@@ -675,6 +708,29 @@ def _formatar_item_desligamento(it):
         {"texto": " – ", "bold": False},
         {"texto": status_texto, "bold": False, "color": status_cor},
     ]
+
+
+def _formatar_item_ronda(it):
+    """Ronda Curta/Longa – OS nº – Status. Itens verificados: <checklist fixo>.
+    O checklist é sempre o padrão do tipo (ver RONDA_ITENS_CHECKLIST) — não é
+    buscado subtarefa a subtarefa na Fracttal (mesma decisão de 23/07/2026 de
+    não consultar a Fracttal ao vivo dentro da geração do relatório)."""
+    pct = it.get("progresso_pct")
+    if pct is not None:
+        status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
+    else:
+        status_texto, status_cor = "Concluída", VERDE_STATUS
+    tipo = it.get("tipo_ronda") or "Curta"
+    checklist = RONDA_ITENS_CHECKLIST.get(tipo, "")
+    runs = [
+        {"texto": f"Ronda {tipo} – ", "bold": False},
+        {"texto": f'OS {it["numero_os"]}', "bold": True},
+        {"texto": " – ", "bold": False},
+        {"texto": status_texto, "bold": False, "color": status_cor},
+    ]
+    if checklist:
+        runs.append({"texto": f". Itens verificados: {checklist}.", "bold": False})
+    return runs
 
 
 # ── Formatação explícita (Poppins 20pt, numeração automática) ──────────────
@@ -787,8 +843,8 @@ def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas,
     return novo
 
 
-PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "DESLIGAMENTOS", "CHAMADOS E PROTOCOLOS",
-                       "OUTRAS ATIVIDADES", "ZELADORIA"]
+PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "DESLIGAMENTOS", "RONDAS DA SEMANA",
+                       "CHAMADOS E PROTOCOLOS", "OUTRAS ATIVIDADES", "ZELADORIA"]
 
 
 def _renderizar_pautas_gerais(prs):
@@ -1499,21 +1555,23 @@ def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
 
 
 def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
-                          desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None):
+                          desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None,
+                          rondas_por_usina=None):
     """
     PADRÃO DEFINITIVO confirmado com Fred em 23/07/2026 (revisão meticulosa
-    do relatório RENOGRID Semana 30, vale para todos os clientes):
+    do relatório RENOGRID Semana 30, vale para todos os clientes), com a
+    seção de RONDAS DA SEMANA acrescentada em 28/08/2026 (exigência de
+    cliente — mostrar o que foi feito nas OS de Ronda Curta/Ronda Longa):
 
-    (1) Capa; (2) Pautas Gerais (5 tópicos fixos); (3-4) ATIVIDADES DA
+    (1) Capa; (2) Pautas Gerais (6 tópicos fixos); (3-4) ATIVIDADES DA
     SEMANA por usina em ordem alfabética; (5-6) DESLIGAMENTOS, mesma
-    lógica; (7) CHAMADOS E PROTOCOLOS (só título — Fred preenche);
-    (8) OUTRAS ATIVIDADES (só título); (9) ZELADORIA (preenchida com os
-    dados reais do Painel de Zeladoria — combinado 30/07/2026, antes era
-    só a estrutura de usinas pronta pro Fred preencher); (10) contato
-    (slide original do template, não gerado).
+    lógica; (7) RONDAS DA SEMANA, mesma lógica; (8) CHAMADOS E
+    PROTOCOLOS (só título — Fred preenche); (9) OUTRAS ATIVIDADES (só
+    título); (10) ZELADORIA (preenchida com os dados reais do Painel de
+    Zeladoria); (11) contato (slide original do template, não gerado).
 
-    atividades_por_usina / desligamentos_por_usina: retorno de
-    coletar_atividades_e_desligamentos_por_usina().
+    atividades_por_usina / desligamentos_por_usina / rondas_por_usina:
+    retorno de coletar_atividades_e_desligamentos_por_usina() (3-tupla).
     usinas_cliente: lista de usinas do cliente (define a ordem alfabética
     e a estrutura da Zeladoria).
     zeladoria_status_por_usina: retorno de montar_status_zeladoria_por_usina(),
@@ -1523,6 +1581,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
+    rondas_por_usina = rondas_por_usina or {}
 
     # Orçamento de paginação: FIXO, calibrado contra o relatório de
     # referência corrigido pelo Fred (RENOGRID Semana 30 — 5 usinas simples
@@ -1533,8 +1592,8 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     # o que gerava um orçamento de ~4 linhas — 1 usina por slide. Não usar.
     max_linhas = 16
 
-    usinas_ordenadas = sorted(set(usinas_cliente or []) | set(atividades_por_usina) | set(desligamentos_por_usina),
-                               key=_norm)
+    usinas_ordenadas = sorted(set(usinas_cliente or []) | set(atividades_por_usina) | set(desligamentos_por_usina)
+                               | set(rondas_por_usina), key=_norm)
 
     # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
     capa = _duplicate_slide(prs, 0)
@@ -1555,15 +1614,23 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
                                _formatar_item_desligamento, "Sem desligamentos registrados no período.",
                                "•", max_linhas)
 
-    # --- Slide 7: CHAMADOS E PROTOCOLOS — só título, Fred preenche ---------
+    # --- Slide 7: RONDAS DA SEMANA (tópico 3) — exigência de cliente,
+    # confirmado com Fred 28/08/2026: mostra o que foi feito nas OS de
+    # Ronda Curta/Ronda Longa, resumido só como o tipo de checklist coberto
+    # (ver RONDA_ITENS_CHECKLIST) ------------------------------------------
+    _renderizar_topico_usinas(prs, 3, "RONDAS DA SEMANA", usinas_ordenadas, rondas_por_usina,
+                               _formatar_item_ronda, "Sem rondas registradas no período.",
+                               "•", max_linhas)
+
+    # --- Slide 8: CHAMADOS E PROTOCOLOS — só título, Fred preenche ---------
     def _corpo_chamados(tf):
         _add_paragrafo(tf, "subtitulo", [{"texto": "PROTOCOLOS CONCESSIONÁRIAS", "bold": True}], first=True)
-    _renderizar_secao_placeholder(prs, 3, "CHAMADOS E PROTOCOLOS", _corpo_chamados)
+    _renderizar_secao_placeholder(prs, 4, "CHAMADOS E PROTOCOLOS", _corpo_chamados)
 
-    # --- Slide 8: OUTRAS ATIVIDADES — só título, Fred preenche --------------
-    _renderizar_secao_placeholder(prs, 4, "OUTRAS ATIVIDADES", None)
+    # --- Slide 9: OUTRAS ATIVIDADES — só título, Fred preenche --------------
+    _renderizar_secao_placeholder(prs, 5, "OUTRAS ATIVIDADES", None)
 
-    # --- Slide 9: ZELADORIA — preenchida com os dados reais do Painel -----
+    # --- Slide 10: ZELADORIA — preenchida com os dados reais do Painel -----
     def _corpo_zeladoria(tf):
         primeiro = True
         for i, usina in enumerate(usinas_ordenadas, start=1):
@@ -1571,7 +1638,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
             primeiro = False
             info = (zeladoria_status_por_usina or {}).get(usina)
             _add_paragrafo(tf, "item", _formatar_item_zeladoria(info), first=False, bullet_char="•")
-    _renderizar_secao_placeholder(prs, 5, "ZELADORIA", _corpo_zeladoria)
+    _renderizar_secao_placeholder(prs, 6, "ZELADORIA", _corpo_zeladoria)
 
     # --- Reordena o deck: capa nova -> pautas nova -> conteúdo -> contato --
     xml_slides = prs.slides._sldIdLst
