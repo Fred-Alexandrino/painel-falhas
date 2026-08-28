@@ -1,0 +1,26 @@
+name: Diag Ronda GD Energy (temp)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run diag
+        run: |
+          echo "aW1wb3J0IHJlcXVlc3RzLCBqc29uLCBiYXNlNjQKCkJBU0UgPSAiaHR0cHM6Ly9hcGkuMTY4LjEzOC4yMzIuMjM3LnNzbGlwLmlvIgpyID0gcmVxdWVzdHMuZ2V0KGYie0JBU0V9L2F0aXZpZGFkZXMiLCB0aW1lb3V0PTYwKQpyLnJhaXNlX2Zvcl9zdGF0dXMoKQpkYXRhID0gci5qc29uKCkKYXRpdiA9IGRhdGEuZ2V0KCJhdGl2aWRhZGVzIiwgW10pCnByaW50KCJ0b3RhbCBhdGl2aWRhZGVzOiIsIGxlbihhdGl2KSkKCm1hdGNoZXMgPSBbXQpmb3IgYSBpbiBhdGl2OgogICAgY2xpZW50ZSA9IChhLmdldCgiY2xpZW50ZSIpIG9yICIiKQogICAgZGVzYyA9IChhLmdldCgiZGVzY3JpY2FvIikgb3IgIiIpCiAgICBpZiAiZ2QgZW5lcmd5IiBpbiBjbGllbnRlLmxvd2VyKCkgYW5kICJyb25kYSIgaW4gZGVzYy5sb3dlcigpOgogICAgICAgIG1hdGNoZXMuYXBwZW5kKGEpCgpwcmludCgibWF0Y2hlcyBHRCBFbmVyZ3kgKyByb25kYToiLCBsZW4obWF0Y2hlcykpCndpdGggb3Blbigib3V0X21hdGNoZXMuanNvbiIsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgIGpzb24uZHVtcChtYXRjaGVzLCBmLCBlbnN1cmVfYXNjaWk9RmFsc2UsIGluZGVudD0yKQo=" | base64 -d > diag_ronda.py
+          pip install requests --quiet
+          python3 diag_ronda.py
+          mkdir -p backups
+          cp out_matches.json backups/debug-ronda-gdenergy.json
+      - name: Commit result
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/debug-ronda-gdenergy.json
+          git diff --quiet --cached || git commit -m "Diag: ronda GD Energy [skip ci]"
+          git push
