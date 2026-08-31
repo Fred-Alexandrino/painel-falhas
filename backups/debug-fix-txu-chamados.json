@@ -1,7 +1,9 @@
 {
-  "status_code": 401,
+  "status_code": 200,
   "body": {
-    "error": "unauthorized",
-    "ok": false
+    "campos_invalidos": [],
+    "corrigidas": 2,
+    "nao_encontradas": [],
+    "ok": true
   }
 }
