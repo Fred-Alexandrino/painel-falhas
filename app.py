@@ -8324,6 +8324,81 @@ def corrigir_ativo_chamado():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _col_letra_a1(idx0):
+    """Converte índice de coluna 0-indexado pra letra A1 (0->A, 1->B, ..., 25->Z, 26->AA)."""
+    idx1 = idx0 + 1
+    letras = ""
+    while idx1 > 0:
+        idx1, resto = divmod(idx1 - 1, 26)
+        letras = chr(65 + resto) + letras
+    return letras
+
+
+@app.route("/corrigir-campo-chamado", methods=["POST", "OPTIONS"])
+def corrigir_campo_chamado():
+    """
+    Correção pontual: atualiza QUALQUER coluna válida (uma por vez, por
+    correção) de uma ou mais linhas já existentes na aba ChamadosFabricante,
+    localizadas por Ticket/RMA + UFV. Generaliza o /corrigir-ativo-chamado
+    (que só corrige a coluna "Ativo") pra qualquer campo da planilha —
+    criado em 31/08/2026 pra corrigir o typo "TXU" -> "TCU" na coluna
+    "Identificação do Equipamento".
+
+    Corpo esperado: {"correcoes": [{"ticket": "...", "ufv": "...",
+                      "campo": "Identificação do Equipamento", "valor": "..."}, ...]}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    body = request.get_json(force=True, silent=True) or {}
+    correcoes = body.get("correcoes", [])
+    if not correcoes:
+        return jsonify({"ok": False, "error": "nenhuma correção informada"}), 400
+
+    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
+    idx_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
+    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
+
+    try:
+        ws = get_chamados_fabricante_sheet()
+        todos = ws.get_all_values()
+
+        atualizacoes, nao_encontradas, campos_invalidos = [], [], []
+        for c in correcoes:
+            ticket = (c.get("ticket") or "").strip()
+            ufv = (c.get("ufv") or "").strip()
+            campo = (c.get("campo") or "").strip()
+            valor = c.get("valor") or ""
+            if campo not in CHAMADOS_FABRICANTE_HEADERS:
+                campos_invalidos.append({"ticket": ticket, "campo": campo})
+                continue
+            idx_campo = CHAMADOS_FABRICANTE_HEADERS.index(campo)
+            col_letra = _col_letra_a1(idx_campo)
+            achou = False
+            for i, row in enumerate(todos[1:], start=2):
+                if len(row) < n_cols:
+                    row = row + [""] * (n_cols - len(row))
+                if row[idx_ticket].strip() == ticket and row[idx_ufv].strip() == ufv:
+                    atualizacoes.append({"range": f"{col_letra}{i}", "values": [[valor]]})
+                    achou = True
+                    break
+            if not achou:
+                nao_encontradas.append({"ticket": ticket, "ufv": ufv})
+
+        if atualizacoes:
+            ws.batch_update(atualizacoes)
+
+        return jsonify({"ok": True, "corrigidas": len(atualizacoes),
+                         "nao_encontradas": nao_encontradas,
+                         "campos_invalidos": campos_invalidos}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _chamados_fabricante_itens():
     """Lê a aba ChamadosFabricante inteira + mescla as notas do dashboard
     (aba _Sistema). Reaproveitada tanto pelo endpoint GET /chamados-fabricante
