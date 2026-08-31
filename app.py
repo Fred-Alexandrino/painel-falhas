@@ -11271,7 +11271,6 @@ def gerar_resumo_cliente():
 
 _EQUIP_ABREV_CHAMADO = [
     (r"invers", "INV"),
-    (r"track", "TKR"),
     (r"transformador", "TRAFO"),
     (r"string\s*box|stringbox", "SB"),
     (r"m[oó]dulo", "MOD"),
@@ -11283,24 +11282,34 @@ _EQUIP_ABREV_CHAMADO = [
     (r"combiner", "CMB"),
 ]
 
+_RE_TRACKER_PREFIXO = re.compile(r"\b([A-Za-zÀ-ÿ]{2,8})\s+track", re.IGNORECASE)
+
 
 def _codigo_equipamento_chamado(ativo, identificacao):
     """Monta o código compacto do equipamento pro resumo de chamados pro
-    cliente: INV14, TKR05, etc. — XX é o número do equipamento (inversor,
+    cliente: INV14, TCU 38, etc. — XX é o número do equipamento (inversor,
     tracker, etc.) extraído de 'Identificação do Equipamento' ou 'Ativo'.
-    Se o tipo não for reconhecido, cai pra identificação bruta (sem
-    espaços). Pedido do Fred em 10/08/2026."""
+    Se o tipo não for reconhecido, cai pra identificação bruta. Pedido do
+    Fred em 10/08/2026.
+
+    Tracker: usa o prefixo real de fabricante/modelo já presente no texto
+    (ex.: "TCU Tracker 38.200" -> "TCU 38", "TXU Tracker 51.200" -> "TXU 51"),
+    em vez de um código genérico fixo — corrigido em 31/08/2026."""
     fonte = f"{identificacao or ''} {ativo or ''}".strip()
     if not fonte:
         return ""
     fonte_norm = fonte.lower()
     numeros = re.findall(r"\d+", fonte)
     numero = numeros[0].zfill(2) if numeros else ""
+    m_track = _RE_TRACKER_PREFIXO.search(fonte)
+    if m_track:
+        prefixo = m_track.group(1).upper()
+        return f"{prefixo} {numero}" if numero else prefixo
     for padrao, abrev in _EQUIP_ABREV_CHAMADO:
         if re.search(padrao, fonte_norm):
             return f"{abrev}{numero}" if numero else abrev
     bruto = (identificacao or ativo or "").strip()
-    return re.sub(r"\s+", "", bruto).upper() if bruto else ""
+    return re.sub(r"\s+", " ", bruto).upper() if bruto else ""
 
 
 def _montar_resumo_chamados_cliente(cliente, chamados, saudacao):
@@ -11309,7 +11318,8 @@ def _montar_resumo_chamados_cliente(cliente, chamados, saudacao):
     do Painel de Chamados.
 
     Formato de linha fixo, pedido pelo Fred em 10/08/2026:
-      INVXX - #TICKET - STATUS   (XX = nº do inversor; TKR = tracker)
+      INVXX - #TICKET - STATUS   (XX = nº do inversor; tracker usa prefixo
+      real do equipamento, ex. "TCU 38")
 
     Geração 100% determinística (sem IA): o formato agora é totalmente
     estruturado/mecânico, então template evita variação indesejada de
