@@ -1,0 +1,26 @@
+name: Diag TXU Chamados (temp)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run diag
+        run: |
+          echo "aW1wb3J0IHJlcXVlc3RzLCBqc29uCgpCQVNFID0gImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pbyIKciA9IHJlcXVlc3RzLmdldChmIntCQVNFfS9jaGFtYWRvcy1mYWJyaWNhbnRlIiwgdGltZW91dD02MCkKci5yYWlzZV9mb3Jfc3RhdHVzKCkKZGF0YSA9IHIuanNvbigpCml0ZW5zID0gZGF0YS5nZXQoImNoYW1hZG9zIikgb3IgZGF0YS5nZXQoIml0ZW5zIikgb3IgKGRhdGEgaWYgaXNpbnN0YW5jZShkYXRhLCBsaXN0KSBlbHNlIFtdKQppZiBpc2luc3RhbmNlKGRhdGEsIGRpY3QpIGFuZCBub3QgaXRlbnM6CiAgICAjIHRlbnRhIGFjaGFyIGEgY2hhdmUgY2VydGEKICAgIGZvciBrLCB2IGluIGRhdGEuaXRlbXMoKToKICAgICAgICBpZiBpc2luc3RhbmNlKHYsIGxpc3QpOgogICAgICAgICAgICBpdGVucyA9IHYKICAgICAgICAgICAgYnJlYWsKCm1hdGNoZXMgPSBbXQpmb3IgYyBpbiBpdGVuczoKICAgIGVxdWlwID0gKGMuZ2V0KCJJZGVudGlmaWNhw6fDo28gZG8gRXF1aXBhbWVudG8iKSBvciAiIikKICAgIGF0aXZvID0gKGMuZ2V0KCJBdGl2byIpIG9yICIiKQogICAgaWYgIlRYVSIgaW4gZXF1aXAudXBwZXIoKSBvciAiVFhVIiBpbiBhdGl2by51cHBlcigpOgogICAgICAgIG1hdGNoZXMuYXBwZW5kKHsKICAgICAgICAgICAgInRpY2tldCI6IGMuZ2V0KCJUaWNrZXQvUk1BIiksCiAgICAgICAgICAgICJ1ZnYiOiBjLmdldCgiVUZWIiksCiAgICAgICAgICAgICJhdGl2byI6IGF0aXZvLAogICAgICAgICAgICAiaWRlbnRpZmljYWNhbyI6IGVxdWlwLAogICAgICAgIH0pCgpwcmludCgidG90YWwgaXRlbnM6IiwgbGVuKGl0ZW5zKSkKcHJpbnQoIm1hdGNoZXMgVFhVOiIsIGxlbihtYXRjaGVzKSkKd2l0aCBvcGVuKCJvdXRfdHh1Lmpzb24iLCAidyIsIGVuY29kaW5nPSJ1dGYtOCIpIGFzIGY6CiAgICBqc29uLmR1bXAobWF0Y2hlcywgZiwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MikK" | base64 -d > diag_txu.py
+          pip install requests --quiet
+          python3 diag_txu.py
+          mkdir -p backups
+          cp out_txu.json backups/debug-txu-chamados.json
+      - name: Commit result
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/debug-txu-chamados.json
+          git diff --quiet --cached || git commit -m "Diag: TXU chamados [skip ci]"
+          git push
