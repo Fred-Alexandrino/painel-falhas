@@ -11,8 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run fix
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
         run: |
-          echo "aW1wb3J0IHJlcXVlc3RzLCBqc29uCgpCQVNFID0gImh0dHBzOi8vYXBpLjE2OC4xMzguMjMyLjIzNy5zc2xpcC5pbyIKcGF5bG9hZCA9IHsiY29ycmVjb2VzIjogWwogICAgeyJ0aWNrZXQiOiAiMjY3MDQiLCAidWZ2IjogIjJDIC0gU2V0ZSBMYWdvYXMgMiIsICJjYW1wbyI6ICJJZGVudGlmaWNhw6fDo28gZG8gRXF1aXBhbWVudG8iLCAidmFsb3IiOiAiVENVIFRyYWNrZXIgNTEuMjAwIn0sCiAgICB7InRpY2tldCI6ICIyNzIwNiIsICJ1ZnYiOiAiMkMgLSBTZXRlIExhZ29hcyAyIiwgImNhbXBvIjogIklkZW50aWZpY2HDp8OjbyBkbyBFcXVpcGFtZW50byIsICJ2YWxvciI6ICJUQ1UgVHJhY2tlciA1MS4yMDAifSwKXX0KciA9IHJlcXVlc3RzLnBvc3QoZiJ7QkFTRX0vY29ycmlnaXItY2FtcG8tY2hhbWFkbyIsIGpzb249cGF5bG9hZCwgdGltZW91dD02MCkKcmVzdWx0ID0geyJzdGF0dXNfY29kZSI6IHIuc3RhdHVzX2NvZGUsICJib2R5Ijogci5qc29uKCkgaWYgci5oZWFkZXJzLmdldCgiY29udGVudC10eXBlIiwiIikuc3RhcnRzd2l0aCgiYXBwbGljYXRpb24vanNvbiIpIGVsc2Ugci50ZXh0fQpwcmludChqc29uLmR1bXBzKHJlc3VsdCwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MikpCndpdGggb3Blbigib3V0X2ZpeF90eHUuanNvbiIsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgIGpzb24uZHVtcChyZXN1bHQsIGYsIGVuc3VyZV9hc2NpaT1GYWxzZSwgaW5kZW50PTIpCg==" | base64 -d > fix_txu.py
+          echo "aW1wb3J0IHJlcXVlc3RzLCBqc29uLCBvcwoKQkFTRSA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8iCnBheWxvYWQgPSB7ImNvcnJlY29lcyI6IFsKICAgIHsidGlja2V0IjogIjI2NzA0IiwgInVmdiI6ICIyQyAtIFNldGUgTGFnb2FzIDIiLCAiY2FtcG8iOiAiSWRlbnRpZmljYcOnw6NvIGRvIEVxdWlwYW1lbnRvIiwgInZhbG9yIjogIlRDVSBUcmFja2VyIDUxLjIwMCJ9LAogICAgeyJ0aWNrZXQiOiAiMjcyMDYiLCAidWZ2IjogIjJDIC0gU2V0ZSBMYWdvYXMgMiIsICJjYW1wbyI6ICJJZGVudGlmaWNhw6fDo28gZG8gRXF1aXBhbWVudG8iLCAidmFsb3IiOiAiVENVIFRyYWNrZXIgNTEuMjAwIn0sCl19CmhlYWRlcnMgPSB7IlgtV2ViaG9vay1TZWNyZXQiOiBvcy5lbnZpcm9uLmdldCgiV0VCSE9PS19TRUNSRVQiLCAiIil9CnIgPSByZXF1ZXN0cy5wb3N0KGYie0JBU0V9L2NvcnJpZ2lyLWNhbXBvLWNoYW1hZG8iLCBqc29uPXBheWxvYWQsIGhlYWRlcnM9aGVhZGVycywgdGltZW91dD02MCkKcmVzdWx0ID0geyJzdGF0dXNfY29kZSI6IHIuc3RhdHVzX2NvZGUsICJib2R5Ijogci5qc29uKCkgaWYgci5oZWFkZXJzLmdldCgiY29udGVudC10eXBlIiwiIikuc3RhcnRzd2l0aCgiYXBwbGljYXRpb24vanNvbiIpIGVsc2Ugci50ZXh0fQpwcmludChqc29uLmR1bXBzKHJlc3VsdCwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MikpCndpdGggb3Blbigib3V0X2ZpeF90eHUuanNvbiIsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgIGpzb24uZHVtcChyZXN1bHQsIGYsIGVuc3VyZV9hc2NpaT1GYWxzZSwgaW5kZW50PTIpCg==" | base64 -d > fix_txu.py
           pip install requests --quiet
           python3 fix_txu.py
           mkdir -p backups
@@ -22,5 +24,5 @@ jobs:
           git config user.name "diag-bot"
           git config user.email "actions@github.com"
           git add backups/debug-fix-txu-chamados.json
-          git diff --quiet --cached || git commit -m "Fix: TXU->TCU chamados [skip ci]"
+          git diff --quiet --cached || git commit -m "Fix: TXU->TCU chamados retry [skip ci]"
           git push
