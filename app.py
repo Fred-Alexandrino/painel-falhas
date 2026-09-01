@@ -27,7 +27,8 @@ from werkzeug.utils import secure_filename
 import gspread
 from google.oauth2.service_account import Credentials
 from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, gerar_relatorio_pptx,
-                                listar_usinas_cliente, montar_status_zeladoria_por_usina)
+                                listar_usinas_cliente, montar_status_zeladoria_por_usina,
+                                coletar_chamados_fabricante_por_usina)
 from relatorio_handover import gerar_handover_docx
 from relatorio_handover_usina import montar_relatorio_handover_usina
 from relatorio_handover_usina_docx import gerar_handover_usina_completo
@@ -8324,81 +8325,6 @@ def corrigir_ativo_chamado():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def _col_letra_a1(idx0):
-    """Converte índice de coluna 0-indexado pra letra A1 (0->A, 1->B, ..., 25->Z, 26->AA)."""
-    idx1 = idx0 + 1
-    letras = ""
-    while idx1 > 0:
-        idx1, resto = divmod(idx1 - 1, 26)
-        letras = chr(65 + resto) + letras
-    return letras
-
-
-@app.route("/corrigir-campo-chamado", methods=["POST", "OPTIONS"])
-def corrigir_campo_chamado():
-    """
-    Correção pontual: atualiza QUALQUER coluna válida (uma por vez, por
-    correção) de uma ou mais linhas já existentes na aba ChamadosFabricante,
-    localizadas por Ticket/RMA + UFV. Generaliza o /corrigir-ativo-chamado
-    (que só corrige a coluna "Ativo") pra qualquer campo da planilha —
-    criado em 31/08/2026 pra corrigir o typo "TXU" -> "TCU" na coluna
-    "Identificação do Equipamento".
-
-    Corpo esperado: {"correcoes": [{"ticket": "...", "ufv": "...",
-                      "campo": "Identificação do Equipamento", "valor": "..."}, ...]}
-    """
-    if request.method == "OPTIONS":
-        return ("", 204)
-    if WEBHOOK_SECRET:
-        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
-        if secret != WEBHOOK_SECRET:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-
-    body = request.get_json(force=True, silent=True) or {}
-    correcoes = body.get("correcoes", [])
-    if not correcoes:
-        return jsonify({"ok": False, "error": "nenhuma correção informada"}), 400
-
-    idx_ticket = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
-    idx_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
-    n_cols = len(CHAMADOS_FABRICANTE_HEADERS)
-
-    try:
-        ws = get_chamados_fabricante_sheet()
-        todos = ws.get_all_values()
-
-        atualizacoes, nao_encontradas, campos_invalidos = [], [], []
-        for c in correcoes:
-            ticket = (c.get("ticket") or "").strip()
-            ufv = (c.get("ufv") or "").strip()
-            campo = (c.get("campo") or "").strip()
-            valor = c.get("valor") or ""
-            if campo not in CHAMADOS_FABRICANTE_HEADERS:
-                campos_invalidos.append({"ticket": ticket, "campo": campo})
-                continue
-            idx_campo = CHAMADOS_FABRICANTE_HEADERS.index(campo)
-            col_letra = _col_letra_a1(idx_campo)
-            achou = False
-            for i, row in enumerate(todos[1:], start=2):
-                if len(row) < n_cols:
-                    row = row + [""] * (n_cols - len(row))
-                if row[idx_ticket].strip() == ticket and row[idx_ufv].strip() == ufv:
-                    atualizacoes.append({"range": f"{col_letra}{i}", "values": [[valor]]})
-                    achou = True
-                    break
-            if not achou:
-                nao_encontradas.append({"ticket": ticket, "ufv": ufv})
-
-        if atualizacoes:
-            ws.batch_update(atualizacoes)
-
-        return jsonify({"ok": True, "corrigidas": len(atualizacoes),
-                         "nao_encontradas": nao_encontradas,
-                         "campos_invalidos": campos_invalidos}), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
 def _chamados_fabricante_itens():
     """Lê a aba ChamadosFabricante inteira + mescla as notas do dashboard
     (aba _Sistema). Reaproveitada tanto pelo endpoint GET /chamados-fabricante
@@ -11346,6 +11272,7 @@ def gerar_resumo_cliente():
 
 _EQUIP_ABREV_CHAMADO = [
     (r"invers", "INV"),
+    (r"track", "TKR"),
     (r"transformador", "TRAFO"),
     (r"string\s*box|stringbox", "SB"),
     (r"m[oó]dulo", "MOD"),
@@ -11357,34 +11284,24 @@ _EQUIP_ABREV_CHAMADO = [
     (r"combiner", "CMB"),
 ]
 
-_RE_TRACKER_PREFIXO = re.compile(r"\b([A-Za-zÀ-ÿ]{2,8})\s+track", re.IGNORECASE)
-
 
 def _codigo_equipamento_chamado(ativo, identificacao):
     """Monta o código compacto do equipamento pro resumo de chamados pro
-    cliente: INV14, TCU 38, etc. — XX é o número do equipamento (inversor,
+    cliente: INV14, TKR05, etc. — XX é o número do equipamento (inversor,
     tracker, etc.) extraído de 'Identificação do Equipamento' ou 'Ativo'.
-    Se o tipo não for reconhecido, cai pra identificação bruta. Pedido do
-    Fred em 10/08/2026.
-
-    Tracker: usa o prefixo real de fabricante/modelo já presente no texto
-    (ex.: "TCU Tracker 38.200" -> "TCU 38", "TXU Tracker 51.200" -> "TXU 51"),
-    em vez de um código genérico fixo — corrigido em 31/08/2026."""
+    Se o tipo não for reconhecido, cai pra identificação bruta (sem
+    espaços). Pedido do Fred em 10/08/2026."""
     fonte = f"{identificacao or ''} {ativo or ''}".strip()
     if not fonte:
         return ""
     fonte_norm = fonte.lower()
     numeros = re.findall(r"\d+", fonte)
     numero = numeros[0].zfill(2) if numeros else ""
-    m_track = _RE_TRACKER_PREFIXO.search(fonte)
-    if m_track:
-        prefixo = m_track.group(1).upper()
-        return f"{prefixo} {numero}" if numero else prefixo
     for padrao, abrev in _EQUIP_ABREV_CHAMADO:
         if re.search(padrao, fonte_norm):
             return f"{abrev}{numero}" if numero else abrev
     bruto = (identificacao or ativo or "").strip()
-    return re.sub(r"\s+", " ", bruto).upper() if bruto else ""
+    return re.sub(r"\s+", "", bruto).upper() if bruto else ""
 
 
 def _montar_resumo_chamados_cliente(cliente, chamados, saudacao):
@@ -11393,8 +11310,7 @@ def _montar_resumo_chamados_cliente(cliente, chamados, saudacao):
     do Painel de Chamados.
 
     Formato de linha fixo, pedido pelo Fred em 10/08/2026:
-      INVXX - #TICKET - STATUS   (XX = nº do inversor; tracker usa prefixo
-      real do equipamento, ex. "TCU 38")
+      INVXX - #TICKET - STATUS   (XX = nº do inversor; TKR = tracker)
 
     Geração 100% determinística (sem IA): o formato agora é totalmente
     estruturado/mecânico, então template evita variação indesejada de
@@ -12371,9 +12287,22 @@ def gerar_relatorio_semanal_route():
             log.error(f"[Relatorio Semanal] Erro ao buscar dados de Zeladoria: {e}")
             zeladoria_status_por_usina = None
 
+        # Chamados com Fabricante: preenche a página com os dados reais da
+        # aba ChamadosFabricante (mesma fonte do Painel de Chamados do
+        # dashboard). Se der qualquer erro, o relatório inteiro não pode
+        # falhar por causa disso -- cai pro comportamento de "nenhum
+        # chamado em aberto" (mesmo padrão de robustez da Zeladoria).
+        try:
+            chamados_fabricante_por_usina = coletar_chamados_fabricante_por_usina(
+                _chamados_fabricante_itens(), cliente)
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] Erro ao buscar Chamados com Fabricante: {e}")
+            chamados_fabricante_por_usina = None
+
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
                                     atividades_por_usina, desligamentos_por_usina, usinas_cliente,
-                                    zeladoria_status_por_usina, rondas_por_usina)
+                                    zeladoria_status_por_usina, rondas_por_usina,
+                                    chamados_fabricante_por_usina)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
@@ -14688,18 +14617,6 @@ _CHAT_IA_TOOLS = [{
                 },
             },
         },
-        {
-            "name": "consultar_ocorrencias",
-            "description": "Consulta o Painel de Falhas (ocorrências/falhas de equipamento detectadas via monitoramento ou ronda: inversores, trackers, strings, CFTV, comunicação, etc). É uma base DIFERENTE do Painel de Atividades — 'ocorrência' ou 'falha' aqui, 'atividade' ou 'OS de manutenção' em consultar_atividades. Use esta ferramenta quando perguntarem sobre ocorrências/falhas em aberto, andamento de uma ocorrência, causa, ação tomada, chamado de fabricante vinculado, etc.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
-                    "cliente": {"type": "string", "description": "Nome do cliente, ex: 'RENOGRID'. Deixe vazio para todos."},
-                    "status": {"type": "string", "description": "Status da ocorrência, ex: 'Em Aberto', 'Concluído', 'Em Andamento'. Deixe vazio para todos."},
-                },
-            },
-        },
     ]
 }]
 
@@ -14803,45 +14720,11 @@ def _ia_consultar_programacao_pcm(data=""):
     return {"data": data_filtro, "diaSemana": dia_pt, "total": len(itens), "programacao": itens}
 
 
-# Layout de colunas do Painel de Falhas (0-indexed), confirmado via
-# gravar_nova_ocorrencia() e CAMPO_COL — é uma aba DIFERENTE do Painel de
-# Atividades, com sua própria numeração de coluna.
-_FALHAS_HEADERS_JSON = [
-    "id", "cliente", "usina", "equipamento", "falha", "causa", "impactados",
-    "acao", "status", "ticketFabricante", "numeroOS", "historico", "dataAbertura",
-]
-
-
-def _ia_consultar_ocorrencias(usina="", cliente="", status=""):
-    ws = get_sheet()
-    todos = _gspread_retry(lambda: ws.get_all_values())
-    usina_norm = canonizar_usina(usina) if usina else None
-    out = []
-    for row in todos[1:]:
-        if len(row) < len(_FALHAS_HEADERS_JSON):
-            row = row + [""] * (len(_FALHAS_HEADERS_JSON) - len(row))
-        if not row[0].strip():
-            continue
-        item = dict(zip(_FALHAS_HEADERS_JSON, row[:len(_FALHAS_HEADERS_JSON)]))
-        if not usina_permitida(item.get("usina", "")):
-            continue
-        if usina_norm and canonizar_usina(item.get("usina", "")) != usina_norm:
-            continue
-        if cliente and cliente.strip().lower() not in item.get("cliente", "").strip().lower():
-            continue
-        if status and status.strip().lower() not in item.get("status", "").strip().lower():
-            continue
-        out.append(item)
-    limitado = out[:60]
-    return {"total_encontrado": len(out), "mostrando": len(limitado), "ocorrencias": limitado}
-
-
 _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_atividades": _ia_consultar_atividades,
     "consultar_zeladoria": _ia_consultar_zeladoria,
     "consultar_chamados": _ia_consultar_chamados,
     "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
-    "consultar_ocorrencias": _ia_consultar_ocorrencias,
 }
 
 
@@ -14861,11 +14744,9 @@ Alguns clusters têm mais de um nome listado (separados por "/") porque a vistor
     else:
         bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
 
-    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante e programação do PCM.
+    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, zeladoria, chamados de fabricante e programação do PCM.
 
 Hoje é {hoje}, horário de Brasília.
-
-IMPORTANTE — ATIVIDADES x OCORRÊNCIAS SÃO BASES DIFERENTES: "Painel de Atividades" (ferramenta consultar_atividades) tem as OS de manutenção — preventivas, corretivas, rondas. "Painel de Falhas" (ferramenta consultar_ocorrencias) tem as ocorrências/falhas de equipamento detectadas por monitoramento ou ronda (inversor, tracker, string, CFTV, comunicação, etc.), cada uma com falha/causa/ação/status próprios e às vezes um chamado de fabricante e/ou uma OS vinculados. Se a pergunta usar as palavras "ocorrência(s)" ou "falha(s)", use consultar_ocorrencias. Se usar "atividade(s)" ou "OS" no sentido de manutenção programada, use consultar_atividades. Em caso de dúvida real (a pergunta poderia ser sobre qualquer uma), chame as duas.
 
 {bloco_clusters}
 
