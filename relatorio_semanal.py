@@ -23,6 +23,7 @@ from pptx.oxml.ns import qn
 from pptx.oxml import parse_xml
 from pptx.util import Pt
 from pptx.dml.color import RGBColor
+from pptx.enum.lang import MSO_LANGUAGE_ID
 
 # ── Configuração ───────────────────────────────────────────────────────────
 
@@ -851,6 +852,7 @@ def _add_paragrafo(tf, nivel, runs, first=False, start_at=None, bullet_char="•
         run.font.name = "Poppins"
         run.font.size = Pt(r.get("size", 20))
         run.font.bold = bool(r.get("bold", False))
+        run.font.language_id = MSO_LANGUAGE_ID.BRAZILIAN_PORTUGUESE
         if r.get("italic"):
             run.font.italic = True
         if r.get("color"):
@@ -1478,6 +1480,7 @@ def _set_text_preservando_estilo(shape, novo_texto):
         _aplicar_ppr_bullet(p, ppr_bullet)
         run = p.add_run()
         run.text = linha
+        run.font.language_id = MSO_LANGUAGE_ID.BRAZILIAN_PORTUGUESE
         if fmt:
             if fmt[0]:
                 run.font.name = fmt[0]
@@ -1517,6 +1520,7 @@ def _set_paragrafos_com_estilo(shape, paragrafos):
         for r in runs_def:
             run = par.add_run()
             run.text = r.get("texto", "")
+            run.font.language_id = MSO_LANGUAGE_ID.BRAZILIAN_PORTUGUESE
             if fmt:
                 if fmt[0]:
                     run.font.name = fmt[0]
@@ -1537,6 +1541,7 @@ def _formatar_celula_tabela(celula, fmt, negrito):
         if not p.runs:
             p.add_run()
         for r in p.runs:
+            r.font.language_id = MSO_LANGUAGE_ID.BRAZILIAN_PORTUGUESE
             if fmt:
                 if fmt[0]:
                     r.font.name = fmt[0]
