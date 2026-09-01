@@ -14688,6 +14688,18 @@ _CHAT_IA_TOOLS = [{
                 },
             },
         },
+        {
+            "name": "consultar_ocorrencias",
+            "description": "Consulta o Painel de Falhas (ocorrências/falhas de equipamento detectadas via monitoramento ou ronda: inversores, trackers, strings, CFTV, comunicação, etc). É uma base DIFERENTE do Painel de Atividades — 'ocorrência' ou 'falha' aqui, 'atividade' ou 'OS de manutenção' em consultar_atividades. Use esta ferramenta quando perguntarem sobre ocorrências/falhas em aberto, andamento de uma ocorrência, causa, ação tomada, chamado de fabricante vinculado, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
+                    "cliente": {"type": "string", "description": "Nome do cliente, ex: 'RENOGRID'. Deixe vazio para todos."},
+                    "status": {"type": "string", "description": "Status da ocorrência, ex: 'Em Aberto', 'Concluído', 'Em Andamento'. Deixe vazio para todos."},
+                },
+            },
+        },
     ]
 }]
 
@@ -14791,11 +14803,45 @@ def _ia_consultar_programacao_pcm(data=""):
     return {"data": data_filtro, "diaSemana": dia_pt, "total": len(itens), "programacao": itens}
 
 
+# Layout de colunas do Painel de Falhas (0-indexed), confirmado via
+# gravar_nova_ocorrencia() e CAMPO_COL — é uma aba DIFERENTE do Painel de
+# Atividades, com sua própria numeração de coluna.
+_FALHAS_HEADERS_JSON = [
+    "id", "cliente", "usina", "equipamento", "falha", "causa", "impactados",
+    "acao", "status", "ticketFabricante", "numeroOS", "historico", "dataAbertura",
+]
+
+
+def _ia_consultar_ocorrencias(usina="", cliente="", status=""):
+    ws = get_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for row in todos[1:]:
+        if len(row) < len(_FALHAS_HEADERS_JSON):
+            row = row + [""] * (len(_FALHAS_HEADERS_JSON) - len(row))
+        if not row[0].strip():
+            continue
+        item = dict(zip(_FALHAS_HEADERS_JSON, row[:len(_FALHAS_HEADERS_JSON)]))
+        if not usina_permitida(item.get("usina", "")):
+            continue
+        if usina_norm and canonizar_usina(item.get("usina", "")) != usina_norm:
+            continue
+        if cliente and cliente.strip().lower() not in item.get("cliente", "").strip().lower():
+            continue
+        if status and status.strip().lower() not in item.get("status", "").strip().lower():
+            continue
+        out.append(item)
+    limitado = out[:60]
+    return {"total_encontrado": len(out), "mostrando": len(limitado), "ocorrencias": limitado}
+
+
 _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_atividades": _ia_consultar_atividades,
     "consultar_zeladoria": _ia_consultar_zeladoria,
     "consultar_chamados": _ia_consultar_chamados,
     "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
+    "consultar_ocorrencias": _ia_consultar_ocorrencias,
 }
 
 
@@ -14815,9 +14861,11 @@ Alguns clusters têm mais de um nome listado (separados por "/") porque a vistor
     else:
         bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
 
-    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, zeladoria, chamados de fabricante e programação do PCM.
+    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante e programação do PCM.
 
 Hoje é {hoje}, horário de Brasília.
+
+IMPORTANTE — ATIVIDADES x OCORRÊNCIAS SÃO BASES DIFERENTES: "Painel de Atividades" (ferramenta consultar_atividades) tem as OS de manutenção — preventivas, corretivas, rondas. "Painel de Falhas" (ferramenta consultar_ocorrencias) tem as ocorrências/falhas de equipamento detectadas por monitoramento ou ronda (inversor, tracker, string, CFTV, comunicação, etc.), cada uma com falha/causa/ação/status próprios e às vezes um chamado de fabricante e/ou uma OS vinculados. Se a pergunta usar as palavras "ocorrência(s)" ou "falha(s)", use consultar_ocorrencias. Se usar "atividade(s)" ou "OS" no sentido de manutenção programada, use consultar_atividades. Em caso de dúvida real (a pergunta poderia ser sobre qualquer uma), chame as duas.
 
 {bloco_clusters}
 
