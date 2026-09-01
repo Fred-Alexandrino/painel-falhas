@@ -515,6 +515,62 @@ STATUS_OS_ELEGIVEIS_RELATORIO = ["finalizada", "em revisão", "em revisao"]
 VERDE_STATUS = "00B050"  # verde do relatório PPTX de cliente — não é o A1CA40 da marca
 AMBAR_STATUS = "F5A623"  # âmbar de "em andamento" — mesma cor usada no dashboard (--amber)
 
+
+def _mesclar_atividades_desligamentos(atividades_por_usina, desligamentos_por_usina):
+    """NOVA ESTRUTURA (confirmada com Fred 28/08/2026, a partir do relatório de
+    referência Sal Energia Semana 36): DESLIGAMENTOS deixou de ser uma seção/
+    slide própria — os itens entram junto com as demais atividades, dentro da
+    mesma seção 'ATIVIDADES DA SEMANA', mantendo o texto característico
+    "Desligamento - OS nº – Status" (ver _formatar_item_atividade_geral)."""
+    resultado = {}
+    for usina, itens in (atividades_por_usina or {}).items():
+        resultado.setdefault(usina, []).extend({**it, "e_desligamento": False} for it in itens)
+    for usina, itens in (desligamentos_por_usina or {}).items():
+        resultado.setdefault(usina, []).extend({**it, "e_desligamento": True} for it in itens)
+    return resultado
+
+
+# Ordem FIXA de usinas por cliente (não alfabética) — hoje só Sal Energia,
+# confirmado no relatório de referência Semana 36 (Salvales, Carosa, SunPower,
+# Hortina, Vitesse — mesma ordem já documentada para o relatório PPTX desde
+# 23/07/2026, mas que o motor de geração por usina não estava aplicando).
+# Usinas do cliente que não estiverem nesta lista vão pro final, em ordem
+# alfabética — nunca somem do relatório por não estarem mapeadas aqui.
+ORDEM_FIXA_USINAS_POR_CLIENTE = {
+    "sal energia": ["Salvales (Aquiraz I)", "Carosa (Aquiraz II)", "SunPower (Cascavel)",
+                     "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
+}
+
+
+def _ordenar_usinas(usinas, cliente):
+    ordem_fixa = ORDEM_FIXA_USINAS_POR_CLIENTE.get(_norm(cliente))
+    if not ordem_fixa:
+        return sorted(usinas, key=_norm)
+    indice = {_norm(u): i for i, u in enumerate(ordem_fixa)}
+    return sorted(usinas, key=lambda u: (indice.get(_norm(u), len(ordem_fixa)), _norm(u)))
+
+
+def _mapa_usinas_canonicas(usinas_cliente):
+    """{usina_normalizada: grafia_canônica}, a partir da lista oficial do
+    cliente (listar_usinas_cliente). Usado por _remapear_usinas."""
+    return {_norm(u): u for u in (usinas_cliente or [])}
+
+
+def _remapear_usinas(dados_por_usina, mapa_canonico):
+    """Corrige divergência de grafia/maiúsculas entre fontes (ex.: o campo
+    UFV da aba ChamadosFabricante vem de uma planilha externa do
+    SharePoint sincronizada sem canonização — 'Sunpower' em vez de
+    'SunPower' — e sem isso vira uma usina DUPLICADA no relatório, com
+    grafia diferente da usada em Atividades/Rondas/Zeladoria). Usinas que
+    não batem com nenhuma da lista oficial mantêm a grafia original (não
+    somem — só não são renomeadas)."""
+    resultado = {}
+    for usina, itens in (dados_por_usina or {}).items():
+        canon = mapa_canonico.get(_norm(usina), usina)
+        resultado.setdefault(canon, []).extend(itens)
+    return resultado
+
+
 # ── Rondas (Curta/Longa) — exigência do cliente confirmada com Fred
 # (28/08/2026): relatório semanal de TODOS os clientes precisa de uma
 # seção própria mostrando o que foi feito nas OS de Ronda Curta e Ronda
@@ -542,6 +598,17 @@ def _classificar_ronda(descricao):
     if _RE_RONDA_CURTA.search(texto):
         return "Curta"
     return None
+
+
+# Legenda fixa exibida no topo da seção RONDAS DA SEMANA (e repetida em toda
+# página de continuação) — o checklist de cada tipo de ronda é sempre o
+# mesmo, então em vez de repetir em CADA item (poluía o relatório), aparece
+# uma vez só como legenda; cada item vira só "Ronda X – OS nº – Status."
+RONDA_LEGENDA = [
+    f"Ronda Curta - Itens verificados: {RONDA_ITENS_CHECKLIST['Curta']}.",
+    f"Ronda Longa - Itens verificados: {RONDA_ITENS_CHECKLIST['Longa']}.",
+]
+COR_LEGENDA = "808080"
 
 
 def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_inicio, data_fim):
@@ -710,8 +777,19 @@ def _formatar_item_desligamento(it):
     ]
 
 
+def _formatar_item_atividade_geral(it):
+    """Dispatcher usado na seção única 'ATIVIDADES DA SEMANA' (Desligamentos
+    mesclados — ver _mesclar_atividades_desligamentos): escolhe o texto certo
+    conforme a flag 'e_desligamento' carimbada na mescla."""
+    if it.get("e_desligamento"):
+        return _formatar_item_desligamento(it)
+    return _formatar_item_atividade(it)
+
+
 def _formatar_item_ronda(it):
-    """Ronda Curta/Longa – OS nº – Status. Itens verificados: <checklist fixo>.
+    """Ronda Curta/Longa – OS nº – Status. O checklist de itens verificados
+    NÃO entra mais por item (poluía o relatório) — vira uma legenda única no
+    topo da seção (ver RONDA_LEGENDA), repetida em toda página/continuação.
     O checklist é sempre o padrão do tipo (ver RONDA_ITENS_CHECKLIST) — não é
     buscado subtarefa a subtarefa na Fracttal (mesma decisão de 23/07/2026 de
     não consultar a Fracttal ao vivo dentro da geração do relatório)."""
@@ -721,16 +799,13 @@ def _formatar_item_ronda(it):
     else:
         status_texto, status_cor = "Concluída", VERDE_STATUS
     tipo = it.get("tipo_ronda") or "Curta"
-    checklist = RONDA_ITENS_CHECKLIST.get(tipo, "")
-    runs = [
+    return [
         {"texto": f"Ronda {tipo} – ", "bold": False},
         {"texto": f'OS {it["numero_os"]}', "bold": True},
         {"texto": " – ", "bold": False},
         {"texto": status_texto, "bold": False, "color": status_cor},
+        {"texto": ". ", "bold": False},
     ]
-    if checklist:
-        runs.append({"texto": f". Itens verificados: {checklist}.", "bold": False})
-    return runs
 
 
 # ── Formatação explícita (Poppins 20pt, numeração automática) ──────────────
@@ -774,7 +849,7 @@ def _add_paragrafo(tf, nivel, runs, first=False, start_at=None, bullet_char="•
         run = p.add_run()
         run.text = r.get("texto", "")
         run.font.name = "Poppins"
-        run.font.size = Pt(20)
+        run.font.size = Pt(r.get("size", 20))
         run.font.bold = bool(r.get("bold", False))
         if r.get("italic"):
             run.font.italic = True
@@ -800,7 +875,7 @@ def _gerar_blocos_usina(usinas_ordenadas, dados_por_usina, formatar_item, texto_
 
 
 def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas, dados_por_usina,
-                               formatar_item, texto_vazio, bullet_char, max_linhas):
+                               formatar_item, texto_vazio, bullet_char, max_linhas, legenda=None):
     blocos = _gerar_blocos_usina(usinas_ordenadas, dados_por_usina, formatar_item, texto_vazio, bullet_char)
 
     paginas, atual, linhas_atual = [], [], 0
@@ -826,7 +901,23 @@ def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas,
             tf_t = shp_titulo_secao.text_frame
             tf_t.clear()
             _add_paragrafo(tf_t, "titulo", [{"texto": titulo, "bold": True}], first=True, start_at=numero_topico)
+            # Legenda (ex.: checklist fixo de Ronda Curta/Longa) — pequena,
+            # itálica, cinza, repetida em toda página/continuação da seção,
+            # logo abaixo do título numerado, dentro da mesma caixa.
+            for linha in (legenda or []):
+                _add_paragrafo(tf_t, "subtitulo",
+                                [{"texto": linha, "italic": True, "size": 12, "color": COR_LEGENDA}],
+                                first=False)
         if shp_corpo:
+            if legenda:
+                # A caixa de título cresce com a legenda (2 linhas pequenas,
+                # 12pt) — sem empurrar a caixa de corpo pra baixo, o início
+                # dela sobrepõe visualmente a legenda. Deslocamento medido no
+                # relatório de referência (Sal Energia Semana 36): corpo de
+                # RONDAS DA SEMANA ~511550 EMU abaixo do corpo padrão (sem
+                # legenda) para 2 linhas de legenda — ~255775 EMU por linha.
+                from pptx.util import Emu
+                shp_corpo.top = Emu(shp_corpo.top + len(legenda) * 255775)
             tf = shp_corpo.text_frame
             tf.clear()
             primeiro = True
@@ -843,8 +934,7 @@ def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas,
     return novo
 
 
-PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "DESLIGAMENTOS", "RONDAS DA SEMANA",
-                       "CHAMADOS E PROTOCOLOS", "OUTRAS ATIVIDADES", "ZELADORIA"]
+PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "RONDAS DA SEMANA", "CHAMADOS COM FABRICANTE", "ZELADORIA"]
 
 
 def _renderizar_pautas_gerais(prs):
@@ -944,6 +1034,98 @@ def coletar_chamados_abertos(todos_valores, cliente):
             continue
         chamados.append(row)
     return chamados
+
+
+# ── CHAMADOS COM FABRICANTE — NOVA ESTRUTURA (confirmada com Fred 28/08/2026,
+# a partir do relatório de referência Sal Energia Semana 36): a seção deixou
+# de ser "só título, Fred preenche" e passou a ser AUTOMÁTICA, com os dados
+# reais da aba ChamadosFabricante (mesma fonte do Painel de Chamados do
+# dashboard — ver _chamados_fabricante_itens() em app.py). Não filtra por
+# período — é um retrato do que está em aberto AGORA com o fabricante, igual
+# ao comportamento da antiga coletar_chamados_abertos(). Só aparecem usinas
+# que realmente têm chamado em aberto (sem "Sem chamados" por usina vazia).
+STATUS_CHAMADO_FABRICANTE_RESOLVIDO = ["normalizado", "concluído", "concluido", "resolvido",
+                                        "fechado", "finalizado", "resolved", "closed"]
+
+
+def _chamado_fabricante_resolvido(status):
+    s = _norm(status)
+    return any(p in s for p in STATUS_CHAMADO_FABRICANTE_RESOLVIDO)
+
+
+def coletar_chamados_fabricante_por_usina(itens_chamados, cliente):
+    """itens_chamados: lista de dicts, retorno de _chamados_fabricante_itens()
+    (app.py) — já lida com canonização de usina e mescla de notas.
+    Retorna {usina: [{"ativo":, "status":}, ...]} só com chamados AINDA em
+    aberto (status não bate em STATUS_CHAMADO_FABRICANTE_RESOLVIDO)."""
+    cliente_norm = _norm(cliente)
+    resultado = {}
+    for item in itens_chamados or []:
+        if cliente_norm not in _norm(item.get("Cliente", "")):
+            continue
+        status = (item.get("Status") or "").strip()
+        if not status or _chamado_fabricante_resolvido(status):
+            continue
+        usina = (item.get("UFV") or "").strip() or "Usina não informada"
+        ativo = (item.get("Ativo") or "").strip() or "Equipamento não informado"
+        resultado.setdefault(usina, []).append({"ativo": ativo, "status": status})
+    return resultado
+
+
+def _renderizar_chamados_fabricante(prs, numero_topico, usinas_ordenadas, chamados_por_usina, max_linhas):
+    """Título numerado igual às demais seções, mas corpo SEM numeração romana
+    de usina e SEM bullet por item (nível 'subtitulo' pros dois) — formato
+    confirmado no relatório de referência: nome da usina em negrito, sem
+    marcador; logo abaixo, uma linha "Ativo – Status" por chamado, também
+    sem marcador. Usinas sem chamado em aberto simplesmente não aparecem."""
+    usinas_com_chamado = [u for u in usinas_ordenadas if chamados_por_usina.get(u)]
+
+    blocos = []
+    for usina in usinas_com_chamado:
+        itens = chamados_por_usina[usina]
+        paragrafos = [{"nivel": "subtitulo", "runs": [{"texto": usina, "bold": True}]}]
+        for it in itens:
+            paragrafos.append({"nivel": "subtitulo",
+                                "runs": [{"texto": f'{it["ativo"]} – {it["status"]}', "bold": False}]})
+        blocos.append({"paragrafos": paragrafos, "linhas": 1 + len(itens)})
+
+    paginas, atual, linhas_atual = [], [], 0
+    for b in blocos:
+        if atual and linhas_atual + b["linhas"] > max_linhas:
+            paginas.append(atual)
+            atual, linhas_atual = [], 0
+        atual.append(b)
+        linhas_atual += b["linhas"]
+    if atual:
+        paginas.append(atual)
+    if not paginas:
+        paginas = [[]]
+
+    for i, pagina_blocos in enumerate(paginas):
+        titulo = "CHAMADOS COM FABRICANTE" if i == 0 else "CHAMADOS COM FABRICANTE – CONTINUAÇÃO"
+        novo = _duplicate_slide(prs, 2)
+        _remover_fotos(novo)
+        shp_titulo_secao = _find_shape(novo, "DESLIGAMENTOS")
+        shp_corpo = _find_shape(novo, "Foram registradas")
+        if shp_titulo_secao:
+            tf_t = shp_titulo_secao.text_frame
+            tf_t.clear()
+            _add_paragrafo(tf_t, "titulo", [{"texto": titulo, "bold": True}], first=True, start_at=numero_topico)
+        if shp_corpo:
+            tf = shp_corpo.text_frame
+            tf.clear()
+            primeiro = True
+            if not pagina_blocos:
+                _add_paragrafo(tf, "subtitulo",
+                                [{"texto": "Nenhum chamado em aberto com o fabricante no momento.",
+                                  "italic": True}], first=True)
+            else:
+                for b in pagina_blocos:
+                    for par in b["paragrafos"]:
+                        _add_paragrafo(tf, par["nivel"], par["runs"], first=primeiro)
+                        primeiro = False
+                    _add_paragrafo(tf, "blank", [{"texto": ""}], first=False)
+    return novo
 
 
 # ── Geração de conteúdo (offline, sem IA) — parágrafos com negrito por usina ─
@@ -1556,24 +1738,32 @@ def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
 
 def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
                           desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None,
-                          rondas_por_usina=None):
+                          rondas_por_usina=None, chamados_fabricante_por_usina=None):
     """
-    PADRÃO DEFINITIVO confirmado com Fred em 23/07/2026 (revisão meticulosa
-    do relatório RENOGRID Semana 30, vale para todos os clientes), com a
-    seção de RONDAS DA SEMANA acrescentada em 28/08/2026 (exigência de
-    cliente — mostrar o que foi feito nas OS de Ronda Curta/Ronda Longa):
+    NOVA ESTRUTURA (confirmada com Fred 28/08/2026, a partir do relatório de
+    referência Sal Energia Semana 36 — vale para TODOS os clientes),
+    substituindo o padrão de 23/07/2026:
 
-    (1) Capa; (2) Pautas Gerais (6 tópicos fixos); (3-4) ATIVIDADES DA
-    SEMANA por usina em ordem alfabética; (5-6) DESLIGAMENTOS, mesma
-    lógica; (7) RONDAS DA SEMANA, mesma lógica; (8) CHAMADOS E
-    PROTOCOLOS (só título — Fred preenche); (9) OUTRAS ATIVIDADES (só
-    título); (10) ZELADORIA (preenchida com os dados reais do Painel de
-    Zeladoria); (11) contato (slide original do template, não gerado).
+    (1) Capa; (2) Pautas Gerais (4 tópicos fixos); (3-4) ATIVIDADES DA
+    SEMANA por usina — Desligamentos agora ENTRAM AQUI (não é mais seção
+    própria), mantendo o texto "Desligamento - OS nº – Status"; (5-6)
+    RONDAS DA SEMANA, com uma legenda fixa do checklist de cada tipo no
+    topo da seção (repetida em toda página/continuação) e cada item só
+    "Ronda X – OS nº – Status."; (7) CHAMADOS COM FABRICANTE — agora
+    AUTOMÁTICO a partir da aba ChamadosFabricante (só usinas com chamado
+    em aberto aparecem, sem numeração/bullet); (8) ZELADORIA (dados reais
+    do Painel de Zeladoria); (9) contato (slide original do template).
+
+    A ordem das usinas é alfabética, EXCETO clientes com ordem fixa
+    definida em ORDEM_FIXA_USINAS_POR_CLIENTE (hoje: Sal Energia).
 
     atividades_por_usina / desligamentos_por_usina / rondas_por_usina:
     retorno de coletar_atividades_e_desligamentos_por_usina() (3-tupla).
-    usinas_cliente: lista de usinas do cliente (define a ordem alfabética
-    e a estrutura da Zeladoria).
+    chamados_fabricante_por_usina: retorno de
+    coletar_chamados_fabricante_por_usina(), ou None (seção sai com
+    "Nenhum chamado em aberto com o fabricante no momento.").
+    usinas_cliente: lista de usinas do cliente (define a ordem e a
+    estrutura da Zeladoria).
     zeladoria_status_por_usina: retorno de montar_status_zeladoria_por_usina(),
     ou None (nesse caso a página ZELADORIA sai com "Em acompanhamento."
     em todas as usinas — mesmo efeito de não achar dado nenhuma).
@@ -1582,6 +1772,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     """
     prs = Presentation(TEMPLATE_PATH)
     rondas_por_usina = rondas_por_usina or {}
+    chamados_fabricante_por_usina = chamados_fabricante_por_usina or {}
 
     # Orçamento de paginação: FIXO, calibrado contra o relatório de
     # referência corrigido pelo Fred (RENOGRID Semana 30 — 5 usinas simples
@@ -1592,8 +1783,15 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     # o que gerava um orçamento de ~4 linhas — 1 usina por slide. Não usar.
     max_linhas = 16
 
-    usinas_ordenadas = sorted(set(usinas_cliente or []) | set(atividades_por_usina) | set(desligamentos_por_usina)
-                               | set(rondas_por_usina), key=_norm)
+    mapa_canonico = _mapa_usinas_canonicas(usinas_cliente)
+    atividades_combinadas = _remapear_usinas(
+        _mesclar_atividades_desligamentos(atividades_por_usina, desligamentos_por_usina), mapa_canonico)
+    rondas_por_usina = _remapear_usinas(rondas_por_usina, mapa_canonico)
+    chamados_fabricante_por_usina = _remapear_usinas(chamados_fabricante_por_usina, mapa_canonico)
+
+    usinas_todas = set(usinas_cliente or []) | set(atividades_combinadas) \
+        | set(rondas_por_usina) | set(chamados_fabricante_por_usina)
+    usinas_ordenadas = _ordenar_usinas(usinas_todas, cliente)
 
     # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
     capa = _duplicate_slide(prs, 0)
@@ -1604,33 +1802,22 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     # --- Slide 2: Pautas Gerais — fixo, igual para todos os clientes -------
     _renderizar_pautas_gerais(prs)
 
-    # --- Slides 3-4: ATIVIDADES DA SEMANA (tópico 1) ------------------------
-    _renderizar_topico_usinas(prs, 1, "ATIVIDADES DA SEMANA", usinas_ordenadas, atividades_por_usina,
-                               _formatar_item_atividade, "Sem atividades realizadas no período.",
+    # --- Slides 3-4: ATIVIDADES DA SEMANA (tópico 1) — Desligamentos mesclados
+    _renderizar_topico_usinas(prs, 1, "ATIVIDADES DA SEMANA", usinas_ordenadas, atividades_combinadas,
+                               _formatar_item_atividade_geral, "Sem atividades realizadas no período.",
                                "•", max_linhas)
 
-    # --- Slides 5-6: DESLIGAMENTOS (tópico 2) -------------------------------
-    _renderizar_topico_usinas(prs, 2, "DESLIGAMENTOS", usinas_ordenadas, desligamentos_por_usina,
-                               _formatar_item_desligamento, "Sem desligamentos registrados no período.",
-                               "•", max_linhas)
-
-    # --- Slide 7: RONDAS DA SEMANA (tópico 3) — exigência de cliente,
-    # confirmado com Fred 28/08/2026: mostra o que foi feito nas OS de
-    # Ronda Curta/Ronda Longa, resumido só como o tipo de checklist coberto
-    # (ver RONDA_ITENS_CHECKLIST) ------------------------------------------
-    _renderizar_topico_usinas(prs, 3, "RONDAS DA SEMANA", usinas_ordenadas, rondas_por_usina,
+    # --- Slides 5-6: RONDAS DA SEMANA (tópico 2) — legenda fixa no topo,
+    # exigência de cliente confirmada com Fred 28/08/2026 -------------------
+    _renderizar_topico_usinas(prs, 2, "RONDAS DA SEMANA", usinas_ordenadas, rondas_por_usina,
                                _formatar_item_ronda, "Sem rondas registradas no período.",
-                               "•", max_linhas)
+                               "•", max_linhas, legenda=RONDA_LEGENDA)
 
-    # --- Slide 8: CHAMADOS E PROTOCOLOS — só título, Fred preenche ---------
-    def _corpo_chamados(tf):
-        _add_paragrafo(tf, "subtitulo", [{"texto": "PROTOCOLOS CONCESSIONÁRIAS", "bold": True}], first=True)
-    _renderizar_secao_placeholder(prs, 4, "CHAMADOS E PROTOCOLOS", _corpo_chamados)
+    # --- Slide 7: CHAMADOS COM FABRICANTE (tópico 3) — agora automático,
+    # dados reais da aba ChamadosFabricante ---------------------------------
+    _renderizar_chamados_fabricante(prs, 3, usinas_ordenadas, chamados_fabricante_por_usina, max_linhas)
 
-    # --- Slide 9: OUTRAS ATIVIDADES — só título, Fred preenche --------------
-    _renderizar_secao_placeholder(prs, 5, "OUTRAS ATIVIDADES", None)
-
-    # --- Slide 10: ZELADORIA — preenchida com os dados reais do Painel -----
+    # --- Slide 8: ZELADORIA (tópico 4) — dados reais do Painel -------------
     def _corpo_zeladoria(tf):
         primeiro = True
         for i, usina in enumerate(usinas_ordenadas, start=1):
@@ -1638,7 +1825,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
             primeiro = False
             info = (zeladoria_status_por_usina or {}).get(usina)
             _add_paragrafo(tf, "item", _formatar_item_zeladoria(info), first=False, bullet_char="•")
-    _renderizar_secao_placeholder(prs, 6, "ZELADORIA", _corpo_zeladoria)
+    _renderizar_secao_placeholder(prs, 4, "ZELADORIA", _corpo_zeladoria)
 
     # --- Reordena o deck: capa nova -> pautas nova -> conteúdo -> contato --
     xml_slides = prs.slides._sldIdLst
