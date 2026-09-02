@@ -1401,7 +1401,11 @@ def get_atividades_sheet():
     return ws
 
 def carregar_planilha(ws):
-    return ws.get_all_values()
+    """Lê uma aba inteira com retry automático em caso de 429 (cota de
+    leitura excedida) — helper central usado por ~14 pontos do backend,
+    incluindo /gerar-relatorio-semanal, que confirmadamente estourava a
+    cota (erro 429 real em produção, 02/09/2026)."""
+    return _gspread_retry(lambda: ws.get_all_values())
 
 def proximo_id(todos):
     maior = 0
@@ -8245,7 +8249,7 @@ def _mapa_notas_chamados():
     NUNCA na aba ChamadosFabricante, pra sobreviver a reimportações
     futuras da planilha do SharePoint sem serem apagadas."""
     ws_cfg = _get_config_sheet()
-    valores = ws_cfg.get_all_values()
+    valores = _gspread_retry(lambda: ws_cfg.get_all_values())
     mapa = {}
     for row in valores[1:]:
         if row and row[0].strip().startswith("nota_chamado:"):
@@ -8430,7 +8434,7 @@ def _chamados_fabricante_itens():
     Agora só entram linhas cujo campo UFV bate com uma usina do catálogo
     (mesma fonte usada pra reconhecer OS da Fracttal)."""
     ws = get_chamados_fabricante_sheet()
-    todos = ws.get_all_values()
+    todos = _gspread_retry(lambda: ws.get_all_values())
     notas = _mapa_notas_chamados()
     itens = []
     for row in todos[1:]:
