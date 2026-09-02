@@ -1,0 +1,28 @@
+name: Diag Historico Fracttal (temp)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run diag
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          echo "aW1wb3J0IHJlcXVlc3RzLCBqc29uLCBvcwoKQkFTRSA9ICJodHRwczovL2FwaS4xNjguMTM4LjIzMi4yMzcuc3NsaXAuaW8iClNFQ1JFVCA9IG9zLmVudmlyb25bIldFQkhPT0tfU0VDUkVUIl0KCnIgPSByZXF1ZXN0cy5nZXQoZiJ7QkFTRX0vZnJhY3R0YWwtcmF3IiwgcGFyYW1zPXsiZm9saW8iOiAiMTAyODUiLCAic2VjcmV0IjogU0VDUkVUfSwgdGltZW91dD0zMCkKcHJpbnQoIlNUQVRVUyIsIHIuc3RhdHVzX2NvZGUpCmJvZHkgPSByLmpzb24oKQp3byA9IGJvZHkuZ2V0KCJib2R5IikKb3V0X2xpbmVzID0gW10Kb3V0X2xpbmVzLmFwcGVuZChmIlNUQVRVUzoge3Iuc3RhdHVzX2NvZGV9IikKaWYgaXNpbnN0YW5jZSh3bywgZGljdCk6CiAgICBvdXRfbGluZXMuYXBwZW5kKGYiVE9QIExFVkVMIEtFWVM6IHtsaXN0KHdvLmtleXMoKSl9IikKICAgIGZvciBrIGluIHdvLmtleXMoKToKICAgICAgICBpZiBhbnkodyBpbiBrLmxvd2VyKCkgZm9yIHcgaW4gWyJsb2ciLCAiaGlzdCIsICJiaXRhYyIsICJzZWd1aSIsICJhY3RpdiIsICJldmVudCIsICJ0cmFjayIsICJjb21lbnQiLCAibm90ZSJdKToKICAgICAgICAgICAgb3V0X2xpbmVzLmFwcGVuZChmIk1BVENIIEtFWToge2t9IC0+IHtzdHIod29ba10pWzo4MDBdfSIpCmVsc2U6CiAgICBvdXRfbGluZXMuYXBwZW5kKGYiQk9EWSAobm90IGRpY3QpOiB7c3RyKGJvZHkpWzoxMDAwXX0iKQoKd2l0aCBvcGVuKCJiYWNrdXBzL2RpYWctaGlzdC1zdW1tYXJ5LnR4dCIsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgIGYud3JpdGUoIlxuIi5qb2luKG91dF9saW5lcykpCgp3aXRoIG9wZW4oImJhY2t1cHMvZGlhZy1oaXN0LWZ1bGwuanNvbiIsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgIGpzb24uZHVtcChib2R5LCBmLCBlbnN1cmVfYXNjaWk9RmFsc2UsIGluZGVudD0yKQo=" | base64 -d > diag_hist.py
+          pip install requests --quiet
+          python3 diag_hist.py
+          cat backups/diag-hist-summary.txt
+      - name: Commit result
+        if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-hist-summary.txt backups/diag-hist-full.json
+          git diff --quiet --cached || git commit -m "Diag: historico fracttal OS 10285 [skip ci]"
+          git push
