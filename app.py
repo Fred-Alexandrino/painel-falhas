@@ -19,7 +19,7 @@ Suporta:
 import os, re, json, logging, time, random, base64, uuid, sqlite3, threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -4961,6 +4961,98 @@ def fracttal_raw():
             body = resp.text[:3000]
         return jsonify({"ok": True, "status_code": resp.status_code, "url_chamada": resp.url, "body": body})
     except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _fracttal_datahora_br(iso_str):
+    """Converte um timestamp ISO da Fracttal (UTC) pra dd/mm/aaaa HH:MM no fuso de Brasília."""
+    if not iso_str:
+        return None
+    try:
+        s = str(iso_str).strip()
+        # normaliza variações tipo "...81+00:00" / "...Z" pro formato aceito pelo fromisoformat
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt_br = dt.astimezone(_TZ_BR)
+        return dt_br.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return None
+
+
+@app.route("/os-historico-fracttal/<numero_os>", methods=["GET"])
+def os_historico_fracttal(numero_os):
+    """
+    Monta uma linha do tempo da OS usando dados REAIS e ao vivo da Fracttal
+    (não o histórico interno construído pelo nosso próprio sync). A API
+    pública da Fracttal não expõe o log de eventos completo que aparece na
+    tela "Histórico" dentro do app deles (anexos, cada troca de status) —
+    isso é um recurso interno da UI, sem endpoint documentado. O que a API
+    entrega, por tarefa/equipamento da OS, são os timestamps reais de
+    criação, início e conclusão — o suficiente pra responder com precisão
+    "quando essa OS foi iniciada", que é o que interessa aqui.
+    """
+    numero_os = (numero_os or "").strip()
+    if not numero_os:
+        return jsonify({"ok": False, "error": "numero_os vazio"}), 400
+    try:
+        token = _fracttal_get_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+        resp.raise_for_status()
+        body = resp.json()
+        tasks = body.get("data") or []
+        if isinstance(tasks, dict):
+            tasks = [tasks]
+
+        eventos = []
+        for t in tasks:
+            equip = (t.get("items_log_description") or t.get("parent_description") or "").strip() or "—"
+            desc_tarefa = (t.get("description") or "").strip() or "—"
+            tecnico = (t.get("personnel_description") or "").strip() or "—"
+            criado_por = (t.get("created_by") or "").strip() or "—"
+
+            dt_criacao = _fracttal_datahora_br(t.get("creation_date"))
+            if dt_criacao:
+                eventos.append({
+                    "data": t.get("creation_date"), "dataFormatada": dt_criacao,
+                    "titulo": "Ordem de trabalho criada",
+                    "detalhe": f"{desc_tarefa} — {equip}", "autor": criado_por,
+                })
+
+            dt_inicio = _fracttal_datahora_br(t.get("initial_date"))
+            if dt_inicio:
+                eventos.append({
+                    "data": t.get("initial_date"), "dataFormatada": dt_inicio,
+                    "titulo": "Tarefa iniciada",
+                    "detalhe": f"{desc_tarefa} — {equip}", "autor": tecnico,
+                })
+
+            dt_fim = _fracttal_datahora_br(t.get("final_date"))
+            if dt_fim:
+                eventos.append({
+                    "data": t.get("final_date"), "dataFormatada": dt_fim,
+                    "titulo": "Tarefa concluída" if t.get("done") else "Tarefa finalizada",
+                    "detalhe": f"{desc_tarefa} — {equip}", "autor": tecnico,
+                })
+
+        eventos.sort(key=lambda e: e["data"] or "")
+        # mais recente primeiro, igual ao padrão de histórico já usado no dashboard
+        eventos.reverse()
+
+        return jsonify({
+            "ok": True,
+            "numeroOS": numero_os,
+            "totalTarefas": len(tasks),
+            "eventos": eventos,
+        })
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else 502
+        return jsonify({"ok": False, "error": f"Fracttal respondeu {status} pra OS {numero_os}"}), 502
+    except Exception as e:
+        log.error(f"[Historico Fracttal] Erro na OS {numero_os}: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
