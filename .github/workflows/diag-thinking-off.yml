@@ -1,0 +1,31 @@
+name: Diag Confirma Thinking Off
+on:
+  workflow_dispatch: {}
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testar chat-ia 3x com timing
+        run: |
+          mkdir -p backups
+          > backups/diag-thinking-off.txt
+          for i in 1 2 3; do
+            echo "=== Tentativa $i ===" >> backups/diag-thinking-off.txt
+            curl -s -w "\nHTTP_STATUS:%{http_code} TIME:%{time_total}s\n" -X POST "https://api.168.138.232.237.sslip.io/chat-ia" \
+              -H "Content-Type: application/json" \
+              -d '{"pergunta":"quais os principais pontos de atenção de hoje?","historico":[]}' \
+              --max-time 170 \
+              >> backups/diag-thinking-off.txt 2>&1
+            echo "" >> backups/diag-thinking-off.txt
+          done
+          cat backups/diag-thinking-off.txt
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-thinking-off.txt
+          git diff --quiet --cached || git commit -m "Diag confirma thinking off [skip ci]"
+          git push
