@@ -1,0 +1,32 @@
+name: Diag OS 12925 12923 raw
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar dado bruto
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/fracttal-raw?folio=12925" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/diag-os12925-result.json
+          curl -s "https://api.168.138.232.237.sslip.io/fracttal-raw?folio=12923" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/diag-os12923-result.json
+          cat backups/diag-os12925-result.json
+          echo "---"
+          cat backups/diag-os12923-result.json
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/diag-os12925-result.json backups/diag-os12923-result.json
+          git diff --quiet --cached || git commit -m "Diag OS 12925/12923 raw [skip ci]"
+          git push
