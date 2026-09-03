@@ -6359,6 +6359,50 @@ def atualizar_regra_compromisso():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/compromissos/regras/criar", methods=["POST"])
+def criar_regra_compromisso():
+    """Cria uma nova regra em _ComprometimentosRegras (novo cliente/tipo
+    entrando no ciclo de compromissos). Não gera o card do mês na hora —
+    isso continua a cargo de _gerar_compromissos_mes_atual_se_necessario()
+    no próximo GET /compromissos, igual às regras do seed."""
+    try:
+        body = request.get_json(force=True) or {}
+        tipo = str(body.get("tipo", "")).strip()
+        cliente = str(body.get("cliente", "")).strip()
+        usina = str(body.get("usina", "")).strip()
+        regra_tipo = str(body.get("regraTipo", "")).strip()
+        regra_valor = str(body.get("regraValor", "")).strip()
+        ativo = body.get("ativo", True)
+        if not tipo or not cliente or not regra_tipo or not regra_valor:
+            return jsonify({"ok": False, "error": "tipo, cliente, regraTipo e regraValor são obrigatórios"}), 400
+        if regra_tipo not in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil"):
+            return jsonify({"ok": False, "error": f"regraTipo desconhecido: {regra_tipo}"}), 400
+
+        ws_regras = _get_compromissos_regras_sheet()
+        todas = ws_regras.get_all_values()
+        for row in todas[1:]:
+            if len(row) >= 4 and row[1] == tipo and row[2] == cliente and row[3] == usina:
+                return jsonify({"ok": False, "error": f"já existe uma regra {tipo} pra {cliente}"
+                                 + (f" / {usina}" if usina else "")}), 409
+
+        maior = 0
+        for row in todas[1:]:
+            if row and row[0].strip().isdigit():
+                maior = max(maior, int(row[0].strip()))
+        novo_id = str(maior + 1)
+
+        linha = [novo_id, tipo, cliente, usina, regra_tipo, regra_valor, "TRUE" if ativo else "FALSE"]
+        ws_regras.append_row(linha)
+
+        return jsonify({"ok": True, "regraCriada": {
+            "id": novo_id, "tipo": tipo, "cliente": cliente, "usina": usina,
+            "regraTipo": regra_tipo, "regraValor": regra_valor, "ativo": bool(ativo),
+        }}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao criar regra: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/compromissos/marcar-etapa", methods=["POST"])
 def marcar_etapa_compromisso():
     try:
