@@ -6443,6 +6443,57 @@ def atualizar_regra_compromisso():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/compromissos/testar-alerta-etapas-abertas", methods=["GET", "POST"])
+def testar_alerta_etapas_abertas():
+    """Dispara o alerta de etapas abertas na hora, ignorando a janela e a
+    trava diária — só pra teste manual. Query param ?enviar=false devolve
+    a lista sem mandar a mensagem pro WhatsApp."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        enviar = request.args.get("enviar", "true").lower() != "false"
+        compromissos = _listar_compromissos_core()
+        etapas_abertas = []
+        for c in compromissos:
+            if c["status"] == "Concluído":
+                continue
+            for idx, nome_etapa in enumerate(c["etapas"]):
+                if c["etapasConcluidas"][idx]:
+                    continue
+                data_str, dias = _prazo_etapa_compromisso(c, idx)
+                if not data_str or dias is None:
+                    continue
+                if dias <= 0:
+                    etapas_abertas.append({
+                        "cliente": c["cliente"], "tipoLabel": c["tipoLabel"],
+                        "usina": c["usina"], "etapa": nome_etapa,
+                        "dataLimite": data_str, "diasAtraso": -dias,
+                    })
+        etapas_abertas.sort(key=lambda e: -e["diasAtraso"])
+
+        if not etapas_abertas:
+            return jsonify({"ok": True, "etapasAbertas": 0, "mensagem": "nenhuma etapa em aberto agora"}), 200
+
+        linhas = []
+        for e in etapas_abertas:
+            usina_txt = f" ({e['usina']})" if e["usina"] else ""
+            prazo_txt = f"vence hoje ({e['dataLimite']})" if e["diasAtraso"] == 0 \
+                else f"vencida há {e['diasAtraso']} dia(s) — prazo era {e['dataLimite']}"
+            linhas.append(f"• {e['cliente']}{usina_txt} — {e['tipoLabel']} / {e['etapa']}: {prazo_txt}")
+        texto = (
+            f"⚠️ *Etapas em aberto — {agora_br().strftime('%d/%m/%Y')}*\n\n"
+            + "\n".join(linhas)
+            + "\n\nAbra o Painel Gerencial > Boletins de Medição pra marcar as etapas concluídas."
+        )
+        resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto) if enviar else None
+        return jsonify({"ok": True, "etapasAbertas": len(etapas_abertas), "texto": texto, "envio": resultado_envio}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no teste manual de alerta de etapas abertas: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/compromissos/backfill-subprazos-bm", methods=["POST"])
 def backfill_subprazos_bm():
     """Preenche DataLimiteEnvioBM/DataLimiteAprovacao pra cards tipo=BM
@@ -6760,6 +6811,82 @@ def _verificar_compromissos_se_necessario():
         return {"disparado": True, "cardsCriados": criados, "alertados": alertados}
     except Exception as e:
         log.error(f"[Compromissos] Erro na verificação diária: {e}")
+        return {"disparado": False, "erro": str(e)}
+
+
+def _prazo_etapa_compromisso(c, idx):
+    """Devolve (data_str, dias_restantes) da etapa idx de um compromisso —
+    já vindo de _listar_compromissos_core(). Pra tipo BM, cada etapa tem
+    prazo próprio (Envio/Aprovação/NF); pros demais tipos (RelatorioPerformance,
+    RelatorioPCM) só existe uma etapa, com prazo = dataLimite do card."""
+    if c["tipo"] == "BM":
+        if idx == 0:
+            return c.get("dataLimiteEnvioBM") or "", c.get("diasRestantesEnvioBM")
+        if idx == 1:
+            return c.get("dataLimiteAprovacao") or "", c.get("diasRestantesAprovacao")
+        return c["dataLimite"], c["diasRestantes"]
+    return c["dataLimite"], c["diasRestantes"]
+
+
+def _verificar_alertas_etapas_abertas_se_necessario():
+    """Piggyback no /sync-fracttal: roda 1x por dia na mesma janela de
+    _verificar_compromissos_se_necessario (07:00-08:30). Varre TODAS as
+    etapas de TODOS os compromissos não concluídos (qualquer cliente,
+    qualquer tipo — BM, RelatorioPerformance, RelatorioPCM) e manda um
+    único alerta consolidado pro grupo Gestão O&M (mesmo grupo dos
+    resumos) sempre que alguma etapa já passou do prazo próprio dela e
+    ainda não foi marcada como concluída. Pedido do Fred em 03/09/2026:
+    alerta não filtra por cliente nem por etapa — é genérico."""
+    try:
+        agora = agora_br()
+        hoje_str = agora.strftime("%Y-%m-%d")
+        if not (agora.hour == 7 or (agora.hour == 8 and agora.minute <= 30)):
+            return {"disparado": False, "motivo": f"fora da janela (agora {agora.strftime('%H:%M')})"}
+        ja_feito = _ler_trava("alertas_etapas_abertas_enviado_em")
+        if ja_feito == hoje_str:
+            return {"disparado": False, "motivo": "já verificado hoje"}
+        _gravar_trava("alertas_etapas_abertas_enviado_em", hoje_str)
+
+        compromissos = _listar_compromissos_core()
+        etapas_abertas = []
+        for c in compromissos:
+            if c["status"] == "Concluído":
+                continue
+            for idx, nome_etapa in enumerate(c["etapas"]):
+                if c["etapasConcluidas"][idx]:
+                    continue
+                data_str, dias = _prazo_etapa_compromisso(c, idx)
+                if not data_str or dias is None:
+                    continue
+                if dias <= 0:
+                    etapas_abertas.append({
+                        "cliente": c["cliente"], "tipoLabel": c["tipoLabel"],
+                        "usina": c["usina"], "etapa": nome_etapa,
+                        "dataLimite": data_str, "diasAtraso": -dias,
+                    })
+
+        if not etapas_abertas:
+            return {"disparado": True, "etapasAbertas": 0}
+
+        etapas_abertas.sort(key=lambda e: -e["diasAtraso"])
+        linhas = []
+        for e in etapas_abertas:
+            usina_txt = f" ({e['usina']})" if e["usina"] else ""
+            if e["diasAtraso"] == 0:
+                prazo_txt = f"vence hoje ({e['dataLimite']})"
+            else:
+                prazo_txt = f"vencida há {e['diasAtraso']} dia(s) — prazo era {e['dataLimite']}"
+            linhas.append(f"• {e['cliente']}{usina_txt} — {e['tipoLabel']} / {e['etapa']}: {prazo_txt}")
+
+        texto = (
+            f"⚠️ *Etapas em aberto — {agora.strftime('%d/%m/%Y')}*\n\n"
+            + "\n".join(linhas)
+            + "\n\nAbra o Painel Gerencial > Boletins de Medição pra marcar as etapas concluídas."
+        )
+        resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
+        return {"disparado": True, "etapasAbertas": len(etapas_abertas), "envio": resultado_envio}
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no alerta de etapas abertas: {e}")
         return {"disparado": False, "erro": str(e)}
 
 
@@ -7854,6 +7981,12 @@ def _sync_fracttal_worker():
     except Exception as e:
         log.error(f"[Compromissos] Erro no piggyback: {e}")
         body["compromissos_check"] = {"erro": str(e)}
+
+    try:
+        body["alertas_etapas_abertas_check"] = _verificar_alertas_etapas_abertas_se_necessario()
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no piggyback de alertas de etapas abertas: {e}")
+        body["alertas_etapas_abertas_check"] = {"erro": str(e)}
 
     try:
         body["resumo_diario_check"] = _verificar_e_disparar_resumo_diario_se_necessario()
