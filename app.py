@@ -3552,19 +3552,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         if tecnico_novo and tecnico_novo != responsavel_atual:
             ws.update_cell(i, ATIV_CAMPO_COL["responsavel"], tecnico_novo)
             mudou = True
-        # Comparação normalizada (adicionado 03/09/2026, achado no teste ao
-        # vivo do fix acima): comparar direto com != disparava gravação e
-        # "mudou=True" mesmo quando o valor era o MESMO, só com diferença
-        # de formatação (espaço, maiúscula/minúscula) entre o texto salvo
-        # há tempos na planilha e o texto canônico recém-resolvido — ruído
-        # puro (gravações desnecessárias no Sheets, histórico e push
-        # mostrando "mudança" que não mudou nada de verdade). Só é mudança
-        # real quando o valor NORMALIZADO difere.
-        _usina_novo_norm = _norm_usina(usina_novo)
-        _usina_atual_norm = _norm_usina(usina_atual)
-        _cliente_novo_norm = _norm_usina(cliente_novo)
-        _cliente_atual_norm = _norm_usina(cliente_atual)
-        if usina_novo and (_usina_novo_norm != _usina_atual_norm or _cliente_novo_norm != _cliente_atual_norm):
+        if usina_novo and (usina_novo != usina_atual or cliente_novo != cliente_atual):
             ws.update_cell(i, ATIV_CAMPO_COL["usina"], usina_novo)
             ws.update_cell(i, ATIV_CAMPO_COL["cliente"], cliente_novo)
             mudou = True
@@ -3589,7 +3577,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             if tecnico_novo and tecnico_novo != responsavel_atual:
                 partes.append(f"responsável mudou de \"{responsavel_atual or '—'}\" para \"{tecnico_novo}\" (reatribuição na Fracttal)")
                 partes_curtas.append(f"Responsável: {responsavel_atual or '—'} → {tecnico_novo}")
-            if usina_novo and (_usina_novo_norm != _usina_atual_norm or _cliente_novo_norm != _cliente_atual_norm):
+            if usina_novo and (usina_novo != usina_atual or cliente_novo != cliente_atual):
                 partes.append(f"usina/cliente corrigidos de \"{usina_atual or '—'}\"/\"{cliente_atual or '—'}\" "
                                f"para \"{usina_novo}\"/\"{cliente_novo}\" (reclassificação automática)")
                 partes_curtas.append(f"Usina: {usina_atual or '—'} → {usina_novo}")
@@ -6145,6 +6133,61 @@ def _calcular_prazo_compromisso(regra_tipo, regra_valor, ano, mes):
     raise ValueError(f"regra_tipo desconhecido: {regra_tipo}")
 
 
+def _subtrair_dias_uteis(dt, n):
+    """Volta N dias úteis a partir de dt (não conta o próprio dt)."""
+    atual = dt
+    contados = 0
+    while contados < n:
+        atual -= timedelta(days=1)
+        if _e_dia_util(atual):
+            contados += 1
+    return atual
+
+
+def _somar_dias_uteis(dt, n):
+    """Avança N dias úteis a partir de dt (não conta o próprio dt)."""
+    atual = dt
+    contados = 0
+    while contados < n:
+        atual += timedelta(days=1)
+        if _e_dia_util(atual):
+            contados += 1
+    return atual
+
+
+# Regra padrão pro fluxo interno de BM (Boletim de Medição), levantada em
+# 03/09/2026: nenhum dos contratos analisados (ABC/Alves Lima, GD Energy,
+# Sal Energia) define prazo próprio de envio do BM nem de aprovação do
+# cliente — só a data final de emissão da NF está no texto contratual.
+# A pedido do Fred, na ausência de cláusula específica no contrato:
+#   Envio do BM = DataLimite da NF menos 5 dias úteis
+#   Aprovação do Cliente = Envio do BM mais 2 dias úteis
+BM_ENVIO_DIAS_UTEIS_ANTES_NF = 5
+BM_APROVACAO_DIAS_UTEIS_APOS_ENVIO = 2
+
+
+def _calcular_subprazos_bm(data_limite_nf):
+    """Calcula as datas de envio do BM e prazo de aprovação do cliente a
+    partir da data-limite da NF, usando a regra padrão (sem cláusula
+    contratual específica encontrada nos contratos analisados)."""
+    envio_bm = _subtrair_dias_uteis(data_limite_nf, BM_ENVIO_DIAS_UTEIS_ANTES_NF)
+    aprovacao = _somar_dias_uteis(envio_bm, BM_APROVACAO_DIAS_UTEIS_APOS_ENVIO)
+    return envio_bm, aprovacao
+
+
+def _garantir_colunas_bm_prazos(ws_comp):
+    """Garante que a planilha Compromissos tenha as colunas M/N
+    (DataLimiteEnvioBM / DataLimiteAprovacao). Sheet foi criada
+    originalmente só até a coluna L (12) — expande sob demanda."""
+    if ws_comp.col_count < 14:
+        ws_comp.add_cols(14 - ws_comp.col_count)
+    header = ws_comp.row_values(1)
+    if len(header) < 13 or header[12] != "DataLimiteEnvioBM":
+        ws_comp.update_cell(1, 13, "DataLimiteEnvioBM")
+    if len(header) < 14 or header[13] != "DataLimiteAprovacao":
+        ws_comp.update_cell(1, 14, "DataLimiteAprovacao")
+
+
 def _get_compromissos_regras_sheet():
     sh = get_atividades_sheet().spreadsheet
     try:
@@ -6170,10 +6213,10 @@ def _get_compromissos_sheet():
     try:
         return sh.worksheet("Compromissos")
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title="Compromissos", rows=200, cols=12)
+        ws = sh.add_worksheet(title="Compromissos", rows=200, cols=14)
         ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "Competencia", "DataLimite",
                            "Etapas", "EtapasConcluidas", "Status", "DataCriacao",
-                           "DataConclusao", "Historico"]])
+                           "DataConclusao", "Historico", "DataLimiteEnvioBM", "DataLimiteAprovacao"]])
         return ws
 
 
@@ -6223,6 +6266,7 @@ def _gerar_compromissos_mes_atual():
     regras = ws_regras.get_all_values()[1:]
 
     ws_comp = _get_compromissos_sheet()
+    _garantir_colunas_bm_prazos(ws_comp)
     todos = ws_comp.get_all_values()
     existentes = {(r[1], r[2], r[3], r[4]) for r in todos[1:] if len(r) >= 5}
 
@@ -6243,17 +6287,24 @@ def _gerar_compromissos_mes_atual():
             log.error(f"[Compromissos] Erro ao calcular prazo pra regra {_id}: {e}")
             continue
 
+        envio_bm_str, aprovacao_str = "", ""
+        if tipo == "BM":
+            envio_bm, aprovacao = _calcular_subprazos_bm(prazo)
+            envio_bm_str, aprovacao_str = envio_bm.strftime("%d/%m/%Y"), aprovacao.strftime("%d/%m/%Y")
+
         etapas = COMPROMISSO_ETAPAS.get(tipo, ["Envio"])
         novo_id = _proximo_id_compromisso(todos)
         linha = [novo_id, tipo, cliente, usina, competencia, prazo.strftime("%d/%m/%Y"),
                   json.dumps(etapas, ensure_ascii=False), json.dumps([""] * len(etapas)),
                   "Pendente", agora.strftime("%d/%m/%Y %H:%M:%S"), "",
-                  f"{agora.strftime('%d/%m/%Y %H:%M')} - Card criado automaticamente pra competência {competencia}."]
+                  f"{agora.strftime('%d/%m/%Y %H:%M')} - Card criado automaticamente pra competência {competencia}.",
+                  envio_bm_str, aprovacao_str]
         ws_comp.append_row(linha)
         todos.append(linha)
         existentes.add(chave)
         criados.append({"id": novo_id, "tipo": tipo, "cliente": cliente, "competencia": competencia,
-                         "dataLimite": prazo.strftime("%d/%m/%Y")})
+                         "dataLimite": prazo.strftime("%d/%m/%Y"),
+                         "dataLimiteEnvioBM": envio_bm_str, "dataLimiteAprovacao": aprovacao_str})
 
     return criados
 
@@ -6275,10 +6326,24 @@ def _listar_compromissos_core():
         etapas_concluidas = json.loads(row[7]) if row[7] else []
         status_calc = _status_compromisso(etapas_concluidas, data_limite, agora)
         dias_restantes = (data_limite.date() - agora.date()).days
+
+        data_limite_envio_bm = row[12] if len(row) > 12 else ""
+        data_limite_aprovacao = row[13] if len(row) > 13 else ""
+        dias_restantes_envio_bm, dias_restantes_aprovacao = None, None
+        try:
+            if data_limite_envio_bm:
+                dias_restantes_envio_bm = (datetime.strptime(data_limite_envio_bm, "%d/%m/%Y").date() - agora.date()).days
+            if data_limite_aprovacao:
+                dias_restantes_aprovacao = (datetime.strptime(data_limite_aprovacao, "%d/%m/%Y").date() - agora.date()).days
+        except Exception:
+            pass
+
         resultado.append({
             "id": row[0], "tipo": row[1], "tipoLabel": COMPROMISSO_LABEL.get(row[1], row[1]),
             "cliente": row[2], "usina": row[3], "competencia": row[4],
             "dataLimite": row[5], "diasRestantes": dias_restantes,
+            "dataLimiteEnvioBM": data_limite_envio_bm, "diasRestantesEnvioBM": dias_restantes_envio_bm,
+            "dataLimiteAprovacao": data_limite_aprovacao, "diasRestantesAprovacao": dias_restantes_aprovacao,
             "etapas": etapas, "etapasConcluidas": etapas_concluidas,
             "status": status_calc, "dataConclusao": row[10],
         })
@@ -6352,6 +6417,7 @@ def atualizar_regra_compromisso():
                              "aviso": f"regra salva, mas não foi possível recalcular o card do mês: {e}"}), 200
 
         ws_comp = _get_compromissos_sheet()
+        _garantir_colunas_bm_prazos(ws_comp)
         todos = ws_comp.get_all_values()
         for i, row in enumerate(todos[1:], start=2):
             if len(row) < 12:
@@ -6363,11 +6429,49 @@ def atualizar_regra_compromisso():
                 historico_novo = row[11] + f"\n{agora.strftime('%d/%m/%Y %H:%M')} - Prazo corrigido de {data_antiga} para {nova_data_str} (regra ajustada por {editor})."
                 ws_comp.update_cell(i, 12, historico_novo)
                 card_atualizado = {"id": row[0], "dataLimiteAnterior": data_antiga, "dataLimiteNova": nova_data_str}
+                if tipo == "BM":
+                    novo_envio_bm, nova_aprovacao = _calcular_subprazos_bm(novo_prazo)
+                    ws_comp.update_cell(i, 13, novo_envio_bm.strftime("%d/%m/%Y"))
+                    ws_comp.update_cell(i, 14, nova_aprovacao.strftime("%d/%m/%Y"))
+                    card_atualizado["dataLimiteEnvioBM"] = novo_envio_bm.strftime("%d/%m/%Y")
+                    card_atualizado["dataLimiteAprovacao"] = nova_aprovacao.strftime("%d/%m/%Y")
                 break
 
         return jsonify({"ok": True, "regraAtualizada": True, "cardAtualizado": card_atualizado}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro ao atualizar regra: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/compromissos/backfill-subprazos-bm", methods=["POST"])
+def backfill_subprazos_bm():
+    """Preenche DataLimiteEnvioBM/DataLimiteAprovacao pra cards tipo=BM
+    que já existiam antes dessas colunas serem adicionadas (03/09/2026).
+    Idempotente: só escreve nas linhas onde as colunas ainda estão vazias."""
+    try:
+        ws_comp = _get_compromissos_sheet()
+        _garantir_colunas_bm_prazos(ws_comp)
+        todos = ws_comp.get_all_values()
+        atualizados = []
+        for i, row in enumerate(todos[1:], start=2):
+            if len(row) < 6 or row[1] != "BM":
+                continue
+            ja_tem = len(row) > 13 and row[12].strip() and row[13].strip()
+            if ja_tem:
+                continue
+            try:
+                data_limite = datetime.strptime(row[5].strip(), "%d/%m/%Y")
+            except Exception:
+                continue
+            envio_bm, aprovacao = _calcular_subprazos_bm(data_limite)
+            envio_bm_str, aprovacao_str = envio_bm.strftime("%d/%m/%Y"), aprovacao.strftime("%d/%m/%Y")
+            ws_comp.update_cell(i, 13, envio_bm_str)
+            ws_comp.update_cell(i, 14, aprovacao_str)
+            atualizados.append({"id": row[0], "cliente": row[2], "competencia": row[4],
+                                 "dataLimiteEnvioBM": envio_bm_str, "dataLimiteAprovacao": aprovacao_str})
+        return jsonify({"ok": True, "atualizados": atualizados}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no backfill de subprazos BM: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
