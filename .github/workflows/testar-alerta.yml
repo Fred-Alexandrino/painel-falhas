@@ -1,0 +1,25 @@
+name: Testar Alerta Etapas Abertas (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testar sem enviar
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/compromissos/testar-alerta-etapas-abertas?enviar=false" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/teste-alerta-etapas.json
+          cat backups/teste-alerta-etapas.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/teste-alerta-etapas.json
+          git diff --quiet --cached || git commit -m "teste alerta etapas [skip ci]"
+          git push
