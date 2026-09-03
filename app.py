@@ -14713,8 +14713,33 @@ _CHAT_IA_TOOLS = [{
                 },
             },
         },
+        {
+            "name": "consultar_ocorrencias",
+            "description": "Consulta o Painel de Falhas (ocorrências/falhas de equipamento detectadas via monitoramento ou ronda: inversores, trackers, strings, CFTV, comunicação, etc). É uma base DIFERENTE do Painel de Atividades — 'ocorrência' ou 'falha' aqui, 'atividade' ou 'OS de manutenção' em consultar_atividades. Use esta ferramenta quando perguntarem sobre ocorrências/falhas em aberto, andamento de uma ocorrência, causa, ação tomada, chamado de fabricante vinculado, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
+                    "cliente": {"type": "string", "description": "Nome do cliente, ex: 'RENOGRID'. Deixe vazio para todos."},
+                    "status": {"type": "string", "description": "Status da ocorrência, ex: 'Em Aberto', 'Concluído', 'Em Andamento'. Deixe vazio para todos."},
+                },
+            },
+        },
     ]
 }]
+
+
+# Trunca campos de texto longos (histórico, observações) antes de mandar
+# pra Gemini — descoberto em 03/09/2026 que perguntas que somam várias
+# ferramentas (ex.: "pontos de atenção de hoje") geravam um payload de
+# retorno gigante (até 60 itens x campos verbosos x 3-4 ferramentas),
+# deixando a geração da resposta lenta o bastante pra estourar o timeout
+# do Gunicorn (160s) e cair em erro 500/502 real, não só cosmético.
+def _ia_trunc(texto, limite=180):
+    texto = (texto or "").strip()
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite].rstrip() + "…"
 
 
 def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS="", cluster="", responsavel=""):
@@ -14729,26 +14754,35 @@ def _ia_consultar_atividades(usina="", cliente="", status="", numeroOS="", clust
             row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
         if not row[0].strip():
             continue
-        item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
-        if not usina_permitida(item.get("usina", "")):
+        item_full = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+        if not usina_permitida(item_full.get("usina", "")):
             continue
-        if usina_norm and canonizar_usina(item.get("usina", "")) != usina_norm:
+        if usina_norm and canonizar_usina(item_full.get("usina", "")) != usina_norm:
             continue
-        if cliente and cliente.strip().lower() not in item.get("cliente", "").strip().lower():
+        if cliente and cliente.strip().lower() not in item_full.get("cliente", "").strip().lower():
             continue
-        if status and status.strip().lower() not in item.get("status", "").strip().lower():
+        if status and status.strip().lower() not in item_full.get("status", "").strip().lower():
             continue
-        if numeroOS and numeroOS.strip() != item.get("numeroOS", "").strip():
+        if numeroOS and numeroOS.strip() != item_full.get("numeroOS", "").strip():
             continue
-        if responsavel and responsavel.strip().lower() not in item.get("responsavel", "").strip().lower():
+        if responsavel and responsavel.strip().lower() not in item_full.get("responsavel", "").strip().lower():
             continue
-        item_cluster = mapa_cluster.get(item.get("usina", "").strip(), "")
+        item_cluster = mapa_cluster.get(item_full.get("usina", "").strip(), "")
         if cluster_norm and _normalizar_tema_comunicado(item_cluster) != cluster_norm:
             continue
-        item["cluster"] = item_cluster
-        out.append(item)
+        # campos compactos — descricao/observacoesOS truncados, histórico
+        # completo e demais campos verbosos omitidos (não essenciais pra
+        # síntese e infláveis o bastante pra deixar a Gemini lenta)
+        out.append({
+            "id": item_full.get("id"), "cliente": item_full.get("cliente"), "usina": item_full.get("usina"),
+            "cluster": item_cluster, "equipamento": item_full.get("equipamento"),
+            "descricao": _ia_trunc(item_full.get("descricao"), 150), "responsavel": item_full.get("responsavel"),
+            "prazo": item_full.get("prazo"), "status": item_full.get("status"),
+            "numeroOS": item_full.get("numeroOS"), "statusOS": item_full.get("statusOS"),
+            "percentualOS": item_full.get("percentualOS"),
+        })
     # limita pra não estourar o contexto do Gemini em consultas amplas
-    limitado = out[:60]
+    limitado = out[:25]
     return {"total_encontrado": len(out), "mostrando": len(limitado), "atividades": limitado}
 
 
@@ -14784,8 +14818,17 @@ def _ia_consultar_chamados(usina=""):
     usina_norm = canonizar_usina(usina) if usina else None
     if usina_norm:
         itens = [it for it in itens if canonizar_usina(it.get("UFV", "")) == usina_norm]
-    limitado = itens[:60]
-    return {"total_encontrado": len(itens), "mostrando": len(limitado), "chamados": limitado}
+    # campos compactos — "Observações" e afins podem ter texto bem longo
+    compactos = [{
+        "ufv": it.get("UFV"), "cliente": it.get("Cliente"), "ativo": it.get("Ativo"),
+        "fabricante": it.get("Fabricante"), "ticket": it.get("Ticket/RMA"),
+        "motivo": _ia_trunc(it.get("Motivo da abertura do chamado"), 150),
+        "causa": _ia_trunc(it.get("Causa da Falha"), 120),
+        "status": it.get("Status"), "statusOS": it.get("Status OS"),
+        "diasCorridos": it.get("Dias corridos"), "numeroOS": it.get("N° da Solicitação de OS"),
+    } for it in itens]
+    limitado = compactos[:25]
+    return {"total_encontrado": len(compactos), "mostrando": len(limitado), "chamados": limitado}
 
 
 def _ia_consultar_programacao_pcm(data=""):
@@ -14813,7 +14856,49 @@ def _ia_consultar_programacao_pcm(data=""):
         "tarefa": r.get("tarefa"), "status": r.get("status"),
         "hIni": r.get("h_ini"), "hFim": r.get("h_fim"),
     } for r in linhas_dia]
-    return {"data": data_filtro, "diaSemana": dia_pt, "total": len(itens), "programacao": itens}
+    limitado = itens[:40]
+    return {"data": data_filtro, "diaSemana": dia_pt, "total_encontrado": len(itens), "mostrando": len(limitado), "programacao": limitado}
+
+
+# Layout de colunas do Painel de Falhas (0-indexed), confirmado via
+# gravar_nova_ocorrencia() e CAMPO_COL — é uma aba DIFERENTE do Painel de
+# Atividades, com sua própria numeração de coluna.
+_FALHAS_HEADERS_JSON = [
+    "id", "cliente", "usina", "equipamento", "falha", "causa", "impactados",
+    "acao", "status", "ticketFabricante", "numeroOS", "historico", "dataAbertura",
+]
+
+
+def _ia_consultar_ocorrencias(usina="", cliente="", status=""):
+    ws = get_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for row in todos[1:]:
+        if len(row) < len(_FALHAS_HEADERS_JSON):
+            row = row + [""] * (len(_FALHAS_HEADERS_JSON) - len(row))
+        if not row[0].strip():
+            continue
+        item_full = dict(zip(_FALHAS_HEADERS_JSON, row[:len(_FALHAS_HEADERS_JSON)]))
+        if not usina_permitida(item_full.get("usina", "")):
+            continue
+        if usina_norm and canonizar_usina(item_full.get("usina", "")) != usina_norm:
+            continue
+        if cliente and cliente.strip().lower() not in item_full.get("cliente", "").strip().lower():
+            continue
+        if status and status.strip().lower() not in item_full.get("status", "").strip().lower():
+            continue
+        # campos compactos — "historico" pode ser um timeline inteiro de
+        # texto; "acao" truncada mantém o essencial pro "andamento"
+        out.append({
+            "id": item_full.get("id"), "cliente": item_full.get("cliente"), "usina": item_full.get("usina"),
+            "equipamento": item_full.get("equipamento"), "falha": _ia_trunc(item_full.get("falha"), 150),
+            "causa": _ia_trunc(item_full.get("causa"), 120), "acao": _ia_trunc(item_full.get("acao"), 150),
+            "status": item_full.get("status"), "ticketFabricante": item_full.get("ticketFabricante"),
+            "numeroOS": item_full.get("numeroOS"), "dataAbertura": item_full.get("dataAbertura"),
+        })
+    limitado = out[:25]
+    return {"total_encontrado": len(out), "mostrando": len(limitado), "ocorrencias": limitado}
 
 
 _CHAT_IA_FERRAMENTAS_PYTHON = {
@@ -14821,6 +14906,7 @@ _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_zeladoria": _ia_consultar_zeladoria,
     "consultar_chamados": _ia_consultar_chamados,
     "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
+    "consultar_ocorrencias": _ia_consultar_ocorrencias,
 }
 
 
@@ -14840,9 +14926,11 @@ Alguns clusters têm mais de um nome listado (separados por "/") porque a vistor
     else:
         bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
 
-    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, zeladoria, chamados de fabricante e programação do PCM.
+    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante e programação do PCM.
 
 Hoje é {hoje}, horário de Brasília.
+
+IMPORTANTE — ATIVIDADES x OCORRÊNCIAS SÃO BASES DIFERENTES: "Painel de Atividades" (ferramenta consultar_atividades) tem as OS de manutenção — preventivas, corretivas, rondas. "Painel de Falhas" (ferramenta consultar_ocorrencias) tem as ocorrências/falhas de equipamento detectadas por monitoramento ou ronda (inversor, tracker, string, CFTV, comunicação, etc.), cada uma com falha/causa/ação/status próprios e às vezes um chamado de fabricante e/ou uma OS vinculados. Se a pergunta usar as palavras "ocorrência(s)" ou "falha(s)", use consultar_ocorrencias. Se usar "atividade(s)" ou "OS" no sentido de manutenção programada, use consultar_atividades. Em caso de dúvida real (a pergunta poderia ser sobre qualquer uma), chame as duas.
 
 {bloco_clusters}
 
@@ -14853,6 +14941,7 @@ REGRAS OBRIGATÓRIAS:
 - Se uma pergunta puder ser respondida com mais de uma ferramenta (ex: "o que está pendente na usina X"), chame todas as ferramentas relevantes.
 - Se a ferramenta não retornar nada relevante, diga claramente que não encontrou, em vez de supor. Antes de concluir que não há nada sobre uma pessoa, confira se ela é coordenadora de cluster (ver acima) e tente também pelo cluster.
 - Responda em português, de forma direta e objetiva — sem rodeios, sem saudações desnecessárias. Fred prefere respostas curtas e factuais, com números e nomes específicos.
+- Em perguntas amplas que exigem várias ferramentas (ex.: "pontos de atenção de hoje", "resumo geral"): seja SELETIVO — destaque só o que realmente precisa de atenção (atrasado, pausado, aguardando algo há muito tempo), não liste item por item de tudo que veio das ferramentas. Respostas mais enxutas geram mais rápido e são mais úteis.
 - Nomes de usina usam numeração romana (ex: Matão I, Sol do Norte I) — normalize antes de comparar.
 - Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas."""
 
@@ -14882,64 +14971,54 @@ def chat_ia():
     contents.append({"role": "user", "parts": [{"text": pergunta}]})
 
     ferramentas_chamadas = []
-    ultimo_erro = None
-    for _tentativa_geral in range(2):  # 1 retry completo em caso de instabilidade transitória da Gemini
-        ferramentas_chamadas = []
-        contents_tentativa = list(contents)  # não reaproveita 'contents' mutado entre tentativas
-        try:
-            for _rodada in range(_CHAT_IA_MAX_RODADAS):
-                payload = {
-                    "system_instruction": {"parts": [{"text": _chat_ia_system_prompt()}]},
-                    "contents": contents_tentativa,
-                    "tools": _CHAT_IA_TOOLS,
-                }
-                resp = _chamar_gemini_com_retry(payload, timeout=60)
-                data = resp.json()
-                candidatos = data.get("candidates") or []
-                if not candidatos:
-                    return jsonify({"ok": False, "error": "Gemini não retornou resposta"}), 502
-                content = candidatos[0].get("content") or {}
-                parts = content.get("parts") or []
-                chamadas_funcao = [p["functionCall"] for p in parts if "functionCall" in p]
+    try:
+        for _rodada in range(_CHAT_IA_MAX_RODADAS):
+            payload = {
+                "system_instruction": {"parts": [{"text": _chat_ia_system_prompt()}]},
+                "contents": contents,
+                "tools": _CHAT_IA_TOOLS,
+            }
+            resp = _chamar_gemini_com_retry(payload, timeout=60)
+            data = resp.json()
+            candidatos = data.get("candidates") or []
+            if not candidatos:
+                return jsonify({"ok": False, "error": "Gemini não retornou resposta"}), 502
+            content = candidatos[0].get("content") or {}
+            parts = content.get("parts") or []
+            chamadas_funcao = [p["functionCall"] for p in parts if "functionCall" in p]
 
-                if not chamadas_funcao:
-                    texto_final = "".join(p.get("text", "") for p in parts).strip()
-                    return jsonify({
-                        "ok": True,
-                        "resposta": texto_final or "Não consegui gerar uma resposta.",
-                        "ferramentasUsadas": ferramentas_chamadas,
-                    }), 200
+            if not chamadas_funcao:
+                texto_final = "".join(p.get("text", "") for p in parts).strip()
+                return jsonify({
+                    "ok": True,
+                    "resposta": texto_final or "Não consegui gerar uma resposta.",
+                    "ferramentasUsadas": ferramentas_chamadas,
+                }), 200
 
-                contents_tentativa.append(content)
-                partes_resposta = []
-                for chamada in chamadas_funcao:
-                    nome = chamada.get("name")
-                    args = chamada.get("args") or {}
-                    fn = _CHAT_IA_FERRAMENTAS_PYTHON.get(nome)
-                    if fn is None:
-                        resultado = {"erro": f"ferramenta '{nome}' não existe"}
-                    else:
-                        try:
-                            resultado = fn(**args)
-                        except Exception as e:
-                            resultado = {"erro": str(e)}
-                        ferramentas_chamadas.append({"nome": nome, "args": args})
-                    partes_resposta.append({"functionResponse": {"name": nome, "response": resultado}})
-                contents_tentativa.append({"role": "user", "parts": partes_resposta})
+            contents.append(content)
+            partes_resposta = []
+            for chamada in chamadas_funcao:
+                nome = chamada.get("name")
+                args = chamada.get("args") or {}
+                fn = _CHAT_IA_FERRAMENTAS_PYTHON.get(nome)
+                if fn is None:
+                    resultado = {"erro": f"ferramenta '{nome}' não existe"}
+                else:
+                    try:
+                        resultado = fn(**args)
+                    except Exception as e:
+                        resultado = {"erro": str(e)}
+                    ferramentas_chamadas.append({"nome": nome, "args": args})
+                partes_resposta.append({"functionResponse": {"name": nome, "response": resultado}})
+            contents.append({"role": "user", "parts": partes_resposta})
 
-            return jsonify({"ok": False, "error": "Limite de rodadas de consulta atingido sem resposta final"}), 500
-        except requests.exceptions.HTTPError as e:
-            ultimo_erro = e
-            log.error(f"[chat-ia] Erro HTTP do Gemini (tentativa {_tentativa_geral + 1}/2): {e}")
-            if _tentativa_geral == 0:
-                time.sleep(2)
-                continue
-            return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
-        except Exception as e:
-            log.error(f"[chat-ia] Erro: {e}")
-            return jsonify({"ok": False, "error": str(e)}), 500
-
-    return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
+        return jsonify({"ok": False, "error": "Limite de rodadas de consulta atingido sem resposta final"}), 500
+    except requests.exceptions.HTTPError as e:
+        log.error(f"[chat-ia] Erro HTTP do Gemini: {e}")
+        return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
+    except Exception as e:
+        log.error(f"[chat-ia] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 
