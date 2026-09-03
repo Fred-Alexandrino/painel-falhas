@@ -4865,6 +4865,35 @@ def _fracttal_mapear_grupo(tasks):
     usina_por_ativo = canonizar_usina(texto_grupo) or canonizar_usina(texto_ativo)
     texto_usado = texto_grupo or texto_ativo
 
+    # Cruzamento cliente x usina (adicionado 03/09/2026, causa raiz da OS
+    # 12908): a Fracttal manda groups_1_description no formato "Cliente -
+    # Nome da Usina - UF", mas até aqui só a parte do meio era usada —
+    # o cliente informado era jogado fora. Isso permite falso-positivo
+    # quando duas usinas de CLIENTES DIFERENTES têm o mesmo nome de
+    # cidade (ex.: "Sal Energia - Cascavel - CE" é a SunPower real, mas
+    # "Solier - Cascavel - CE", de um cliente novo ainda não cadastrado
+    # no catálogo, bateu no alias "cascavel" e foi classificada como
+    # SunPower por engano — sem nenhum alerta, porque o técnico daquela
+    # OS, Adriano Silva, ainda não estava no TECNICO_USINAS pra disparar
+    # o cruzamento por técnico). Se o cliente que a Fracttal informou não
+    # bate (nem por substring) com o cliente cadastrado pra usina que deu
+    # match por nome, descarta o match — cai no fallback por técnico ou
+    # em revisão manual, igual já acontece quando nada bate.
+    _motivo_conflito_cliente = None
+    if usina_por_ativo:
+        _partes_grupo_raw = [p.strip() for p in (representante.get("groups_1_description") or "").split(" - ") if p.strip()]
+        _cliente_fracttal_raw = _partes_grupo_raw[0] if len(_partes_grupo_raw) >= 2 else ""
+        if _cliente_fracttal_raw:
+            _cliente_esperado = inferir_cliente(usina_por_ativo)
+            _cf_norm = _norm_usina(_cliente_fracttal_raw)
+            _ce_norm = _norm_usina(_cliente_esperado)
+            if _ce_norm and _cf_norm not in _ce_norm and _ce_norm not in _cf_norm:
+                _motivo_conflito_cliente = (f"nome de usina bateu com \"{usina_por_ativo}\" mas o cliente informado "
+                                             f"pela Fracttal (\"{_cliente_fracttal_raw}\") não é \"{_cliente_esperado}\" "
+                                             f"— provável cliente novo/fora do catálogo com usina de nome parecido "
+                                             f"ou mesma cidade")
+                usina_por_ativo = None
+
     tecnico_raw = (representante.get("personnel_description") or representante.get("responsible") or representante.get("created_by") or "").strip()
     tecnico_norm = _normalizar_tecnico(tecnico_raw)
     usinas_do_tecnico = TECNICO_USINAS.get(tecnico_norm, [])
@@ -4891,7 +4920,9 @@ def _fracttal_mapear_grupo(tasks):
         alerta = (f"⚠️ Usina inferida pelo técnico responsável (\"{tecnico_raw}\"), pois a Fracttal não "
                   f"informou grupo nem ativo. Confira se está correto.")
     else:
-        if usinas_do_tecnico:
+        if _motivo_conflito_cliente:
+            motivo = f"{_motivo_conflito_cliente} (técnico: \"{tecnico_raw or '—'}\")."
+        elif usinas_do_tecnico:
             motivo = (f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
                       f"uma usina ({', '.join(usinas_do_tecnico)}) — não dá pra decidir sozinho.")
         elif tecnico_raw:
