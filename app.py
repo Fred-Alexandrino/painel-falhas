@@ -3490,6 +3490,8 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
     percentual_atual = row[20].strip()
     status_geral_atual = row[21].strip()
     responsavel_atual = row[ATIV_CAMPO_COL["responsavel"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["responsavel"] else ""
+    cliente_atual = row[ATIV_CAMPO_COL["cliente"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["cliente"] else ""
+    usina_atual = row[ATIV_CAMPO_COL["usina"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["usina"] else ""
     agora_iso = agora_br().strftime("%Y-%m-%dT%H:%M:%S")
     try:
         token = _fracttal_get_token()
@@ -3530,12 +3532,29 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         tecnico_novo = (tasks[0].get("personnel_description") or tasks[0].get("responsible")
                         or tasks[0].get("created_by") or "").strip()
 
+        # Revalidação de usina/cliente (adicionado 03/09/2026, mesma causa
+        # raiz do fix de responsável): usina/cliente também só eram
+        # gravados na CRIAÇÃO e nunca revistos — uma classificação errada
+        # feita antes de algum fix de catálogo/cruzamento entrar no ar
+        # (ex.: OS 12923/12925, criadas antes do fix cliente x usina)
+        # ficava presa errada pra sempre, mesmo com o bug já corrigido no
+        # código. Só sobrescreve quando o resolvedor CONSEGUE decidir uma
+        # usina (nunca troca uma classificação existente por "revisão
+        # manual" só porque a Fracttal mudou uma palavra num campo texto).
+        _res_usina = _fracttal_resolver_usina_tecnico(tasks[0])
+        usina_novo = _res_usina["usina"] or ""
+        cliente_novo = _res_usina["cliente"] or ""
+
         mudou = False
         if status_novo and status_novo != status_os_atual:
             ws.update_cell(i, ATIV_CAMPO_COL["statusOS"], status_novo)
             mudou = True
         if tecnico_novo and tecnico_novo != responsavel_atual:
             ws.update_cell(i, ATIV_CAMPO_COL["responsavel"], tecnico_novo)
+            mudou = True
+        if usina_novo and (usina_novo != usina_atual or cliente_novo != cliente_atual):
+            ws.update_cell(i, ATIV_CAMPO_COL["usina"], usina_novo)
+            ws.update_cell(i, ATIV_CAMPO_COL["cliente"], cliente_novo)
             mudou = True
         if (percentual_novo != percentual_atual) or (status_geral_novo != status_geral_atual):
             ws.update_cell(i, ATIV_CAMPO_COL["statusTarefaOS"], status_tarefa_novo)
@@ -3558,6 +3577,10 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             if tecnico_novo and tecnico_novo != responsavel_atual:
                 partes.append(f"responsável mudou de \"{responsavel_atual or '—'}\" para \"{tecnico_novo}\" (reatribuição na Fracttal)")
                 partes_curtas.append(f"Responsável: {responsavel_atual or '—'} → {tecnico_novo}")
+            if usina_novo and (usina_novo != usina_atual or cliente_novo != cliente_atual):
+                partes.append(f"usina/cliente corrigidos de \"{usina_atual or '—'}\"/\"{cliente_atual or '—'}\" "
+                               f"para \"{usina_novo}\"/\"{cliente_novo}\" (reclassificação automática)")
+                partes_curtas.append(f"Usina: {usina_atual or '—'} → {usina_novo}")
             if percentual_novo != percentual_atual:
                 partes.append(f"progresso da tarefa foi de {percentual_atual or '0'}% para {percentual_novo}%")
                 partes_curtas.append(f"{percentual_atual or '0'}% → {percentual_novo}%")
@@ -3617,6 +3640,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
                 "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo,
                 "statusInternoCorrigido": novo_status_interno,
                 "responsavel": tecnico_novo or responsavel_atual,
+                "usina": usina_novo or usina_atual, "cliente": cliente_novo or cliente_atual,
                 "usina": row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else "",
                 "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else "",
                 "descricao": row[ATIV_CAMPO_COL["descricao"] - 1] if len(row) >= ATIV_CAMPO_COL["descricao"] else "",
@@ -4837,29 +4861,33 @@ def _fracttal_detalhes_equipamentos(tasks):
     return json.dumps(itens, ensure_ascii=False)
 
 
-def _fracttal_mapear_grupo(tasks):
+def _fracttal_resolver_usina_tecnico(representante):
     """
-    Converte um GRUPO de tarefas (todas da mesma OS, mesmo wo_folio) para
-    os campos do Painel de Atividades — uma OS vira UMA atividade, mesmo
-    quando tem várias tarefas/equipamentos (ex: preventivas mensais/anuais
-    com dezenas de itens). Detalhamento por equipamento vai pro Histórico.
-
-    O cruzamento usina x técnico responsável usa a primeira tarefa como
-    representante (grupo/usina e técnico geralmente são os mesmos pra
-    todas as tarefas de uma mesma OS).
+    Resolve usina + cliente + alertas a partir de UMA tarefa representante
+    da Fracttal (groups_1_description, ativo, técnico). Extraído de
+    _fracttal_mapear_grupo em 03/09/2026 pra ser reutilizável também na
+    revalidação periódica (_fracttal_verificar_e_atualizar_uma_os) — antes
+    disso, usina/cliente só eram decididos na CRIAÇÃO da atividade e nunca
+    mais revistos, então uma classificação errada na hora da criação (ex.:
+    OS 12923/12925, criadas antes do fix de cruzamento cliente x usina
+    entrar no ar) ficava presa errada pra sempre, mesmo com o bug já
+    corrigido — mesma classe de problema já resolvida pro campo
+    "responsavel".
 
       1. Nome do ativo bate com o catálogo E técnico é esperado nessa usina
          → segue normal, sem alerta.
       2. Nome do ativo bate, mas o técnico não é dos que atendem essa usina
-         → cria mesmo assim (nome do ativo é a fonte mais confiável), mas
-           grava um alerta no histórico pra você conferir.
+         → usa mesmo assim (nome do ativo é a fonte mais confiável), mas
+           com alerta.
       3. Nome do ativo NÃO bate, mas o técnico atende só 1 usina do catálogo
-         → usa a usina do técnico como fallback, com alerta no histórico.
+         → usa a usina do técnico como fallback, com alerta.
       4. Nome do ativo não bate e o técnico atende mais de uma usina (ou é
-         desconhecido) → não dá pra decidir sozinho, vai para revisão manual
-         (retorna None com motivo, não cria nada).
+         desconhecido) → não dá pra decidir sozinho (usina=None, motivo
+         preenchido).
+
+    Retorna: {"usina": str|None, "cliente": str|None, "alerta": str|None,
+              "motivo_revisao": str|None, "texto_usado": str, "tecnico_raw": str}
     """
-    representante = tasks[0]
     texto_grupo = _extrair_nome_usina_fracttal(representante.get("groups_1_description") or "")
     texto_ativo = representante.get("items_log_description") or representante.get("parent_description") or representante.get("item_code") or ""
 
@@ -4920,6 +4948,7 @@ def _fracttal_mapear_grupo(tasks):
 
     usina = None
     alerta = None
+    motivo_revisao = None
 
     if usina_por_ativo:
         usina = usina_por_ativo
@@ -4941,17 +4970,40 @@ def _fracttal_mapear_grupo(tasks):
                   f"informou grupo nem ativo. Confira se está correto.")
     else:
         if _motivo_conflito_cliente:
-            motivo = f"{_motivo_conflito_cliente} (técnico: \"{tecnico_raw or '—'}\")."
+            motivo_revisao = f"{_motivo_conflito_cliente} (técnico: \"{tecnico_raw or '—'}\")."
         elif usinas_do_tecnico:
-            motivo = (f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
-                      f"uma usina ({', '.join(usinas_do_tecnico)}) — não dá pra decidir sozinho.")
+            motivo_revisao = (f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" atende mais de "
+                               f"uma usina ({', '.join(usinas_do_tecnico)}) — não dá pra decidir sozinho.")
         elif tecnico_raw:
-            motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" não está no mapa de usinas."
+            motivo_revisao = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e técnico \"{tecnico_raw}\" não está no mapa de usinas."
         else:
-            motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e OT sem técnico responsável informado."
-        return {"_revisao_manual": True, "motivo": motivo, "wo_folio": representante.get("wo_folio", "?")}
+            motivo_revisao = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e OT sem técnico responsável informado."
 
-    cliente = inferir_cliente(usina)
+    cliente = inferir_cliente(usina) if usina else None
+    return {"usina": usina, "cliente": cliente, "alerta": alerta, "motivo_revisao": motivo_revisao,
+            "texto_usado": texto_usado, "tecnico_raw": tecnico_raw, "texto_ativo": texto_ativo}
+
+
+def _fracttal_mapear_grupo(tasks):
+    """
+    Converte um GRUPO de tarefas (todas da mesma OS, mesmo wo_folio) para
+    os campos do Painel de Atividades — uma OS vira UMA atividade, mesmo
+    quando tem várias tarefas/equipamentos (ex: preventivas mensais/anuais
+    com dezenas de itens). Detalhamento por equipamento vai pro Histórico.
+
+    O cruzamento usina x técnico responsável usa a primeira tarefa como
+    representante (grupo/usina e técnico geralmente são os mesmos pra
+    todas as tarefas de uma mesma OS). A resolução em si mora em
+    _fracttal_resolver_usina_tecnico (compartilhada com a revalidação).
+    """
+    representante = tasks[0]
+    _res = _fracttal_resolver_usina_tecnico(representante)
+    usina, cliente, alerta = _res["usina"], _res["cliente"], _res["alerta"]
+    texto_usado, tecnico_raw, texto_ativo = _res["texto_usado"], _res["tecnico_raw"], _res["texto_ativo"]
+
+    if not usina:
+        return {"_revisao_manual": True, "motivo": _res["motivo_revisao"], "wo_folio": representante.get("wo_folio", "?")}
+
     prioridade_raw = (representante.get("priorities_description") or "").strip().upper()
     prioridade = _FRACTTAL_PRIORIDADE_MAP.get(prioridade_raw, "Média")
 
