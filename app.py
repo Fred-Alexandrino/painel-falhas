@@ -3552,7 +3552,19 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         if tecnico_novo and tecnico_novo != responsavel_atual:
             ws.update_cell(i, ATIV_CAMPO_COL["responsavel"], tecnico_novo)
             mudou = True
-        if usina_novo and (usina_novo != usina_atual or cliente_novo != cliente_atual):
+        # Comparação normalizada (adicionado 03/09/2026, achado no teste ao
+        # vivo do fix acima): comparar direto com != disparava gravação e
+        # "mudou=True" mesmo quando o valor era o MESMO, só com diferença
+        # de formatação (espaço, maiúscula/minúscula) entre o texto salvo
+        # há tempos na planilha e o texto canônico recém-resolvido — ruído
+        # puro (gravações desnecessárias no Sheets, histórico e push
+        # mostrando "mudança" que não mudou nada de verdade). Só é mudança
+        # real quando o valor NORMALIZADO difere.
+        _usina_novo_norm = _norm_usina(usina_novo)
+        _usina_atual_norm = _norm_usina(usina_atual)
+        _cliente_novo_norm = _norm_usina(cliente_novo)
+        _cliente_atual_norm = _norm_usina(cliente_atual)
+        if usina_novo and (_usina_novo_norm != _usina_atual_norm or _cliente_novo_norm != _cliente_atual_norm):
             ws.update_cell(i, ATIV_CAMPO_COL["usina"], usina_novo)
             ws.update_cell(i, ATIV_CAMPO_COL["cliente"], cliente_novo)
             mudou = True
@@ -3577,7 +3589,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             if tecnico_novo and tecnico_novo != responsavel_atual:
                 partes.append(f"responsável mudou de \"{responsavel_atual or '—'}\" para \"{tecnico_novo}\" (reatribuição na Fracttal)")
                 partes_curtas.append(f"Responsável: {responsavel_atual or '—'} → {tecnico_novo}")
-            if usina_novo and (usina_novo != usina_atual or cliente_novo != cliente_atual):
+            if usina_novo and (_usina_novo_norm != _usina_atual_norm or _cliente_novo_norm != _cliente_atual_norm):
                 partes.append(f"usina/cliente corrigidos de \"{usina_atual or '—'}\"/\"{cliente_atual or '—'}\" "
                                f"para \"{usina_novo}\"/\"{cliente_novo}\" (reclassificação automática)")
                 partes_curtas.append(f"Usina: {usina_atual or '—'} → {usina_novo}")
