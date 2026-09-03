@@ -1,0 +1,30 @@
+name: Criar Regra Compromisso (via Claude)
+
+on:
+  repository_dispatch:
+    types: [criar_regra_compromisso]
+
+jobs:
+  criar-regra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar nova regra em _ComprometimentosRegras
+        env:
+          P_TIPO: ${{ github.event.client_payload.tipo }}
+          P_CLIENTE: ${{ github.event.client_payload.cliente }}
+          P_USINA: ${{ github.event.client_payload.usina }}
+          P_REGRA_TIPO: ${{ github.event.client_payload.regraTipo }}
+          P_REGRA_VALOR: ${{ github.event.client_payload.regraValor }}
+        run: |
+          BASE="https://api.168.138.232.237.sslip.io"
+          PAYLOAD=$(jq -n --arg tipo "$P_TIPO" --arg cliente "$P_CLIENTE" --arg usina "$P_USINA" \
+            --arg regraTipo "$P_REGRA_TIPO" --arg regraValor "$P_REGRA_VALOR" \
+            '{tipo:$tipo,cliente:$cliente,usina:$usina,regraTipo:$regraTipo,regraValor:$regraValor,ativo:true}')
+          echo "Payload: $PAYLOAD"
+          RESPONSE=$(curl -s -X POST "$BASE/compromissos/regras/criar" -H "Content-Type: application/json" -d "$PAYLOAD")
+          echo "Resposta: $RESPONSE"
+          OK=$(echo "$RESPONSE" | jq -r '.ok // false')
+          if [ "$OK" != "true" ]; then
+            echo "Falha ao criar regra"
+            exit 1
+          fi
