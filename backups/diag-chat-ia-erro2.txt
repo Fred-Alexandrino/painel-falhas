@@ -1,0 +1,26 @@
+=== Tentativa 1 ===
+<html>
+  <head>
+    <title>Internal Server Error</title>
+  </head>
+  <body>
+    <h1><p>Internal Server Error</p></h1>
+    
+  </body>
+</html>
+
+HTTP_STATUS:500
+TIME:221.625308s
+
+=== Tentativa 2 ===
+{"error":"Erro ao consultar IA","ok":false}
+
+HTTP_STATUS:502
+TIME:58.600755s
+
+=== Tentativa 3 ===
+{"error":"Erro ao consultar IA","ok":false}
+
+HTTP_STATUS:502
+TIME:138.730396s
+
