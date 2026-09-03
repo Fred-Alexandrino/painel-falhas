@@ -6295,6 +6295,148 @@ def marcar_etapa_compromisso():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Sketchbook / Anotações ───────────────────────────────────────────────
+# Bloco de notas rápidas do Fred: anotações soltas ou vinculadas a
+# usina/cliente que depois alimentam o Chat-IA (ferramenta
+# consultar_anotacoes), relatórios e comunicados como contexto extra.
+# Entrada só pelo dashboard (campo de texto rápido) — decidido 03/09/2026.
+ANOTACOES_SHEET_NAME = "Anotacoes"
+ANOTACOES_HEADERS = ["ID", "Data", "Autor", "Categoria", "Texto", "Usina", "Cliente", "Status"]
+
+
+def _get_anotacoes_sheet():
+    sh = get_atividades_sheet().spreadsheet
+    try:
+        return sh.worksheet(ANOTACOES_SHEET_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=ANOTACOES_SHEET_NAME, rows=500, cols=len(ANOTACOES_HEADERS))
+        ws.update("A1", [ANOTACOES_HEADERS])
+        return ws
+
+
+def _proximo_id_anotacao(todos):
+    maior = 0
+    for row in todos[1:]:
+        if row and row[0].strip().isdigit():
+            maior = max(maior, int(row[0].strip()))
+    return str(maior + 1)
+
+
+def _ia_consultar_anotacoes(usina="", cliente="", categoria=""):
+    """Handler da ferramenta consultar_anotacoes do Chat-IA — mesmo padrão
+    de campos compactos + limite de itens das outras ferramentas (ver nota
+    de 03/09/2026 sobre payload gigante estourando timeout da Gemini)."""
+    ws = _get_anotacoes_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for row in todos[1:]:
+        if len(row) < len(ANOTACOES_HEADERS):
+            row = row + [""] * (len(ANOTACOES_HEADERS) - len(row))
+        item = dict(zip(ANOTACOES_HEADERS, row[:len(ANOTACOES_HEADERS)]))
+        if not item.get("ID", "").strip():
+            continue
+        if item.get("Status", "Ativa").strip() != "Ativa":
+            continue
+        item_usina = item.get("Usina", "").strip()
+        if item_usina and not usina_permitida(item_usina):
+            continue
+        if usina_norm and canonizar_usina(item_usina) != usina_norm:
+            continue
+        if cliente and cliente.strip().lower() not in item.get("Cliente", "").strip().lower():
+            continue
+        if categoria and categoria.strip().lower() not in item.get("Categoria", "").strip().lower():
+            continue
+        out.append({
+            "id": item.get("ID"), "data": item.get("Data"), "autor": item.get("Autor"),
+            "categoria": item.get("Categoria"), "texto": _ia_trunc(item.get("Texto"), 180),
+            "usina": item_usina, "cliente": item.get("Cliente"),
+        })
+    limitado = out[:25]
+    return {"total_encontrado": len(out), "mostrando": len(limitado), "anotacoes": limitado}
+
+
+@app.route("/anotacoes", methods=["GET"])
+def listar_anotacoes():
+    try:
+        incluir_arquivadas = request.args.get("todas", "").strip().lower() in ("1", "true", "sim")
+        usina_f = request.args.get("usina", "").strip()
+        cliente_f = request.args.get("cliente", "").strip()
+        categoria_f = request.args.get("categoria", "").strip()
+        ws = _get_anotacoes_sheet()
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        usina_norm = canonizar_usina(usina_f) if usina_f else None
+        out = []
+        for row in todos[1:]:
+            if len(row) < len(ANOTACOES_HEADERS):
+                row = row + [""] * (len(ANOTACOES_HEADERS) - len(row))
+            item = dict(zip(ANOTACOES_HEADERS, row[:len(ANOTACOES_HEADERS)]))
+            if not item.get("ID", "").strip():
+                continue
+            status = item.get("Status", "Ativa").strip() or "Ativa"
+            if not incluir_arquivadas and status != "Ativa":
+                continue
+            item_usina = item.get("Usina", "").strip()
+            if item_usina and not usina_permitida(item_usina):
+                continue
+            if usina_norm and canonizar_usina(item_usina) != usina_norm:
+                continue
+            if cliente_f and cliente_f.lower() not in item.get("Cliente", "").strip().lower():
+                continue
+            if categoria_f and categoria_f.lower() not in item.get("Categoria", "").strip().lower():
+                continue
+            item["Status"] = status
+            out.append(item)
+        out.sort(key=lambda i: i.get("ID", "0").zfill(10), reverse=True)
+        return jsonify({"ok": True, "anotacoes": out}), 200
+    except Exception as e:
+        log.error(f"[Anotacoes] Erro ao listar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/anotacoes", methods=["POST"])
+def criar_anotacao():
+    try:
+        body = request.get_json(force=True) or {}
+        texto = str(body.get("texto", "")).strip()
+        autor = str(body.get("autor", "")).strip() or "Fred Alexandrino"
+        categoria = str(body.get("categoria", "")).strip()
+        usina = str(body.get("usina", "")).strip()
+        cliente = str(body.get("cliente", "")).strip()
+        if not texto:
+            return jsonify({"ok": False, "error": "texto é obrigatório"}), 400
+
+        ws = _get_anotacoes_sheet()
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        novo_id = _proximo_id_anotacao(todos)
+        agora = agora_br().strftime("%d/%m/%Y %H:%M")
+        linha = [novo_id, agora, autor, categoria, texto, usina, cliente, "Ativa"]
+        _gspread_retry(lambda: ws.append_row(linha))
+        return jsonify({"ok": True, "anotacao": dict(zip(ANOTACOES_HEADERS, linha))}), 200
+    except Exception as e:
+        log.error(f"[Anotacoes] Erro ao criar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/anotacoes/arquivar", methods=["POST"])
+def arquivar_anotacao():
+    try:
+        body = request.get_json(force=True) or {}
+        anot_id = str(body.get("id", "")).strip()
+        if not anot_id:
+            return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+        ws = _get_anotacoes_sheet()
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        for i, row in enumerate(todos[1:], start=2):
+            if row and row[0].strip() == anot_id:
+                _gspread_retry(lambda: ws.update_cell(i, 8, "Arquivada"))
+                return jsonify({"ok": True, "id": anot_id}), 200
+        return jsonify({"ok": False, "error": f"anotação {anot_id} não encontrada"}), 404
+    except Exception as e:
+        log.error(f"[Anotacoes] Erro ao arquivar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _verificar_compromissos_se_necessario():
     """Piggyback no /sync-fracttal: roda 1x por dia na janela 07:00-08:30
     (mesma janela alargada dos comunicados, mesmo motivo — cold-start do
@@ -14725,6 +14867,18 @@ _CHAT_IA_TOOLS = [{
                 },
             },
         },
+        {
+            "name": "consultar_anotacoes",
+            "description": "Consulta o Sketchbook — anotações rápidas do Fred que não são atividades/ocorrências formais: observações, lembretes, contexto histórico sobre uma usina/cliente, ou regras/decisões que ele quer que fiquem registradas. Use quando a pergunta pedir contexto, histórico informal, observações ou 'o que você sabe sobre' algo que não estaria em atividades/ocorrências.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
+                    "cliente": {"type": "string", "description": "Nome do cliente. Deixe vazio para todos."},
+                    "categoria": {"type": "string", "description": "Categoria/tag da anotação, se souber. Deixe vazio para todas."},
+                },
+            },
+        },
     ]
 }]
 
@@ -14907,6 +15061,7 @@ _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_chamados": _ia_consultar_chamados,
     "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
     "consultar_ocorrencias": _ia_consultar_ocorrencias,
+    "consultar_anotacoes": _ia_consultar_anotacoes,
 }
 
 
