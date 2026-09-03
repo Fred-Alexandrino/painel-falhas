@@ -3489,6 +3489,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
     status_os_atual = row[14].strip()
     percentual_atual = row[20].strip()
     status_geral_atual = row[21].strip()
+    responsavel_atual = row[ATIV_CAMPO_COL["responsavel"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["responsavel"] else ""
     agora_iso = agora_br().strftime("%Y-%m-%dT%H:%M:%S")
     try:
         token = _fracttal_get_token()
@@ -3519,10 +3520,22 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         status_geral_novo = _fracttal_status_geral(tasks)
         status_tarefa_novo = _fracttal_status_tarefa_agregado(tasks)
         detalhes_novo = _fracttal_detalhes_equipamentos(tasks)
+        # Reatribuição de técnico na Fracttal depois da OS já criada aqui
+        # (ex.: OS 12666 nasceu com Adriano Silva e foi reatribuída na
+        # Fracttal pra Cláudio Ferreira) — sem isso o campo "responsavel"
+        # fica gravado só no momento da criação e nunca mais é revisto,
+        # mesmo passando por centenas de revalidações (bug identificado
+        # 03/09/2026). Fracttal é fonte única de verdade pro técnico
+        # também, igual já é pro status.
+        tecnico_novo = (tasks[0].get("personnel_description") or tasks[0].get("responsible")
+                        or tasks[0].get("created_by") or "").strip()
 
         mudou = False
         if status_novo and status_novo != status_os_atual:
             ws.update_cell(i, ATIV_CAMPO_COL["statusOS"], status_novo)
+            mudou = True
+        if tecnico_novo and tecnico_novo != responsavel_atual:
+            ws.update_cell(i, ATIV_CAMPO_COL["responsavel"], tecnico_novo)
             mudou = True
         if (percentual_novo != percentual_atual) or (status_geral_novo != status_geral_atual):
             ws.update_cell(i, ATIV_CAMPO_COL["statusTarefaOS"], status_tarefa_novo)
@@ -3542,6 +3555,9 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             if status_novo and status_novo != status_os_atual:
                 partes.append(f"status na Fracttal mudou de \"{status_os_atual or '—'}\" para \"{status_novo}\"")
                 partes_curtas.append(f"{status_os_atual or '—'} → {status_novo}")
+            if tecnico_novo and tecnico_novo != responsavel_atual:
+                partes.append(f"responsável mudou de \"{responsavel_atual or '—'}\" para \"{tecnico_novo}\" (reatribuição na Fracttal)")
+                partes_curtas.append(f"Responsável: {responsavel_atual or '—'} → {tecnico_novo}")
             if percentual_novo != percentual_atual:
                 partes.append(f"progresso da tarefa foi de {percentual_atual or '0'}% para {percentual_novo}%")
                 partes_curtas.append(f"{percentual_atual or '0'}% → {percentual_novo}%")
@@ -3600,6 +3616,7 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
                 "statusOS": status_novo or status_os_atual,
                 "percentualOS": percentual_novo, "statusGeralOS": status_geral_novo,
                 "statusInternoCorrigido": novo_status_interno,
+                "responsavel": tecnico_novo or responsavel_atual,
                 "usina": row[ATIV_CAMPO_COL["usina"] - 1] if len(row) >= ATIV_CAMPO_COL["usina"] else "",
                 "equipamento": row[ATIV_CAMPO_COL["equipamento"] - 1] if len(row) >= ATIV_CAMPO_COL["equipamento"] else "",
                 "descricao": row[ATIV_CAMPO_COL["descricao"] - 1] if len(row) >= ATIV_CAMPO_COL["descricao"] else "",
