@@ -1,0 +1,25 @@
+name: Verificar Sal Energia (temp)
+on:
+  workflow_dispatch: {}
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar regras e compromissos
+        run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/compromissos/regras" -o backups/verify-regras.json
+          curl -s "https://api.168.138.232.237.sslip.io/compromissos" -o backups/verify-compromissos.json
+          cat backups/verify-regras.json
+          echo "---"
+          cat backups/verify-compromissos.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/verify-regras.json backups/verify-compromissos.json
+          git diff --quiet --cached || git commit -m "verify sal energia [skip ci]"
+          git push
