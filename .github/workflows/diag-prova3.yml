@@ -1,0 +1,33 @@
+name: Diag Prova Sync Automatico 3
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Disparar sync (mesmo endpoint do UptimeRobot) e aguardar resultado
+        env:
+          WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+        run: |
+          mkdir -p backups
+          curl -s "https://api.168.138.232.237.sslip.io/sync-fracttal" -H "X-Webhook-Secret: $WEBHOOK_SECRET" -o backups/prova-dispatch.json
+          cat backups/prova-dispatch.json
+          echo ""
+          echo "Aguardando o ciclo assincrono terminar..."
+          sleep 75
+          curl -s "https://api.168.138.232.237.sslip.io/sync-fracttal-status" -o backups/prova-status.json
+          cat backups/prova-status.json
+      - name: Salvar resultado
+        if: always()
+        run: |
+          git pull --rebase origin main || true
+          git config user.name "diag-bot"
+          git config user.email "actions@github.com"
+          git add backups/prova-dispatch.json backups/prova-status.json
+          git diff --quiet --cached || git commit -m "Prova sync automatico 3 [skip ci]"
+          git push || (git pull --rebase origin main && git push)
