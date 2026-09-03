@@ -6307,10 +6307,10 @@ ANOTACOES_HEADERS = ["ID", "Data", "Autor", "Categoria", "Texto", "Usina", "Clie
 def _get_anotacoes_sheet():
     sh = get_atividades_sheet().spreadsheet
     try:
-        return sh.worksheet(ANOTACOES_SHEET_NAME)
+        return _gspread_retry(lambda: sh.worksheet(ANOTACOES_SHEET_NAME))
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title=ANOTACOES_SHEET_NAME, rows=500, cols=len(ANOTACOES_HEADERS))
-        ws.update("A1", [ANOTACOES_HEADERS])
+        ws = _gspread_retry(lambda: sh.add_worksheet(title=ANOTACOES_SHEET_NAME, rows=500, cols=len(ANOTACOES_HEADERS)))
+        _gspread_retry(lambda: ws.update("A1", [ANOTACOES_HEADERS]))
         return ws
 
 
