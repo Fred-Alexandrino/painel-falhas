@@ -14882,54 +14882,64 @@ def chat_ia():
     contents.append({"role": "user", "parts": [{"text": pergunta}]})
 
     ferramentas_chamadas = []
-    try:
-        for _rodada in range(_CHAT_IA_MAX_RODADAS):
-            payload = {
-                "system_instruction": {"parts": [{"text": _chat_ia_system_prompt()}]},
-                "contents": contents,
-                "tools": _CHAT_IA_TOOLS,
-            }
-            resp = _chamar_gemini_com_retry(payload, timeout=60)
-            data = resp.json()
-            candidatos = data.get("candidates") or []
-            if not candidatos:
-                return jsonify({"ok": False, "error": "Gemini não retornou resposta"}), 502
-            content = candidatos[0].get("content") or {}
-            parts = content.get("parts") or []
-            chamadas_funcao = [p["functionCall"] for p in parts if "functionCall" in p]
+    ultimo_erro = None
+    for _tentativa_geral in range(2):  # 1 retry completo em caso de instabilidade transitória da Gemini
+        ferramentas_chamadas = []
+        contents_tentativa = list(contents)  # não reaproveita 'contents' mutado entre tentativas
+        try:
+            for _rodada in range(_CHAT_IA_MAX_RODADAS):
+                payload = {
+                    "system_instruction": {"parts": [{"text": _chat_ia_system_prompt()}]},
+                    "contents": contents_tentativa,
+                    "tools": _CHAT_IA_TOOLS,
+                }
+                resp = _chamar_gemini_com_retry(payload, timeout=60)
+                data = resp.json()
+                candidatos = data.get("candidates") or []
+                if not candidatos:
+                    return jsonify({"ok": False, "error": "Gemini não retornou resposta"}), 502
+                content = candidatos[0].get("content") or {}
+                parts = content.get("parts") or []
+                chamadas_funcao = [p["functionCall"] for p in parts if "functionCall" in p]
 
-            if not chamadas_funcao:
-                texto_final = "".join(p.get("text", "") for p in parts).strip()
-                return jsonify({
-                    "ok": True,
-                    "resposta": texto_final or "Não consegui gerar uma resposta.",
-                    "ferramentasUsadas": ferramentas_chamadas,
-                }), 200
+                if not chamadas_funcao:
+                    texto_final = "".join(p.get("text", "") for p in parts).strip()
+                    return jsonify({
+                        "ok": True,
+                        "resposta": texto_final or "Não consegui gerar uma resposta.",
+                        "ferramentasUsadas": ferramentas_chamadas,
+                    }), 200
 
-            contents.append(content)
-            partes_resposta = []
-            for chamada in chamadas_funcao:
-                nome = chamada.get("name")
-                args = chamada.get("args") or {}
-                fn = _CHAT_IA_FERRAMENTAS_PYTHON.get(nome)
-                if fn is None:
-                    resultado = {"erro": f"ferramenta '{nome}' não existe"}
-                else:
-                    try:
-                        resultado = fn(**args)
-                    except Exception as e:
-                        resultado = {"erro": str(e)}
-                    ferramentas_chamadas.append({"nome": nome, "args": args})
-                partes_resposta.append({"functionResponse": {"name": nome, "response": resultado}})
-            contents.append({"role": "user", "parts": partes_resposta})
+                contents_tentativa.append(content)
+                partes_resposta = []
+                for chamada in chamadas_funcao:
+                    nome = chamada.get("name")
+                    args = chamada.get("args") or {}
+                    fn = _CHAT_IA_FERRAMENTAS_PYTHON.get(nome)
+                    if fn is None:
+                        resultado = {"erro": f"ferramenta '{nome}' não existe"}
+                    else:
+                        try:
+                            resultado = fn(**args)
+                        except Exception as e:
+                            resultado = {"erro": str(e)}
+                        ferramentas_chamadas.append({"nome": nome, "args": args})
+                    partes_resposta.append({"functionResponse": {"name": nome, "response": resultado}})
+                contents_tentativa.append({"role": "user", "parts": partes_resposta})
 
-        return jsonify({"ok": False, "error": "Limite de rodadas de consulta atingido sem resposta final"}), 500
-    except requests.exceptions.HTTPError as e:
-        log.error(f"[chat-ia] Erro HTTP do Gemini: {e}")
-        return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
-    except Exception as e:
-        log.error(f"[chat-ia] Erro: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+            return jsonify({"ok": False, "error": "Limite de rodadas de consulta atingido sem resposta final"}), 500
+        except requests.exceptions.HTTPError as e:
+            ultimo_erro = e
+            log.error(f"[chat-ia] Erro HTTP do Gemini (tentativa {_tentativa_geral + 1}/2): {e}")
+            if _tentativa_geral == 0:
+                time.sleep(2)
+                continue
+            return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
+        except Exception as e:
+            log.error(f"[chat-ia] Erro: {e}")
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    return jsonify({"ok": False, "error": "Erro ao consultar IA"}), 502
 
 
 
