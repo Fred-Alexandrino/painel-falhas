@@ -4610,6 +4610,7 @@ TECNICO_USINAS = {
     "cláudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
     "isake costa":       ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
     "daniel de paula":   ["Sete Lagoas"],
+    "adriano silva":     ["Solier (Cascavel)"],
 }
 
 
@@ -4871,14 +4872,13 @@ def _fracttal_mapear_grupo(tasks):
     # o cliente informado era jogado fora. Isso permite falso-positivo
     # quando duas usinas de CLIENTES DIFERENTES têm o mesmo nome de
     # cidade (ex.: "Sal Energia - Cascavel - CE" é a SunPower real, mas
-    # "Solier - Cascavel - CE", de um cliente novo ainda não cadastrado
-    # no catálogo, bateu no alias "cascavel" e foi classificada como
-    # SunPower por engano — sem nenhum alerta, porque o técnico daquela
-    # OS, Adriano Silva, ainda não estava no TECNICO_USINAS pra disparar
-    # o cruzamento por técnico). Se o cliente que a Fracttal informou não
-    # bate (nem por substring) com o cliente cadastrado pra usina que deu
-    # match por nome, descarta o match — cai no fallback por técnico ou
-    # em revisão manual, igual já acontece quando nada bate.
+    # "Solier - Cascavel - CE", do cliente Qair — usina emprestada
+    # temporariamente do supervisor Iago —, bateu no alias "cascavel" e
+    # foi classificada como SunPower por engano). Se o cliente que a
+    # Fracttal informou não bate (nem por substring) com o cliente
+    # cadastrado pra usina que deu match por nome, tenta resolver contra
+    # o catálogo de usinas emprestadas (_SupervisaoTemporaria) antes de
+    # desistir — só então cai no fallback por técnico ou revisão manual.
     _motivo_conflito_cliente = None
     if usina_por_ativo:
         _partes_grupo_raw = [p.strip() for p in (representante.get("groups_1_description") or "").split(" - ") if p.strip()]
@@ -4888,11 +4888,31 @@ def _fracttal_mapear_grupo(tasks):
             _cf_norm = _norm_usina(_cliente_fracttal_raw)
             _ce_norm = _norm_usina(_cliente_esperado)
             if _ce_norm and _cf_norm not in _ce_norm and _ce_norm not in _cf_norm:
-                _motivo_conflito_cliente = (f"nome de usina bateu com \"{usina_por_ativo}\" mas o cliente informado "
-                                             f"pela Fracttal (\"{_cliente_fracttal_raw}\") não é \"{_cliente_esperado}\" "
-                                             f"— provável cliente novo/fora do catálogo com usina de nome parecido "
-                                             f"ou mesma cidade")
-                usina_por_ativo = None
+                # Antes de desistir, tenta resolver contra usinas emprestadas
+                # temporariamente (_SupervisaoTemporaria). Padrão atípico visto
+                # no Qair/Solier: a Fracttal desse cliente NÃO manda "Qair" na
+                # posição de cliente do groups_1_description — manda o
+                # codinome da própria usina ("Solier - Cascavel - CE"). Por
+                # isso aqui comparamos o texto contra o nome_oficial INTEIRO
+                # da usina emprestada (que pode conter tanto o codinome quanto
+                # a cidade), não só contra o campo "cliente" cadastrado.
+                _resolvido_temp = None
+                for _item_temp in _usinas_temporarias():
+                    _nome_temp_norm = _norm_usina(_item_temp["usina"])
+                    _bateu_nome = ((_norm_usina(texto_grupo) and _norm_usina(texto_grupo) in _nome_temp_norm) or
+                                   (_norm_usina(texto_ativo) and _norm_usina(texto_ativo) in _nome_temp_norm))
+                    _bateu_cliente = (_cf_norm in _nome_temp_norm or _cf_norm in _norm_usina(_item_temp["cliente"]))
+                    if _bateu_nome and _bateu_cliente:
+                        _resolvido_temp = _item_temp["usina"]
+                        break
+                if _resolvido_temp:
+                    usina_por_ativo = _resolvido_temp
+                else:
+                    _motivo_conflito_cliente = (f"nome de usina bateu com \"{usina_por_ativo}\" mas o cliente informado "
+                                                 f"pela Fracttal (\"{_cliente_fracttal_raw}\") não é \"{_cliente_esperado}\" "
+                                                 f"— provável cliente novo/fora do catálogo com usina de nome parecido "
+                                                 f"ou mesma cidade")
+                    usina_por_ativo = None
 
     tecnico_raw = (representante.get("personnel_description") or representante.get("responsible") or representante.get("created_by") or "").strip()
     tecnico_norm = _normalizar_tecnico(tecnico_raw)
