@@ -14977,8 +14977,13 @@ def chat_ia():
                 "system_instruction": {"parts": [{"text": _chat_ia_system_prompt()}]},
                 "contents": contents,
                 "tools": _CHAT_IA_TOOLS,
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 1200,
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
             }
-            resp = _chamar_gemini_com_retry(payload, timeout=60)
+            resp = _chamar_gemini_com_retry(payload, timeout=45)
             data = resp.json()
             candidatos = data.get("candidates") or []
             if not candidatos:
