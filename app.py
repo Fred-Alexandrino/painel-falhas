@@ -3324,12 +3324,35 @@ def sobreaviso_blocos():
     }), 200
 
 
+def _sobreaviso_montar_usinas_por_cluster(usinas):
+    """cluster -> lista de usinas {usina, equipe, cliente, uf, supervisor}.
+    'equipe' é o código de cluster usado no resto do dashboard (ex.: "SP
+    Centro 01"), diferente do nome de cluster da escala (ex.: "Boa Esperança
+    / Ibaté I e II") — é o que casa com o filtro lateral "Cluster"."""
+    idx = {}
+    for u in usinas:
+        cl = u.get("cluster")
+        if not cl:
+            continue
+        idx.setdefault(cl, []).append({
+            "usina": u.get("usina"),
+            "equipe": u.get("equipe"),
+            "cliente": u.get("cliente"),
+            "uf": u.get("uf"),
+            "supervisor": u.get("supervisor") or u.get("resp_dash"),
+        })
+    return idx
+
+
 @app.route("/gerar-comunicado-sobreaviso", methods=["GET"])
 def gerar_comunicado_sobreaviso():
     """Monta o texto do comunicado de sobreaviso pra cada grupo de cobertura
     (array 'grupos' — clusters fundidos que compartilham pool de técnicos)
     de um bloco/período específico. ?bloco=N escolhe o índice; se omitido,
-    usa o bloco sugerido (vigente/próximo)."""
+    usa o bloco sugerido (vigente/próximo). Cada grupo devolvido carrega a
+    lista de usinas cobertas (com cliente/equipe/supervisor) pra permitir
+    filtrar no frontend pelos mesmos filtros laterais (cliente, usina,
+    cluster) e por "só minhas usinas"."""
     payload = _sobreaviso_carregar_estado()
     if not payload:
         return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
@@ -3339,8 +3362,10 @@ def gerar_comunicado_sobreaviso():
     grupos = estado.get("grupos", [])
     contatos = (estado.get("contatos") or {}).get("pessoas", {})
     campo = estado.get("campo", [])
+    usinas_todas = estado.get("usinas", [])
     meta_cluster = {c["cluster"]: {"cliente": c.get("cliente"), "uf": c.get("uf"),
                                     "supervisor": c.get("supervisor")} for c in campo}
+    usinas_por_cluster = _sobreaviso_montar_usinas_por_cluster(usinas_todas)
 
     if not blocos:
         return jsonify({"ok": False, "error": "A escala carregada não tem blocos."}), 400
@@ -3362,11 +3387,21 @@ def gerar_comunicado_sobreaviso():
             info = meta_cluster.get(cl)
             if info and info["cliente"] and info["cliente"] not in clientes:
                 clientes.append(info["cliente"])
+
+        usinas_grupo, vistas = [], set()
+        for cl in g.get("clusters", []):
+            for u in usinas_por_cluster.get(cl, []):
+                if u["usina"] in vistas:
+                    continue
+                vistas.add(u["usina"])
+                usinas_grupo.append(u)
+
         resultado.append({
             "nome": g.get("nome"),
             "clusters": g.get("clusters", []),
             "supervisores": g.get("supervisores", []),
             "clientes": clientes,
+            "usinas": usinas_grupo,
             "dupla": g.get("por_bloco") == 2,
             "pessoas": pessoas,
             "texto": texto,
@@ -3431,7 +3466,7 @@ def conferencia_sobreaviso():
     supervisor_filtro = (request.args.get("supervisor") or "").strip()
     idx_grupo_por_cluster = _sobreaviso_montar_indice_grupo_por_cluster(grupos)
 
-    sem_cobertura, fora_sla_lista, sem_cluster = [], [], []
+    sem_cobertura, fora_sla_lista, sem_cluster, ok_lista = [], [], [], []
     total_consideradas = 0
 
     for u in usinas:
@@ -3439,13 +3474,15 @@ def conferencia_sobreaviso():
         cluster = u.get("cluster")
         supervisor = u.get("supervisor") or u.get("resp_dash")
         cliente = u.get("cliente")
+        equipe = u.get("equipe")
         if supervisor_filtro and supervisor != supervisor_filtro:
             continue
         total_consideradas += 1
 
         grupo = idx_grupo_por_cluster.get(cluster) if cluster else None
         if not grupo:
-            sem_cluster.append({"usina": nome_usina, "cluster": cluster, "cliente": cliente, "supervisor": supervisor})
+            sem_cluster.append({"usina": nome_usina, "cluster": cluster, "cliente": cliente,
+                                 "supervisor": supervisor, "equipe": equipe})
             continue
 
         escala_g = grupo.get("escala", [])
@@ -3454,15 +3491,18 @@ def conferencia_sobreaviso():
         if not pessoas or len(pessoas) < por_bloco:
             sem_cobertura.append({
                 "usina": nome_usina, "cluster": cluster, "cliente": cliente, "supervisor": supervisor,
-                "pessoas": pessoas, "esperado": por_bloco,
+                "equipe": equipe, "pessoas": pessoas, "esperado": por_bloco,
             })
             continue
 
         if grupo.get("fora_sla"):
             fora_sla_lista.append({
                 "usina": nome_usina, "cluster": cluster, "cliente": cliente, "supervisor": supervisor,
-                "pessoas": pessoas, "grupo_nome": grupo.get("nome"),
+                "equipe": equipe, "pessoas": pessoas, "grupo_nome": grupo.get("nome"),
             })
+        else:
+            ok_lista.append({"usina": nome_usina, "cluster": cluster, "cliente": cliente,
+                              "supervisor": supervisor, "equipe": equipe})
 
     return jsonify({
         "ok": True,
@@ -3473,6 +3513,7 @@ def conferencia_sobreaviso():
         "sem_cobertura": sem_cobertura,
         "sem_cluster": sem_cluster,
         "fora_sla": fora_sla_lista,
+        "ok_usinas": ok_lista,
     }), 200
 
 
