@@ -1,3 +1,0 @@
-{"error":"Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro.","ok":false}
-
-HTTP:404
