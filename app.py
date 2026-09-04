@@ -13245,6 +13245,23 @@ def gerar_relatorio_semanal_route():
         ws_atividades = get_atividades_sheet()
         todos_atividades = carregar_planilha(ws_atividades)
 
+        # Corrige na origem nomes de usina malformados (ex.: "GD Energy -
+        # Guajiru" em vez de "Guajirú") ANTES de agrupar — sem isso, a
+        # mesma usina virava duas seções distintas no relatório (uma vazia,
+        # com o nome bruto; outra com os dados de verdade, no nome
+        # correto), e qualquer chamado/atividade preso no nome bruto
+        # parecia "sumido" pro leitor do relatório. canonizar_usina() já
+        # resolve por busca parcial (o nome oficial está contido no texto
+        # bruto); só sobrescreve quando acha um match — usina genuinamente
+        # desconhecida mantém o texto original, não desaparece.
+        # (Fred, 04/09/2026 — caso real: GD Energy / Guajirú)
+        col_usina = ATIVIDADES_HEADERS.index("Usina")
+        for row in todos_atividades[1:]:
+            if len(row) > col_usina and row[col_usina].strip():
+                canonico = canonizar_usina(row[col_usina])
+                if canonico:
+                    row[col_usina] = canonico
+
         atividades_por_usina, desligamentos_por_usina, rondas_por_usina = coletar_atividades_e_desligamentos_por_usina(
             todos_atividades, cliente, data_inicio, data_fim)
 
@@ -13267,6 +13284,14 @@ def gerar_relatorio_semanal_route():
         try:
             ws_zeladoria = get_zeladoria_sheet()
             todos_zeladoria = carregar_planilha(ws_zeladoria)
+            # Mesma correção de nome de usina malformado aplicada em
+            # Atividades (ver comentário acima) — a aba Zeladoria tem sua
+            # própria coluna de Usina (índice 1), independente.
+            for row in todos_zeladoria[2:]:
+                if len(row) > 1 and row[1].strip():
+                    canonico = canonizar_usina(row[1])
+                    if canonico:
+                        row[1] = canonico
             zeladoria_status_por_usina = montar_status_zeladoria_por_usina(todos_zeladoria, cliente)
         except Exception as e:
             log.error(f"[Relatorio Semanal] Erro ao buscar dados de Zeladoria: {e}")
@@ -13278,8 +13303,19 @@ def gerar_relatorio_semanal_route():
         # falhar por causa disso -- cai pro comportamento de "nenhum
         # chamado em aberto" (mesmo padrão de robustez da Zeladoria).
         try:
-            chamados_fabricante_por_usina = coletar_chamados_fabricante_por_usina(
-                _chamados_fabricante_itens(), cliente)
+            itens_chamados = _chamados_fabricante_itens()
+            # A planilha do SharePoint que alimenta ChamadosFabricante não
+            # canoniza o campo UFV (pode vir "GD Energy - Guajiru" em vez
+            # de "Guajirú") — sem isso, o chamado caía numa seção separada
+            # e vazia no relatório, parecendo "sumido" (Fred, 04/09/2026,
+            # caso real: ticket 24845 / GD Energy / Guajirú).
+            for item in itens_chamados:
+                ufv_bruta = (item.get("UFV") or "").strip()
+                if ufv_bruta:
+                    canonico = canonizar_usina(ufv_bruta)
+                    if canonico:
+                        item["UFV"] = canonico
+            chamados_fabricante_por_usina = coletar_chamados_fabricante_por_usina(itens_chamados, cliente)
         except Exception as e:
             log.error(f"[Relatorio Semanal] Erro ao buscar Chamados com Fabricante: {e}")
             chamados_fabricante_por_usina = None
