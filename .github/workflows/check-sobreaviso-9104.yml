@@ -1,6 +1,8 @@
 name: check-sobreaviso-endpoint
 on:
   workflow_dispatch: {}
+permissions:
+  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -9,7 +11,6 @@ jobs:
       - name: Curl endpoint
         run: |
           curl -s -w "\nHTTP:%{http_code}\n" "https://api.168.138.232.237.sslip.io/sobreaviso-blocos" > result.txt
-          cat result.txt
       - name: Commit result
         run: |
           git config user.name "bot"
