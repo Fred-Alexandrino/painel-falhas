@@ -3258,13 +3258,12 @@ def _sobreaviso_fmt_bloco(b):
 
 
 def _sobreaviso_montar_texto(grupo, bloco, pessoas, contatos):
+    # 'contatos' fica no parâmetro (compatibilidade com quem já chama esta
+    # função) mas não é mais usado no texto — comunicado não expõe telefone
+    # do colaborador (pedido de 04/09/2026).
     clusters_txt = " + ".join(grupo["clusters"])
     dupla_txt = " (dupla de plantão)" if grupo.get("por_bloco") == 2 else ""
-    partes = []
-    for p in pessoas:
-        tel = contatos.get(p, "")
-        partes.append(p + (f" — {tel}" if tel else ""))
-    linha_pessoas = " + ".join(partes) if partes else "sem cobertura definida"
+    linha_pessoas = " + ".join(pessoas) if pessoas else "sem cobertura definida"
     return (
         f"📋 Escala de Sobreaviso — {clusters_txt}\n"
         f"Período: {_sobreaviso_fmt_bloco(bloco)}{dupla_txt}\n\n"
