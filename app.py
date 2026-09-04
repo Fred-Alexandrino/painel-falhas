@@ -9353,6 +9353,18 @@ def _chamados_fabricante_itens():
         # ticket 24845 / GD Energy / Guajirú).
         if ufv_canonica:
             item["UFV"] = ufv_canonica
+            # A coluna "Cliente" bruta vem da mesma planilha externa do
+            # SharePoint e pode vir vazia/inconsistente pra alguns
+            # chamados (mesmo quando a UFV é reconhecida) — isso fazia o
+            # chamado passar no filtro de usina mas sumir do relatório
+            # semanal, que filtra por Cliente. Como já confiamos na UFV
+            # canônica pra tudo mais, também confiamos nela pra achar o
+            # cliente de verdade (Fred, 04/09/2026 — caso real: ticket
+            # 24845 / GD Energy / Guajirú, sumindo do relatório mesmo
+            # aparecendo certo no painel).
+            cliente_real = inferir_cliente(ufv_canonica)
+            if cliente_real:
+                item["Cliente"] = cliente_real
         itens.append(item)
     return itens
 
