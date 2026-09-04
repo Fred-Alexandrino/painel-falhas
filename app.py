@@ -3182,6 +3182,204 @@ def gerar_comunicado_zeladoria():
 
 
 
+# ── Comunicados de Sobreaviso ────────────────────────────────────────────
+# Fred sobe manualmente o arquivo Escala_Sobreaviso_GridCo_RXX.html (o mesmo
+# artifact interativo de 3.Em Operação) toda vez que uma revisão nova sai.
+# Guardamos o "estado" embutido no arquivo (blocos + grupos + contatos) em
+# disco local na VM1 — sobrevive a deploy porque o deploy só faz
+# `git reset --hard` (não `git clean`), o mesmo padrão já usado por
+# zeladoria_fotos/ e mensagens_grupos.db.
+#
+# A fonte da escala real é o array 'grupos' (clusters FUNDIDOS por equipe de
+# cobertura, com pool combinado e "dupla" quando 2 plantonistas cobrem o
+# bloco junto) — NÃO o array 'campo' (rotação individual por cluster, que
+# ignora as fusões e não bate com o que o dashboard de fato exibe; ver
+# conversa de 04/09/2026 onde isso foi corrigido).
+SOBREAVISO_ESCALA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sobreaviso_escala.json")
+
+_MESES_PT_ABREV = {1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+                    7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez"}
+
+
+def _sobreaviso_extrair_estado_do_html(html_text):
+    """Extrai o objeto JSON embutido em <script id="estado" type="application/
+    json"> do arquivo de escala. Usa JSONDecoder().raw_decode a partir do '>'
+    de abertura da tag em vez de procurar o '</script>' de fechamento por
+    regex: o próprio JSON carrega uma cópia auto-referente do HTML inteiro
+    (função docFonte() do artifact, usada pro botão "Baixar escala
+    atualizada"), com um '<\\/script>' ESCAPADO no meio do valor — um regex
+    simples de fechamento acaba pegando a tag errada e quebra o parse."""
+    marca = 'id="estado"'
+    pos = html_text.find(marca)
+    if pos == -1:
+        raise ValueError("Tag <script id=\"estado\"> não encontrada — esse arquivo não parece ser a Escala de Sobreaviso.")
+    inicio = html_text.find(">", pos) + 1
+    decoder = json.JSONDecoder()
+    estado, _ = decoder.raw_decode(html_text, inicio)
+    return estado
+
+
+def _sobreaviso_salvar_estado(estado, nome_arquivo=""):
+    payload = {"estado": estado, "nome_arquivo": nome_arquivo, "carregado_em": agora_br().isoformat()}
+    with open(SOBREAVISO_ESCALA_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+
+
+def _sobreaviso_carregar_estado():
+    if not os.path.exists(SOBREAVISO_ESCALA_PATH):
+        return None
+    try:
+        with open(SOBREAVISO_ESCALA_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log.error(f"[Sobreaviso] Erro ao ler estado salvo: {e}")
+        return None
+
+
+def _sobreaviso_indice_bloco_sugerido(blocos):
+    """Primeiro bloco cujo fim ainda não passou (ou seja, o bloco vigente
+    hoje, ou o próximo se hoje estiver fora de qualquer bloco). Se todos já
+    passaram, cai no último bloco disponível."""
+    hoje = agora_br().date().isoformat()
+    for i, b in enumerate(blocos):
+        if b["fim"] >= hoje:
+            return i
+    return max(0, len(blocos) - 1)
+
+
+def _sobreaviso_fmt_bloco(b):
+    ini_y, ini_m, ini_d = (int(x) for x in b["inicio"].split("-"))
+    fim_y, fim_m, fim_d = (int(x) for x in b["fim"].split("-"))
+    if b["inicio"] == b["fim"]:
+        return f"{ini_d}/{_MESES_PT_ABREV[ini_m]}"
+    if ini_m == fim_m:
+        return f"{ini_d} a {fim_d}/{_MESES_PT_ABREV[fim_m]}"
+    return f"{ini_d}/{_MESES_PT_ABREV[ini_m]} a {fim_d}/{_MESES_PT_ABREV[fim_m]}"
+
+
+def _sobreaviso_montar_texto(grupo, bloco, pessoas, contatos):
+    clusters_txt = " + ".join(grupo["clusters"])
+    dupla_txt = " (dupla de plantão)" if grupo.get("por_bloco") == 2 else ""
+    partes = []
+    for p in pessoas:
+        tel = contatos.get(p, "")
+        partes.append(p + (f" — {tel}" if tel else ""))
+    linha_pessoas = " + ".join(partes) if partes else "sem cobertura definida"
+    return (
+        f"📋 Escala de Sobreaviso — {clusters_txt}\n"
+        f"Período: {_sobreaviso_fmt_bloco(bloco)}{dupla_txt}\n\n"
+        f"De plantão: {linha_pessoas}\n\n"
+        f"Qualquer dúvida, chamar o supervisor."
+    )
+
+
+@app.route("/sobreaviso-upload", methods=["POST"])
+def sobreaviso_upload():
+    """Recebe (multipart/form-data, campo 'arquivo') o HTML da Escala de
+    Sobreaviso vigente e extrai/guarda o estado. Chamado pelo botão de
+    upload da aba Sobreavisos, em Comunicados. Sem exigência de
+    WEBHOOK_SECRET de propósito — mesmo padrão de outros endpoints de
+    escrita chamados direto do dashboard (role manager)."""
+    arquivo = request.files.get("arquivo")
+    if not arquivo:
+        return jsonify({"ok": False, "error": "Envie o arquivo em 'arquivo' (multipart/form-data)."}), 400
+    try:
+        html_text = arquivo.read().decode("utf-8", errors="replace")
+        estado = _sobreaviso_extrair_estado_do_html(html_text)
+        if "blocos" not in estado or "grupos" not in estado:
+            raise ValueError("O estado extraído não tem 'blocos'/'grupos' — arquivo inesperado.")
+        _sobreaviso_salvar_estado(estado, nome_arquivo=arquivo.filename or "")
+    except Exception as e:
+        log.error(f"[Sobreaviso] Erro ao processar upload: {e}")
+        return jsonify({"ok": False, "error": f"Erro ao processar o arquivo: {e}"}), 400
+
+    return jsonify({
+        "ok": True,
+        "periodo": estado.get("periodo"),
+        "total_blocos": len(estado.get("blocos", [])),
+        "total_grupos": len(estado.get("grupos", [])),
+        "nome_arquivo": arquivo.filename or "",
+    }), 200
+
+
+@app.route("/sobreaviso-blocos", methods=["GET"])
+def sobreaviso_blocos():
+    """Lista os blocos (períodos de sobreaviso) do arquivo carregado por
+    último, com o índice do bloco sugerido (vigente/próximo) já calculado."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    return jsonify({
+        "ok": True,
+        "nome_arquivo": payload.get("nome_arquivo", ""),
+        "carregado_em": payload.get("carregado_em"),
+        "periodo": estado.get("periodo"),
+        "blocos": [{"idx": i, "inicio": b["inicio"], "fim": b["fim"], "tipo": b["tipo"],
+                    "feriado": b.get("feriado", False), "label": _sobreaviso_fmt_bloco(b)}
+                   for i, b in enumerate(blocos)],
+        "bloco_sugerido": _sobreaviso_indice_bloco_sugerido(blocos),
+    }), 200
+
+
+@app.route("/gerar-comunicado-sobreaviso", methods=["GET"])
+def gerar_comunicado_sobreaviso():
+    """Monta o texto do comunicado de sobreaviso pra cada grupo de cobertura
+    (array 'grupos' — clusters fundidos que compartilham pool de técnicos)
+    de um bloco/período específico. ?bloco=N escolhe o índice; se omitido,
+    usa o bloco sugerido (vigente/próximo)."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    grupos = estado.get("grupos", [])
+    contatos = (estado.get("contatos") or {}).get("pessoas", {})
+    campo = estado.get("campo", [])
+    meta_cluster = {c["cluster"]: {"cliente": c.get("cliente"), "uf": c.get("uf"),
+                                    "supervisor": c.get("supervisor")} for c in campo}
+
+    if not blocos:
+        return jsonify({"ok": False, "error": "A escala carregada não tem blocos."}), 400
+
+    bloco_idx = request.args.get("bloco", type=int)
+    if bloco_idx is None:
+        bloco_idx = _sobreaviso_indice_bloco_sugerido(blocos)
+    if bloco_idx < 0 or bloco_idx >= len(blocos):
+        return jsonify({"ok": False, "error": f"bloco {bloco_idx} fora do intervalo (0 a {len(blocos) - 1})"}), 400
+
+    bloco = blocos[bloco_idx]
+    resultado = []
+    for g in grupos:
+        escala_g = g.get("escala", [])
+        pessoas = escala_g[bloco_idx] if bloco_idx < len(escala_g) else []
+        texto = _sobreaviso_montar_texto(g, bloco, pessoas, contatos)
+        clientes = []
+        for cl in g.get("clusters", []):
+            info = meta_cluster.get(cl)
+            if info and info["cliente"] and info["cliente"] not in clientes:
+                clientes.append(info["cliente"])
+        resultado.append({
+            "nome": g.get("nome"),
+            "clusters": g.get("clusters", []),
+            "supervisores": g.get("supervisores", []),
+            "clientes": clientes,
+            "dupla": g.get("por_bloco") == 2,
+            "pessoas": pessoas,
+            "texto": texto,
+        })
+
+    return jsonify({
+        "ok": True,
+        "bloco": {"idx": bloco_idx, "inicio": bloco["inicio"], "fim": bloco["fim"],
+                   "tipo": bloco["tipo"], "label": _sobreaviso_fmt_bloco(bloco)},
+        "grupos": resultado,
+    }), 200
+
+
 _ZEL_GRUPOS = ["Roçada", "Poda Química", "Lavagem dos Módulos", "Controle de Pragas"]
 _ZEL_SUBCOLS = ["Última Data", "Próxima Data", "Fornecedor", "Status"]  # 4 subcolunas por grupo
 
