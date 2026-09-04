@@ -9337,10 +9337,22 @@ def _chamados_fabricante_itens():
             continue
         item = dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)]))
         ufv_bruta = item.get("UFV", "")
-        if ufv_bruta and canonizar_usina(ufv_bruta) is None:
+        ufv_canonica = canonizar_usina(ufv_bruta) if ufv_bruta else None
+        if ufv_bruta and ufv_canonica is None:
             continue  # usina não reconhecida = não é do Fred, não deveria estar nessa planilha
-        chave_nota = f"{item.get('Ticket/RMA','')}|{item.get('UFV','')}|{item.get('Identificação do Equipamento','')}"
+        # chave_nota usa a UFV BRUTA (como sempre foi) — não a canônica —
+        # pra não perder o vínculo com notas já salvas antes desta correção.
+        chave_nota = f"{item.get('Ticket/RMA','')}|{ufv_bruta}|{item.get('Identificação do Equipamento','')}"
         item["NotaDashboard"] = notas.get(chave_nota, "")
+        # Corrige a UFV pra grafia oficial ANTES de devolver o item — sem
+        # isso, nome malformado vindo direto da planilha do SharePoint
+        # (ex.: "GD Energy - Guajiru" em vez de "Guajirú") aparecia
+        # partido em duas seções/linhas diferentes em TUDO que consome
+        # esta função: painel de Chamados, popup de Resumo, Gestão
+        # Cliente e o relatório semanal (Fred, 04/09/2026 — caso real:
+        # ticket 24845 / GD Energy / Guajirú).
+        if ufv_canonica:
+            item["UFV"] = ufv_canonica
         itens.append(item)
     return itens
 
