@@ -3380,6 +3380,102 @@ def gerar_comunicado_sobreaviso():
     }), 200
 
 
+def _sobreaviso_montar_indice_grupo_por_cluster(grupos):
+    """cluster -> grupo (dict), pra achar rápido qual grupo de cobertura
+    fundido inclui cada cluster."""
+    idx = {}
+    for g in grupos:
+        for cl in g.get("clusters", []):
+            idx[cl] = g
+    return idx
+
+
+@app.route("/conferencia-sobreaviso", methods=["GET"])
+def conferencia_sobreaviso():
+    """Confere, usina por usina — a partir do catálogo 'usinas' embutido no
+    próprio arquivo de escala (a lista mais completa: as ~100 usinas de
+    todos os supervisores, sempre em sincronia com o que foi carregado) —
+    se há alguém de sobreaviso cobrindo cada uma no bloco selecionado.
+    Devolve 3 categorias de problema, pra garantir que nenhuma usina fique
+    desassistida:
+      - sem_cobertura: o cluster da usina não tem gente suficiente escalada
+        nesse bloco (pool vazio ou menos gente do que o 'por_bloco' exige) —
+        CRÍTICO, ninguém responde por essa usina nesse período.
+      - fora_sla: o cluster TEM gente escalada, mas nenhum candidato do pool
+        alcança o SLA de deslocamento contratual (fora_sla=true, herdado do
+        próprio cálculo de cobertura do arquivo) — tem plantonista, mas fora
+        do prazo combinado com o cliente.
+      - sem_cluster: a usina não aparece em NENHUM grupo de cobertura — gap
+        estrutural no cadastro da escala, independe do bloco escolhido.
+
+    ?bloco=N escolhe o período (padrão: o sugerido/vigente).
+    ?supervisor=Nome filtra só as usinas daquele supervisor (padrão: todos)."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    grupos = estado.get("grupos", [])
+    usinas = estado.get("usinas", [])
+    if not blocos or not usinas:
+        return jsonify({"ok": False, "error": "A escala carregada não tem 'blocos' ou 'usinas'."}), 400
+
+    bloco_idx = request.args.get("bloco", type=int)
+    if bloco_idx is None:
+        bloco_idx = _sobreaviso_indice_bloco_sugerido(blocos)
+    if bloco_idx < 0 or bloco_idx >= len(blocos):
+        return jsonify({"ok": False, "error": f"bloco {bloco_idx} fora do intervalo (0 a {len(blocos) - 1})"}), 400
+    bloco = blocos[bloco_idx]
+
+    supervisor_filtro = (request.args.get("supervisor") or "").strip()
+    idx_grupo_por_cluster = _sobreaviso_montar_indice_grupo_por_cluster(grupos)
+
+    sem_cobertura, fora_sla_lista, sem_cluster = [], [], []
+    total_consideradas = 0
+
+    for u in usinas:
+        nome_usina = u.get("usina")
+        cluster = u.get("cluster")
+        supervisor = u.get("supervisor") or u.get("resp_dash")
+        cliente = u.get("cliente")
+        if supervisor_filtro and supervisor != supervisor_filtro:
+            continue
+        total_consideradas += 1
+
+        grupo = idx_grupo_por_cluster.get(cluster) if cluster else None
+        if not grupo:
+            sem_cluster.append({"usina": nome_usina, "cluster": cluster, "cliente": cliente, "supervisor": supervisor})
+            continue
+
+        escala_g = grupo.get("escala", [])
+        pessoas = escala_g[bloco_idx] if bloco_idx < len(escala_g) else []
+        por_bloco = grupo.get("por_bloco", 1)
+        if not pessoas or len(pessoas) < por_bloco:
+            sem_cobertura.append({
+                "usina": nome_usina, "cluster": cluster, "cliente": cliente, "supervisor": supervisor,
+                "pessoas": pessoas, "esperado": por_bloco,
+            })
+            continue
+
+        if grupo.get("fora_sla"):
+            fora_sla_lista.append({
+                "usina": nome_usina, "cluster": cluster, "cliente": cliente, "supervisor": supervisor,
+                "pessoas": pessoas, "grupo_nome": grupo.get("nome"),
+            })
+
+    return jsonify({
+        "ok": True,
+        "bloco": {"idx": bloco_idx, "inicio": bloco["inicio"], "fim": bloco["fim"],
+                   "tipo": bloco["tipo"], "label": _sobreaviso_fmt_bloco(bloco)},
+        "total_usinas": total_consideradas,
+        "total_ok": total_consideradas - len(sem_cobertura) - len(sem_cluster),
+        "sem_cobertura": sem_cobertura,
+        "sem_cluster": sem_cluster,
+        "fora_sla": fora_sla_lista,
+    }), 200
+
+
 _ZEL_GRUPOS = ["Roçada", "Poda Química", "Lavagem dos Módulos", "Controle de Pragas"]
 _ZEL_SUBCOLS = ["Última Data", "Próxima Data", "Fornecedor", "Status"]  # 4 subcolunas por grupo
 
