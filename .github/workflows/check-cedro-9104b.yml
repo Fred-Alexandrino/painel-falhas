@@ -1,0 +1,22 @@
+name: check-cedro-9104b
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Curl endpoint
+        run: |
+          curl -s "https://api.168.138.232.237.sslip.io/gerar-comunicado-sobreaviso" > result.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result.txt backups/check-cedro-result2.txt
+          git add backups/check-cedro-result2.txt
+          git commit -m "check cedro result2" || echo "nothing to commit"
+          git push
