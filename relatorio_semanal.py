@@ -13,6 +13,8 @@ bruto de ações).
 
 import os
 import re
+import zipfile
+import posixpath
 import copy
 import unicodedata
 from io import BytesIO
@@ -1057,7 +1059,9 @@ def _chamado_fabricante_resolvido(status):
 
 def coletar_chamados_fabricante_por_usina(itens_chamados, cliente):
     """itens_chamados: lista de dicts, retorno de _chamados_fabricante_itens()
-    (app.py) — já lida com canonização de usina e mescla de notas.
+    (app.py). O campo UFV vem bruto (a planilha do SharePoint não canoniza
+    o nome da usina) — quem corrige pra grafia oficial é _remapear_usinas(),
+    chamada em gerar_relatorio_pptx() logo depois desta função.
     Retorna {usina: [{"ativo":, "status":}, ...]} só com chamados AINDA em
     aberto (status não bate em STATUS_CHAMADO_FABRICANTE_RESOLVIDO)."""
     cliente_norm = _norm(cliente)
@@ -1069,7 +1073,9 @@ def coletar_chamados_fabricante_por_usina(itens_chamados, cliente):
         if not status or _chamado_fabricante_resolvido(status):
             continue
         usina = (item.get("UFV") or "").strip() or "Usina não informada"
-        ativo = (item.get("Ativo") or "").strip() or "Equipamento não informado"
+        ativo = ((item.get("Ativo") or "").strip()
+                 or (item.get("Identificação do Equipamento") or "").strip()
+                 or "Equipamento não informado")
         resultado.setdefault(usina, []).append({"ativo": ativo, "status": status})
     return resultado
 
@@ -1741,6 +1747,136 @@ def _renderizar_pagina_zeladoria_tabela(prs, titulo, pagina_usinas):
     return novo
 
 
+_RE_RID_USADO = re.compile(r'r:(?:id|embed|link|cs|dm|lo|qs)="(rId\d+)"')
+_RE_REL_IMAGEM = re.compile(
+    r'<Relationship\s+Id="(rId\d+)"[^>]*Type="[^"]*?/relationships/image"[^>]*?/>\s*')
+
+
+def _limpar_pacote_final(buf):
+    """Limpa o pacote .pptx final em duas frentes, ambas causadas pelo mesmo
+    padrão (_duplicate_slide usa slides do MODELO como molde e depois python-
+    pptx não deleta o que sobra órfão — confirmado com Fred 04/09/2026, era
+    a causa mais provável do PowerPoint tratar TODO relatório gerado como
+    "ainda baixando" / bloqueado pra edição até salvar uma cópia manual):
+
+    1) Slides usados só como molde (capa/pautas/página-modelo original) saem
+       do sldIdLst mas o .xml deles (e as fotos de exemplo que usavam, de
+       1 a 3,6MB cada) continua no pacote.
+    2) _remover_fotos() apaga a foto de exemplo visualmente, mas a RELAÇÃO
+       com a imagem fica pendurada no .rels do slide — a imagem de exemplo
+       continua embutida mesmo sem aparecer em lugar nenhum.
+
+    Isso deixava ~30MB de imagens de exemplo do modelo em TODO relatório
+    gerado (34MB → ~3MB depois da limpeza)."""
+    buf.seek(0)
+    zin = zipfile.ZipFile(buf, "r")
+    names = zin.namelist()
+    contents = {n: zin.read(n) for n in names}
+    zin.close()
+
+    # ── Fase 1: remove slides que saíram do sldIdLst (usados só como molde) ──
+    pres_xml = contents["ppt/presentation.xml"].decode("utf-8")
+    pres_rels_path = "ppt/_rels/presentation.xml.rels"
+    pres_rels_xml = contents[pres_rels_path].decode("utf-8")
+
+    rids_usados_pres = set(re.findall(r'<p:sldId\s+id="\d+"\s+r:id="(rId\d+)"', pres_xml))
+    rid_to_target = dict(re.findall(
+        r'<Relationship\s+Id="(rId\d+)"[^>]*Target="(slides/slide\d+\.xml)"[^>]*/>', pres_rels_xml))
+
+    slides_mantidos = {"ppt/" + rid_to_target[rid] for rid in rids_usados_pres if rid in rid_to_target}
+    todos_slides = {n for n in names if re.match(r"ppt/slides/slide\d+\.xml$", n)}
+    slides_orfaos = todos_slides - slides_mantidos
+
+    partes_removidas = set()
+    if slides_orfaos:
+        rids_orfaos = {rid for rid, target in rid_to_target.items() if ("ppt/" + target) in slides_orfaos}
+        for rid in rids_orfaos:
+            pres_rels_xml = re.sub(rf'<Relationship\s+Id="{rid}"[^>]*?/>\s*', "", pres_rels_xml)
+        contents[pres_rels_path] = pres_rels_xml.encode("utf-8")
+
+        ct_path = "[Content_Types].xml"
+        ct_xml = contents[ct_path].decode("utf-8")
+        for slide_path in slides_orfaos:
+            part_name = "/" + slide_path
+            ct_xml = re.sub(rf'<Override PartName="{re.escape(part_name)}"[^>]*?/>\s*', "", ct_xml)
+
+        for slide_path in slides_orfaos:
+            partes_removidas.add(slide_path)
+            rels_path = slide_path.replace("slides/", "slides/_rels/") + ".rels"
+            if rels_path in contents:
+                # Slides usados como molde (capa/pautas/página-modelo) têm
+                # nota associada (ppt/notesSlides/notesSlideN.xml) — sem
+                # remover junto, ela fica órfã, referenciando um slide que
+                # não existe mais (arquivo corrompido pro Office).
+                rels_texto = contents[rels_path].decode("utf-8", errors="ignore")
+                for m in re.finditer(
+                        r'<Relationship\s+Id="(rId\d+)"[^>]*Type="[^"]*?/relationships/notesSlide"'
+                        r'[^>]*Target="([^"]+)"[^>]*/>', rels_texto):
+                    notas_target = m.group(2)
+                    notas_path = posixpath.normpath(posixpath.join("ppt/slides", notas_target))
+                    if notas_path in contents:
+                        partes_removidas.add(notas_path)
+                        notas_rels = notas_path.replace("notesSlides/", "notesSlides/_rels/") + ".rels"
+                        if notas_rels in contents:
+                            partes_removidas.add(notas_rels)
+                        ct_xml = re.sub(rf'<Override PartName="/{re.escape(notas_path)}"[^>]*?/>\s*',
+                                         "", ct_xml)
+                partes_removidas.add(rels_path)
+        contents[ct_path] = ct_xml.encode("utf-8")
+
+    # ── Fase 2: em cada parte que sobrou, remove do .rels qualquer relação
+    # do tipo IMAGEM cujo rId não é mais referenciado no XML da própria
+    # parte (relação "pendurada" deixada por uma forma removida, ex.:
+    # _remover_fotos). Restrito a imagens de propósito: relações
+    # estruturais (tema, notas, propriedades de exibição etc.) não citam
+    # o próprio rId explicitamente no corpo — são válidas por convenção
+    # de tipo, e removê-las corrompe o arquivo. ──
+    for name in list(contents.keys()):
+        if name in partes_removidas or not name.startswith("ppt/") or not name.endswith(".rels"):
+            continue
+        if name == pres_rels_path:
+            continue  # relações estruturais de nível apresentação — não mexe
+        parte_path = name.replace("_rels/", "").rsplit(".rels", 1)[0]
+        if parte_path not in contents or parte_path in partes_removidas:
+            continue
+        corpo = contents[parte_path].decode("utf-8", errors="ignore")
+        rids_usados_no_corpo = set(_RE_RID_USADO.findall(corpo))
+        rels_xml = contents[name].decode("utf-8")
+
+        def _mantem(m):
+            return m.group(0) if m.group(1) in rids_usados_no_corpo else ""
+
+        rels_xml_novo = _RE_REL_IMAGEM.sub(_mantem, rels_xml)
+        if rels_xml_novo != rels_xml:
+            contents[name] = rels_xml_novo.encode("utf-8")
+
+    # ── Fase 3: recalcula quais mídias ainda são referenciadas por QUALQUER
+    # .rels que sobrou (já podado na fase 2) e remove o resto ──
+    midias_em_uso = set()
+    for name, data in contents.items():
+        if name in partes_removidas or not name.endswith(".rels"):
+            continue
+        texto = data.decode("utf-8", errors="ignore")
+        for m in re.finditer(r'Target="\.\./media/([^"]+)"', texto):
+            midias_em_uso.add("ppt/media/" + m.group(1))
+
+    todas_midias = {n for n in names if n.startswith("ppt/media/")}
+    partes_removidas |= (todas_midias - midias_em_uso)
+
+    if not partes_removidas:
+        buf.seek(0)
+        return buf
+
+    buf_novo = BytesIO()
+    with zipfile.ZipFile(buf_novo, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name in names:
+            if name in partes_removidas:
+                continue
+            zout.writestr(name, contents[name])
+    buf_novo.seek(0)
+    return buf_novo
+
+
 def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
                           desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None,
                           rondas_por_usina=None, chamados_fabricante_por_usina=None):
@@ -1846,4 +1982,11 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     buf = BytesIO()
     prs.save(buf)
     buf.seek(0)
+    try:
+        buf = _limpar_pacote_final(buf)
+    except Exception:
+        # Limpeza é só otimização de tamanho — se falhar por qualquer
+        # motivo, o relatório não pode deixar de ser gerado por causa
+        # disso. Cai pro arquivo original (maior, mas válido).
+        buf.seek(0)
     return buf
