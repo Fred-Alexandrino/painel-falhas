@@ -3339,7 +3339,7 @@ def _sobreaviso_montar_usinas_por_cluster(usinas):
             "equipe": u.get("equipe"),
             "cliente": u.get("cliente"),
             "uf": u.get("uf"),
-            "supervisor": u.get("supervisor") or u.get("resp_dash"),
+            "supervisor": u.get("resp_dash") or u.get("supervisor"),  # resp_dash = titularidade real do cluster; supervisor = quem assina a escala (pode ser um stand-in geografico, ex.: Cedro)
         })
     return idx
 
@@ -3472,7 +3472,7 @@ def conferencia_sobreaviso():
     for u in usinas:
         nome_usina = u.get("usina")
         cluster = u.get("cluster")
-        supervisor = u.get("supervisor") or u.get("resp_dash")
+        supervisor = u.get("resp_dash") or u.get("supervisor")  # resp_dash = titularidade real do cluster; supervisor = quem assina a escala (pode ser um stand-in geografico, ex.: Cedro)
         cliente = u.get("cliente")
         equipe = u.get("equipe")
         if supervisor_filtro and supervisor != supervisor_filtro:
