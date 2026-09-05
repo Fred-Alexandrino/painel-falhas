@@ -32,7 +32,7 @@ from relatorio_semanal import (coletar_atividades_e_desligamentos_por_usina, ger
 from relatorio_handover import gerar_handover_docx
 from relatorio_handover_usina import montar_relatorio_handover_usina
 from relatorio_handover_usina_docx import gerar_handover_usina_completo
-from relatorio_ata_reuniao import gerar_ata_reuniao_docx
+from relatorio_ata_reuniao import gerar_ata_reuniao_docx, gerar_plano_acao_docx
 import docx as _docx_lib  # leitura de transcrições .docx (Teams) enviadas pelo usuário
 import pdfplumber
 from pdf2image import convert_from_bytes
@@ -14679,6 +14679,199 @@ def gerar_ata_reuniao_route():
         )
     except Exception as e:
         log.error(f"[Ata Reuniao] Erro: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Plano de Ação (Painel de Relatórios) ────────────────────────────────
+# Substitui a "Ata de Reunião" no Painel de Relatórios (pedido do Fred,
+# 05/09/2026): mesma entrada (arquivo anexado da reunião), mas a saída
+# passa a ser um Plano de Ação — lista de tópicos com as ações definidas
+# em cada um, em vez da ata completa. Também aceita PDF/imagem além de
+# .docx/.txt: pra PDF/imagem, o arquivo é enviado NATIVO pra Gemini
+# (mesmo padrão já usado no punch list do Handover — a IA lê texto e
+# imagem da página sozinha, sem OCR/extração manual), o que cobre atas
+# escaneadas ou fotografadas à mão.
+
+def _montar_prompt_plano_acao(cliente_hint="", texto_transcricao=None):
+    tem_texto = texto_transcricao is not None
+    contexto_cliente = (
+        f'O cliente/contraparte desta reunião é "{cliente_hint}" (informado pelo usuário) — '
+        f"use esse nome no subtítulo da capa e no rótulo de clientes.\n"
+        if cliente_hint else
+        "O nome do cliente/contraparte não foi informado — identifique-o pelo contexto do "
+        "documento (nomes de empresas, e-mails, usinas mencionadas) e use \"Grid Co.\" como "
+        "a outra parte (Grid Co. é a empresa de O&M que participa de todas essas reuniões).\n"
+    )
+    fonte_texto = (
+        "na transcrição em texto abaixo"
+        if tem_texto else
+        "no arquivo anexado a esta mensagem (pode ser um PDF ou uma foto/imagem da ata — leia "
+        "diretamente o conteúdo, incluindo texto manuscrito ou digitado, tabelas e anotações)"
+    )
+    bloco_transcricao = (
+        f"\nTRANSCRIÇÃO/ATA:\n---\n{texto_transcricao[:60000]}\n---\n" if tem_texto else ""
+    )
+    return f"""Você é um Supervisor de O&M da Grid Co. (empresa de operação e manutenção de usinas
+fotovoltaicas no Brasil) que acabou de participar de uma reunião e precisa extrair um PLANO DE
+AÇÃO objetivo a partir {fonte_texto}.
+
+{contexto_cliente}
+TAREFA: leia o conteúdo com atenção e, para cada tópico/assunto discutido, extraia as ações
+concretas que ficaram definidas — o que precisa ser feito, com responsável e prazo embutidos no
+texto da ação quando mencionados. Não resuma a discussão em si: extraia SOMENTE as ações
+práticas resultantes de cada tópico.
+
+REGRAS DE CONTEÚDO (críticas):
+- NUNCA invente ações, nomes, datas, números de OS/inversor ou valores que não estejam no
+  conteúdo original.
+- Cada tópico em "topicos" deve corresponder a UM assunto discutido, na ordem em que apareceu.
+- "titulo" do tópico: nome curto do assunto (poucas palavras).
+- "acoes": lista de ações objetivas daquele tópico, uma frase curta e acionável por item (ex.:
+  "Reagendar a preventiva do inversor 3 para a semana 38", "Fulano vai enviar o orçamento de
+  troca do módulo até sexta-feira"). Inclua responsável e prazo DENTRO do texto da ação quando
+  mencionados, não como campos separados.
+- Se um tópico foi discutido mas não gerou nenhuma ação concreta (só uma atualização
+  informativa), retorne "acoes": [] para ele — não invente uma ação genérica só pra preencher.
+- PRESERVE O GRAU DE CERTEZA do texto original: se alguém disse "acho que", "talvez", "devemos
+  conseguir", mantenha a incerteza na redação da ação em vez de virar afirmação categórica.
+- Textos SEMPRE em português do Brasil, tom técnico e direto, terceira pessoa (nunca "eu").
+- "objetivo": parágrafo único opcional resumindo o contexto/participantes da reunião — pode ser
+  null se não der pra identificar com segurança.
+- "cliente_nome" e "data_iso" são OBRIGATÓRIOS e usados para montar o nome do arquivo final:
+  "cliente_nome" nunca deve ser "Grid Co." (ela é sempre uma das partes, nunca a contraparte)
+  nem ficar vazio — se realmente não conseguir identificar o cliente, use "Cliente". "data_iso"
+  deve ser a data em que a reunião ocorreu, no formato AAAA-MM-DD (procure no início do
+  documento).
+{bloco_transcricao}
+FORMATO DE SAÍDA — responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes
+ou depois), EXATAMENTE neste schema:
+{{
+  "titulo_capa": "Plano de Ação" (curto, 2-4 palavras),
+  "subtitulo_capa": "NOME CLIENTE & GRID CO." (maiúsculas),
+  "clientes_label": "Nome Cliente & Grid Co.",
+  "cliente_nome": "Nome Cliente" (Title Case, só o nome do cliente/contraparte, sem "Grid Co." —
+      ex.: "Renogrid", "Alves Lima", "GD Energy", "2C Energia" — usado no nome do arquivo),
+  "data_extenso": "23 de julho de 2026",
+  "data_iso": "2026-07-23",
+  "rodape_capa": "Documento de uso interno — Grid Co. / Nome Cliente",
+  "objetivo": "parágrafo curto de contexto" ou null,
+  "topicos": [
+    {{"titulo": "título curto do assunto", "acoes": ["ação 1", "ação 2"]}}
+  ]
+}}"""
+
+
+def _gerar_dados_plano_acao_com_ia(cliente_hint="", texto_transcricao=None,
+                                    arquivo_bytes=None, arquivo_mime=None):
+    prompt = _montar_prompt_plano_acao(cliente_hint, texto_transcricao)
+    parts = [{"text": prompt}]
+    if arquivo_bytes is not None:
+        parts.append({"inline_data": {
+            "mime_type": arquivo_mime,
+            "data": base64.b64encode(arquivo_bytes).decode("utf-8"),
+        }})
+    resp = _chamar_gemini_com_retry(
+        {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 8192,
+                "responseMimeType": "application/json",
+            },
+        },
+        timeout=90,
+    )
+    data = resp.json()
+    candidato = data["candidates"][0]
+    texto_bruto = candidato["content"]["parts"][0]["text"].strip()
+    texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+    parsed = json.loads(texto_limpo)
+    if not parsed.get("topicos"):
+        raise ValueError("A IA não conseguiu identificar tópicos na ata enviada.")
+    return parsed
+
+
+def _montar_nome_arquivo_plano_acao(dados):
+    """Mesmo padrão de nomenclatura da Ata de Reunião (definido pelo Fred),
+    adaptado pro Plano de Ação:
+        "Plano de Acao - {Cliente} x Grid Co - O&M - Semana {N}.docx"
+    (sem acentos de propósito, mesma razão de compatibilidade da Ata)."""
+    cliente = (dados.get("cliente_nome") or "").strip() or "Cliente"
+
+    semana = None
+    data_iso = (dados.get("data_iso") or "").strip()
+    if data_iso:
+        try:
+            semana = datetime.strptime(data_iso, "%Y-%m-%d").isocalendar()[1]
+        except Exception:
+            semana = None
+    if semana is None:
+        semana = datetime.now(ZoneInfo("America/Fortaleza")).isocalendar()[1]
+
+    return f"Plano de Acao - {cliente} x Grid Co - O&M - Semana {semana}.docx"
+
+
+@app.route("/gerar-plano-acao", methods=["POST", "OPTIONS"])
+def gerar_plano_acao_route():
+    """
+    Gera o "Plano de Ação" (.docx, padrão visual Grid Co.) a partir de uma
+    ata/transcrição de reunião enviada pelo usuário no Painel de Relatórios
+    (card "Geração de Planos de Ação", antiga "Atas de Reunião").
+
+    multipart/form-data:
+      - "arquivo": .docx/.txt (transcrição Teams, extraída como texto) ou
+        .pdf/.png/.jpg/.jpeg/.webp (ata escaneada ou fotografada — enviada
+        nativa pra IA, sem extração de texto separada)
+      - "cliente": (opcional) nome do cliente/contraparte, pra ajudar a IA
+        a rotular a capa corretamente sem precisar adivinhar do texto.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY não configurada no servidor."}), 500
+    try:
+        arquivo = request.files.get("arquivo") or request.files.get("transcricao")
+        if not arquivo or not arquivo.filename:
+            return jsonify({"ok": False, "error": "Anexe a ata (.docx, .txt, .pdf ou imagem)."}), 400
+
+        cliente_hint = (request.form.get("cliente") or "").strip()
+        conteudo_bytes = arquivo.read()
+        nome = (arquivo.filename or "").lower()
+
+        texto_transcricao = None
+        arquivo_bytes_ia = None
+        arquivo_mime_ia = None
+
+        if nome.endswith(".pdf"):
+            arquivo_bytes_ia = conteudo_bytes
+            arquivo_mime_ia = "application/pdf"
+        elif nome.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            ext = nome.rsplit(".", 1)[-1]
+            arquivo_bytes_ia = conteudo_bytes
+            arquivo_mime_ia = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+        else:
+            texto_transcricao = _extrair_texto_transcricao(arquivo.filename, conteudo_bytes)
+            if not texto_transcricao.strip():
+                return jsonify({"ok": False, "error": "Não foi possível extrair texto do arquivo enviado."}), 400
+
+        log.info(f"[Plano de Acao] Arquivo recebido: {arquivo.filename} "
+                 f"({len(conteudo_bytes)} bytes), modo={'nativo(' + arquivo_mime_ia + ')' if arquivo_bytes_ia else 'texto'}, "
+                 f"cliente_hint={cliente_hint!r}")
+
+        dados = _gerar_dados_plano_acao_com_ia(
+            cliente_hint, texto_transcricao=texto_transcricao,
+            arquivo_bytes=arquivo_bytes_ia, arquivo_mime=arquivo_mime_ia,
+        )
+        conteudo = gerar_plano_acao_docx(dados)
+        nome_arquivo = _montar_nome_arquivo_plano_acao(dados)
+
+        log.info(f"[Plano de Acao] Gerado com sucesso: {nome_arquivo} ({len(dados.get('topicos', []))} tópicos)")
+        return send_file(
+            BytesIO(conteudo), as_attachment=True, download_name=nome_arquivo,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    except Exception as e:
+        log.error(f"[Plano de Acao] Erro: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
