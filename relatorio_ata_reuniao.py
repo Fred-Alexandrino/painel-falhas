@@ -224,7 +224,8 @@ def _new_table(doc_or_cell, rows, cols, widths_dxa):
 
 # ═══════════════════════════ COMPONENTES DA SKILL ═══════════════════════
 
-def _build_cover(doc, titulo_capa, subtitulo_capa, supertitulo, subtitulo_doc, data_extenso, rodape_doc):
+def _build_cover(doc, titulo_capa, subtitulo_capa, supertitulo, subtitulo_doc, data_extenso, rodape_doc,
+                  rotulo_capa="ATA DE REUNIÃO"):
     table = _new_table(doc, 1, 2, [339, 11578])
     row = table.rows[0]
     _set_row_height(row, 15220)
@@ -255,7 +256,7 @@ def _build_cover(doc, titulo_capa, subtitulo_capa, supertitulo, subtitulo_doc, d
     _run(p2, "")
 
     p3 = _para(dark_cell, space_after=80)
-    _run(p3, "ATA DE REUNIÃO", color=GRAY_LABEL, size_half_pt=16)
+    _run(p3, rotulo_capa, color=GRAY_LABEL, size_half_pt=16)
 
     p4 = _para(dark_cell)
     _run(p4, titulo_capa, color=WHITE, size_half_pt=44)
@@ -362,6 +363,46 @@ def _step_row(doc, n, titulo, responsavel, corpo, callout_label=None, callout_te
         _set_paragraph_shading(p_call, fill_callout)
         _run(p_call, callout_label + "  ", color=NOTE_TEXT, bold=True, size_half_pt=18)
         _run(p_call, callout_texto, color=NOTE_TEXT, size_half_pt=18)
+
+    return table
+
+
+def _topic_action_block(doc, n, titulo, acoes):
+    """Bloco de tópico para o Plano de Ação: número + título (mesma
+    moldura visual do _step_row da Ata), seguido de uma lista com bullet
+    das ações definidas para aquele tópico — sem responsável/corpo/callout,
+    que são exclusivos da Ata de Reunião."""
+    fill = GRAY_LIGHT if _step_alt["v"] else WHITE
+    _step_alt["v"] = not _step_alt["v"]
+
+    table = _new_table(doc, 1, 2, [600, 8760])
+    c0, c1 = table.rows[0].cells
+    _set_cell_bg(c0, DARK_COVER)
+    _set_cell_border(c0)
+    _set_cell_margins(c0, top=120, bottom=120, left=100, right=100)
+    c0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    p0 = c0.paragraphs[0]
+    p0.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _run(p0, str(n), color=WHITE, bold=True, size_half_pt=24)
+
+    _set_cell_bg(c1, fill)
+    _set_cell_border(c1, bottom={"sz": 2, "color": BORDER})
+    _set_cell_margins(c1, top=120, bottom=120, left=200, right=160)
+
+    p_titulo = c1.paragraphs[0]
+    p_titulo.paragraph_format.space_after = Pt(4)
+    _run(p_titulo, titulo, bold=True, size_half_pt=20)
+
+    if not acoes:
+        p_vazio = _para(c1, space_after=60, line=260)
+        _run(p_vazio, "Sem ações específicas definidas para este tópico.",
+             color=GRAY_TEXT, italic=True, size_half_pt=18)
+    else:
+        for i, acao in enumerate(acoes):
+            p_item = _para(c1, alignment=WD_ALIGN_PARAGRAPH.JUSTIFY,
+                            space_after=(60 if i == len(acoes) - 1 else 40), line=260)
+            _run(p_item, "•  ", color=GREEN_RESP, bold=True, size_half_pt=19)
+            _run(p_item, acao, size_half_pt=19)
 
     return table
 
@@ -605,6 +646,95 @@ def gerar_ata_reuniao_docx(dados):
     premissas = dados.get("premissas", [])
     for i, texto in enumerate(premissas):
         _prem_row(doc, i + 1, texto, alt=(i % 2 == 1))
+
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# ═══════════════════════════ PLANO DE AÇÃO (a partir de ata) ═══════════
+#
+# Reaproveita toda a identidade visual da Ata de Reunião (capa, section
+# headers, header/footer) mas troca o corpo do documento: em vez da ata
+# completa (tópicos + responsável + corpo + cronograma + ações + premissas),
+# lista apenas os tópicos discutidos, cada um com suas ações em bullet
+# logo abaixo — pedido do Fred em 05/09/2026 pra substituir "Atas de
+# Reunião" por "Geração de Planos de Ação" no Painel de Relatórios.
+
+def gerar_plano_acao_docx(dados):
+    """
+    dados = {
+      "titulo_capa": "Plano de Ação",
+      "subtitulo_capa": "RENOGRID & GRID CO.",
+      "clientes_label": "Renogrid & Grid Co.",
+      "data_extenso": "23 de julho de 2026",
+      "rodape_capa": "Documento de uso interno — Grid Co. / Renogrid",
+      "objetivo": "parágrafo opcional de contexto, ou None/vazio",
+      "topicos": [
+        {"titulo": "...", "acoes": ["ação 1", "ação 2", ...]}
+      ]
+    }
+    Retorna bytes do .docx pronto.
+    """
+    _step_alt["v"] = False
+    doc = Document()
+
+    settings_el = doc.settings.element
+    zoom_el = settings_el.find(qn("w:zoom"))
+    if zoom_el is not None and zoom_el.get(qn("w:percent")) is None:
+        zoom_el.set(qn("w:percent"), "100")
+
+    sec0 = doc.sections[0]
+    sec0.page_width = Twips(11906)
+    sec0.page_height = Twips(16838)
+    sec0.top_margin = Twips(0)
+    sec0.bottom_margin = Twips(0)
+    sec0.left_margin = Twips(0)
+    sec0.right_margin = Twips(0)
+
+    _build_cover(
+        doc,
+        dados.get("titulo_capa", "Plano de Ação"),
+        dados.get("subtitulo_capa", "GRID CO."),
+        dados.get("supertitulo", "VISÃO OPERACIONAL — PLANO DE AÇÃO"),
+        dados.get("subtitulo_doc", "Plano de Ação — Reunião"),
+        dados.get("data_extenso", ""),
+        dados.get("rodape_capa", "Documento de uso interno — Grid Co."),
+        rotulo_capa="PLANO DE AÇÃO",
+    )
+
+    sec1 = doc.add_section(WD_SECTION.NEW_PAGE)
+    sec1.page_width = Twips(11906)
+    sec1.page_height = Twips(16838)
+    sec1.top_margin = Twips(1080)
+    sec1.bottom_margin = Twips(1080)
+    sec1.left_margin = Twips(1080)
+    sec1.right_margin = Twips(1080)
+
+    header_titulo = dados.get("header_titulo", dados.get("titulo_capa", "Plano de Ação"))
+    clientes_label = dados.get("clientes_label", dados.get("subtitulo_capa", "Grid Co."))
+    _add_header_footer(
+        sec1,
+        f"PLANO DE AÇÃO | {clientes_label} — {header_titulo}",
+        f"Grid Co.  |  Plano de Ação  |  {dados.get('footer_revisao', 'Revisão 1')}",
+    )
+
+    n_sec = 1
+
+    objetivo = (dados.get("objetivo") or "").strip()
+    if objetivo:
+        _sec_header(doc, f"{n_sec}.  OBJETIVO DO DOCUMENTO")
+        _spacer(doc, 80)
+        _body_p(doc, objetivo)
+        _spacer(doc, 160)
+        n_sec += 1
+
+    _sec_header(doc, f"{n_sec}.  TÓPICOS E AÇÕES")
+    _spacer(doc, 80)
+    _body_p(doc, "Tópicos discutidos na reunião e as ações definidas para cada um, na ordem em "
+                 "que foram tratados.", italic=True, space_after=160)
+    for i, t in enumerate(dados.get("topicos", []), start=1):
+        _topic_action_block(doc, i, t.get("titulo", ""), t.get("acoes", []))
 
     buf = BytesIO()
     doc.save(buf)
