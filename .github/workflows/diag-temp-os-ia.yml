@@ -1,0 +1,36 @@
+name: Diagnostico OS IA
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chamar endpoint de geracao de OS
+        run: |
+          curl -sS -X POST "https://api.168.138.232.237.sslip.io/gerar-texto-os-ia?diagnostico=true" \
+            -H "Content-Type: application/json" \
+            -H "X-Usar-Chave-Teste: true" \
+            --data @- << 'PAYLOAD' > backups/diag-os-resultado.json
+          {
+            "cliente": "Sal Energia",
+            "usina": "Cascavel 1 (Sunpower)",
+            "equipamento": "SALE-SNP100-DINV6.2 - Disjuntor do Inversor 6.2 / Datalogger do inversor 6.2",
+            "falha": "Datalogger do inversor 6.2 com defeito, precisa ser substituido. Atividade pode ser feita com o inversor em operacao, nao precisa desligar.",
+            "causa": "",
+            "acao": "",
+            "historico": "",
+            "responsavel": ""
+          }
+          PAYLOAD
+          cat backups/diag-os-resultado.json
+      - name: Commit resultado
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "diag-bot@users.noreply.github.com"
+          git add backups/diag-os-resultado.json
+          git commit -m "diag: resultado teste gerar-texto-os-ia" || echo "sem mudancas"
+          git push
