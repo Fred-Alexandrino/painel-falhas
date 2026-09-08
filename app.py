@@ -11649,7 +11649,7 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_M
 def _montar_prompt_os(d):
     return f"""Aja como um Engenheiro e Especialista em Operação e Manutenção (O&M), com foco em Usinas Solares Fotovoltaicas, sistemas elétricos, mecânicos e atividades de facilities (limpeza, conservação, manutenções civis).
 
-Sua tarefa é redigir Ordens de Serviço (OS) baseadas na solicitação abaixo. Transforme a solicitação em um texto objetivo, profissional, técnico e estritamente padronizado.
+Sua tarefa é redigir Ordens de Serviço (OS) baseadas na solicitação abaixo, no formato exigido pela nova plataforma de solicitação de OS da Grid Co., que tem 3 campos SEPARADOS por OS: "titulo", "observacao" e "subtarefas" (lista de itens).
 
 REGRA DE SEPARAÇÃO EM MÚLTIPLAS OS (MUITO IMPORTANTE, leia antes de tudo):
 A solicitação abaixo pode descrever mais de uma frente de trabalho de uma vez (texto colado direto de anotações de campo, por exemplo). Você deve dividir em OSs SEPARADAS sempre que identificar:
@@ -11658,113 +11658,120 @@ A solicitação abaixo pode descrever mais de uma frente de trabalho de uma vez 
 CÂMERAS/CFTV: dentro de UMA MESMA usina, todo o conteúdo de câmeras (reposicionamento, foco, teste, instalação, várias câmeras diferentes) fica numa OS só — não precisa separar por número de câmera. Mas se o mesmo assunto de câmera envolver mais de uma usina, cada usina vira sua própria OS.
 Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou só câmeras de uma única usina), gere apenas UMA OS normalmente.
 
-REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente:
-- Esqueça introduções, conclusões, saudações, tabelas, ou seções como "Objetivo", "Descrição", "Responsáveis" ou "Evidências".
-- Cada OS deve conter APENAS o "Título" e os "Comentários". Siga este modelo exato:
+REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente, sempre com estes 3 campos:
 
-Título: [Nome curto e direto da atividade]
-Comentários:
+1. "titulo": nome curto e direto da atividade. Sem prefixos como "Título:".
 
-• [Passo 1 do procedimento]
-• [Passo 2 do procedimento]
-• [Passo 3...]
+2. "observacao": um único texto (pode ter mais de uma frase, ou vários itens marcados com "•" se houver mais de um ponto) reunindo tudo que NÃO é um passo de execução, ou seja:
+   - EPIs necessários para a atividade;
+   - procedimentos de desenergização, bloqueio e etiquetagem (LOTO), teste de ausência de tensão, sinalização da área, quando aplicável;
+   - autorização do COS quando aplicável (ver regra específica da Grid Co. abaixo);
+   - condições especiais ou exceções relevantes pra quem for executar (ex.: "atividade pode ser realizada com o inversor em operação, não é necessário desligá-lo", ou o oposto, se exigir desligamento);
+   - pedido para anotar condições climáticas, quando a atividade envolver medições comparativas de geração.
+   Se não houver nada relevante pra esse campo numa OS específica, devolva "observacao" como string vazia. NUNCA coloque um passo de execução dentro de "observacao".
 
-REGRAS DE ESCRITA E VOCABULÁRIO:
-- O texto deve ser curto na estrutura (frases objetivas, sem enrolação), mas cada passo deve ser DETALHADO E ESPECÍFICO O SUFICIENTE para não deixar margem de interpretação. Escreva pensando que a equipe de campo, se o passo for vago, tende a executar de forma resumida ou pular a etapa — o texto tem que fechar essa brecha.
+3. "subtarefas": lista de itens, cada um sendo uma AÇÃO DE EXECUÇÃO concreta e específica (o "o que fazer", não o "como se proteger" — isso já foi pra "observacao"). Cada item é uma string curta e objetiva, sem marcador "•" ou número na frente (a plataforma numera sozinha).
+   - SEMPRE termine a lista de "subtarefas" com estes 2 itens finais, exatamente nesta ordem e com este texto exato, em toda OS, sem exceção: "Registro fotográfico da atividade" e "Ficou alguma pendência? Se sim, descreva". Não crie um item equivalente a esses em outro lugar da lista (evite duplicar "registrar fotos" como um passo do meio).
+   - Quantidade de subtarefas específicas (sem contar os 2 itens fixos finais): até 6 na maioria dos casos. Só ultrapasse esse teto em atividades genuinamente complexas, com múltiplas frentes técnicas dentro da mesma OS (ex.: visita técnica semanal, inspeção completa com vários subsistemas) — nesses casos não há limite fixo.
+
+REGRAS DE ESCRITA E VOCABULÁRIO (para "titulo" e "subtarefas"):
+- Texto objetivo e sem enrolação, mas cada subtarefa deve ser DETALHADA E ESPECÍFICA O SUFICIENTE para não deixar margem de interpretação. Escreva pensando que a equipe de campo, se o passo for vago, tende a executar de forma resumida ou pular a etapa — o texto tem que fechar essa brecha.
 - Não invente informações ou equipamentos que não foram solicitados, mas garanta que o passo a passo faça sentido técnico.
-- Integre orientações de segurança (EPIs, desenergização, sinalização) diretamente nos passos da atividade.
-- Não repita a mesma ideia em mais de um item.
-- Para atividades de acompanhamento/fiscalização, inicie os passos com verbos como: Acompanhar, verificar, conferir, registrar, avaliar, validar.
-- Para atividades de execução direta, inicie os passos com verbos como: Realizar, executar, corrigir, ajustar, efetuar, acessar, inspecionar.
+- Não repita a mesma ideia em mais de uma subtarefa.
+- Para atividades de acompanhamento/fiscalização, inicie as subtarefas com verbos como: Acompanhar, verificar, conferir, avaliar, validar.
+- Para atividades de execução direta, inicie as subtarefas com verbos como: Realizar, executar, corrigir, ajustar, efetuar, acessar, inspecionar, desconectar, instalar, configurar.
 
-REGRA DE DETALHAMENTO ANTI-EXECUÇÃO-SUPERFICIAL (MUITO IMPORTANTE):
-- Nunca deixe um passo genérico e solto, sem objeto claro — proibido escrever coisas como "verificar equipamento", "realizar manutenção", "checar funcionamento", "inspecionar componentes" sem dizer O QUÊ exatamente verificar/realizar/checar/inspecionar.
-- Cada passo deve, sempre que aplicável, deixar explícito: (1) ONDE fazer — o ponto físico exato (ex.: entrada CC do inversor, saída CA, quadro de proteção, string X, conector MC4, cada canaleta, cada face do módulo), não só "no equipamento"; (2) COM QUE FERRAMENTA/MÉTODO — alicate amperímetro, multímetro, inspeção visual, acesso ao supervisório/datalogger, torquímetro, etc.; (3) QUAL O CRITÉRIO de aceite ou o que deve ser comparado — ex.: comparar leitura de campo com a plataforma de monitoramento, verificar se há assimetria entre strings, checar se o valor está dentro da faixa nominal, confirmar ausência de folga/oxidação/aquecimento.
-- Se a atividade tiver múltiplos itens do mesmo tipo (várias strings, vários módulos, vários conectores, várias câmeras), deixe claro no passo que a verificação/ação deve ser feita EM CADA UM deles individualmente, não só "de forma geral".
-- Pelo menos um dos últimos passos deve exigir registro de evidência de forma explícita e específica (fotos do antes/depois, valores medidos anotados, prints de tela) — não basta um "registrar" solto, diga o que precisa ser registrado.
+REGRA DE DETALHAMENTO ANTI-EXECUÇÃO-SUPERFICIAL (MUITO IMPORTANTE, aplica-se às "subtarefas"):
+- Nunca deixe uma subtarefa genérica e solta, sem objeto claro — proibido escrever coisas como "verificar equipamento", "realizar manutenção", "checar funcionamento", "inspecionar componentes" sem dizer O QUÊ exatamente verificar/realizar/checar/inspecionar.
+- Cada subtarefa deve, sempre que aplicável, deixar explícito: (1) ONDE fazer — o ponto físico exato (ex.: entrada CC do inversor, saída CA, quadro de proteção, string X, conector MC4, cada canaleta, cada face do módulo), não só "no equipamento"; (2) COM QUE FERRAMENTA/MÉTODO — alicate amperímetro, multímetro, inspeção visual, acesso ao supervisório/datalogger, torquímetro, etc.; (3) QUAL O CRITÉRIO de aceite ou o que deve ser comparado — ex.: comparar leitura de campo com a plataforma de monitoramento, verificar se há assimetria entre strings, checar se o valor está dentro da faixa nominal, confirmar ausência de folga/oxidação/aquecimento.
+- Se a atividade tiver múltiplos itens do mesmo tipo (várias strings, vários módulos, vários conectores, várias câmeras), deixe claro na subtarefa que a verificação/ação deve ser feita EM CADA UM deles individualmente, não só "de forma geral".
+- No campo "observacao", se a atividade envolver medição, peça o **valor medido com unidade** comparado ao nominal/plataforma de monitoramento — mas a AÇÃO de medir e anotar continua sendo uma subtarefa; o campo "observacao" só complementa com o critério/EPI/instrumento quando fizer sentido separar.
 
 REGRA PARA MEDIÇÕES ELÉTRICAS CC/CA (OBRIGATÓRIA sempre que a atividade envolver medir tensão ou corrente, ex.: strings, entrada/saída de inversor, quadros, trafo):
-- Especifique sempre se a medição é de tensão ou corrente **CC** (lado dos módulos/strings, entrada do inversor) ou **CA** (lado da rede, saída do inversor) — nunca deixe implícito.
-- Informe o instrumento correto: alicate amperímetro **True RMS com sonda de efeito Hall** para corrente CC (alicate comum não mede CC corretamente); alicate/multímetro comum é suficiente para grandezas CA. Inclua um passo pedindo pra selecionar a **escala/faixa correta** no instrumento antes de medir (faixa de corrente compatível com a Isc do string, faixa de tensão compatível com a Voc), e checar que as pontas de prova/garras estão com isolamento íntegro.
-- Deixe claro se a medição é feita **com o sistema em operação** (string fechada, gerando) ou **em circuito aberto/desenergizado** (para medir Voc é preciso abrir a string antes) — não assuma, escreva explicitamente qual das duas.
-- Se a atividade exigir desenergizar (abrir string, acessar bornes internos do inversor, quadro, trafo): inclua passos de **bloqueio e etiquetagem (LOTO)**, **teste de ausência de tensão com detector antes de tocar** (teste dos 3 pontos: testar o detector numa fonte conhecida, testar no equipamento, testar de novo na fonte conhecida) e aguardar o **tempo de descarga dos capacitores internos** do inversor antes de manusear bornes internos, seguindo a ordem de desligamento do fabricante (CA antes de CC, ou conforme manual).
-- Sempre inclua o EPI adequado à classe de tensão do sistema: luva isolante de borracha na classe correta + luva de proteção mecânica por cima, óculos ou protetor facial, calçado isolante, ferramentas com cabo isolado — conforme NR-10.
-- Inclua um passo pedindo pra anotar as **condições climáticas no momento da medição** (céu limpo, parcialmente nublado, nublado, chuva) — necessário pra dar contexto à comparação entre strings/inversores, já que geração varia com o clima.
-- Ao medir múltiplas strings/circuitos, peça pra medir e registrar **cada um identificado pelo seu rótulo/etiqueta**, nunca uma medição genérica "do inversor".
-- No passo de registro, exija o **valor medido com unidade** (não só "medir e verificar"), comparado com o valor nominal de placa/datasheet ou com a leitura da plataforma de monitoramento, além de foto do display do instrumento no ponto medido.
+- Nas subtarefas, especifique sempre se a medição é de tensão ou corrente **CC** (lado dos módulos/strings, entrada do inversor) ou **CA** (lado da rede, saída do inversor) — nunca deixe implícito. Informe o instrumento correto na própria subtarefa: alicate amperímetro **True RMS com sonda de efeito Hall** para corrente CC (alicate comum não mede CC corretamente); alicate/multímetro comum é suficiente para grandezas CA. Deixe claro se a medição é feita **com o sistema em operação** (string fechada, gerando) ou **em circuito aberto/desenergizado** (para medir Voc é preciso abrir a string antes).
+- No campo "observacao" dessas OSs, inclua: selecionar a **escala/faixa correta** no instrumento antes de medir e checar isolamento das pontas de prova; se exigir desenergizar (abrir string, acessar bornes internos do inversor, quadro, trafo) inclua **bloqueio e etiquetagem (LOTO)**, **teste de ausência de tensão com detector antes de tocar** (teste dos 3 pontos) e aguardar o **tempo de descarga dos capacitores internos** antes de manusear bornes internos, na ordem de desligamento do fabricante (CA antes de CC, ou conforme manual); o EPI adequado à classe de tensão (luva isolante de borracha na classe correta + luva de proteção mecânica por cima, óculos ou protetor facial, calçado isolante, ferramentas com cabo isolado — NR-10); e o pedido pra anotar as **condições climáticas no momento da medição** (céu limpo, parcialmente nublado, nublado, chuva), necessário pra contextualizar a comparação entre strings/inversores.
+- Ao medir múltiplas strings/circuitos, a subtarefa deve pedir pra medir e registrar **cada um identificado pelo seu rótulo/etiqueta**, nunca uma medição genérica "do inversor".
 
 REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
-- Só inclua um passo pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua um item pedindo autorização do COS antes da intervenção.
-- Em qualquer outro caso, NÃO inclua nenhum item sobre o COS — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
-- Sempre que a atividade envolver inspeção de trackers, estruturas de fixação/suporte de módulos fotovoltaicos, ou integridade estrutural/civil da usina de forma geral, inclua um passo avaliando as estruturas de fixação dos módulos quanto a afundamento (verificar se as bases/fundações/perfis de fixação apresentam sinais de afundamento, desnivelamento ou instabilidade no solo).
+- Só inclua, no campo "observacao", uma frase pedindo autorização do COS (centro de operações) se a atividade envolver desligamento de inversor, desligamento da usina inteira, ou trabalho em SKID ou na Cabine de Medição Primária. Nesses casos, inclua a exigência de autorização do COS antes da intervenção dentro de "observacao" — nunca como subtarefa.
+- Em qualquer outro caso, NÃO mencione o COS em nenhum campo — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
+- Sempre que a atividade envolver inspeção de trackers, estruturas de fixação/suporte de módulos fotovoltaicos, ou integridade estrutural/civil da usina de forma geral, inclua uma subtarefa avaliando as estruturas de fixação dos módulos quanto a afundamento (verificar se as bases/fundações/perfis de fixação apresentam sinais de afundamento, desnivelamento ou instabilidade no solo).
 
-EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS):
+EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS; "titulo" / "observacao" / lista de "subtarefas" — os 2 últimos itens de "subtarefas" são sempre os fixos e não variam):
 
 Exemplo 1 (Atividade de Execução/Facilities)
-Título: Limpeza de caixa d'água
-Comentários:
-
-• Fechar o registro de entrada de água (boia) com antecedência e isolar a área de acesso.
-• Esvaziar a caixa até que reste apenas cerca de um palmo de água no fundo.
-• Esfregar as paredes e o fundo utilizando escovas macias e exclusivas para este fim, sem uso de produtos químicos não homologados.
-• Esvaziar a água suja, realizar o enxágue das paredes, reabrir o registro de entrada e fechar a tampa de forma hermética.
+titulo: Limpeza de caixa d'água
+observacao: ""
+subtarefas:
+- Fechar o registro de entrada de água (boia) com antecedência e isolar a área de acesso.
+- Esvaziar a caixa até que reste apenas cerca de um palmo de água no fundo.
+- Esfregar as paredes e o fundo utilizando escovas macias e exclusivas para este fim, sem uso de produtos químicos não homologados.
+- Esvaziar a água suja, realizar o enxágue das paredes, reabrir o registro de entrada e fechar a tampa de forma hermética.
+- Registro fotográfico da atividade
+- Ficou alguma pendência? Se sim, descreva
 
 Exemplo 2 (Atividade de Diagnóstico/Elétrica)
-Título: Inversor com aparente limitação de potência
-Comentários:
-
-• Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
-• Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
-• Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para garantir que a queda de potência não seja causada por falha nos módulos ou sujeira.
+titulo: Inversor com aparente limitação de potência
+observacao: "Atividade não exige desligamento do inversor."
+subtarefas:
+- Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
+- Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
+- Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro True RMS, comparando cada string com a plataforma de monitoramento para identificar se a queda de potência é causada por falha nos módulos ou sujeira.
+- Registro fotográfico da atividade
+- Ficou alguma pendência? Se sim, descreva
 
 Exemplo 3 (Atividade de Acompanhamento)
-Título: Acompanhamento de roçagem
-Comentários:
-
-• Acompanhar a execução da roçagem na área designada, confirmando a delimitação do espaço.
-• Verificar a sinalização e o uso correto de EPIs pela equipe terceira durante toda a atividade.
-• Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
-• Registrar o andamento com evidências fotográficas e anotar eventuais pendências para correção.
+titulo: Acompanhamento de roçagem
+observacao: "Verificar a sinalização da área e o uso correto de EPIs pela equipe terceira durante toda a atividade."
+subtarefas:
+- Acompanhar a execução da roçagem na área designada, confirmando a delimitação do espaço.
+- Conferir se o serviço foi realizado conforme o planejamento, garantindo a integridade dos cabos e estruturas próximas.
+- Anotar eventuais pendências identificadas durante a roçagem para correção posterior.
+- Registro fotográfico da atividade
+- Ficou alguma pendência? Se sim, descreva
 
 Exemplo 4 (Atividade de Ajuste — CFTV, várias câmeras da MESMA usina ficam JUNTAS numa OS só)
-Título: Reposicionamento de câmeras de CFTV
-Comentários:
+titulo: Reposicionamento de câmeras de CFTV
+observacao: ""
+subtarefas:
+- Verificar a posição atual de cada câmera e o campo de visão afetado.
+- Realizar o reposicionamento físico conforme a necessidade operacional, ajustando inclinação e direcionamento.
+- Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
+- Registro fotográfico da atividade
+- Ficou alguma pendência? Se sim, descreva
 
-• Verificar a posição atual de cada câmera e o campo de visão afetado.
-• Realizar o reposicionamento físico conforme a necessidade operacional, ajustando inclinação e direcionamento.
-• Validar a visualização da imagem no sistema central de monitoramento para confirmar a cobertura desejada.
-• Registrar a atividade e as evidências de antes e depois da intervenção.
+Exemplo 5 (Visita Técnica Semanal — PADRÃO FIXO da Grid Co., use exatamente este conteúdo sempre que a solicitação pedir "visita técnica semanal", "ronda semanal" ou equivalente, sem alterar os itens, só adaptando se algo específico for pedido a mais; aqui as subtarefas específicas ultrapassam 6 porque é uma atividade com várias frentes)
+titulo: Visita Técnica Semanal
+observacao: ""
+subtarefas:
+- Realizar inspeção visual da vegetação na área da usina, avaliando a necessidade de roçagem e proximidade com os módulos e equipamentos.
+- Inspecionar a sujidade dos módulos fotovoltaicos, registrando o nível de acúmulo e a necessidade de limpeza.
+- Verificar as condições gerais da usina, incluindo vias de acesso, drenagem e integridade das estruturas.
+- Avaliar as estruturas de fixação dos módulos fotovoltaicos quanto a sinais de afundamento, desnivelamento ou instabilidade no solo das bases/fundações.
+- Conferir o cercamento perimetral, identificando pontos de vulnerabilidade ou danos.
+- Inspecionar visualmente os inversores, verificando a limpeza externa, funcionamento dos ventiladores e ausência de alarmes no display.
+- Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
+- Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
+- Registro fotográfico da atividade
+- Ficou alguma pendência? Se sim, descreva
 
-Exemplo 5 (Visita Técnica Semanal — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "visita técnica semanal", "ronda semanal" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
-Título: Visita Técnica Semanal
-Comentários:
-
-• Realizar inspeção visual da vegetação na área da usina, avaliando a necessidade de roçagem e proximidade com os módulos e equipamentos.
-• Inspecionar a sujidade dos módulos fotovoltaicos, registrando o nível de acúmulo e a necessidade de limpeza.
-• Verificar as condições gerais da usina, incluindo vias de acesso, drenagem e integridade das estruturas.
-• Avaliar as estruturas de fixação dos módulos fotovoltaicos quanto a sinais de afundamento, desnivelamento ou instabilidade no solo das bases/fundações.
-• Conferir o cercamento perimetral, identificando pontos de vulnerabilidade ou danos.
-• Inspecionar visualmente os inversores, verificando a limpeza externa, funcionamento dos ventiladores e ausência de alarmes no display.
-• Coletar os dados de geração de cada inversor (dados de geração diária, de todos os dias deste mês).
-• Acessar o sistema de CFTV para verificar o funcionamento das câmeras, qualidade das imagens e cobertura das áreas.
-• Registrar todas as observações e evidências fotográficas para cada item inspecionado.
-
-Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este texto sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os passos, só adaptando se algo específico for pedido a mais)
-Título: Inspeção de Inversor para Abertura de Chamado
-Comentários:
-
-• Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
-• Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
-• Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro para identificar possíveis anomalias.
-• Inspecionar as medições de tensão e corrente nas entradas CA com alicate amperímetro para identificar possíveis anomalias.
-• Coleta do número de série e posição operacional do inversor.
-• Registrar todas as observações e evidências fotográficas para subsidiar a abertura de chamado.
+Exemplo 6 (Inspeção de Inversor para Abertura de Chamado — PADRÃO FIXO da Grid Co., use exatamente este conteúdo sempre que a solicitação pedir "inspeção de inversor para abertura de chamado", "inspeção pra chamado" ou equivalente, sem alterar os itens, só adaptando se algo específico for pedido a mais)
+titulo: Inspeção de Inversor para Abertura de Chamado
+observacao: ""
+subtarefas:
+- Acessar o sistema de monitoramento (supervisório) para verificar alarmes ativos, histórico de geração e indicação de derating.
+- Realizar inspeção visual no inversor em campo, checando o funcionamento dos ventiladores e desobstrução das grades de ventilação.
+- Inspecionar as medições de tensão e corrente nas entradas CC com alicate amperímetro True RMS para identificar possíveis anomalias.
+- Inspecionar as medições de tensão e corrente nas entradas CA com alicate/multímetro para identificar possíveis anomalias.
+- Coletar o número de série e a posição operacional do inversor.
+- Registro fotográfico da atividade
+- Ficou alguma pendência? Se sim, descreva
 
 Aplique exclusivamente este padrão. Não invente números de ticket, causas, nomes ou dados que não foram informados abaixo. Não repita a mesma OS mais de uma vez.
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
-{{"textos": ["Título: ...\\nComentários:\\n\\n• ...\\n• ...", "Título: ...\\nComentários:\\n\\n• ..."]}}
-Cada item da lista é o texto completo de uma OS, no padrão exato descrito acima. Se só houver uma frente de trabalho, a lista tem um item só.
+{{"os": [{{"titulo": "...", "observacao": "...", "subtarefas": ["...", "...", "Registro fotográfico da atividade", "Ficou alguma pendência? Se sim, descreva"]}}]}}
+Cada item da lista "os" é uma OS completa, no padrão exato descrito acima (campo "observacao" pode ser string vazia "" quando não houver nada relevante). Se só houver uma frente de trabalho, a lista "os" tem um item só.
 
 Dados da solicitação:
 - Cliente: {d.get("cliente") or "não informado"}
@@ -12957,24 +12964,49 @@ def gerar_texto_os_ia():
             raise ValueError(f"Resposta incompleta da IA (finishReason={finish_reason or 'desconhecido'})")
 
         texto_limpo = re.sub(r"^```json\s*|\s*```$", "", texto_bruto.strip())
+        os_lista = []
         try:
             parsed = json.loads(texto_limpo)
-            textos = parsed.get("textos") or []
-            textos = [t.strip() for t in textos if t and t.strip()]
+            for item in (parsed.get("os") or []):
+                titulo = (item.get("titulo") or "").strip()
+                observacao = (item.get("observacao") or "").strip()
+                subtarefas = [s.strip() for s in (item.get("subtarefas") or []) if s and s.strip()]
+                if not titulo and not subtarefas:
+                    continue
+                os_lista.append({"titulo": titulo, "observacao": observacao, "subtarefas": subtarefas})
         except (json.JSONDecodeError, AttributeError):
+            os_lista = []
+
+        if not os_lista:
             # fallback: se a IA não devolveu o JSON esperado por algum
-            # motivo, trata a resposta inteira como um texto único —
-            # evita quebrar a funcionalidade por causa de um formato
-            # inesperado pontual.
-            textos = [texto_bruto]
+            # motivo, trata a resposta inteira como um "titulo" único sem
+            # observação/subtarefas estruturadas — evita quebrar a
+            # funcionalidade por causa de um formato inesperado pontual.
+            log.error(f"[gerar-texto-os-ia] JSON fora do padrão esperado, usando fallback bruto: {texto_bruto[:300]!r}")
+            os_lista = [{"titulo": texto_bruto.strip(), "observacao": "", "subtarefas": []}]
 
-        if not textos:
-            raise ValueError("A IA não retornou nenhum texto de OS")
+        # "texto"/"textos" (formato antigo, Título + Comentários em bloco
+        # único) continuam sendo montados a partir dos campos estruturados,
+        # pra não quebrar nenhum consumidor antigo que ainda dependa deles.
+        def _montar_texto_legado(o):
+            partes = [f"Título: {o['titulo']}"]
+            comentarios = []
+            if o["observacao"]:
+                comentarios.append(o["observacao"])
+            comentarios.extend(o["subtarefas"])
+            if comentarios:
+                partes.append("Comentários:\n\n" + "\n".join(f"• {c}" for c in comentarios))
+            return "\n\n".join(partes)
 
-        # "texto" continua existindo (primeiro item) pra não quebrar quem
-        # já usava o formato antigo; "textos" é a lista completa, usada
-        # quando a solicitação foi dividida em mais de uma OS.
-        resultado = {"ok": True, "texto": textos[0], "textos": textos}
+        textos = [_montar_texto_legado(o) for o in os_lista]
+
+        resultado = {
+            "ok": True,
+            "os": os_lista,
+            # campos legados, mantidos por compatibilidade:
+            "texto": textos[0],
+            "textos": textos,
+        }
         if diagnostico:
             resultado["chave_teste_configurada"] = bool(GEMINI_API_KEY_TESTE)
         return jsonify(resultado)
