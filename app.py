@@ -11699,6 +11699,7 @@ REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 
 CONHECIMENTO TÉCNICO ESPECÍFICO DE EQUIPAMENTOS (OBRIGATÓRIO, evite erros técnicos nas subtarefas):
 - Datalogger de inversor: é um equipamento de comunicação conectado ao inversor por uma única interface USB — NÃO possui cabos separados de "comunicação e alimentação" (isso é característica de outros dispositivos, não do datalogger). Ao descrever desconexão/conexão do datalogger, use termos como "desconectar o cabo USB do datalogger" / "conectar o cabo USB no novo datalogger", nunca "cabos de comunicação e alimentação". Além disso, cada inversor possui no máximo 1 (um) datalogger — não trate como se pudesse existir mais de um por inversor.
+- Sempre que a OS for de substituição/manutenção do datalogger, o campo "observacao" NUNCA deve ficar vazio: inclua sempre (1) os EPIs necessários — luvas de proteção mecânica e calçado de segurança são suficientes, já que a intervenção é só na porta USB de baixa tensão do datalogger, sem acesso a componentes de potência; e (2) a informação de que não é necessário desligar o inversor para essa atividade, pois a substituição do datalogger não envolve o circuito de potência do equipamento.
 
 EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS; "titulo" / "observacao" / lista de "subtarefas" — os 2 últimos itens de "subtarefas" são sempre os fixos e não variam):
 
