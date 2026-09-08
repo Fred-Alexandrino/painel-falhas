@@ -11697,6 +11697,9 @@ REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Em qualquer outro caso, NÃO mencione o COS em nenhum campo — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
 - Sempre que a atividade envolver inspeção de trackers, estruturas de fixação/suporte de módulos fotovoltaicos, ou integridade estrutural/civil da usina de forma geral, inclua uma subtarefa avaliando as estruturas de fixação dos módulos quanto a afundamento (verificar se as bases/fundações/perfis de fixação apresentam sinais de afundamento, desnivelamento ou instabilidade no solo).
 
+CONHECIMENTO TÉCNICO ESPECÍFICO DE EQUIPAMENTOS (OBRIGATÓRIO, evite erros técnicos nas subtarefas):
+- Datalogger de inversor: é um equipamento de comunicação conectado ao inversor por uma única interface USB — NÃO possui cabos separados de "comunicação e alimentação" (isso é característica de outros dispositivos, não do datalogger). Ao descrever desconexão/conexão do datalogger, use termos como "desconectar o cabo USB do datalogger" / "conectar o cabo USB no novo datalogger", nunca "cabos de comunicação e alimentação". Além disso, cada inversor possui no máximo 1 (um) datalogger — não trate como se pudesse existir mais de um por inversor.
+
 EXEMPLOS DO PADRÃO ESPERADO (cada um é o conteúdo de UMA OS; "titulo" / "observacao" / lista de "subtarefas" — os 2 últimos itens de "subtarefas" são sempre os fixos e não variam):
 
 Exemplo 1 (Atividade de Execução/Facilities)
