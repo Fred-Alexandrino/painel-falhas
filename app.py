@@ -7102,6 +7102,93 @@ def arquivar_anotacao():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/anotacoes/editar", methods=["POST"])
+def editar_anotacao():
+    """Edita uma anotação existente (texto, categoria, usina, cliente).
+    Não mexe em ID/Data/Autor/Status."""
+    try:
+        body = request.get_json(force=True) or {}
+        anot_id = str(body.get("id", "")).strip()
+        texto = str(body.get("texto", "")).strip()
+        if not anot_id:
+            return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+        if not texto:
+            return jsonify({"ok": False, "error": "texto é obrigatório"}), 400
+        categoria = str(body.get("categoria", "")).strip()
+        usina = str(body.get("usina", "")).strip()
+        cliente = str(body.get("cliente", "")).strip()
+
+        ws = _get_anotacoes_sheet()
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        for i, row in enumerate(todos[1:], start=2):
+            if row and row[0].strip() == anot_id:
+                _gspread_retry(lambda: ws.update(f"D{i}:G{i}", [[categoria, texto, usina, cliente]]))
+                return jsonify({"ok": True, "id": anot_id}), 200
+        return jsonify({"ok": False, "error": f"anotação {anot_id} não encontrada"}), 404
+    except Exception as e:
+        log.error(f"[Anotacoes] Erro ao editar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _montar_prompt_transcrever_anotacao(texto_previo):
+    return f"""Você vai transcrever o conteúdo de uma imagem para texto simples. A imagem pode ser: (a) uma foto de uma anotação MANUSCRITA num caderno, ou (b) um print/screenshot de tela (app, mensagem, planilha, etc.).
+
+REGRAS:
+- Transcreva SOMENTE o que está escrito/visível na imagem. NUNCA invente, complete ou deduza informação que não esteja claramente legível.
+- Se um trecho estiver ilegível ou ambíguo, marque com [ilegível] naquele ponto em vez de chutar uma palavra.
+- Corrija apenas erros óbvios de OCR (ex.: letra maiúscula/minúscula, espaçamento) — não reescreva o conteúdo nem mude o sentido.
+- Preserve quebras de linha, listas e estrutura como estão na imagem, quando fizer sentido pra legibilidade.
+- Se for letra manuscrita cursiva ou difícil, faça o seu melhor esforço, mas mantenha o princípio de nunca inventar.
+- Responda APENAS com o texto transcrito puro — sem comentários, sem markdown, sem aspas, sem prefixos como "Transcrição:".
+
+{f"Texto que o usuário já tinha começado a escrever (contexto, não repita): {texto_previo}" if texto_previo else ""}"""
+
+
+@app.route("/anotacoes/transcrever", methods=["POST", "OPTIONS"])
+def transcrever_anotacao_imagem():
+    """Recebe uma foto (caderno manuscrito ou print de tela) e devolve o
+    texto transcrito via Gemini (visão). NUNCA salva nada sozinho — só
+    transcreve e devolve pro frontend, que preenche o campo de texto pra
+    o usuário revisar/editar antes de clicar em Salvar (a transcrição por
+    IA pode errar, então a revisão manual é obrigatória antes de gravar)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        imagem_b64 = body.get("imagemBase64") or ""
+        imagem_mime = body.get("imagemMimeType") or "image/png"
+        texto_previo = (body.get("textoPrevio") or "").strip()
+        if not imagem_b64:
+            return jsonify({"ok": False, "error": "envie uma imagem em imagemBase64"}), 400
+
+        prompt = _montar_prompt_transcrever_anotacao(texto_previo)
+        parts = [
+            {"text": prompt},
+            {"inline_data": {"mime_type": imagem_mime, "data": imagem_b64}},
+        ]
+        diagnostico = request.args.get("diagnostico", "").lower() == "true"
+        resp = _chamar_gemini_com_retry(
+            {
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "temperature": 0.15,
+                    "maxOutputTokens": 4096,
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
+            timeout=45,
+            usar_chave_teste=diagnostico,
+        )
+        data = resp.json()
+        candidato = data["candidates"][0]
+        texto_transcrito = candidato["content"]["parts"][0]["text"].strip()
+        texto_transcrito = re.sub(r"^```\s*|\s*```$", "", texto_transcrito).strip()
+        return jsonify({"ok": True, "texto": texto_transcrito}), 200
+    except Exception as e:
+        log.error(f"[Anotacoes] Erro ao transcrever imagem: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _verificar_compromissos_se_necessario():
     """Piggyback no /sync-fracttal: roda 1x por dia na janela 07:00-08:30
     (mesma janela alargada dos comunicados, mesmo motivo — cold-start do
