@@ -3304,20 +3304,23 @@ def sobreaviso_upload():
 @app.route("/sobreaviso-blocos", methods=["GET"])
 def sobreaviso_blocos():
     """Lista os blocos (períodos de sobreaviso) do arquivo carregado por
-    último, com o índice do bloco sugerido (vigente/próximo) já calculado."""
+    último, com o índice do bloco sugerido (vigente/próximo) já calculado
+    e os supervisores de plantão de cada bloco (com telefone)."""
     payload = _sobreaviso_carregar_estado()
     if not payload:
         return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
 
     estado = payload["estado"]
     blocos = estado.get("blocos", [])
+    contatos = (estado.get("contatos") or {}).get("pessoas", {})
     return jsonify({
         "ok": True,
         "nome_arquivo": payload.get("nome_arquivo", ""),
         "carregado_em": payload.get("carregado_em"),
         "periodo": estado.get("periodo"),
         "blocos": [{"idx": i, "inicio": b["inicio"], "fim": b["fim"], "tipo": b["tipo"],
-                    "feriado": b.get("feriado", False), "label": _sobreaviso_fmt_bloco(b)}
+                    "feriado": b.get("feriado", False), "label": _sobreaviso_fmt_bloco(b),
+                    "supervisores": [{"nome": s, "telefone": contatos.get(s, "")} for s in b.get("supervisores", [])]}
                    for i, b in enumerate(blocos)],
         "bloco_sugerido": _sobreaviso_indice_bloco_sugerido(blocos),
     }), 200
@@ -3513,6 +3516,100 @@ def conferencia_sobreaviso():
         "sem_cluster": sem_cluster,
         "fora_sla": fora_sla_lista,
         "ok_usinas": ok_lista,
+    }), 200
+
+
+@app.route("/sobreaviso-meu", methods=["POST"])
+def gerar_comunicado_meu_sobreaviso():
+    """Gera o comunicado "vou estar de sobreaviso" pra técnicos ou pra
+    clientes, pros grupos/clusters que o Fred selecionar (normalmente os
+    dele mesmo, mas nada impede escolher outros). Sem saudação tipo "caros
+    técnicos"/"caro cliente" — vai direto na informação, como pedido.
+
+    Body: {"bloco": N, "audiencia": "tecnicos"|"clientes", "grupos": [nomes
+    de grupos da escala, os mesmos nomes usados em /gerar-comunicado-sobreaviso]}
+
+    audiencia=tecnicos -> um comunicado por grupo selecionado, com a lista
+    de clusters/usinas cobertas + o contato de quem está de sobreaviso
+    (o próprio usuário, resolvido via _currentSession na prática — aqui
+    recebido como parâmetro 'quem' pra não depender de sessão no backend).
+
+    audiencia=clientes -> um comunicado por CLIENTE (agregando usinas de
+    todos os grupos selecionados que pertencem àquele cliente), já que o
+    cliente não enxerga nome de cluster interno."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    grupos = estado.get("grupos", [])
+    usinas_todas = estado.get("usinas", [])
+    contatos = (estado.get("contatos") or {}).get("pessoas", {})
+    usinas_por_cluster = _sobreaviso_montar_usinas_por_cluster(usinas_todas)
+
+    dados = request.get_json(force=True, silent=True) or {}
+    bloco_idx = dados.get("bloco")
+    audiencia = (dados.get("audiencia") or "").strip()
+    nomes_grupos = dados.get("grupos") or []
+    quem = (dados.get("quem") or "Fred Alexandrino").strip()
+
+    if audiencia not in ("tecnicos", "clientes"):
+        return jsonify({"ok": False, "error": "audiencia deve ser 'tecnicos' ou 'clientes'"}), 400
+    if bloco_idx is None or not (0 <= bloco_idx < len(blocos)):
+        return jsonify({"ok": False, "error": f"bloco inválido (0 a {len(blocos) - 1})"}), 400
+    if not nomes_grupos:
+        return jsonify({"ok": False, "error": "selecione ao menos um grupo"}), 400
+
+    bloco = blocos[bloco_idx]
+    label_periodo = _sobreaviso_fmt_bloco(bloco)
+    telefone_quem = contatos.get(quem, "")
+    contato_txt = f" Contato: {telefone_quem}." if telefone_quem else ""
+
+    grupos_selecionados = [g for g in grupos if g.get("nome") in nomes_grupos]
+    if not grupos_selecionados:
+        return jsonify({"ok": False, "error": "nenhum dos grupos informados foi encontrado na escala atual"}), 404
+
+    resultado = []
+
+    if audiencia == "tecnicos":
+        for g in grupos_selecionados:
+            equipes = sorted({u["equipe"] for cl in g.get("clusters", []) for u in usinas_por_cluster.get(cl, []) if u.get("equipe")})
+            texto = (
+                f"📋 Aviso de Sobreaviso — {' + '.join(g.get('clusters', []))}\n"
+                f"Período: {label_periodo}\n\n"
+                f"{quem} estará de sobreaviso nesse período.{contato_txt}"
+            )
+            resultado.append({"grupo_nome": g.get("nome"), "clusters": g.get("clusters", []),
+                               "equipes": equipes, "texto": texto})
+    else:
+        usinas_selecionadas = []
+        vistas = set()
+        for g in grupos_selecionados:
+            for cl in g.get("clusters", []):
+                for u in usinas_por_cluster.get(cl, []):
+                    if u["usina"] in vistas:
+                        continue
+                    vistas.add(u["usina"])
+                    usinas_selecionadas.append(u)
+        por_cliente = {}
+        for u in usinas_selecionadas:
+            por_cliente.setdefault(u.get("cliente") or "?", []).append(u["usina"])
+        for cliente, usinas in sorted(por_cliente.items()):
+            lista_usinas = "\n".join(f"• {u}" for u in sorted(usinas))
+            texto = (
+                f"📋 Aviso de Sobreaviso — {cliente}\n"
+                f"Usinas: \n{lista_usinas}\n"
+                f"Período: {label_periodo}\n\n"
+                f"{quem} estará de sobreaviso nesse período.{contato_txt}"
+            )
+            resultado.append({"cliente": cliente, "usinas": sorted(usinas), "texto": texto})
+
+    return jsonify({
+        "ok": True,
+        "audiencia": audiencia,
+        "bloco": {"idx": bloco_idx, "label": label_periodo, "tipo": bloco["tipo"]},
+        "itens": resultado,
     }), 200
 
 
