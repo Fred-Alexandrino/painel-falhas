@@ -1,0 +1,22 @@
+name: check-sobreaviso-meu-9104
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Curl endpoint
+        run: |
+          curl -s "https://api.168.138.232.237.sslip.io/sobreaviso-blocos" > result_blocos.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result_blocos.txt backups/check-sobreaviso-meu-result.txt
+          git add backups/check-sobreaviso-meu-result.txt
+          git commit -m "check sobreaviso meu result" || echo "nothing to commit"
+          git push
