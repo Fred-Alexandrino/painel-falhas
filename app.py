@@ -12275,14 +12275,17 @@ def _montar_saudacao_cliente():
     return "Boa noite"
 
 
-def _montar_prompt_resumo_cliente(cliente, atividades, saudacao):
+def _montar_prompt_resumo_cliente(cliente, atividades, anotacoes, saudacao):
     """Monta o prompt pra gerar o resumo de atividades 'Em Processo'
     selecionadas manualmente pelo Fred, em linguagem polida e voltada ao
     cliente final (não ao técnico de campo) — usado pelo painel 'Gestão
     Cliente'. Diferente do comunicado técnico (objetivo/seco), aqui o tom é
     consultivo: saudação, contexto, e assinatura pessoal do Fred. A OS é
     incluída como referência ao final de cada linha (pedido do Fred em
-    27/07/2026 — antes era omitida, agora é mantida pra rastreabilidade)."""
+    27/07/2026 — antes era omitida, agora é mantida pra rastreabilidade).
+    Anotações do Sketchbook selecionadas manualmente por Fred entram como
+    contexto extra opcional (03/09/2026) — a IA pode usar pra enriquecer a
+    mensagem, mas nunca pra inventar fatos além do que está escrito nelas."""
     mapa_cluster = _mapa_cluster_usina()
     por_usina = {}
     for a in atividades:
@@ -12299,7 +12302,23 @@ def _montar_prompt_resumo_cliente(cliente, atividades, saudacao):
         cluster = mapa_cluster.get(usina, "")
         linhas_usina = "\n".join(f"  - {d}" for d in descricoes)
         blocos.append(f"Usina: {usina}" + (f" (cluster {cluster})" if cluster else "") + f"\n{linhas_usina}")
-    lista_atividades = "\n\n".join(blocos)
+    lista_atividades = "\n\n".join(blocos) if blocos else "(nenhuma atividade selecionada — use só as anotações abaixo)"
+
+    linhas_anotacoes = []
+    for a in anotacoes:
+        texto_anot = (a.get("texto") or "").strip()
+        if not texto_anot:
+            continue
+        usina_anot = (a.get("usina") or "").strip()
+        linhas_anotacoes.append(f"- {texto_anot}" + (f" (usina: {usina_anot})" if usina_anot else ""))
+    bloco_anotacoes = ""
+    if linhas_anotacoes:
+        bloco_anotacoes = (
+            "\n\nAnotações/observações adicionais do Fred sobre esse cliente (contexto extra do Sketchbook, "
+            "selecionadas manualmente por ele — pode incorporar de forma natural na mensagem, mas NÃO invente "
+            "fatos além do que está escrito abaixo, e não repita literalmente cada uma como um bullet técnico "
+            "se não fizer sentido — integre ao texto do jeito mais natural):\n" + "\n".join(linhas_anotacoes)
+        )
 
     return f"""Aja como Fred Alexandrino, Supervisor de O&M da Grid Co., escrevendo uma mensagem de WhatsApp pro cliente final ({cliente}) com o panorama de atividades programadas para hoje.
 
@@ -12321,7 +12340,7 @@ Supervisor de O&M — Grid Co.
 
 Cliente: {cliente}
 Atividades selecionadas (agrupadas por usina):
-{lista_atividades}
+{lista_atividades}{bloco_anotacoes}
 
 FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markdown, sem crase, sem texto antes ou depois), no formato:
 {{"texto": "a mensagem pronta pra enviar, com quebras de linha \\n"}}"""
@@ -12334,20 +12353,23 @@ def gerar_resumo_cliente():
     Cliente'). Diferente dos comunicados técnicos/automáticos: a seleção
     de quais atividades entram é 100% manual (Fred marca cada uma), pra
     evitar que atividades antigas esquecidas apareçam pro cliente sem
-    controle. O envio em si é feito depois via /disparar-comunicado-livre
-    (mesma infraestrutura de grupos já existente), reaproveitado aqui."""
+    controle. Anotações do Sketchbook selecionadas também entram como
+    contexto opcional (03/09/2026). O envio em si é feito depois via
+    /disparar-comunicado-livre (mesma infraestrutura de grupos já
+    existente), reaproveitado aqui."""
     if request.method == "OPTIONS":
         return ("", 204)
     body = request.get_json(force=True, silent=True) or {}
     cliente = (body.get("cliente") or "").strip()
     atividades = body.get("atividades") or []
+    anotacoes = body.get("anotacoes") or []
     if not cliente:
         return jsonify({"ok": False, "error": "informe o cliente"}), 400
-    if not atividades or not isinstance(atividades, list):
-        return jsonify({"ok": False, "error": "selecione ao menos uma atividade"}), 400
+    if (not atividades or not isinstance(atividades, list)) and (not anotacoes or not isinstance(anotacoes, list)):
+        return jsonify({"ok": False, "error": "selecione ao menos uma atividade ou anotação"}), 400
 
     saudacao = _montar_saudacao_cliente()
-    prompt = _montar_prompt_resumo_cliente(cliente, atividades, saudacao)
+    prompt = _montar_prompt_resumo_cliente(cliente, atividades, anotacoes, saudacao)
     diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
         resp = _chamar_gemini_com_retry(
