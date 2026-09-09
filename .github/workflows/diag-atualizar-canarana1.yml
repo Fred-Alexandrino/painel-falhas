@@ -10,6 +10,7 @@ jobs:
           RESP=$(curl -s -X POST "https://api.168.138.232.237.sslip.io/localizacoes-atualizar-coords" \
             -H "Content-Type: application/json" \
             -d '{"cliente":"Thopen","usina":"Canarana I","lat":-13.5212907,"lng":-52.2899134}')
+          mkdir -p backups
           echo "$RESP" > backups/diag-atualizar-canarana1.json
       - name: Commit resultado
         run: |
@@ -17,4 +18,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add backups/diag-atualizar-canarana1.json
           git commit -m "diag: atualizar coords Canarana I" || echo "nada para commit"
+          git pull --rebase origin main
           git push
