@@ -1,22 +1,27 @@
 name: diag-atualizar-canarana1
 on: workflow_dispatch
+permissions:
+  contents: write
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Chamar endpoint
+      - name: Chamar endpoint e gravar resultado via API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RESP=$(curl -s -X POST "https://api.168.138.232.237.sslip.io/localizacoes-atualizar-coords" \
             -H "Content-Type: application/json" \
             -d '{"cliente":"Thopen","usina":"Canarana I","lat":-13.5212907,"lng":-52.2899134}')
-          mkdir -p backups
-          echo "$RESP" > backups/diag-atualizar-canarana1.json
-      - name: Commit resultado
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add backups/diag-atualizar-canarana1.json
-          git commit -m "diag: atualizar coords Canarana I" || echo "nada para commit"
-          git pull --rebase origin main
-          git push
+          echo "$RESP"
+          B64=$(printf '%s' "$RESP" | base64 -w0)
+          SHA=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-atualizar-canarana1.json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha',''))")
+          if [ -n "$SHA" ]; then
+            curl -s -X PUT "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-atualizar-canarana1.json" \
+              -H "Authorization: token $GH_TOKEN" -H "Content-Type: application/json" \
+              -d "{\"message\":\"diag: resultado canarana1\",\"content\":\"$B64\",\"sha\":\"$SHA\"}"
+          else
+            curl -s -X PUT "https://api.github.com/repos/Fred-Alexandrino/painel-falhas/contents/backups/diag-atualizar-canarana1.json" \
+              -H "Authorization: token $GH_TOKEN" -H "Content-Type: application/json" \
+              -d "{\"message\":\"diag: resultado canarana1\",\"content\":\"$B64\"}"
+          fi
