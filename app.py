@@ -12426,9 +12426,10 @@ Regras obrigatórias de formato:
 - Uma frase curta de abertura contextualizando que segue o panorama de atividades programadas para hoje.
 - Liste as atividades agrupadas por usina (use o nome da usina como pequeno destaque, ex. em negrito ou seguido de dois pontos), com marcador "•" para cada atividade daquela usina.
 - Reescreva cada descrição de atividade em linguagem clara e acessível pro cliente — SEM código de ativo/equipamento cru, SEM jargão técnico interno de sistema (nada de "statusOS", "Fracttal", etc). Mantenha o conteúdo técnico real (o que será feito), só troque a forma como é dito.
+- Para atividades no formato "[TAG] - MPM/MPS/MPA - <Equipamento>": troque APENAS a sigla por "Manutenção preventiva" (MPM/MPS/MPA = mensal/semestral/anual — pode citar a periodicidade se quiser) seguida do nome do equipamento EXATAMENTE como está escrito na descrição, sem trocar, resumir, traduzir ou qualificar nenhuma palavra do nome do equipamento. Exemplo CORRETO: "[Grid Co.] - MPM - Cabos CA/CC" → "Manutenção preventiva em cabos CA/CC". Exemplo ERRADO (nunca faça isso): "Manutenção preventiva mecânica em cabos CA/CC" — a palavra "mecânica" NÃO está na descrição original e nunca deve ser adicionada. A mesma proibição vale pra qualquer outro adjetivo inventado (elétrica, técnica, corretiva, de rotina, etc.) que não esteja literalmente no texto da atividade.
 - Se a descrição da atividade começar com uma marcação entre colchetes indicando uma empresa/entidade (ex. "[ETM] - Coleta e análise de dados"), preserve essa referência de forma natural na frase reescrita (ex. "Coleta e análise de dados da ETM") — NUNCA troque a marcação por um adjetivo ou palavra inventada (ex. NÃO escreva "dados técnicos" quando a marcação diz apenas "ETM"). Se a marcação for "[Grid Co.]" (nossa própria empresa), apenas remova a marcação sem mencioná-la ao cliente, já que é implícito que é nossa equipe.
 - Quando a atividade tiver uma marcação "[ref. OS XXXX]" na informação fornecida, inclua o número da OS como referência ao final da linha, no formato "(OS XXXX)" — SEM a palavra "ref.", ex.: "• Manutenção preventiva no inversor 3 (OS 8508)". Não invente número de OS pra atividades que não tiverem essa marcação.
-- Não invente atividades, adjetivos, motivos ou qualquer detalhe que não esteja explicitamente na descrição fornecida. Se a descrição for genérica (ex. "Coleta e análise de dados"), mantenha genérica ao reescrever — só ajuste a estrutura da frase, nunca acrescente qualificadores que não foram informados.
+- REGRA MAIS IMPORTANTE DESSE PROMPT: não invente NENHUMA palavra — nem atividade, nem adjetivo, nem motivo, nem detalhe técnico — que não esteja explicitamente escrita na descrição fornecida. Antes de escrever cada linha, confira palavra por palavra se tudo que você escreveu tem correspondência direta no texto original ou é só conector gramatical (artigo, preposição, "e"). Se a descrição for genérica (ex. "Coleta e análise de dados"), mantenha genérica ao reescrever — só ajuste a estrutura da frase, nunca acrescente qualificadores que não foram informados.
 - Termine com uma frase curta de disponibilidade/cordialidade (ex. equipe de campo mobilizada, à disposição para dúvidas).
 - Assine ao final com:
 Atenciosamente,
@@ -12474,7 +12475,7 @@ def gerar_resumo_cliente():
             {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
-                    "temperature": 0.4,
+                    "temperature": 0.1,
                     "maxOutputTokens": 1024,
                     "responseMimeType": "application/json",
                     "thinkingConfig": {"thinkingBudget": 0},
