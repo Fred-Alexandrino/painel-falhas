@@ -1108,13 +1108,55 @@ def _chamado_fabricante_resolvido(status):
     return any(p in s for p in STATUS_CHAMADO_FABRICANTE_RESOLVIDO)
 
 
+# Formato de linha fixo pedido pelo Fred em 10/08/2026 (já usado no resumo de
+# Chamados da Gestão Cliente, ver _montar_resumo_chamados_cliente em app.py):
+# "INVXX – #TICKET – STATUS", onde XX é o número do equipamento e a sigla
+# muda pelo tipo (INV/TKR/TRAFO/etc.). Portado pra cá (em vez de importar de
+# app.py) pra manter este módulo independente — mesma lista/lógica, uma
+# cópia. Sem isso, o relatório automático mostrava só "Inversor – Aguardando
+# retorno do Fabricante" repetido pra TODO chamado (o campo "Ativo" bruto da
+# planilha é genérico, não tem o número do equipamento) — bug real
+# encontrado por Fred em 09/09/2026, relatório RENOGRID.
+_EQUIP_ABREV_CHAMADO = [
+    (r"invers", "INV"),
+    (r"track", "TKR"),
+    (r"transformador", "TRAFO"),
+    (r"string\s*box|stringbox", "SB"),
+    (r"m[oó]dulo", "MOD"),
+    (r"otimizador", "OTM"),
+    (r"medidor|medi[cç][aã]o", "MED"),
+    (r"cftv|c[aâ]mera", "CAM"),
+    (r"nobreak", "NBK"),
+    (r"seccionadora", "SEC"),
+    (r"combiner", "CMB"),
+]
+
+
+def _codigo_equipamento_chamado(ativo, identificacao):
+    """INV14, TKR05, etc. — XX é o número do equipamento extraído de
+    'Identificação do Equipamento' ou 'Ativo'. Se o tipo não for
+    reconhecido, cai pra identificação bruta (sem espaços)."""
+    fonte = f"{identificacao or ''} {ativo or ''}".strip()
+    if not fonte:
+        return ""
+    fonte_norm = fonte.lower()
+    numeros = re.findall(r"\d+", fonte)
+    numero = numeros[0].zfill(2) if numeros else ""
+    for padrao, abrev in _EQUIP_ABREV_CHAMADO:
+        if re.search(padrao, fonte_norm):
+            return f"{abrev}{numero}" if numero else abrev
+    bruto = (identificacao or ativo or "").strip()
+    return re.sub(r"\s+", "", bruto).upper() if bruto else ""
+
+
 def coletar_chamados_fabricante_por_usina(itens_chamados, cliente):
     """itens_chamados: lista de dicts, retorno de _chamados_fabricante_itens()
     (app.py). O campo UFV vem bruto (a planilha do SharePoint não canoniza
     o nome da usina) — quem corrige pra grafia oficial é _remapear_usinas(),
     chamada em gerar_relatorio_pptx() logo depois desta função.
-    Retorna {usina: [{"ativo":, "status":}, ...]} só com chamados AINDA em
-    aberto (status não bate em STATUS_CHAMADO_FABRICANTE_RESOLVIDO)."""
+    Retorna {usina: [{"codigo":, "ticket":, "status":}, ...]} só com
+    chamados AINDA em aberto (status não bate em
+    STATUS_CHAMADO_FABRICANTE_RESOLVIDO)."""
     cliente_norm = _norm(cliente)
     resultado = {}
     for item in itens_chamados or []:
@@ -1124,10 +1166,10 @@ def coletar_chamados_fabricante_por_usina(itens_chamados, cliente):
         if not status or _chamado_fabricante_resolvido(status):
             continue
         usina = (item.get("UFV") or "").strip() or "Usina não informada"
-        ativo = ((item.get("Ativo") or "").strip()
-                 or (item.get("Identificação do Equipamento") or "").strip()
-                 or "Equipamento não informado")
-        resultado.setdefault(usina, []).append({"ativo": ativo, "status": status})
+        codigo = (_codigo_equipamento_chamado(item.get("Ativo"), item.get("Identificação do Equipamento"))
+                  or "Equipamento não informado")
+        ticket = (item.get("Ticket/RMA") or "").strip()
+        resultado.setdefault(usina, []).append({"codigo": codigo, "ticket": ticket, "status": status})
     return resultado
 
 
@@ -1135,17 +1177,22 @@ def _renderizar_chamados_fabricante(prs, numero_topico, usinas_ordenadas, chamad
     """Título numerado igual às demais seções, mas corpo SEM numeração romana
     de usina e SEM bullet por item (nível 'subtitulo' pros dois) — formato
     confirmado no relatório de referência: nome da usina em negrito, sem
-    marcador; logo abaixo, uma linha "Ativo – Status" por chamado, também
-    sem marcador. Usinas sem chamado em aberto simplesmente não aparecem."""
+    marcador; logo abaixo, uma linha "CÓDIGO – #TICKET – Status" por
+    chamado (ex.: "INV13 – #7088320 – Aguardando retorno do Fabricante"),
+    também sem marcador. Usinas sem chamado em aberto simplesmente não
+    aparecem."""
     usinas_com_chamado = [u for u in usinas_ordenadas if chamados_por_usina.get(u)]
 
     blocos = []
     for usina in usinas_com_chamado:
-        itens = chamados_por_usina[usina]
+        itens = sorted(chamados_por_usina[usina], key=lambda it: it["codigo"])
         paragrafos = [{"nivel": "subtitulo", "runs": [{"texto": usina, "bold": True}]}]
         for it in itens:
-            paragrafos.append({"nivel": "subtitulo",
-                                "runs": [{"texto": f'{it["ativo"]} – {it["status"]}', "bold": False}]})
+            texto = it["codigo"]
+            if it["ticket"]:
+                texto += f' – #{it["ticket"]}'
+            texto += f' – {it["status"]}'
+            paragrafos.append({"nivel": "subtitulo", "runs": [{"texto": texto, "bold": False}]})
         blocos.append({"paragrafos": paragrafos, "linhas": 1 + len(itens)})
 
     paginas, atual, linhas_atual = [], [], 0
