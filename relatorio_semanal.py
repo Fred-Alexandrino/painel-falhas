@@ -45,6 +45,13 @@ ATIV_COL_ID, ATIV_COL_CLIENTE, ATIV_COL_USINA, ATIV_COL_EQUIP = 0, 1, 2, 3
 ATIV_COL_DESCRICAO, ATIV_COL_RESPONSAVEL, ATIV_COL_PRAZO, ATIV_COL_PRIORIDADE = 4, 5, 6, 7
 ATIV_COL_STATUS, ATIV_COL_DATA_CRIACAO, ATIV_COL_DATA_CONCLUSAO, ATIV_COL_HISTORICO = 8, 9, 10, 11
 ATIV_COL_EDITOR, ATIV_COL_NUMEROOS, ATIV_COL_STATUSOS = 12, 13, 14
+# percentualOS / statusGeralOS: colunas 21/22 (1-based) do ATIV_CAMPO_COL em
+# app.py -> 20/21 aqui (0-based). Sincronizadas ao vivo da Fracttal com o
+# status agregado real de campo (_fracttal_status_geral): Não Iniciada / Em
+# Progresso / Pausada / Concluída — mais confiável que tentar adivinhar o
+# progresso lendo texto livre do Histórico (ver coletar_atividades_e_
+# desligamentos_por_usina).
+ATIV_COL_PERCENTUAL_OS, ATIV_COL_STATUS_GERAL_OS = 20, 21
 
 STATUS_CONCLUIDO = ["concluído", "concluido", "resolvido", "fechado", "resolved", "closed"]
 
@@ -517,6 +524,7 @@ STATUS_OS_ELEGIVEIS_RELATORIO = ["finalizada", "em revisão", "em revisao"]
 
 VERDE_STATUS = "00B050"  # verde do relatório PPTX de cliente — não é o A1CA40 da marca
 AMBAR_STATUS = "F5A623"  # âmbar de "em andamento" — mesma cor usada no dashboard (--amber)
+CINZA_STATUS = "808080"  # cinza neutro pra "Não Iniciada" — nem verde nem alerta
 
 
 def _mesclar_atividades_desligamentos(atividades_por_usina, desligamentos_por_usina):
@@ -623,10 +631,30 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
     categoria (equipamento+descrição) bate no padrão de desligamento vão
     para o segundo dict, e OS de Ronda Curta/Ronda Longa vão para o
     terceiro (rondas_por_usina) — nunca duplicados entre os três.
+
+    CORRIGIDO 09/09/2026 (Fred — relatório da Alves Lima/ABC Morada Nova
+    saiu faltando OS Pausada e Não Iniciada): antes, uma OS "Em Processo"
+    só entrava no relatório se o HISTÓRICO tivesse uma linha de progresso
+    (%) bem dentro da janela exata do período — se a OS estava parada
+    (Pausada) ou nunca tinha sido tocada (Não Iniciada) durante o
+    período, ela desaparecia inteira, mesmo existindo e sendo relevante.
+    Agora usa statusGeralOS/percentualOS (campos já sincronizados ao vivo
+    da Fracttal, mesmos usados na Vista Kanban do dashboard — ver
+    _fracttal_status_geral em app.py) em vez de tentar adivinhar o estado
+    lendo texto livre do Histórico:
+      - Pausada: SEMPRE entra (é exatamente o tipo de coisa que o relatório
+        do cliente precisa mostrar — um trabalho parado).
+      - Não Iniciada: entra se foi criada dentro do período OU o prazo
+        cai dentro do período (senão o relatório ficaria eternamente
+        listando todo o backlog nunca iniciado da usina).
+      - Em Progresso: entra se teve atualização de % dentro do período OU
+        foi criada dentro do período (mantém o comportamento de
+        30/07/2026 pra não repetir toda semana uma OS parada sem
+        novidade, mas sem esconder OS nova).
     """
     cliente_norm = _norm(cliente)
     atividades, desligamentos, rondas = {}, {}, {}
-    min_cols = ATIV_COL_STATUSOS + 1
+    min_cols = ATIV_COL_STATUS_GERAL_OS + 1
 
     for row in todos_valores[1:]:
         if len(row) <= min_cols:
@@ -643,20 +671,34 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
             continue  # relatório só traz OS vinculada à Fracttal
 
         status_os = row[ATIV_COL_STATUSOS].strip().lower()
-        progresso_pct = None
+        status_geral = row[ATIV_COL_STATUS_GERAL_OS].strip()
+        percentual_txt = row[ATIV_COL_PERCENTUAL_OS].strip()
+        dt_criacao = _parse_data(row[ATIV_COL_DATA_CRIACAO])
+        dt_prazo = _parse_data(row[ATIV_COL_PRAZO])
+        criada_no_periodo = bool(dt_criacao and data_inicio <= dt_criacao <= data_fim)
+        prazo_no_periodo = bool(dt_prazo and data_inicio <= dt_prazo <= data_fim)
+
+        status_texto, status_cor, progresso_pct = None, None, None
 
         if status_os in STATUS_OS_ELEGIVEIS_RELATORIO:
             dt_marco = _ultima_data_historico(row[ATIV_COL_HISTORICO]) or _parse_data(row[ATIV_COL_DATA_CONCLUSAO])
             if not dt_marco or not (data_inicio <= dt_marco <= data_fim):
                 continue
+            status_texto, status_cor = "Concluída", VERDE_STATUS
+        elif _norm(status_geral) == "pausada":
+            status_texto, status_cor = "Pausada", AMBAR_STATUS
+        elif _norm(status_geral) == "nao iniciada":
+            if not (criada_no_periodo or prazo_no_periodo):
+                continue
+            status_texto, status_cor = "Não Iniciada", CINZA_STATUS
         elif status_os == "em processo":
-            # Combinado com Fred em 30/07/2026: OS ainda "Em Processo" mas
-            # com avanço registrado na semana entra no relatório com o
-            # status "Em Progresso (XX%)" — só fica de fora se não teve
-            # nenhuma atualização de progresso no período.
             progresso_pct = _ultimo_progresso_no_periodo(row[ATIV_COL_HISTORICO], data_inicio, data_fim)
             if progresso_pct is None:
-                continue
+                if percentual_txt.isdigit() and criada_no_periodo:
+                    progresso_pct = int(percentual_txt)
+                else:
+                    continue
+            status_texto, status_cor = f"Em Progresso ({progresso_pct}%)", AMBAR_STATUS
         else:
             continue
 
@@ -670,7 +712,7 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
 
         tipo_ronda = _classificar_ronda(descricao)
         item = {"descricao": descricao, "numero_os": numero_os, "progresso_pct": progresso_pct,
-                "tipo_ronda": tipo_ronda}
+                "status_texto": status_texto, "status_cor": status_cor, "tipo_ronda": tipo_ronda}
 
         if tipo_ronda:
             rondas.setdefault(usina, []).append(item)
@@ -753,11 +795,14 @@ def _descricao_com_mes_se_preventiva_mensal(descricao, prazo_txt):
 
 
 def _formatar_item_atividade(it):
-    pct = it.get("progresso_pct")
-    if pct is not None:
-        status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
-    else:
-        status_texto, status_cor = "Concluída", VERDE_STATUS
+    status_texto = it.get("status_texto")
+    status_cor = it.get("status_cor")
+    if status_texto is None:
+        pct = it.get("progresso_pct")
+        if pct is not None:
+            status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
+        else:
+            status_texto, status_cor = "Concluída", VERDE_STATUS
     return [
         {"texto": f'{it["descricao"]} – ', "bold": False},
         {"texto": f'OS {it["numero_os"]}', "bold": True},
@@ -767,16 +812,19 @@ def _formatar_item_atividade(it):
 
 
 def _formatar_item_desligamento(it):
-    pct = it.get("progresso_pct")
-    if pct is not None:
-        status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
-    else:
-        status_texto, status_cor = "Concluída.", VERDE_STATUS
+    status_texto = it.get("status_texto")
+    status_cor = it.get("status_cor")
+    if status_texto is None:
+        pct = it.get("progresso_pct")
+        if pct is not None:
+            status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
+        else:
+            status_texto, status_cor = "Concluída", VERDE_STATUS
     return [
         {"texto": "Desligamento - ", "bold": False},
         {"texto": f'OS {it["numero_os"]}', "bold": True},
         {"texto": " – ", "bold": False},
-        {"texto": status_texto, "bold": False, "color": status_cor},
+        {"texto": f"{status_texto}.", "bold": False, "color": status_cor},
     ]
 
 
@@ -796,11 +844,14 @@ def _formatar_item_ronda(it):
     O checklist é sempre o padrão do tipo (ver RONDA_ITENS_CHECKLIST) — não é
     buscado subtarefa a subtarefa na Fracttal (mesma decisão de 23/07/2026 de
     não consultar a Fracttal ao vivo dentro da geração do relatório)."""
-    pct = it.get("progresso_pct")
-    if pct is not None:
-        status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
-    else:
-        status_texto, status_cor = "Concluída", VERDE_STATUS
+    status_texto = it.get("status_texto")
+    status_cor = it.get("status_cor")
+    if status_texto is None:
+        pct = it.get("progresso_pct")
+        if pct is not None:
+            status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
+        else:
+            status_texto, status_cor = "Concluída", VERDE_STATUS
     tipo = it.get("tipo_ronda") or "Curta"
     return [
         {"texto": f"Ronda {tipo} – ", "bold": False},
