@@ -1,4 +1,0 @@
-{"ok":true,"pessoas":["Luiz F\u00e9lix","Ant\u00f4nio Campelo"],"texto":"\ud83d\udccb Escala de Sobreaviso \u2014 Demerval Lob\u00e3o / Timon / Junco + Uni\u00e3o I e II\nPer\u00edodo: 12 a 13/set (dupla de sobreaviso)\n\nDe sobreaviso: Luiz F\u00e9lix + Ant\u00f4nio Campelo\n\nQualquer d\u00favida, chamar o supervisor."}
-
-=== teste com nome invalido ===
-{"error":"Fulano Inventado n\u00e3o est\u00e1 no rod\u00edzio desse grupo. Candidatos v\u00e1lidos: Ailton Leal, Ant\u00f4nio Campelo, Jos\u00e9 Sousa, Luiz F\u00e9lix","ok":false}
