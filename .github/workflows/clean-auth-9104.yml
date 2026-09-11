@@ -1,0 +1,37 @@
+name: clean-auth-9104
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Limpar auth_info e reiniciar
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm2_key
+          chmod 600 ~/.ssh/vm2_key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm2_key ubuntu@147.15.66.241 '
+            sudo systemctl stop wppconnect;
+            cd ~/wppconnect-server;
+            rm -rf auth_info;
+            echo "auth_info removido, pasta atual:";
+            ls -la;
+            sudo systemctl start wppconnect;
+            sleep 5;
+            sudo systemctl status wppconnect --no-pager;
+          ' > result.txt 2>&1 || echo "SSH FALHOU codigo $?" >> result.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result.txt backups/clean-auth-result.txt
+          git add backups/clean-auth-result.txt
+          git commit -m "clean auth result" || echo "nothing to commit"
+          git pull --rebase origin main || true
+          git push
