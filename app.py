@@ -3099,6 +3099,42 @@ def _garantir_headers_atividades(ws):
         log.error(f"[Atividades] Erro ao garantir conteúdo do header estendido: {e}")
 
 
+def _wpp_enviar_com_retry(payload, endpoint, tentativas=3, espera_s=4, timeout=20):
+    """Envia pro wppconnect-server (VM2) com retry curto pra absorver os
+    blips passageiros de conexão do WhatsApp (o Baileys oscila
+    'conectado'/'desconectado' por alguns segundos em reconexões normais —
+    ver comentários em server.js sobre a janela de graça e o vigia). Sem
+    isso, um disparo manual do dashboard podia cair bem no meio de um blip
+    de 1-2s e o Fred via "WhatsApp não conectado" mesmo com a conexão
+    saudável segundos depois (relatado em 08/09/2026 no Painel de
+    Sobreavisos). Mesma lógica já usada em /disparar-comunicado (Comunicado
+    Livre), extraída aqui pra ser reaproveitada por qualquer disparo."""
+    ultimo_erro = None
+    for tentativa in range(tentativas):
+        try:
+            r = requests.post(
+                f"{WPP_SERVER_URL}{endpoint}",
+                json=payload,
+                headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+                timeout=timeout,
+            )
+            if r.ok and r.json().get("ok"):
+                return True, None
+            corpo = r.text[:300]
+            ultimo_erro = corpo
+            if ("não conectado" in corpo.lower() or "nao conectado" in corpo.lower()) and tentativa < tentativas - 1:
+                time.sleep(espera_s)
+                continue
+            return False, ultimo_erro
+        except Exception as e:
+            ultimo_erro = str(e)
+            if tentativa < tentativas - 1:
+                time.sleep(espera_s)
+                continue
+            return False, ultimo_erro
+    return False, ultimo_erro
+
+
 @app.route("/disparar-comunicado-cluster", methods=["POST"])
 def disparar_comunicado_cluster():
     """Dispara manualmente (via botão no dashboard) o comunicado de um
@@ -3129,15 +3165,10 @@ def disparar_comunicado_cluster():
                         f"\"{cluster}\". Configure em _Sistema: \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
 
     try:
-        r = requests.post(
-            f"{WPP_SERVER_URL}/api/enviar-mensagem",
-            json={"grupoId": grupo_id, "texto": texto},
-            headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
-            timeout=20,
-        )
-        if r.ok and r.json().get("ok"):
+        ok, erro = _wpp_enviar_com_retry({"grupoId": grupo_id, "texto": texto}, "/api/enviar-mensagem")
+        if ok:
             return jsonify({"ok": True, "grupo": grupo_id}), 200
-        return jsonify({"ok": False, "error": r.text[:300]}), 502
+        return jsonify({"ok": False, "error": erro}), 502
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
