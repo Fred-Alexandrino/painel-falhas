@@ -3552,19 +3552,21 @@ def conferencia_sobreaviso():
 
 @app.route("/sobreaviso-meu", methods=["POST"])
 def gerar_comunicado_meu_sobreaviso():
-    """Gera o comunicado "vou estar de sobreaviso" pra técnicos ou pra
-    clientes, pros grupos/clusters que o Fred selecionar (normalmente os
-    dele mesmo, mas nada impede escolher outros). Sem saudação tipo "caros
-    técnicos"/"caro cliente" — vai direto na informação, como pedido.
+    """Gera o comunicado "estaremos de sobreaviso" pra técnicos ou pra
+    clientes, pros grupos/clusters que o Fred selecionar. Sem saudação tipo
+    "caros técnicos"/"caro cliente" — vai direto na informação. Sem contato
+    (nem pessoal nem corporativo) — só o aviso de quem está de sobreaviso.
 
     Body: {"bloco": N, "audiencia": "tecnicos"|"clientes", "grupos": [nomes
     de grupos da escala, os mesmos nomes usados em /gerar-comunicado-sobreaviso]}
 
-    audiencia=tecnicos -> um comunicado por grupo selecionado, com a lista
-    de clusters/usinas cobertas + o contato de quem está de sobreaviso
-    (o próprio usuário, resolvido via _currentSession na prática — aqui
-    recebido como parâmetro 'quem' pra não depender de sessão no backend).
+    Quem está de sobreaviso é sempre a DUPLA de supervisores do bloco
+    (blocos[i].supervisores — o mesmo rodízio de 2 supervisores por período
+    que já alimenta a badge no topo da aba), nunca só o usuário logado:
+    o sobreaviso de supervisor sempre tem 2 pessoas.
 
+    audiencia=tecnicos -> um comunicado por grupo selecionado, com a lista
+    de clusters cobertos.
     audiencia=clientes -> um comunicado por CLIENTE (agregando usinas de
     todos os grupos selecionados que pertencem àquele cliente), já que o
     cliente não enxerga nome de cluster interno."""
@@ -3576,14 +3578,12 @@ def gerar_comunicado_meu_sobreaviso():
     blocos = estado.get("blocos", [])
     grupos = estado.get("grupos", [])
     usinas_todas = estado.get("usinas", [])
-    contatos = (estado.get("contatos") or {}).get("pessoas", {})
     usinas_por_cluster = _sobreaviso_montar_usinas_por_cluster(usinas_todas)
 
     dados = request.get_json(force=True, silent=True) or {}
     bloco_idx = dados.get("bloco")
     audiencia = (dados.get("audiencia") or "").strip()
     nomes_grupos = dados.get("grupos") or []
-    quem = (dados.get("quem") or "Fred Alexandrino").strip()
 
     if audiencia not in ("tecnicos", "clientes"):
         return jsonify({"ok": False, "error": "audiencia deve ser 'tecnicos' ou 'clientes'"}), 400
@@ -3594,8 +3594,8 @@ def gerar_comunicado_meu_sobreaviso():
 
     bloco = blocos[bloco_idx]
     label_periodo = _sobreaviso_fmt_bloco(bloco)
-    telefone_quem = contatos.get(quem, "")
-    contato_txt = f" Contato: {telefone_quem}." if telefone_quem else ""
+    supervisores_bloco = bloco.get("supervisores", [])
+    quem_txt = " + ".join(supervisores_bloco) if supervisores_bloco else "O supervisor"
 
     grupos_selecionados = [g for g in grupos if g.get("nome") in nomes_grupos]
     if not grupos_selecionados:
@@ -3609,7 +3609,7 @@ def gerar_comunicado_meu_sobreaviso():
             texto = (
                 f"📋 Aviso de Sobreaviso — {' + '.join(g.get('clusters', []))}\n"
                 f"Período: {label_periodo}\n\n"
-                f"{quem} estará de sobreaviso nesse período.{contato_txt}"
+                f"{quem_txt} estará(ão) de sobreaviso nesse período."
             )
             resultado.append({"grupo_nome": g.get("nome"), "clusters": g.get("clusters", []),
                                "equipes": equipes, "texto": texto})
@@ -3632,7 +3632,7 @@ def gerar_comunicado_meu_sobreaviso():
                 f"📋 Aviso de Sobreaviso — {cliente}\n"
                 f"Usinas: \n{lista_usinas}\n"
                 f"Período: {label_periodo}\n\n"
-                f"{quem} estará de sobreaviso nesse período.{contato_txt}"
+                f"{quem_txt} estará(ão) de sobreaviso nesse período."
             )
             resultado.append({"cliente": cliente, "usinas": sorted(usinas), "texto": texto})
 
