@@ -9351,6 +9351,7 @@ def sincronizar_chamados():
         atualizadas_map = {}
         criadas_map = {}
         erros = []
+        chaves_recebidas = set()
 
         for linha_recebida in linhas:
             if not isinstance(linha_recebida, dict):
@@ -9368,6 +9369,7 @@ def sincronizar_chamados():
 
             nova_linha = [_buscar_campo(h) for h in CHAMADOS_FABRICANTE_HEADERS]
             chave = _chave(nova_linha)
+            chaves_recebidas.add(chave)
 
             linha_existente = por_chave.get(chave)
             if linha_existente:
@@ -9384,6 +9386,42 @@ def sincronizar_chamados():
         if criadas_map:
             ws.append_rows(list(criadas_map.values()))
 
+        # Remove da aba as linhas cuja chave NÃO veio neste lote (Fred,
+        # 11/09/2026: chamados excluídos na planilha do SharePoint
+        # continuavam aparecendo no dashboard porque este endpoint só
+        # fazia upsert, nunca removia). Seguro porque o script local
+        # (sincronizar_chamados.py) sempre envia um SNAPSHOT COMPLETO da
+        # aba "CHAMADOS" a cada rodada — nunca um diff parcial — então
+        # qualquer chave ausente aqui realmente foi excluída na origem.
+        #
+        # Limite de segurança: se a remoção calculada for grande demais
+        # em relação ao total existente, algo deu errado no lote recebido
+        # (planilha não carregou direito, erro no script, etc.) — nesse
+        # caso NÃO remove nada e só reporta, pra nunca apagar dados
+        # legítimos por causa de um envio incompleto.
+        removidas = 0
+        removidas_bloqueadas = 0
+        if chaves_recebidas:
+            linhas_para_remover = sorted(
+                (linha for chave, linha in por_chave.items() if chave not in chaves_recebidas),
+                reverse=True,
+            )
+            if linhas_para_remover:
+                total_existentes = len(por_chave)
+                limite_seguranca = max(20, round(total_existentes * 0.3))
+                if len(linhas_para_remover) > limite_seguranca:
+                    removidas_bloqueadas = len(linhas_para_remover)
+                    log.error(
+                        f"[ChamadosFabricante] Remoção BLOQUEADA por segurança: "
+                        f"{removidas_bloqueadas} linha(s) seriam removidas "
+                        f"(limite {limite_seguranca} de {total_existentes} existentes). "
+                        f"Lote recebido pode estar incompleto — nada foi apagado, revisão manual necessária."
+                    )
+                else:
+                    for linha in linhas_para_remover:
+                        ws.delete_rows(linha)
+                    removidas = len(linhas_para_remover)
+
         # registra quando essa sincronização aconteceu — usado pelo painel
         # pra mostrar "última sincronização" e o Fred conseguir verificar
         # se está em dia sem precisar comparar contagem manualmente
@@ -9394,6 +9432,7 @@ def sincronizar_chamados():
             log.error(f"[ChamadosFabricante] Falha ao gravar timestamp de sincronização: {e}")
 
         return jsonify({"ok": True, "criadas": len(criadas_map), "atualizadas": len(atualizadas_map),
+                         "removidas": removidas, "removidas_bloqueadas": removidas_bloqueadas,
                          "erros": erros}), 200
     except Exception as e:
         log.error(f"[ChamadosFabricante] Erro ao sincronizar: {e}")
