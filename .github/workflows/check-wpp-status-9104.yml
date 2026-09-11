@@ -1,0 +1,27 @@
+name: check-wpp-status-9104
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Curl WPP status
+        run: |
+          echo "=== /health ===" > result.txt
+          curl -s -w "\nHTTP:%{http_code}\n" "https://wpp.147.15.66.241.sslip.io/health" >> result.txt
+          echo "=== /status ===" >> result.txt
+          curl -s -w "\nHTTP:%{http_code}\n" "https://wpp.147.15.66.241.sslip.io/status" >> result.txt
+          echo "=== teste enviar-mensagem grupo invalido ===" >> result.txt
+          curl -s -w "\nHTTP:%{http_code}\n" -X POST "https://wpp.147.15.66.241.sslip.io/api/enviar-mensagem" -H "Content-Type: application/json" -d '{"grupoId":"grupo-teste-inexistente@g.us","texto":"teste diagnostico - ignore"}' >> result.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result.txt backups/check-wpp-status-result.txt
+          git add backups/check-wpp-status-result.txt
+          git commit -m "check wpp status result" || echo "nothing to commit"
+          git push
