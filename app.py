@@ -3436,6 +3436,8 @@ def gerar_comunicado_sobreaviso():
             "clientes": clientes,
             "usinas": usinas_grupo,
             "dupla": g.get("por_bloco") == 2,
+            "por_bloco": g.get("por_bloco", 1),
+            "pool": [{"nome": p.get("t"), "horas": p.get("h")} for p in g.get("pool", []) if p.get("t")],
             "pessoas": pessoas,
             "texto": texto,
         })
@@ -3446,6 +3448,57 @@ def gerar_comunicado_sobreaviso():
                    "tipo": bloco["tipo"], "label": _sobreaviso_fmt_bloco(bloco)},
         "grupos": resultado,
     }), 200
+
+
+@app.route("/sobreaviso-ajustar-texto", methods=["POST"])
+def sobreaviso_ajustar_texto():
+    """Recalcula o texto do comunicado de um grupo com pessoas escolhidas
+    manualmente (pra corrigir um caso em que a escala fonte trouxe
+    informação errada, sem precisar re-subir o arquivo). Só aceita nomes
+    que estejam no 'pool' (rodízio de candidatos) daquele grupo — não é
+    campo livre, é uma correção dentro do universo de quem já é elegível
+    pra cobrir aquela usina.
+
+    Body: {"bloco": N, "grupo": "nome do grupo", "pessoas": ["Nome1", "Nome2"?]}
+    Não persiste em lugar nenhum — só recalcula o texto pra essa geração
+    específica (o próximo "Gerar comunicados" volta a usar a escala original
+    do arquivo, a menos que o Fred reajuste de novo)."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    grupos = estado.get("grupos", [])
+    contatos = (estado.get("contatos") or {}).get("pessoas", {})
+
+    dados = request.get_json(force=True, silent=True) or {}
+    bloco_idx = dados.get("bloco")
+    nome_grupo = (dados.get("grupo") or "").strip()
+    pessoas = dados.get("pessoas") or []
+
+    if bloco_idx is None or not (0 <= bloco_idx < len(blocos)):
+        return jsonify({"ok": False, "error": f"bloco inválido (0 a {len(blocos) - 1})"}), 400
+    if not pessoas:
+        return jsonify({"ok": False, "error": "informe ao menos uma pessoa"}), 400
+
+    grupo = next((g for g in grupos if g.get("nome") == nome_grupo), None)
+    if not grupo:
+        return jsonify({"ok": False, "error": f"grupo '{nome_grupo}' não encontrado na escala atual"}), 404
+
+    nomes_pool = {p.get("t") for p in grupo.get("pool", []) if p.get("t")}
+    invalidos = [p for p in pessoas if p not in nomes_pool]
+    if invalidos:
+        return jsonify({"ok": False, "error": f"{', '.join(invalidos)} não está no rodízio desse grupo. Candidatos válidos: {', '.join(sorted(nomes_pool))}"}), 400
+
+    esperado = grupo.get("por_bloco", 1)
+    if len(pessoas) != esperado:
+        return jsonify({"ok": False, "error": f"esse grupo precisa de {esperado} pessoa(s) por bloco, você informou {len(pessoas)}"}), 400
+
+    bloco = blocos[bloco_idx]
+    texto = _sobreaviso_montar_texto(grupo, bloco, pessoas, contatos)
+
+    return jsonify({"ok": True, "texto": texto, "pessoas": pessoas}), 200
 
 
 def _sobreaviso_montar_indice_grupo_por_cluster(grupos):
