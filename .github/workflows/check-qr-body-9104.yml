@@ -1,0 +1,26 @@
+name: check-qr-body-9104
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Curl qr page body
+        run: |
+          curl -s "https://wpp.147.15.66.241.sslip.io/qr" > result.txt
+          echo "" >> result.txt
+          echo "=== tamanho ===" >> result.txt
+          wc -c result.txt >> result.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result.txt backups/check-qr-body-result.txt
+          git add backups/check-qr-body-result.txt
+          git commit -m "check qr body" || echo "nothing to commit"
+          git pull --rebase origin main || true
+          git push
