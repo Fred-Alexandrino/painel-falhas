@@ -1,1 +1,0 @@
-{"nome_arquivo":"escala_upload_temp.html","ok":true,"periodo":{"fim":"2026-12-31","inicio":"2026-09-01"},"total_blocos":18,"total_grupos":41}
