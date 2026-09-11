@@ -3191,7 +3191,7 @@ def gerar_comunicado_zeladoria():
 # zeladoria_fotos/ e mensagens_grupos.db.
 #
 # A fonte da escala real é o array 'grupos' (clusters FUNDIDOS por equipe de
-# cobertura, com pool combinado e "dupla" quando 2 plantonistas cobrem o
+# cobertura, com pool combinado e "dupla" quando 2 pessoas de sobreaviso cobrem o
 # bloco junto) — NÃO o array 'campo' (rotação individual por cluster, que
 # ignora as fusões e não bate com o que o dashboard de fato exibe; ver
 # conversa de 04/09/2026 onde isso foi corrigido).
@@ -3262,12 +3262,12 @@ def _sobreaviso_montar_texto(grupo, bloco, pessoas, contatos):
     # função) mas não é mais usado no texto — comunicado não expõe telefone
     # do colaborador (pedido de 04/09/2026).
     clusters_txt = " + ".join(grupo["clusters"])
-    dupla_txt = " (dupla de plantão)" if grupo.get("por_bloco") == 2 else ""
+    dupla_txt = " (dupla de sobreaviso)" if grupo.get("por_bloco") == 2 else ""
     linha_pessoas = " + ".join(pessoas) if pessoas else "sem cobertura definida"
     return (
         f"📋 Escala de Sobreaviso — {clusters_txt}\n"
         f"Período: {_sobreaviso_fmt_bloco(bloco)}{dupla_txt}\n\n"
-        f"De plantão: {linha_pessoas}\n\n"
+        f"De sobreaviso: {linha_pessoas}\n\n"
         f"Qualquer dúvida, chamar o supervisor."
     )
 
@@ -3440,7 +3440,7 @@ def conferencia_sobreaviso():
         CRÍTICO, ninguém responde por essa usina nesse período.
       - fora_sla: o cluster TEM gente escalada, mas nenhum candidato do pool
         alcança o SLA de deslocamento contratual (fora_sla=true, herdado do
-        próprio cálculo de cobertura do arquivo) — tem plantonista, mas fora
+        próprio cálculo de cobertura do arquivo) — tem sobreaviso, mas fora
         do prazo combinado com o cliente.
       - sem_cluster: a usina não aparece em NENHUM grupo de cobertura — gap
         estrutural no cadastro da escala, independe do bloco escolhido.
