@@ -1,0 +1,36 @@
+name: check-dispatch-real-9104
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Curl status antes
+        run: |
+          echo "=== status ANTES do disparo ===" > result.txt
+          date -u >> result.txt
+          curl -s "https://wpp.147.15.66.241.sslip.io/health" >> result.txt
+          echo "" >> result.txt
+      - name: Disparo real via backend (mesmo caminho do dashboard)
+        run: |
+          echo "=== disparo real via /disparar-comunicado-cluster ===" >> result.txt
+          curl -s -w "\nHTTP:%{http_code}\n" -X POST "https://api.168.138.232.237.sslip.io/disparar-comunicado-cluster" -H "Content-Type: application/json" -d '{"cluster":"MT Sul 01","texto":"[TESTE DIAGNOSTICO - IGNORAR] verificando conexao do dashboard"}' >> result.txt
+      - name: Curl status depois
+        run: |
+          echo "=== status DEPOIS do disparo ===" >> result.txt
+          date -u >> result.txt
+          curl -s "https://wpp.147.15.66.241.sslip.io/health" >> result.txt
+          echo "" >> result.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result.txt backups/check-dispatch-real-result.txt
+          git add backups/check-dispatch-real-result.txt
+          git commit -m "check dispatch real" || echo "nothing to commit"
+          git pull --rebase origin main || true
+          git push
