@@ -1,10 +1,10 @@
 === status ANTES do disparo ===
-Fri Sep 11 12:40:27 UTC 2026
-{"status":"ok","wpp":"desconectado"}
+Fri Sep 11 12:55:43 UTC 2026
+{"status":"ok","wpp":"conectado"}
 === disparo real via /disparar-comunicado-cluster ===
-{"error":"HTTPSConnectionPool(host='wpp.147.15.66.241.sslip.io', port=443): Read timed out. (read timeout=20)","ok":false}
+{"grupo":"120363425342949474@g.us","ok":true}
 
-HTTP:502
+HTTP:200
 === status DEPOIS do disparo ===
-Fri Sep 11 12:41:21 UTC 2026
-{"status":"ok","wpp":"desconectado"}
+Fri Sep 11 12:55:48 UTC 2026
+{"status":"ok","wpp":"conectado"}
