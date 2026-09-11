@@ -1,0 +1,27 @@
+name: check-vm2-ssh-9104
+on:
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnostico via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            echo "=== systemctl status ==="
+            sudo systemctl status wppconnect --no-pager -l || true
+            echo "=== processos node ==="
+            ps aux | grep -i node | grep -v grep || true
+            echo "=== ultimas 80 linhas do log ==="
+            sudo journalctl -u wppconnect -n 80 --no-pager || true
+      - name: Salvar output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vm2-diag
+          path: /dev/null
