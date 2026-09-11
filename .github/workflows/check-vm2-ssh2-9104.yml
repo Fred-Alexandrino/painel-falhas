@@ -1,0 +1,35 @@
+name: check-vm2-ssh2-9104
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnostico via SSH direto
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vm2_key
+          chmod 600 ~/.ssh/vm2_key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vm2_key ubuntu@147.15.66.241 '
+            echo "=== systemctl status ===";
+            sudo systemctl status wppconnect --no-pager -l;
+            echo "=== processos node ===";
+            ps aux | grep -i node | grep -v grep;
+            echo "=== ultimas 100 linhas do log ===";
+            sudo journalctl -u wppconnect -n 100 --no-pager;
+          ' > result.txt 2>&1 || echo "SSH FALHOU codigo $?" >> result.txt
+      - name: Commit result
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@example.com"
+          mkdir -p backups
+          cp result.txt backups/check-vm2-ssh-result.txt
+          git add backups/check-vm2-ssh-result.txt
+          git commit -m "check vm2 ssh diag" || echo "nothing to commit"
+          git pull --rebase origin main || true
+          git push
