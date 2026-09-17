@@ -582,55 +582,22 @@ def _remapear_usinas(dados_por_usina, mapa_canonico):
     return resultado
 
 
-# ── Rondas (Curta/Longa) — exigência do cliente confirmada com Fred
-# (28/08/2026): relatório semanal de TODOS os clientes precisa de uma
-# seção própria mostrando o que foi feito nas OS de Ronda Curta e Ronda
-# Longa, resumido apenas como o TIPO de checklist coberto (não o
-# detalhe subtarefa-a-subtarefa). A API da Fracttal expõe cada subtarefa
-# (ver _fracttal_detalhes_equipamentos em app.py), mas essas duas rondas
-# seguem um checklist PADRÃO e fixo — por isso, e para manter a mesma
-# decisão de 23/07/2026 (nunca consultar a Fracttal ao vivo por OS
-# dentro da geração do relatório — só dado já salvo na planilha), o
-# texto do checklist é fixo por tipo, não buscado subtarefa a subtarefa.
-_RE_RONDA_LONGA = re.compile(r"\bronda\s+longa\b", re.IGNORECASE)
-_RE_RONDA_CURTA = re.compile(r"\bronda\s+curta\b", re.IGNORECASE)
-
-RONDA_ITENS_CHECKLIST = {
-    "Curta": "inspeção de CFTV, sujidade, vegetação e sensores da ETM",
-    "Longa": "inspeção de CFTV, sujidade, vegetação, sensores da ETM, almoxarifado, sala O&M e banheiros",
-}
-
-
-def _classificar_ronda(descricao):
-    """Retorna 'Curta', 'Longa' ou None a partir da descrição/tarefa da OS."""
-    texto = descricao or ""
-    if _RE_RONDA_LONGA.search(texto):
-        return "Longa"
-    if _RE_RONDA_CURTA.search(texto):
-        return "Curta"
-    return None
-
-
-# Legenda fixa exibida no topo da seção RONDAS DA SEMANA (e repetida em toda
-# página de continuação) — o checklist de cada tipo de ronda é sempre o
-# mesmo, então em vez de repetir em CADA item (poluía o relatório), aparece
-# uma vez só como legenda; cada item vira só "Ronda X – OS nº – Status."
-RONDA_LEGENDA = [
-    f"Ronda Curta - Itens verificados: {RONDA_ITENS_CHECKLIST['Curta']}.",
-    f"Ronda Longa - Itens verificados: {RONDA_ITENS_CHECKLIST['Longa']}.",
-]
-COR_LEGENDA = "808080"
+COR_LEGENDA = "808080"  # cinza neutro — usado por _renderizar_topico_usinas quando uma seção precisa de legenda
 
 
 def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_inicio, data_fim):
     """
     todos_valores: ws.get_all_values() do Painel de Atividades (linha 0 = cabeçalho).
 
-    Retorna (atividades_por_usina, desligamentos_por_usina, rondas_por_usina),
-    cada um um dict {usina: [{"descricao":, "numero_os":}, ...]}. Itens cuja
-    categoria (equipamento+descrição) bate no padrão de desligamento vão
-    para o segundo dict, e OS de Ronda Curta/Ronda Longa vão para o
-    terceiro (rondas_por_usina) — nunca duplicados entre os três.
+    Retorna (atividades_por_usina, desligamentos_por_usina), cada um um dict
+    {usina: [{"descricao":, "numero_os":}, ...]}. Itens cuja categoria
+    (equipamento+descrição) bate no padrão de desligamento vão para o
+    segundo dict em vez do primeiro — nunca duplicados.
+
+    REMOVIDO 10/09/2026 (Fred: "não está funcionando"): a seção própria de
+    RONDAS DA SEMANA (Ronda Curta/Longa) foi tirada do relatório. OS de
+    ronda voltam a entrar como atividade normal (ou desligamento, se bater
+    no padrão), sem tratamento especial.
 
     CORRIGIDO 09/09/2026 (Fred — relatório da Alves Lima/ABC Morada Nova
     saiu faltando OS Pausada e Não Iniciada): antes, uma OS "Em Processo"
@@ -653,7 +620,7 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
         novidade, mas sem esconder OS nova).
     """
     cliente_norm = _norm(cliente)
-    atividades, desligamentos, rondas = {}, {}, {}
+    atividades, desligamentos = {}, {}
     min_cols = ATIV_COL_STATUS_GERAL_OS + 1
 
     for row in todos_valores[1:]:
@@ -710,18 +677,15 @@ def coletar_atividades_e_desligamentos_por_usina(todos_valores, cliente, data_in
         if len(descricao) > 140:
             descricao = descricao[:137].rstrip() + "..."
 
-        tipo_ronda = _classificar_ronda(descricao)
         item = {"descricao": descricao, "numero_os": numero_os, "progresso_pct": progresso_pct,
-                "status_texto": status_texto, "status_cor": status_cor, "tipo_ronda": tipo_ronda}
+                "status_texto": status_texto, "status_cor": status_cor}
 
-        if tipo_ronda:
-            rondas.setdefault(usina, []).append(item)
-        elif _e_desligamento_atividade(descricao, equipamento):
+        if _e_desligamento_atividade(descricao, equipamento):
             desligamentos.setdefault(usina, []).append(item)
         else:
             atividades.setdefault(usina, []).append(item)
 
-    return atividades, desligamentos, rondas
+    return atividades, desligamentos
 
 
 _MESES_PT = {
@@ -835,31 +799,6 @@ def _formatar_item_atividade_geral(it):
     if it.get("e_desligamento"):
         return _formatar_item_desligamento(it)
     return _formatar_item_atividade(it)
-
-
-def _formatar_item_ronda(it):
-    """Ronda Curta/Longa – OS nº – Status. O checklist de itens verificados
-    NÃO entra mais por item (poluía o relatório) — vira uma legenda única no
-    topo da seção (ver RONDA_LEGENDA), repetida em toda página/continuação.
-    O checklist é sempre o padrão do tipo (ver RONDA_ITENS_CHECKLIST) — não é
-    buscado subtarefa a subtarefa na Fracttal (mesma decisão de 23/07/2026 de
-    não consultar a Fracttal ao vivo dentro da geração do relatório)."""
-    status_texto = it.get("status_texto")
-    status_cor = it.get("status_cor")
-    if status_texto is None:
-        pct = it.get("progresso_pct")
-        if pct is not None:
-            status_texto, status_cor = f"Em Progresso ({pct}%)", AMBAR_STATUS
-        else:
-            status_texto, status_cor = "Concluída", VERDE_STATUS
-    tipo = it.get("tipo_ronda") or "Curta"
-    return [
-        {"texto": f"Ronda {tipo} – ", "bold": False},
-        {"texto": f'OS {it["numero_os"]}', "bold": True},
-        {"texto": " – ", "bold": False},
-        {"texto": status_texto, "bold": False, "color": status_cor},
-        {"texto": ". ", "bold": False},
-    ]
 
 
 # ── Formatação explícita (Poppins 20pt, numeração automática) ──────────────
@@ -989,7 +928,7 @@ def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas,
     return novo
 
 
-PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "RONDAS DA SEMANA", "CHAMADOS COM FABRICANTE", "ZELADORIA"]
+PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "CHAMADOS COM FABRICANTE", "ZELADORIA"]
 
 
 def _renderizar_pautas_gerais(prs):
@@ -1977,27 +1916,27 @@ def _limpar_pacote_final(buf):
 
 def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
                           desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None,
-                          rondas_por_usina=None, chamados_fabricante_por_usina=None):
+                          chamados_fabricante_por_usina=None):
     """
     NOVA ESTRUTURA (confirmada com Fred 28/08/2026, a partir do relatório de
     referência Sal Energia Semana 36 — vale para TODOS os clientes),
-    substituindo o padrão de 23/07/2026:
+    substituindo o padrão de 23/07/2026. RONDAS DA SEMANA (Ronda Curta/Longa)
+    foi REMOVIDA em 10/09/2026 (Fred: "não está funcionando") — OS de ronda
+    voltam a entrar como atividade normal, sem seção própria:
 
-    (1) Capa; (2) Pautas Gerais (4 tópicos fixos); (3-4) ATIVIDADES DA
-    SEMANA por usina — Desligamentos agora ENTRAM AQUI (não é mais seção
-    própria), mantendo o texto "Desligamento - OS nº – Status"; (5-6)
-    RONDAS DA SEMANA, com uma legenda fixa do checklist de cada tipo no
-    topo da seção (repetida em toda página/continuação) e cada item só
-    "Ronda X – OS nº – Status."; (7) CHAMADOS COM FABRICANTE — agora
-    AUTOMÁTICO a partir da aba ChamadosFabricante (só usinas com chamado
-    em aberto aparecem, sem numeração/bullet); (8) ZELADORIA (dados reais
-    do Painel de Zeladoria); (9) contato (slide original do template).
+    (1) Capa; (2) Pautas Gerais (3 tópicos fixos); (3-4) ATIVIDADES DA
+    SEMANA por usina — Desligamentos entram aqui (não é seção própria),
+    mantendo o texto "Desligamento - OS nº – Status"; (5) CHAMADOS COM
+    FABRICANTE — automático a partir da aba ChamadosFabricante (só usinas
+    com chamado em aberto aparecem, sem numeração/bullet); (6) ZELADORIA
+    (dados reais do Painel de Zeladoria); (7) contato (slide original do
+    template).
 
     A ordem das usinas é alfabética, EXCETO clientes com ordem fixa
     definida em ORDEM_FIXA_USINAS_POR_CLIENTE (hoje: Sal Energia).
 
-    atividades_por_usina / desligamentos_por_usina / rondas_por_usina:
-    retorno de coletar_atividades_e_desligamentos_por_usina() (3-tupla).
+    atividades_por_usina / desligamentos_por_usina: retorno de
+    coletar_atividades_e_desligamentos_por_usina() (2-tupla).
     chamados_fabricante_por_usina: retorno de
     coletar_chamados_fabricante_por_usina(), ou None (seção sai com
     "Nenhum chamado em aberto com o fabricante no momento.").
@@ -2010,7 +1949,6 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     Retorna BytesIO() pronto para download.
     """
     prs = Presentation(TEMPLATE_PATH)
-    rondas_por_usina = rondas_por_usina or {}
     chamados_fabricante_por_usina = chamados_fabricante_por_usina or {}
 
     # Orçamento de paginação: FIXO, calibrado contra o relatório de
@@ -2025,11 +1963,9 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
     mapa_canonico = _mapa_usinas_canonicas(usinas_cliente)
     atividades_combinadas = _remapear_usinas(
         _mesclar_atividades_desligamentos(atividades_por_usina, desligamentos_por_usina), mapa_canonico)
-    rondas_por_usina = _remapear_usinas(rondas_por_usina, mapa_canonico)
     chamados_fabricante_por_usina = _remapear_usinas(chamados_fabricante_por_usina, mapa_canonico)
 
-    usinas_todas = set(usinas_cliente or []) | set(atividades_combinadas) \
-        | set(rondas_por_usina) | set(chamados_fabricante_por_usina)
+    usinas_todas = set(usinas_cliente or []) | set(atividades_combinadas) | set(chamados_fabricante_por_usina)
     usinas_ordenadas = _ordenar_usinas(usinas_todas, cliente)
 
     # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
@@ -2046,17 +1982,11 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
                                _formatar_item_atividade_geral, "Sem atividades realizadas no período.",
                                "•", max_linhas)
 
-    # --- Slides 5-6: RONDAS DA SEMANA (tópico 2) — legenda fixa no topo,
-    # exigência de cliente confirmada com Fred 28/08/2026 -------------------
-    _renderizar_topico_usinas(prs, 2, "RONDAS DA SEMANA", usinas_ordenadas, rondas_por_usina,
-                               _formatar_item_ronda, "Sem rondas registradas no período.",
-                               "•", max_linhas, legenda=RONDA_LEGENDA)
+    # --- Slide 5: CHAMADOS COM FABRICANTE (tópico 2) — automático, dados
+    # reais da aba ChamadosFabricante ----------------------------------------
+    _renderizar_chamados_fabricante(prs, 2, usinas_ordenadas, chamados_fabricante_por_usina, max_linhas)
 
-    # --- Slide 7: CHAMADOS COM FABRICANTE (tópico 3) — agora automático,
-    # dados reais da aba ChamadosFabricante ---------------------------------
-    _renderizar_chamados_fabricante(prs, 3, usinas_ordenadas, chamados_fabricante_por_usina, max_linhas)
-
-    # --- Slide 8: ZELADORIA (tópico 4) — dados reais do Painel -------------
+    # --- Slide 6: ZELADORIA (tópico 3) — dados reais do Painel -------------
     def _corpo_zeladoria(tf):
         primeiro = True
         for i, usina in enumerate(usinas_ordenadas, start=1):
@@ -2064,7 +1994,7 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
             primeiro = False
             info = (zeladoria_status_por_usina or {}).get(usina)
             _add_paragrafo(tf, "item", _formatar_item_zeladoria(info), first=False, bullet_char="•")
-    _renderizar_secao_placeholder(prs, 4, "ZELADORIA", _corpo_zeladoria)
+    _renderizar_secao_placeholder(prs, 3, "ZELADORIA", _corpo_zeladoria)
 
     # --- Reordena o deck: capa nova -> pautas nova -> conteúdo -> contato --
     xml_slides = prs.slides._sldIdLst
