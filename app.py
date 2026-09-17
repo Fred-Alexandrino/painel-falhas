@@ -13719,14 +13719,14 @@ def gerar_relatorio_semanal_route():
                 if canonico:
                     row[col_usina] = canonico
 
-        atividades_por_usina, desligamentos_por_usina, rondas_por_usina = coletar_atividades_e_desligamentos_por_usina(
+        atividades_por_usina, desligamentos_por_usina = coletar_atividades_e_desligamentos_por_usina(
             todos_atividades, cliente, data_inicio, data_fim)
 
         try:
             usinas_cliente = sorted(set(listar_usinas_cliente(todos_atividades, cliente)))
         except Exception as e:
             log.error(f"[Relatorio Semanal] Erro ao listar usinas do cliente: {e}")
-            usinas_cliente = sorted(set(atividades_por_usina) | set(desligamentos_por_usina) | set(rondas_por_usina))
+            usinas_cliente = sorted(set(atividades_por_usina) | set(desligamentos_por_usina))
 
         if not usinas_cliente:
             return jsonify({"ok": False, "error": "Nenhuma usina encontrada para esse cliente"}), 404
@@ -13779,8 +13779,7 @@ def gerar_relatorio_semanal_route():
 
         buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
                                     atividades_por_usina, desligamentos_por_usina, usinas_cliente,
-                                    zeladoria_status_por_usina, rondas_por_usina,
-                                    chamados_fabricante_por_usina)
+                                    zeladoria_status_por_usina, chamados_fabricante_por_usina)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
