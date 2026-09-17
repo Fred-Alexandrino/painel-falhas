@@ -10058,7 +10058,65 @@ def _get_mensagens_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_resumos_tipo_data ON resumos(tipo, data_referencia)")
+    # Histórico das OSs elaboradas via IA (botão "Elaborar OS" da sidebar)
+    # — pra Fred conseguir consultar/reaproveitar textos já gerados sem
+    # precisar chamar a IA de novo (pedido em 17/09/2026).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS os_elaboradas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entrada_usuario TEXT NOT NULL,
+            os_json TEXT NOT NULL,
+            criado_em TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_os_elaboradas_criado ON os_elaboradas(criado_em)")
     return conn
+
+
+def _salvar_os_elaborada(entrada_usuario, os_lista):
+    """Persiste o resultado de uma geração de OS via IA (`/gerar-texto-os-ia`)
+    pra ficar disponível na aba "OS Elaboradas" do painel Comunicados & OSs,
+    sem precisar chamar a IA de novo pra reconsultar o mesmo texto."""
+    conn = _get_mensagens_db()
+    conn.execute(
+        "INSERT INTO os_elaboradas (entrada_usuario, os_json, criado_em) VALUES (?, ?, ?)",
+        (entrada_usuario or "", json.dumps(os_lista, ensure_ascii=False), agora_br().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    novo_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return novo_id
+
+
+@app.route("/os-elaboradas", methods=["GET"])
+def listar_os_elaboradas():
+    """Lista o histórico de OSs elaboradas via IA, pro painel mostrar.
+    Filtros opcionais: ?q=texto (busca na entrada do usuário e no
+    resultado), ?limit=N (default 30, máx 200)."""
+    q = (request.args.get("q", "") or "").strip().lower()
+    limit = min(int(request.args.get("limit", 30) or 30), 200)
+    conn = _get_mensagens_db()
+    conn.row_factory = sqlite3.Row
+    linhas = conn.execute(
+        "SELECT id, entrada_usuario, os_json, criado_em FROM os_elaboradas ORDER BY criado_em DESC LIMIT ?",
+        (limit if not q else 500,)
+    ).fetchall()
+    conn.close()
+    itens = [dict(r) for r in linhas]
+    if q:
+        itens = [it for it in itens if q in it["entrada_usuario"].lower() or q in it["os_json"].lower()][:limit]
+    return jsonify({"ok": True, "itens": itens}), 200
+
+
+@app.route("/os-elaboradas/<int:item_id>", methods=["DELETE", "OPTIONS"])
+def excluir_os_elaborada(item_id):
+    if request.method == "OPTIONS":
+        return ("", 204)
+    conn = _get_mensagens_db()
+    conn.execute("DELETE FROM os_elaboradas WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
 
 
 def _salvar_resumo(tipo, texto, data_referencia, data_inicio=None, data_fim=None, enviado=False):
@@ -13247,6 +13305,14 @@ def gerar_texto_os_ia():
             return "\n\n".join(partes)
 
         textos = [_montar_texto_legado(o) for o in os_lista]
+
+        # Salva no histórico da aba "OS Elaboradas" (Comunicados & OSs) —
+        # não gasta chamada de IA extra, só persiste o que já foi gerado.
+        try:
+            entrada_usuario = (body.get("falha") or body.get("equipamento") or body.get("causa") or "").strip()
+            _salvar_os_elaborada(entrada_usuario, os_lista)
+        except Exception as e_hist:
+            log.error(f"[gerar-texto-os-ia] Falha ao salvar histórico de OS elaborada: {e_hist}")
 
         resultado = {
             "ok": True,
