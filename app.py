@@ -5150,6 +5150,7 @@ TECNICO_USINAS = {
     "isake costa":       ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
     "daniel de paula":   ["Sete Lagoas"],
     "adriano silva":     ["Solier (Cascavel)"],
+    "marcelo lino":      ["Canarana I", "Canarana II", "Ribeirão Cascalheira"],
 }
 
 
