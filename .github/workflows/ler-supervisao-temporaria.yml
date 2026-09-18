@@ -1,0 +1,24 @@
+name: Ler Supervisao Temporaria
+on:
+  workflow_dispatch: {}
+jobs:
+  ler:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ler supervisao temporaria
+        run: |
+          mkdir -p backups
+          curl -s -H "X-Webhook-Secret: $WEBHOOK_SECRET" "https://api.168.138.232.237.sslip.io/supervisao-temporaria" -o backups/supervisao-temp-atual.json
+          cat backups/supervisao-temp-atual.json
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/supervisao-temp-atual.json
+          git diff --quiet --cached || git commit -m "Ler supervisao temporaria [skip ci]"
+          git push
