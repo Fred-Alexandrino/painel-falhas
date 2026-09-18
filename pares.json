@@ -1,1 +1,10 @@
-{"pares": {"cluster_usina:Solier (Cascavel)": "CE Leste 02"}}
+{
+  "pares": {
+    "cluster_usina:Canarana I": "MT Leste 02",
+    "cluster_usina:Canarana II": "MT Leste 02",
+    "cluster_usina:Ribeirão Cascalheira": "MT Leste 02",
+    "grupo_usina:Canarana I": "120363414633259915@g.us",
+    "grupo_usina:Canarana II": "120363414633259915@g.us",
+    "grupo_usina:Ribeirão Cascalheira": "120363414633259915@g.us"
+  }
+}
