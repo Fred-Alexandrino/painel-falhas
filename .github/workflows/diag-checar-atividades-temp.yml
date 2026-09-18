@@ -1,0 +1,47 @@
+name: Diag Checar Atividades das Usinas Temp
+on:
+  workflow_dispatch: {}
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Criar script
+        run: |
+          cat > /tmp/checar.py << 'PYEOF'
+          import json, sys
+          d = json.load(sys.stdin)
+          atividades = d.get("atividades", [])
+          alvos = ["junco", "ipixuna", "uniao", "uniao", "tupi paulista", "demerval"]
+          import unicodedata
+          def norm(s):
+              s = unicodedata.normalize("NFKD", s or "").encode("ascii","ignore").decode("ascii").lower()
+              return s
+          contagem = {}
+          for a in atividades:
+              usina = a.get("usina","")
+              txt = norm(usina)
+              if any(al in txt for al in alvos):
+                  contagem[usina] = contagem.get(usina, 0) + 1
+                  print("ATIVIDADE:", a.get("numeroOS"), "|", usina, "|", a.get("cliente"), "|", a.get("status"), "|", a.get("statusOS"))
+          print("")
+          print("RESUMO por usina:", contagem)
+          print("TOTAL atividades no painel:", len(atividades))
+          PYEOF
+      - name: Buscar atividades
+        run: |
+          BASE="https://api.168.138.232.237.sslip.io"
+          mkdir -p backups
+          curl -s "$BASE/atividades" -H "X-Webhook-Secret: $WEBHOOK_SECRET" | python3 /tmp/checar.py > backups/check-atividades-temp.txt
+          cat backups/check-atividades-temp.txt
+      - if: always()
+        run: |
+          git config user.name "sync-fracttal-bot"
+          git config user.email "actions@github.com"
+          git add backups/check-atividades-temp.txt
+          git diff --quiet --cached || git commit -m "Diagnostico: checar atividades das usinas temp no Painel [skip ci]"
+          git push
