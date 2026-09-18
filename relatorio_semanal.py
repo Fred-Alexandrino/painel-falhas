@@ -1965,7 +1965,12 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
         _mesclar_atividades_desligamentos(atividades_por_usina, desligamentos_por_usina), mapa_canonico)
     chamados_fabricante_por_usina = _remapear_usinas(chamados_fabricante_por_usina, mapa_canonico)
 
-    usinas_todas = set(usinas_cliente or []) | set(atividades_combinadas) | set(chamados_fabricante_por_usina)
+    # Inclui também usinas que só têm dado de Zeladoria (sem nenhuma
+    # atividade/chamado no período) — sem isso, uma usina sob supervisão
+    # temporária cuja única movimentação no sistema seja a Zeladoria
+    # nunca apareceria no relatório (Fred, 10/09/2026).
+    usinas_todas = set(usinas_cliente or []) | set(atividades_combinadas) | set(chamados_fabricante_por_usina) \
+        | set(zeladoria_status_por_usina or {})
     usinas_ordenadas = _ordenar_usinas(usinas_todas, cliente)
 
     # --- Slide 1: Capa — só cliente e semana (sem data) ---------------------
