@@ -10,6 +10,24 @@ jobs:
       WEBHOOK_SECRET: ${{ secrets.FALHAS_WEBHOOK_SECRET }}
     steps:
       - uses: actions/checkout@v4
+      - name: Criar script de busca
+        run: |
+          cat > /tmp/buscar.py << 'PYEOF'
+          import json, sys
+          d = json.load(sys.stdin)
+          data = d.get("body", {}).get("data", [])
+          alvos = ["junco", "ipixuna", "uniao", "uniao", "tupi paulista", "demerval"]
+          import unicodedata
+          def norm(s):
+              s = unicodedata.normalize("NFKD", s or "").encode("ascii","ignore").decode("ascii").lower()
+              return s
+          for item in data:
+              grp = item.get("groups_1_description") or ""
+              ativo = item.get("items_log_description") or item.get("parent_description") or ""
+              txt = norm(grp + " " + ativo)
+              if any(a in txt for a in alvos):
+                  print("MATCH:", item.get("folio"), "|", grp, "|", ativo, "|", item.get("ot_status"), "|", item.get("personnel_description"))
+          PYEOF
       - name: Buscar em todos os status
         run: |
           BASE="https://api.168.138.232.237.sslip.io"
@@ -17,28 +35,14 @@ jobs:
           mkdir -p backups
           OUT=backups/diag-usinas-supervisao.txt
           echo "Busca iniciada $(date -u +%Y-%m-%dT%H:%M:%SZ)" > $OUT
-
           for STATUS in 1 2 3 4; do
             echo "" >> $OUT
             echo "===== OT_STATUS=$STATUS =====" >> $OUT
             START=0
             while true; do
-              RESP=$(curl -s "$BASE/fracttal-raw?since=$SINCE&ot_status=$STATUS&start=$START&limit=100" \
-                -H "X-Webhook-Secret: $WEBHOOK_SECRET")
+              RESP=$(curl -s "$BASE/fracttal-raw?since=$SINCE&ot_status=$STATUS&start=$START&limit=100" -H "X-Webhook-Secret: $WEBHOOK_SECRET")
               TOTAL=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('body',{}).get('total',0))" 2>/dev/null || echo 0)
-              # grep pelas usinas-alvo nesta pagina
-              echo "$RESP" | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-data = d.get('body',{}).get('data', [])
-alvos = ['junco','ipixuna','uniao','união','tupi paulista','demerval']
-for item in data:
-    grp = (item.get('groups_1_description') or '')
-    ativo = (item.get('items_log_description') or item.get('parent_description') or '')
-    txt = (grp + ' ' + ativo).lower()
-    if any(a in txt for a in alvos):
-        print('MATCH start=$START:', item.get('folio'), '|', grp, '|', ativo, '|', item.get('ot_status'), '|', item.get('personnel_description'))
-"  >> $OUT
+              echo "$RESP" | python3 /tmp/buscar.py >> $OUT
               if [ "$TOTAL" = "0" ] || [ -z "$TOTAL" ]; then break; fi
               START=$((START + 100))
               if [ "$START" -ge "$TOTAL" ]; then break; fi
