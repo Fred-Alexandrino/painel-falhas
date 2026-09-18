@@ -1,0 +1,761 @@
+Busca iniciada 2026-09-18T12:07:03Z
+
+===== OT_STATUS=1 =====
+MATCH: None | 2C - União 1 - PI | Transformador 1 WEG     { 2C-UNI100-TRFR1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Sistema de Segurança Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-SSEG1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | SPDA Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-SPDA1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | QGBT 2 Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-QGBT2 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | QGBT 1 Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-QGBT1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Preventiva Grupo de Inversores      { 2C-UNI100-PGINVR1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Nobreak 1      { 2C-UNI100-NBRK1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Módulo Fotovoltaico Trina Solar TSM-NEG21C.20    { 2C-UNI100-MDFV } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Cabos CC      { 2C-UNI100-INFE1-CBCC } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Infraestrutura Civil Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-INFC1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Estrutura Trackers Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-ETKR1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Estação Meteorológica Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-ESTM1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Caixa d'água      { 2C-UNI100-CXDA1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Cabine 1 Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-CABN1 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estrutura Trackers  Tupi Paulista  São Paulo Brasil { TPP100-ETKR1 } | None | Carlos  Godoi
+MATCH: None | 2C - União 1 - PI | Transformador 1 WEG     { 2C-UNI100-TRFR1 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Transformador 2 WEG     { IPX100-TRFR2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Transformador 1 WEG     { IPX100-TRFR1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | SPDA  Ipixuna  Pará Brasil { IPX100-SPDA1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Ar Condicionado      { IPX100-SOEM1-ARCD } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | RSU 1      { IPX100-RSU1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Relé da Cabine 1      { IPX100-RELE1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | QGBT 2  Ipixuna  Pará Brasil { IPX100-QGBT2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | QGBT 1  Ipixuna  Pará Brasil { IPX100-QGBT1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | NCU 2      { IPX100-NCU2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | NCU 1      { IPX100-NCU1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Nobreak 1      { IPX100-NBRK1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Módulo Fotovoltaico Trina Solar TSM-NEG19RC20 600W    { IPX100-MDFV } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.9 Sungrow SG-110CX    { IPX100-INVR2.9 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.8 Sungrow SG-110CX    { IPX100-INVR2.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.7 Sungrow SG-110CX    { IPX100-INVR2.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.6 Sungrow SG-110CX    { IPX100-INVR2.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.5 Sungrow SG-110CX    { IPX100-INVR2.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.4 Sungrow SG-110CX    { IPX100-INVR2.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.3 Sungrow SG-110CX    { IPX100-INVR2.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.2 Sungrow SG-110CX    { IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.13 Sungrow SG-110CX    { IPX100-INVR2.13 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.12 Sungrow SG-110CX    { IPX100-INVR2.12 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.11 Sungrow SG-110CX    { IPX100-INVR2.11 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.10 Sungrow SG-110CX    { IPX100-INVR2.10 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.1 Sungrow SG-110CX    { IPX100-INVR2.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.9 Sungrow SG-110CX    { IPX100-INVR1.9 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.8 Sungrow SG-110CX    { IPX100-INVR1.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.7 Sungrow SG-110CX    { IPX100-INVR1.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.6 Sungrow SG-110CX    { IPX100-INVR1.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.5 Sungrow SG-110CX    { IPX100-INVR1.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.4 Sungrow SG-110CX    { IPX100-INVR1.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.3 Sungrow SG-110CX    { IPX100-INVR1.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.2 Sungrow SG-110CX    { IPX100-INVR1.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.1 Sungrow SG-110CX    { IPX100-INVR1.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Infraestrutura Civil  Ipixuna  Pará Brasil { IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Fossa Séptica      { IPX100-FSEP } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Estrutura Trackers  Ipixuna  Pará Brasil { IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Estação Meteorológica  Ipixuna  Pará Brasil { IPX100-ESTM1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Caixa d'água      { IPX100-CXDA1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 2  Ipixuna  Pará Brasil { IPX100-CABN2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.9 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.9 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.10 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.10 } | None | Carlos  Godoi
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Sistema de Segurança  Ipixuna  Pará Brasil { IPX100-SSEG1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 2 WEG     { TPP100-TRFR2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 1 WEG     { TPP100-TRFR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SPDA  Tupi Paulista  São Paulo Brasil { TPP100-SPDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | RSU 3      { TPP100-RSU3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | RSU 2      { TPP100-RSU2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | RSU 1      { TPP100-RSU1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Relé da Cabine 1      { TPP100-RELE1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 2  Tupi Paulista  São Paulo Brasil { TPP100-QGBT2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Nobreak 1      { TPP100-NBRK1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 3      { TPP100-NCU3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 2      { TPP100-NCU2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 1      { TPP100-NCU1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Módulo Fotovoltaico JA Solar JAM72D42 605-630 LB    { TPP100-MDFV } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.9 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.9 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.8 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.8 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.7 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.7 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.6 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.6 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.5 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.5 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.4 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.4 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.3 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.2 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.1 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.10 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.10 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.9 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.9 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.8 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.8 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.7 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.7 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.6 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.6 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.5 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.5 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.4 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.4 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.3 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.2 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.1 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.10 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.10 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Fossa Séptica      { TPP100-FSEP } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estrutura Trackers  Tupi Paulista  São Paulo Brasil { TPP100-ETKR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Caixa d'água      { TPP100-CXDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Ar Condicionado      { TPP100-SOEM1-ARCD } | None | Carlos  Godoi
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Infraestrutura Civil Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Preventiva Grupo de Inversores      { GY-DML100-PGINVR1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Estação Meteorológica  Demerval Lobão  Piauí Brasil { DML100-ESTM1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabine 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabine 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Transformador 2 União     { THPN-JNC100-TRFR2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Transformador 1 União     { THPN-JNC100-TRFR1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Estrutura Trackers Chapadinha Sul, Zona Rural S/N   Piauí Brasil { THPN-JNC100-ETKR1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | SPDA Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SPDA1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Sistema de Segurança Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SSEG1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | QGBT 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | QGBT 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | QGBT 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT3 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | QGBT 4 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT4 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Preventiva Grupo de Inversores      { THPN-JNC100-PGINVR1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Nobreak 1      { THPN-JNC100-NBRK1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Nobreak 2      { THPN-JNC100-NBRK2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Módulo Fotovoltaico Seraphim SRP-545-BMA-BG-182-V2.0    { THPN-JNC100-MDFV } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Infraestrutura Civil Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-INFC1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Estação Meteorológica Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-ESTM1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Caixa d'água      { THPN-JNC100-CXDA1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabos CC      { THPN-JNC100-INFE1-CBCC } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 2  Demerval Lobão  Piauí Brasil { DML100-QGBT2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 1  Demerval Lobão  Piauí Brasil { DML100-QGBT1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.1 Huawei SUN2000-215KTL-H3    { DML100-INVR2.1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.9 Huawei SUN2000-215KTL-H3    { DML100-INVR1.9 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.8 Huawei SUN2000-215KTL-H3    { DML100-INVR1.8 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.7 Huawei SUN2000-215KTL-H3    { DML100-INVR1.7 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.6 Huawei SUN2000-215KTL-H3    { DML100-INVR1.6 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.5 Huawei SUN2000-215KTL-H3    { DML100-INVR1.5 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.4 Huawei SUN2000-215KTL-H3    { DML100-INVR1.4 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.3 Huawei SUN2000-215KTL-H3    { DML100-INVR1.3 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.2 Huawei SUN2000-215KTL-H3    { DML100-INVR1.2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.1 Huawei SUN2000-215KTL-H3    { DML100-INVR1.1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.12 Huawei SUN2000-215KTL-H3    { DML100-INVR1.12 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.11 Huawei SUN2000-215KTL-H3    { DML100-INVR1.11 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.10 Huawei SUN2000-215KTL-H3    { DML100-INVR1.10 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 2  Demerval Lobão  Piauí Brasil { DML100-CABN2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 1  Demerval Lobão  Piauí Brasil { DML100-CABN1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 2  Demerval Lobão  Piauí Brasil { DML100-QGBT2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 1  Demerval Lobão  Piauí Brasil { DML100-QGBT1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.1 Huawei SUN2000-215KTL-H3    { DML100-INVR2.1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.9 Huawei SUN2000-215KTL-H3    { DML100-INVR1.9 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.8 Huawei SUN2000-215KTL-H3    { DML100-INVR1.8 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.7 Huawei SUN2000-215KTL-H3    { DML100-INVR1.7 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.6 Huawei SUN2000-215KTL-H3    { DML100-INVR1.6 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.5 Huawei SUN2000-215KTL-H3    { DML100-INVR1.5 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.4 Huawei SUN2000-215KTL-H3    { DML100-INVR1.4 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.3 Huawei SUN2000-215KTL-H3    { DML100-INVR1.3 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.2 Huawei SUN2000-215KTL-H3    { DML100-INVR1.2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.1 Huawei SUN2000-215KTL-H3    { DML100-INVR1.1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.12 Huawei SUN2000-215KTL-H3    { DML100-INVR1.12 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.11 Huawei SUN2000-215KTL-H3    { DML100-INVR1.11 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.10 Huawei SUN2000-215KTL-H3    { DML100-INVR1.10 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 2  Demerval Lobão  Piauí Brasil { DML100-CABN2 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 1  Demerval Lobão  Piauí Brasil { DML100-CABN1 } | None | Ailton Leal 
+total geral status 1: 2711
+
+===== OT_STATUS=2 =====
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT2 } | None | Wesllen  Castro
+MATCH: None | 2C - União 1 - PI | 2C - União 1 - PI Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.6 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.6 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.5 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.5 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.4 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.4 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.3 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.2 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.1 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | SKID 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SKID2 } | None | Frank  Melo
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 2  Demerval Lobão  Piauí Brasil { DML100-QGBT2 } | None | Luiz  Silva
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT2 } | None | Frank  Melo
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Luiz  Silva
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - União 1 - PI | 2C - União 1 - PI Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabine 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SKID 2  Tupi Paulista  São Paulo Brasil { TPP100-SKID2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SKID 1  Tupi Paulista  São Paulo Brasil { TPP100-SKID1 } | None | Carlos  Godoi
+MATCH: None | 2C - União 1 - PI | Sistema de Combate a Incêndio      { 2C-UNI100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | SKID 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SKID2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Sistema de Combate a Incêndio      { THPN-JNC100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Sistema de Combate a Incêndio      { 2C-IPX100-INFC1-PPCI } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Sistema de Combate a Incêndio      { DML100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Infraestrutura Civil  Ipixuna  Pará Brasil { IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Sistema de Segurança  Ipixuna  Pará Brasil { IPX100-SSEG1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Estação Meteorológica  Ipixuna  Pará Brasil { IPX100-ESTM1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Caixa d'água      { IPX100-CXDA1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Transformador 1 WEG     { IPX100-TRFR1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Transformador 2 WEG     { IPX100-TRFR2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Preventiva Grupo de Inversores      { THPN-IPX100-PGINVR1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabos CC      { IPX100-INFE1-CBCC } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Nobreak 1      { IPX100-NBRK1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Módulo Fotovoltaico Trina Solar TSM-NEG19RC20 600W    { IPX100-MDFV } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Estrutura Trackers  Ipixuna  Pará Brasil { IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | QGBT 1  Ipixuna  Pará Brasil { IPX100-QGBT1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | QGBT 2  Ipixuna  Pará Brasil { IPX100-QGBT2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | SPDA  Ipixuna  Pará Brasil { IPX100-SPDA1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabine 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 1 WEG     { 2C-IPX100-TRFR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 2 WEG     { 2C-IPX100-TRFR2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 3 WEG     { 2C-IPX100-TRFR3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estrutura Trackers Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | SPDA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SPDA1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Sistema de Segurança Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SSEG1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 3 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Preventiva Grupo de Inversores      { 2C-IPX100-PGINVR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Nobreak 1      { 2C-IPX100-NBRK1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Módulo Fotovoltaico Trina Solar TSM-NEG21C.20    { 2C-IPX100-MDFV } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Infraestrutura Civil Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Caixa d'água      { 2C-IPX100-CXDA1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabos CC      { 2C-IPX100-INFE1-CBCC } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.9 Sungrow SG-110CX    { IPX100-INVR1.9 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.8 Sungrow SG-110CX    { IPX100-INVR1.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.7 Sungrow SG-110CX    { IPX100-INVR1.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.6 Sungrow SG-110CX    { IPX100-INVR1.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.5 Sungrow SG-110CX    { IPX100-INVR1.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.4 Sungrow SG-110CX    { IPX100-INVR1.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.3 Sungrow SG-110CX    { IPX100-INVR1.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.2 Sungrow SG-110CX    { IPX100-INVR1.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.1 Sungrow SG-110CX    { IPX100-INVR1.1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 1      { TPP100-NCU1 } | None | Carlos  Godoi
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Módulo Fotovoltaico JA Solar JAM72D42 605-630 LB    { TPP100-MDFV } | None | Carlos  Godoi
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Inversor 4.2 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR4.2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 4.1 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR4.1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 3.4 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR3.4 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 3.1 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR3.1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 2.4 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR2.4 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 2.2 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR2.2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 1.9 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR1.9 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 1.10 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR1.10 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.2 Sungrow SG-110CX    { IPX100-INVR1.2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 3.2 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR3.2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabine 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Luiz  Silva
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | João Vieira 
+MATCH: None | Thopen - Junco 1 - PI | Estação Meteorológica Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-ESTM1 } | None | Francisco  Santos
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Luiz  Silva
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estrutura Trackers Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Transformador 1 Tamura     { DML100-TRFR1 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabos CC      { DML100-INFE1-CBCC } | None | Luiz  Silva
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 1 WEG     { TPP100-TRFR1 } | None | Carlos  Godoi
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Greenyellow - Demerval Lobão 1 - PI  Demerval Lobão  Piauí Brasil { GY-DML100 } | None | Luiz  Silva
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Carlos  Godoi
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Infraestrutura Civil  Ipixuna  Pará Brasil { IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Luiz  Silva
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Carlos  Godoi
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Estrutura Trackers  Ipixuna  Pará Brasil { IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.1 Sungrow SG-110CX    { IPX100-INVR1.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.2 Sungrow SG-110CX    { IPX100-INVR1.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.3 Sungrow SG-110CX    { IPX100-INVR1.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.4 Sungrow SG-110CX    { IPX100-INVR1.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.5 Sungrow SG-110CX    { IPX100-INVR1.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.6 Sungrow SG-110CX    { IPX100-INVR1.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.7 Sungrow SG-110CX    { IPX100-INVR1.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.8 Sungrow SG-110CX    { IPX100-INVR1.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.9 Sungrow SG-110CX    { IPX100-INVR1.9 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.1 Sungrow SG-110CX    { IPX100-INVR2.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.10 Sungrow SG-110CX    { IPX100-INVR2.10 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.11 Sungrow SG-110CX    { IPX100-INVR2.11 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.12 Sungrow SG-110CX    { IPX100-INVR2.12 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.13 Sungrow SG-110CX    { IPX100-INVR2.13 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.2 Sungrow SG-110CX    { IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.3 Sungrow SG-110CX    { IPX100-INVR2.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.4 Sungrow SG-110CX    { IPX100-INVR2.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.5 Sungrow SG-110CX    { IPX100-INVR2.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.6 Sungrow SG-110CX    { IPX100-INVR2.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.7 Sungrow SG-110CX    { IPX100-INVR2.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.8 Sungrow SG-110CX    { IPX100-INVR2.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.9 Sungrow SG-110CX    { IPX100-INVR2.9 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estrutura Trackers Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.2 Sungrow SG-110CX    { IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.5 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.5 } | None | Carlos  Godoi
+MATCH: None | Thopen - Junco 1 - PI | Tracker 7.100 Axial 1V Twin    { THPN-JNC100-ETKR7.100 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Tracker 41.100 Axial 1V Twin    { THPN-JNC100-ETKR41.100 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Ar Condicionado      { 2C-UNI100-SOEM1-ARCD } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Cabine 1 Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-CABN1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Caixa d'água      { 2C-UNI100-CXDA1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Estação Meteorológica Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-ESTM1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Fossa Séptica      { 2C-UNI100-FSEP } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Infraestrutura Civil Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-INFC1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Infraestrutura Civil Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-INFC1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 1.1 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 1.2 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.2 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 1.3 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.3 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 1.4 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.4 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 1.5 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.5 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 1.6 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.6 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 2.1 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR2.1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 2.2 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR2.2 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 2.3 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR2.3 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 2.4 Huawei SUN2000-330KTL-H1    { 2C-UNI100-INVR2.4 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 2.5 Huawei SUN2000-330KTL-H1    { 2C-UNI100-INVR2.5 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Inversor 2.6 Huawei SUN2000-330KTL-H1    { 2C-UNI100-INVR2.6 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | NCU 1      { 2C-UNI100-NCU1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Nobreak 1      { 2C-UNI100-NBRK1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Sistema de Combate a Incêndio      { 2C-UNI100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | QGBT 1 Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-QGBT1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | QGBT 2 Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-QGBT2 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Relé da Cabine 1      { 2C-UNI100-RELE1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | RSU 1      { 2C-UNI100-RSU1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Sistema de Segurança Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-SSEG1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Sistema de Drenagem      { 2C-UNI100-INFC1-SDRN1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Sistema Supervisório Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-SSPV1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | SPDA Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-SPDA1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Estrutura Trackers Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-ETKR1 } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Transformador 1 WEG     { 2C-UNI100-TRFR1 } | None | Ailton Leal 
+limite de seguranca atingido
+total geral status 2: 3741
+
+===== OT_STATUS=3 =====
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | João Vieira 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | João Vieira 
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Italo  Lustosa
+MATCH: None | Thopen - Junco 1 - PI | Cabine 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN1 } | None | Italo  Lustosa
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabine 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN1 } | None | Juliana Rogério 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Greenyellow - Demerval Lobão 1 - PI  Demerval Lobão  Piauí Brasil { GY-DML100 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabine 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN2 } | None | Italo  Lustosa
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Frank  Melo
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Frank  Melo
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | 2C - Tupi Paulista 1 e 2 - SP  Tupi Paulista  São Paulo Brasil { 2C-TPP100 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | 2C - Tupi Paulista 1 e 2 - SP  Tupi Paulista  São Paulo Brasil { 2C-TPP100 } | None | Carlos  Godoi
+MATCH: None | 2C - União 1 - PI | 2C - União 1 - PI Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | SKID 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SKID2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - União 1 - PI | 2C - União 1 - PI Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Greenyellow - Demerval Lobão 1 - PI  Demerval Lobão  Piauí Brasil { GY-DML100 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabine 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN1 } | None | Italo  Lustosa
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Greenyellow - Demerval Lobão 1 - PI  Demerval Lobão  Piauí Brasil { GY-DML100 } | None | Ailton Leal 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | 2C - Tupi Paulista 1 e 2 - SP  Tupi Paulista  São Paulo Brasil { 2C-TPP100 } | None | Carlos  Godoi
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Italo  Lustosa
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Greenyellow - Demerval Lobão 1 - PI  Demerval Lobão  Piauí Brasil { GY-DML100 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - União 1 - PI | 2C - União 1 - PI Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.6 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.6 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.5 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.5 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.4 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.4 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.3 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.2 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.1 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Luiz  Silva
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Infraestrutura Civil Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-INFC1 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Infraestrutura Civil  Ipixuna  Pará Brasil { IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Carlos  Godoi
+MATCH: None | 2C - União 1 - PI | Infraestrutura Civil Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-INFC1 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Infraestrutura Civil Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Juliana Rogério 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Juliana Rogério 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Sistema de Combate a Incêndio      { DML100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | 2C - Tupi Paulista 1 e 2 - SP  Tupi Paulista  São Paulo Brasil { 2C-TPP100 } | None | Carlos  Godoi
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 2  Demerval Lobão  Piauí Brasil { DML100-CABN2 } | None | Luiz  Silva
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Sistema de Combate a Incêndio      { TPP100-INFC1-PPCI } | None | Carlos  Godoi
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 2  Ipixuna  Pará Brasil { IPX100-CABN2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Sistema de Combate a Incêndio      { THPN-JNC100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | 2C - União 1 - PI | Sistema de Combate a Incêndio      { 2C-UNI100-INFC1-PPCI } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Sistema de Combate a Incêndio      { 2C-IPX100-INFC1-PPCI } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Sistema de Combate a Incêndio      { IPX100-INFC1-PPCI } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | SKID 1  Ipixuna  Pará Brasil { IPX100-SKID1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Juliana Rogério 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Tracker 109.100 STI Norland STI Norland Array    { 2C-IPX100-ETKR109.100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Italo  Lustosa
+MATCH: None | Thopen - Junco 1 - PI | SKID 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID1 } | None | Juliana Rogério 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabine 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Juliana Rogério 
+MATCH: None | Thopen - Junco 1 - PI | Inversor 1.5 Huawei SUN2000-250KTL-H1    { THPN-JNC100-INVR1.5 } | None | Francisco  Santos
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Juliana Rogério 
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Italo  Lustosa
+MATCH: None | Thopen - Junco 1 - PI | Estação Meteorológica Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-ESTM1 } | None | João Vieira 
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Juliana Rogério 
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Italo  Lustosa
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 1.8 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR1.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Italo  Lustosa
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Tracker 52.100 STI Norland STI Norland Array    { 2C-IPX100-ETKR52.100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - União 1 - PI | 2C - União 1 - PI Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100 } | None | Luiz  Silva
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | João Vieira 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Preventiva Grupo de Inversores      { GY-DML100-PGINVR1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Estação Meteorológica  Demerval Lobão  Piauí Brasil { DML100-ESTM1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Cabine 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN2 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Cabine 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Transformador 2 União     { THPN-JNC100-TRFR2 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Transformador 1 União     { THPN-JNC100-TRFR1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Estrutura Trackers Chapadinha Sul, Zona Rural S/N   Piauí Brasil { THPN-JNC100-ETKR1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | SPDA Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SPDA1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Sistema de Segurança Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SSEG1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | QGBT 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT2 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | QGBT 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | QGBT 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT3 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | QGBT 4 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-QGBT4 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Preventiva Grupo de Inversores      { THPN-JNC100-PGINVR1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Nobreak 1      { THPN-JNC100-NBRK1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Nobreak 2      { THPN-JNC100-NBRK2 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Módulo Fotovoltaico Seraphim SRP-545-BMA-BG-182-V2.0    { THPN-JNC100-MDFV } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Infraestrutura Civil Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-INFC1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Estação Meteorológica Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-ESTM1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Caixa d'água      { THPN-JNC100-CXDA1 } | None | Francisco  Santos
+MATCH: None | Thopen - Junco 1 - PI | Cabos CC      { THPN-JNC100-INFE1-CBCC } | None | Francisco  Santos
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 2 WEG     { TPP100-TRFR2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 1 WEG     { TPP100-TRFR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SPDA  Tupi Paulista  São Paulo Brasil { TPP100-SPDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Sistema de Segurança  Tupi Paulista  São Paulo Brasil { TPP100-SSEG1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 2  Tupi Paulista  São Paulo Brasil { TPP100-QGBT2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Preventiva Grupo de Inversores      { 2C-TPP100-PGINVR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Nobreak 1      { TPP100-NBRK1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Módulo Fotovoltaico JA Solar JAM72D42 605-630 LB    { TPP100-MDFV } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estrutura Trackers  Tupi Paulista  São Paulo Brasil { TPP100-ETKR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Caixa d'água      { TPP100-CXDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabos CC      { TPP100-INFE1-CBCC } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 3 WEG     { 2C-IPX100-TRFR3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 2 WEG     { 2C-IPX100-TRFR2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 1 WEG     { 2C-IPX100-TRFR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | SPDA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SPDA1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Sistema de Segurança Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SSEG1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 3 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Preventiva Grupo de Inversores      { 2C-IPX100-PGINVR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Nobreak 1      { 2C-IPX100-NBRK1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Módulo Fotovoltaico Trina Solar TSM-NEG21C.20    { 2C-IPX100-MDFV } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Infraestrutura Civil Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estrutura Trackers Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Caixa d'água      { 2C-IPX100-CXDA1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabos CC      { 2C-IPX100-INFE1-CBCC } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabine 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Carlos  Godoi
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Cabine 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-CABN2 } | None | Luiz  Silva
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Juliana Rogério 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 2 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID2 } | None | Juliana Rogério 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Cabine 1  Ipixuna  Pará Brasil { IPX100-CABN1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 1 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID1 } | None | Juliana Rogério 
+limite de seguranca atingido
+total geral status 3: 21350
+
+===== OT_STATUS=4 =====
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.6 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.6 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.5 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.5 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.4 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.4 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.3 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.3 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.2 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Inversor 2.1 Huawei SUN2000-250KTL-H1    { 2C-IPX100-INVR2.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | SKID 3 Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-SKID3 } | None | Ailton Leal 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 2 WEG     { TPP100-TRFR2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 1 WEG     { TPP100-TRFR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SPDA  Tupi Paulista  São Paulo Brasil { TPP100-SPDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Ar Condicionado      { TPP100-SOEM1-ARCD } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | RSU 3      { TPP100-RSU3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | RSU 2      { TPP100-RSU2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | RSU 1      { TPP100-RSU1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Relé da Cabine 1      { TPP100-RELE1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 2  Tupi Paulista  São Paulo Brasil { TPP100-QGBT2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 3      { TPP100-NCU3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 2      { TPP100-NCU2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | NCU 1      { TPP100-NCU1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Nobreak 1      { TPP100-NBRK1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Módulo Fotovoltaico JA Solar JAM72D42 605-630 LB    { TPP100-MDFV } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.9 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.9 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.8 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.8 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.7 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.7 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.6 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.6 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.5 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.5 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.4 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.4 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.3 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.2 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 2.1 Huawei SUN2000-250KTL-H1    { TPP100-INVR2.1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.9 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.9 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.8 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.8 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.7 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.7 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.6 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.6 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.5 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.5 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.4 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.4 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.3 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.3 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.2 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.10 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.10 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Inversor 1.1 Huawei SUN2000-250KTL-H1    { TPP100-INVR1.1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Fossa Séptica      { TPP100-FSEP } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estrutura Trackers  Tupi Paulista  São Paulo Brasil { TPP100-ETKR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Caixa d'água      { TPP100-CXDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabine 1  Tupi Paulista  São Paulo Brasil { TPP100-CABN1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 1 WEG     { TPP100-TRFR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 2 WEG     { TPP100-TRFR2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estrutura Trackers  Tupi Paulista  São Paulo Brasil { TPP100-ETKR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SPDA  Tupi Paulista  São Paulo Brasil { TPP100-SPDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Sistema de Segurança  Tupi Paulista  São Paulo Brasil { TPP100-SSEG1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 2  Tupi Paulista  São Paulo Brasil { TPP100-QGBT2 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Preventiva Grupo de Inversores      { 2C-TPP100-PGINVR1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Nobreak 1      { TPP100-NBRK1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Módulo Fotovoltaico JA Solar JAM72D42 605-630 LB    { TPP100-MDFV } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Caixa d'água      { TPP100-CXDA1 } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabos CC      { TPP100-INFE1-CBCC } | None | Carlos  Godoi
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SKID 2  Tupi Paulista  São Paulo Brasil { TPP100-SKID2 } | None | Carlos  Godoi
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Infraestrutura Civil  Ipixuna  Pará Brasil { IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Ailton Leal 
+MATCH: None | Thopen - Junco 1 - PI | Infraestrutura Civil Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100-INFC1 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Infraestrutura Civil  Ipixuna  Pará Brasil { IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Carlos  Godoi
+MATCH: None | 2C - União 1 - PI | Infraestrutura Civil Estrada p/Campo Grande União  Piauí Brasil { 2C-UNI100-INFC1 } | None | Ailton Leal 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Infraestrutura Civil Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-INFC1 } | None | Wesllen  Castro
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Luiz  Silva
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 1 WEG     { 2C-IPX100-TRFR1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 2 WEG     { 2C-IPX100-TRFR2 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Transformador 3 WEG     { 2C-IPX100-TRFR3 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estrutura Trackers Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ETKR1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | SPDA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SPDA1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Sistema de Segurança Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-SSEG1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 3 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT3 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 2 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT2 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | QGBT 1 Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-QGBT1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Preventiva Grupo de Inversores      { 2C-IPX100-PGINVR1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Nobreak 1      { 2C-IPX100-NBRK1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Módulo Fotovoltaico Trina Solar TSM-NEG21C.20    { 2C-IPX100-MDFV } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Infraestrutura Civil Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-INFC1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Estação Meteorológica Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100-ESTM1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Caixa d'água      { 2C-IPX100-CXDA1 } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | Cabos CC      { 2C-IPX100-INFE1-CBCC } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 1 WEG     { TPP100-TRFR1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Transformador 2 WEG     { TPP100-TRFR2 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estrutura Trackers  Tupi Paulista  São Paulo Brasil { TPP100-ETKR1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | SPDA  Tupi Paulista  São Paulo Brasil { TPP100-SPDA1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Sistema de Segurança  Tupi Paulista  São Paulo Brasil { TPP100-SSEG1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 2  Tupi Paulista  São Paulo Brasil { TPP100-QGBT2 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | QGBT 1  Tupi Paulista  São Paulo Brasil { TPP100-QGBT1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Preventiva Grupo de Inversores      { 2C-TPP100-PGINVR1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Nobreak 1      { TPP100-NBRK1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Módulo Fotovoltaico JA Solar JAM72D42 605-630 LB    { TPP100-MDFV } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Infraestrutura Civil  Tupi Paulista  São Paulo Brasil { TPP100-INFC1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Estação Meteorológica  Tupi Paulista  São Paulo Brasil { TPP100-ESTM1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Caixa d'água      { TPP100-CXDA1 } | None | Davi Damasceno 
+MATCH: None | 2C - Tupi Paulista 1 e 2 - SP | Cabos CC      { TPP100-INFE1-CBCC } | None | Davi Damasceno 
+MATCH: None | 2C - Ipixuna do Pará 1 - PA | 2C - Ipixuna do Pará 1 - PA Fazenda Santa Cecília S/N Ipixuna do Pará  Pará Brasil { 2C-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Luiz  Silva
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 2.6 Huawei SUN2000-330KTL-H1    { 2C-UNI100-INVR2.6 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 2.5 Huawei SUN2000-330KTL-H1    { 2C-UNI100-INVR2.5 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 2.4 Huawei SUN2000-330KTL-H1    { 2C-UNI100-INVR2.4 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 2.3 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR2.3 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 2.2 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR2.2 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 2.1 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR2.1 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 1.6 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.6 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 1.5 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.5 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 1.4 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.4 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 1.3 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.3 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 1.2 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.2 } | None | Luiz  Silva
+MATCH: None | 2C - União 1 - PI | Inversor 1.1 Huawei SUN2000-250KTL-H1    { 2C-UNI100-INVR1.1 } | None | Luiz  Silva
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.12 Sungrow SG-110CX    { IPX100-INVR2.12 } | None | Levi Maia 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.9 Sungrow SG-110CX    { IPX100-INVR2.9 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.8 Sungrow SG-110CX    { IPX100-INVR2.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.7 Sungrow SG-110CX    { IPX100-INVR2.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.6 Sungrow SG-110CX    { IPX100-INVR2.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.5 Sungrow SG-110CX    { IPX100-INVR2.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.4 Sungrow SG-110CX    { IPX100-INVR2.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.3 Sungrow SG-110CX    { IPX100-INVR2.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.2 Sungrow SG-110CX    { IPX100-INVR2.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.13 Sungrow SG-110CX    { IPX100-INVR2.13 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.12 Sungrow SG-110CX    { IPX100-INVR2.12 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.11 Sungrow SG-110CX    { IPX100-INVR2.11 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.10 Sungrow SG-110CX    { IPX100-INVR2.10 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 2.1 Sungrow SG-110CX    { IPX100-INVR2.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.9 Sungrow SG-110CX    { IPX100-INVR1.9 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.8 Sungrow SG-110CX    { IPX100-INVR1.8 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.7 Sungrow SG-110CX    { IPX100-INVR1.7 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.6 Sungrow SG-110CX    { IPX100-INVR1.6 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.5 Sungrow SG-110CX    { IPX100-INVR1.5 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.4 Sungrow SG-110CX    { IPX100-INVR1.4 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.3 Sungrow SG-110CX    { IPX100-INVR1.3 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.2 Sungrow SG-110CX    { IPX100-INVR1.2 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Inversor 1.1 Sungrow SG-110CX    { IPX100-INVR1.1 } | None | Wesllen  Castro
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Estrutura Trackers  Ipixuna  Pará Brasil { IPX100-ETKR1 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.6 Huawei SUN2000-215KTL-H3    { DML100-INVR1.6 } | None | Ailton Leal 
+MATCH: None | Thopen - Ipixuna 1 e 2 - PA | Thopen - Ipixuna 1 e 2 - PA  Ipixuna  Pará Brasil { THPN-IPX100 } | None | Wesllen  Castro
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Transformador 2 Tamura     { DML100-TRFR2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Transformador 1 Tamura     { DML100-TRFR1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Sistema de Segurança  Demerval Lobão  Piauí Brasil { DML100-SSEG1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 2  Demerval Lobão  Piauí Brasil { DML100-QGBT2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 1  Demerval Lobão  Piauí Brasil { DML100-QGBT1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.1 Huawei SUN2000-215KTL-H3    { DML100-INVR2.1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.9 Huawei SUN2000-215KTL-H3    { DML100-INVR1.9 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.8 Huawei SUN2000-215KTL-H3    { DML100-INVR1.8 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.7 Huawei SUN2000-215KTL-H3    { DML100-INVR1.7 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.6 Huawei SUN2000-215KTL-H3    { DML100-INVR1.6 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.5 Huawei SUN2000-215KTL-H3    { DML100-INVR1.5 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.4 Huawei SUN2000-215KTL-H3    { DML100-INVR1.4 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.3 Huawei SUN2000-215KTL-H3    { DML100-INVR1.3 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.2 Huawei SUN2000-215KTL-H3    { DML100-INVR1.2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.12 Huawei SUN2000-215KTL-H3    { DML100-INVR1.12 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.11 Huawei SUN2000-215KTL-H3    { DML100-INVR1.11 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.10 Huawei SUN2000-215KTL-H3    { DML100-INVR1.10 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.1 Huawei SUN2000-215KTL-H3    { DML100-INVR1.1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 2  Demerval Lobão  Piauí Brasil { DML100-CABN2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 1  Demerval Lobão  Piauí Brasil { DML100-CABN1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 2  Demerval Lobão  Piauí Brasil { DML100-QGBT2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | QGBT 1  Demerval Lobão  Piauí Brasil { DML100-QGBT1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Módulo Fotovoltaico Risen Solar RSM132-8-690BHDG    { DML100-MDFV } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.8 Huawei SUN2000-215KTL-H3    { DML100-INVR2.8 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.7 Huawei SUN2000-215KTL-H3    { DML100-INVR2.7 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.6 Huawei SUN2000-215KTL-H3    { DML100-INVR2.6 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.5 Huawei SUN2000-215KTL-H3    { DML100-INVR2.5 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.4 Huawei SUN2000-215KTL-H3    { DML100-INVR2.4 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.3 Huawei SUN2000-215KTL-H3    { DML100-INVR2.3 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.2 Huawei SUN2000-215KTL-H3    { DML100-INVR2.2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 2.1 Huawei SUN2000-215KTL-H3    { DML100-INVR2.1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.9 Huawei SUN2000-215KTL-H3    { DML100-INVR1.9 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.8 Huawei SUN2000-215KTL-H3    { DML100-INVR1.8 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.7 Huawei SUN2000-215KTL-H3    { DML100-INVR1.7 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.6 Huawei SUN2000-215KTL-H3    { DML100-INVR1.6 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.5 Huawei SUN2000-215KTL-H3    { DML100-INVR1.5 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.4 Huawei SUN2000-215KTL-H3    { DML100-INVR1.4 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.3 Huawei SUN2000-215KTL-H3    { DML100-INVR1.3 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.2 Huawei SUN2000-215KTL-H3    { DML100-INVR1.2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.12 Huawei SUN2000-215KTL-H3    { DML100-INVR1.12 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.11 Huawei SUN2000-215KTL-H3    { DML100-INVR1.11 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.10 Huawei SUN2000-215KTL-H3    { DML100-INVR1.10 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Inversor 1.1 Huawei SUN2000-215KTL-H3    { DML100-INVR1.1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Infraestrutura Civil  Demerval Lobão  Piauí Brasil { DML100-INFC1 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 2  Demerval Lobão  Piauí Brasil { DML100-CABN2 } | None | Juliana Cândido 
+MATCH: None | Greenyellow - Demerval Lobão 1 - PI | Cabine 1  Demerval Lobão  Piauí Brasil { DML100-CABN1 } | None | Juliana Cândido 
+MATCH: None | Thopen - Junco 1 - PI | Thopen - Junco 1 - PI Chapadinha Sul, Zona Rural S/N Demerval Lobão  Piauí Brasil { THPN-JNC100 } | None | Ailton Leal 
+limite de seguranca atingido
+total geral status 4: 5925
