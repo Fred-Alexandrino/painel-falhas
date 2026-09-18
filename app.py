@@ -13743,12 +13743,23 @@ def gerar_relatorio_semanal_route():
             todos_zeladoria = carregar_planilha(ws_zeladoria)
             # Mesma correção de nome de usina malformado aplicada em
             # Atividades (ver comentário acima) — a aba Zeladoria tem sua
-            # própria coluna de Usina (índice 1), independente.
+            # própria coluna de Usina (índice 1) e Cliente (índice 0),
+            # independentes. Diferença importante: esta aba é preenchida à
+            # MÃO (não sincronizada da Fracttal), então uma usina sob
+            # supervisão temporária (_SupervisaoTemporaria) pode ter sido
+            # digitada com o cliente de quem está cobrindo em vez do
+            # cliente real dono da usina — sem isso, o relatório do
+            # cliente certo sairia sem a Zeladoria dessa usina (Fred,
+            # 10/09/2026: conferir se usinas emprestadas aparecem nos
+            # relatórios dos clientes certos).
             for row in todos_zeladoria[2:]:
                 if len(row) > 1 and row[1].strip():
                     canonico = canonizar_usina(row[1])
                     if canonico:
                         row[1] = canonico
+                        cliente_real = inferir_cliente(canonico)
+                        if cliente_real:
+                            row[0] = cliente_real
             zeladoria_status_por_usina = montar_status_zeladoria_por_usina(todos_zeladoria, cliente)
         except Exception as e:
             log.error(f"[Relatorio Semanal] Erro ao buscar dados de Zeladoria: {e}")
