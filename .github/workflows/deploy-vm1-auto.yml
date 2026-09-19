@@ -28,7 +28,7 @@ jobs:
             echo "=== garantindo credenciais de deploy do index.html no .env (via GitHub Secrets, nunca no codigo) ==="
             touch .env
             sed -i '/^GITHUB_DEPLOY_TOKEN=/d;/^DEPLOY_SECRET=/d' .env
-            echo "GITHUB_DEPLOY_TOKEN=${{ secrets.GITHUB_DEPLOY_TOKEN }}" >> .env
+            echo "GITHUB_DEPLOY_TOKEN=${{ secrets.GH_DEPLOY_TOKEN }}" >> .env
             echo "DEPLOY_SECRET=${{ secrets.DEPLOY_SECRET }}" >> .env
             sudo systemctl restart painel-falhas
             sleep 3
