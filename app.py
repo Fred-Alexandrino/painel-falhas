@@ -16,7 +16,7 @@ Suporta:
 - Formato Cos Grid com bullets (·) sem emojis
 """
 
-import os, re, json, logging, time, random, base64, uuid, sqlite3, threading
+import os, re, json, logging, time, random, base64, uuid, sqlite3, threading, subprocess
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -101,6 +101,9 @@ GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 GITHUB_DEPLOY_TOKEN = os.environ.get("GITHUB_DEPLOY_TOKEN", "")
 DEPLOY_SECRET        = os.environ.get("DEPLOY_SECRET", "")
 GITHUB_DEPLOY_REPO   = "Fred-Alexandrino/PAINELDEFALHAS"
+GITHUB_DEPLOY_REPO_BACKEND = "Fred-Alexandrino/painel-falhas"
+APP_PY_PATH = os.path.abspath(__file__)
+APP_DIR     = os.path.dirname(APP_PY_PATH)
 
 # ── Configuração VAPID para notificações push ────────────────────────────────
 VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "BJyGD9Lno29xj3_a6i5MjSHoZhHwfev7bRJRCqjnyL-o1vo9Hbf2zmrNtoONHtA92F59LGLc52HNE7oUkKqs5Yk")
@@ -16710,6 +16713,87 @@ def deploy_index_html():
         return jsonify({"error": "falha na API do GitHub", "detalhe": str(e), "resposta": detalhe}), 502
     except Exception as e:
         log.error(f"[deploy] Erro inesperado: {e}")
+        return jsonify({"error": "falha inesperada", "detalhe": str(e)}), 500
+
+
+@app.route("/deploy/backend", methods=["POST"])
+def deploy_backend():
+    """
+    Recebe o app.py novo, valida a sintaxe ANTES de tocar em qualquer coisa,
+    escreve no proprio servidor, guarda backup local, comita/envia pro GitHub
+    (so pra manter historico — nao bloqueia o restart se isso falhar) e
+    reinicia o servico sozinho, alguns instantes depois de responder.
+    Autenticado com o mesmo DEPLOY_SECRET da rota /deploy/index-html.
+    """
+    try:
+        secret = request.headers.get("X-Deploy-Secret", "")
+        if not DEPLOY_SECRET or secret != DEPLOY_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+
+        novo_conteudo = request.get_data(as_text=True)
+        if not novo_conteudo or len(novo_conteudo) < 1000:
+            return jsonify({"error": "conteudo vazio ou suspeito demais, abortando"}), 400
+
+        # valida sintaxe ANTES de tocar no arquivo em producao — um app.py
+        # quebrado nunca deve chegar a ser escrito no disco
+        import ast
+        try:
+            ast.parse(novo_conteudo)
+        except SyntaxError as e:
+            return jsonify({"error": "erro de sintaxe no app.py novo, nada foi alterado", "detalhe": str(e)}), 400
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        # backup local do app.py atual antes de sobrescrever
+        backup_dir = os.path.join(APP_DIR, "backups_app_py")
+        os.makedirs(backup_dir, exist_ok=True)
+        backup_path = os.path.join(backup_dir, f"app_{ts}.py")
+        with open(APP_PY_PATH, "r", encoding="utf-8") as f_old:
+            conteudo_antigo = f_old.read()
+        with open(backup_path, "w", encoding="utf-8") as f_bak:
+            f_bak.write(conteudo_antigo)
+
+        # escreve o novo conteudo
+        with open(APP_PY_PATH, "w", encoding="utf-8") as f_new:
+            f_new.write(novo_conteudo)
+
+        # commit + push pro GitHub, so pra manter historico visivel no repo
+        # (se falhar, o deploy no servidor segue mesmo assim — o backup local garante
+        # que da pra restaurar manualmente se precisar)
+        git_erro = None
+        try:
+            subprocess.run(["git", "add", "app.py"], cwd=APP_DIR, check=True, timeout=15)
+            subprocess.run(
+                ["git", "-c", "user.email=deploy@painel-falhas", "-c", "user.name=Deploy automatico",
+                 "commit", "-m", f"Deploy automatico via /deploy/backend ({ts})"],
+                cwd=APP_DIR, check=True, timeout=15,
+            )
+            remote = f"https://{GITHUB_DEPLOY_TOKEN}@github.com/{GITHUB_DEPLOY_REPO_BACKEND}.git"
+            subprocess.run(["git", "push", remote, "HEAD:main"], cwd=APP_DIR, check=True, timeout=30)
+        except subprocess.CalledProcessError as e:
+            git_erro = str(e)
+            log.error(f"[deploy-backend] git commit/push falhou (restart segue mesmo assim): {git_erro}")
+
+        # reinicia o servico DEPOIS de responder, pra a resposta HTTP nao morrer no meio
+        def _reiniciar():
+            time.sleep(1)
+            try:
+                subprocess.run(["sudo", "systemctl", "restart", "painel-falhas"], timeout=20)
+            except Exception as e:
+                log.error(f"[deploy-backend] falha ao reiniciar servico: {e}")
+        threading.Thread(target=_reiniciar, daemon=True).start()
+
+        log.info(f"[deploy-backend] app.py atualizado, backup em {backup_path}, reiniciando")
+        return jsonify({
+            "status": "ok",
+            "backup_local": backup_path,
+            "git_push_ok": git_erro is None,
+            "git_erro": git_erro,
+            "aviso": "servico reiniciando em instantes",
+        }), 200
+
+    except Exception as e:
+        log.error(f"[deploy-backend] Erro inesperado: {e}")
         return jsonify({"error": "falha inesperada", "detalhe": str(e)}), 500
 
 
