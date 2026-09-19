@@ -2073,7 +2073,7 @@ def gravar_nova_ocorrencia(ws, todos, dados):
         else:
             enviar_push(
                 titulo=f"🔴 Nova falha — {usina_nome}",
-                corpo=f"{equip_nome}: {falha_txt[:80] if falha_txt else 'Nova ocorrência registrada'} · {cliente}",
+                corpo=f"{equip_nome}: {_truncar_tema_notificacao(falha_txt, 200) if falha_txt else 'Nova ocorrência registrada'} · {cliente}",
                 tipo="nova_ocorrencia",
                 url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?ocorrencia={novo_id}",
             )
@@ -2558,6 +2558,23 @@ def remover_push_subscription(endpoint):
             ws.delete_rows(cell.row)
     except Exception as e:
         log.error(f"[Push] Erro ao remover subscription da planilha: {e}")
+
+
+def _truncar_tema_notificacao(texto, limite=100):
+    """Trunca a descrição/tema de uma OS pra uso em notificação push, com
+    reticências só quando de fato corta. Função única (19/09/2026, pedido
+    do Fred) pra substituir 3 cópias divergentes do mesmo corte que usavam
+    limite=35 — curto demais, cortava a descrição real quase sempre no meio
+    da frase e deixava a notificação praticamente inútil sem abrir o painel
+    (reclamado explicitamente: "notificações precisam expandir mais pra ver
+    do que se trata por completo"). Limite default subiu pra 100 (pushes em
+    lote, várias OSs numa notificação só) — chamadores com mais espaço
+    (push de item único) passam um limite maior explicitamente."""
+    texto = (texto or "").strip()
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite].rstrip() + "…"
+
 
 def enviar_push(titulo, corpo, tipo="geral", url="https://fred-alexandrino.github.io/PAINELDEFALHAS/"):
     """
@@ -4329,9 +4346,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
                 # o painel (corrigido 05/08/2026).
                 def _linha_resumo(r):
                     usina = (r.get("usina") or "Usina não informada").strip()
-                    tema = (r.get("descricao") or r.get("equipamento") or "sem descrição").strip()
-                    if len(tema) > 35:
-                        tema = tema[:35].rstrip() + "…"
+                    tema = _truncar_tema_notificacao(r.get("descricao") or r.get("equipamento") or "sem descrição")
                     mudanca = r.get("mudancaResumo") or r.get("statusGeralOS") or ""
                     base = f"{r['numeroOS']} · {usina} — {tema}"
                     return f"{base} ({mudanca})" if mudanca else base
@@ -4765,7 +4780,7 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
             enviar_push(
                 titulo=f"🆕 Nova atividade" + (f" — OS {numeroOS}" if numeroOS else "") + f" — {usina or cliente}",
                 corpo=(f"{equipamento} · " if equipamento else "") +
-                      (f"{descricao[:80]}" if descricao else "Atividade criada"),
+                      (_truncar_tema_notificacao(descricao, 200) if descricao else "Atividade criada"),
                 tipo="nova_atividade",
                 url=f"https://fred-alexandrino.github.io/PAINELDEFALHAS/?atividade={novo_id}",
             )
@@ -6273,9 +6288,7 @@ def _sync_fracttal_core(desde_horas=8):
             else:
                 def _linha_nova_os(c):
                     usina = (c.get("usina") or "Usina não informada").strip()
-                    tema = (c.get("descricao") or "sem descrição").strip()
-                    if len(tema) > 35:
-                        tema = tema[:35].rstrip() + "…"
+                    tema = _truncar_tema_notificacao(c.get("descricao") or "sem descrição")
                     return f"{c['numeroOS']} · {usina} — {tema}"
                 linhas = "\n".join(_linha_nova_os(c) for c in criadas[:6])
                 enviar_push(
@@ -11499,9 +11512,7 @@ def revalidar_usinas():
             try:
                 def _linha_resumo_cluster(r):
                     usina = (r.get("usina") or "Usina não informada").strip()
-                    tema = (r.get("descricao") or r.get("equipamento") or "sem descrição").strip()
-                    if len(tema) > 35:
-                        tema = tema[:35].rstrip() + "…"
+                    tema = _truncar_tema_notificacao(r.get("descricao") or r.get("equipamento") or "sem descrição")
                     mudanca = r.get("mudancaResumo") or r.get("statusGeralOS") or ""
                     base = f"{r['numeroOS']} · {usina} — {tema}"
                     return f"{base} ({mudanca})" if mudanca else base
