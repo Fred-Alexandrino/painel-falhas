@@ -94,6 +94,14 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 SHEET_EDIT_SECRET = os.environ.get("SHEET_EDIT_SECRET", "")
 GRUPOS_FILTRO  = os.environ.get("GRUPOS_IDS", "").split(",")
 
+# ── Deploy automatico do index.html (Painel de Falhas) direto pro GitHub ──────
+# GITHUB_DEPLOY_TOKEN e DEPLOY_SECRET vem do .env (gravado automaticamente a
+# cada deploy pelo workflow deploy-vm1-auto.yml, a partir de GitHub Secrets —
+# nunca ficam expostos no codigo-fonte, que e publico).
+GITHUB_DEPLOY_TOKEN = os.environ.get("GITHUB_DEPLOY_TOKEN", "")
+DEPLOY_SECRET        = os.environ.get("DEPLOY_SECRET", "")
+GITHUB_DEPLOY_REPO   = "Fred-Alexandrino/PAINELDEFALHAS"
+
 # ── Configuração VAPID para notificações push ────────────────────────────────
 VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "BJyGD9Lno29xj3_a6i5MjSHoZhHwfev7bRJRCqjnyL-o1vo9Hbf2zmrNtoONHtA92F59LGLc52HNE7oUkKqs5Yk")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
@@ -16626,6 +16634,85 @@ def chat_ia():
 
 
 
+@app.route("/deploy/index-html", methods=["POST"])
+def deploy_index_html():
+    """
+    Recebe o conteudo novo do index.html (Painel de Falhas) e publica
+    direto no repositorio PAINELDEFALHAS via API do GitHub, a partir
+    desta VM — nao depende de acesso Git da sessao que gerou o arquivo.
+    Faz backup do conteudo anterior em backups/ antes de sobrescrever.
+    """
+    try:
+        secret = request.headers.get("X-Deploy-Secret", "")
+        if not DEPLOY_SECRET or secret != DEPLOY_SECRET:
+            return jsonify({"error": "unauthorized"}), 401
+
+        novo_conteudo = request.get_data(as_text=True)
+        if not novo_conteudo or len(novo_conteudo) < 1000:
+            return jsonify({"error": "conteudo vazio ou suspeito demais, abortando"}), 400
+
+        if not GITHUB_DEPLOY_TOKEN:
+            return jsonify({"error": "GITHUB_DEPLOY_TOKEN nao configurado no servidor"}), 500
+
+        headers = {
+            "Authorization": f"token {GITHUB_DEPLOY_TOKEN}",
+            "Accept": "application/vnd.github+json",
+        }
+        api_base = f"https://api.github.com/repos/{GITHUB_DEPLOY_REPO}/contents"
+
+        # 1) SHA + conteudo atual do index.html (pra backup)
+        r = requests.get(f"{api_base}/index.html", headers=headers, timeout=20)
+        r.raise_for_status()
+        sha_atual = r.json()["sha"]
+        conteudo_atual_b64 = r.json()["content"]
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        # 2) backup do conteudo atual antes de sobrescrever
+        backup_path = f"backups/index_{ts}.html"
+        r_backup = requests.put(
+            f"{api_base}/{backup_path}",
+            headers=headers,
+            json={
+                "message": f"Backup automatico antes do deploy de {ts}",
+                "content": conteudo_atual_b64,
+                "branch": "main",
+            },
+            timeout=30,
+        )
+        r_backup.raise_for_status()
+
+        # 3) publica o novo conteudo
+        novo_conteudo_b64 = base64.b64encode(novo_conteudo.encode("utf-8")).decode("ascii")
+        r_put = requests.put(
+            f"{api_base}/index.html",
+            headers=headers,
+            json={
+                "message": f"Deploy automatico via /deploy/index-html ({ts})",
+                "content": novo_conteudo_b64,
+                "sha": sha_atual,
+                "branch": "main",
+            },
+            timeout=30,
+        )
+        r_put.raise_for_status()
+
+        log.info(f"[deploy] index.html publicado com sucesso, backup em {backup_path}")
+        return jsonify({
+            "status": "ok",
+            "commit_sha": r_put.json()["commit"]["sha"],
+            "backup": backup_path,
+        }), 200
+
+    except requests.exceptions.HTTPError as e:
+        detalhe = getattr(e.response, "text", "")[:500]
+        log.error(f"[deploy] Erro HTTP do GitHub: {e} | {detalhe}")
+        return jsonify({"error": "falha na API do GitHub", "detalhe": str(e), "resposta": detalhe}), 502
+    except Exception as e:
+        log.error(f"[deploy] Erro inesperado: {e}")
+        return jsonify({"error": "falha inesperada", "detalhe": str(e)}), 500
+
+
 try:
     carregar_push_subscriptions()
 except Exception as e:
@@ -16634,4 +16721,3 @@ except Exception as e:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
-
