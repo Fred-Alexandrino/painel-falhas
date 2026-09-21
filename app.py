@@ -7165,6 +7165,12 @@ def atualizar_regra_compromisso():
         novo_resp = str(body.get("responsavelArea", regra_atual["responsavelArea"])).strip()
         novo_para = str(body.get("paraQuem", regra_atual["paraQuem"])).strip()
         novo_entregavel = str(body.get("entregavelId", regra_atual["entregavelId"])).strip()
+        # "ativo" (ligar/desligar a regra) e "tipo" (nome/label do entregável)
+        # não faziam parte do payload original desta rota — adicionados pra
+        # permitir renomear e desativar regras internas sem editar a sheet à mão.
+        novo_ativo = body.get("ativo", regra_atual["ativo"])
+        novo_ativo_str = "TRUE" if novo_ativo else "FALSE"
+        novo_nome_tipo = str(body.get("tipo", linha[1] if len(linha) > 1 else "")).strip() or (linha[1] if len(linha) > 1 else "")
 
         if nova_freq not in FREQUENCIAS_VALIDAS:
             return jsonify({"ok": False, "error": f"frequência desconhecida: {nova_freq}"}), 400
@@ -7173,8 +7179,10 @@ def atualizar_regra_compromisso():
 
         tipo, cliente, usina = linha[1], linha[2], linha[3]
         config_str = json.dumps(nova_config, ensure_ascii=False) if isinstance(nova_config, dict) else str(nova_config or "")
+        if novo_nome_tipo != tipo:
+            ws_regras.update_cell(linha_idx, 2, novo_nome_tipo)
         ws_regras.update(f"E{linha_idx}:L{linha_idx}", [[
-            novo_tipo, novo_valor, linha[6] if len(linha) > 6 else "TRUE",
+            novo_tipo, novo_valor, novo_ativo_str,
             nova_freq, config_str, novo_resp, novo_para, novo_entregavel,
         ]])
 
