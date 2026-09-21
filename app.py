@@ -7376,6 +7376,48 @@ def abrir_compromisso_manual_route():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/compromissos/excluir-por-cliente", methods=["POST"])
+def excluir_compromissos_por_cliente():
+    """Exclui em massa os cards de Compromissos (não as regras) que
+    pertencem a um determinado valor de Cliente — ex.: "(Interno)".
+    Uso pontual de manutenção; exige o parâmetro `cliente` exato e,
+    opcionalmente, `status` (lista) pra restringir quais cards apagar."""
+    try:
+        body = request.get_json(force=True) or {}
+        cliente_alvo = str(body.get("cliente", "")).strip()
+        status_filtro = body.get("status")
+        if not cliente_alvo:
+            return jsonify({"ok": False, "error": "cliente é obrigatório"}), 400
+        if status_filtro:
+            status_filtro = {str(s).strip() for s in status_filtro}
+
+        ws = _get_compromissos_sheet()
+        todos = ws.get_all_values()
+        linhas_para_excluir = []
+        for idx, row in enumerate(todos[1:], start=2):
+            if len(row) < 9:
+                continue
+            cliente_linha = row[2].strip() if len(row) > 2 else ""
+            status_linha = row[8].strip() if len(row) > 8 else ""
+            if cliente_linha != cliente_alvo:
+                continue
+            if status_filtro and status_linha not in status_filtro:
+                continue
+            linhas_para_excluir.append((idx, row[0], row[1], status_linha))
+
+        for idx, _id, _tipo, _status in sorted(linhas_para_excluir, key=lambda x: -x[0]):
+            ws.delete_rows(idx)
+
+        return jsonify({
+            "ok": True,
+            "excluidos": len(linhas_para_excluir),
+            "detalhe": [{"id": i, "tipo": t, "status": s} for _, i, t, s in linhas_para_excluir],
+        }), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao excluir por cliente: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/compromissos/marcar-etapa", methods=["POST"])
 def marcar_etapa_compromisso():
     try:
