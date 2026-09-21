@@ -7091,7 +7091,7 @@ def _listar_compromissos_core():
         except Exception:
             pass
 
-        frequencia = row[14] if len(row) > 14 else "mensal"
+        frequencia = row[14].strip() if len(row) > 14 and row[14].strip() else "mensal"
         entregavel_id = row[15] if len(row) > 15 else ""
 
         resultado.append({
@@ -7431,6 +7431,128 @@ def marcar_etapa_compromisso():
         log.error(f"[Compromissos] Erro ao marcar etapa: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
+# ══════════════════════════════════════════════════════════════════════
+# RESPONSÁVEIS POR ÁREA — cadastro de pessoas por área (PCM, Performance,
+# Engenharia, e demais conforme a Matriz R02) usado pelo Painel de
+# Cobrança de Entregáveis Internos. Pedido do Fred em 21/09/2026: listar
+# TODOS os responsáveis de cada área (não um único "dono" fixo), pra ele
+# escolher a quem destinar o comunicado de cobrança a cada vez — a
+# geração do texto em si roda no frontend a partir dos dados de
+# /compromissos + esta lista, sem endpoint próprio.
+# ══════════════════════════════════════════════════════════════════════
+
+def _get_responsaveis_areas_sheet():
+    sh = get_atividades_sheet().spreadsheet
+    try:
+        return sh.worksheet("_ResponsaveisAreas")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title="_ResponsaveisAreas", rows=50, cols=6)
+        ws.update("A1", [["ID", "Area", "Nome", "Cargo", "Contato", "Ativo"]])
+        # Seed inicial — nomes levantados por Fred a partir do organograma
+        # R02 (21/09/2026), pras 3 áreas que ele pediu cobrança explícita.
+        # Demais áreas (COS/Manutenção/Zeladoria/Gestão/Contratos) podem
+        # ser adicionadas pelo painel conforme necessário.
+        seed = [
+            ["1", "PCM", "Davi Damasceno", "Analista de PCM — Controlador de OS", "", "TRUE"],
+            ["2", "PCM", "Breno Andrade", "Assistente de PCM", "", "TRUE"],
+            ["3", "PCM", "Maria Oliveira", "Assistente de PCM", "", "TRUE"],
+            ["4", "PCM", "Fabrício Barreto", "Coordenador de Pré-Operação", "", "TRUE"],
+            ["5", "Performance", "Levi Maia", "Analista de Performance Tempo Real", "", "TRUE"],
+            ["6", "Performance", "Roger Lélis", "Analista de Performance", "", "TRUE"],
+            ["7", "Performance", "Ana Barros", "Coordenadora de Pós-Operação", "", "TRUE"],
+            ["8", "Engenharia", "Aury Albuquerque", "Engenheiro de O&M", "", "TRUE"],
+            ["9", "Engenharia", "Tionardo Santos", "Engenheiro de O&M", "", "TRUE"],
+            ["10", "Engenharia", "Pedro Henrique", "Engenheiro de O&M", "", "TRUE"],
+            ["11", "Engenharia", "Hebert Rabelo", "Engenheiro de O&M", "", "TRUE"],
+            ["12", "Engenharia", "Patrick Teixeira", "Head de Engenharia & Gestão", "", "TRUE"],
+        ]
+        ws.append_rows(seed)
+        return ws
+
+
+def _linha_para_responsavel(row):
+    def _get(i, default=""):
+        return row[i].strip() if len(row) > i and row[i] else default
+    return {
+        "id": _get(0), "area": _get(1), "nome": _get(2), "cargo": _get(3),
+        "contato": _get(4), "ativo": _get(5, "TRUE").upper() == "TRUE",
+    }
+
+
+@app.route("/responsaveis-areas", methods=["GET"])
+def listar_responsaveis_areas():
+    try:
+        ws = _get_responsaveis_areas_sheet()
+        valores = ws.get_all_values()
+        responsaveis = [_linha_para_responsavel(row) for row in valores[1:] if row and row[0].strip()]
+        return jsonify({"ok": True, "responsaveis": responsaveis}), 200
+    except Exception as e:
+        log.error(f"[ResponsaveisAreas] Erro ao listar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/responsaveis-areas/criar", methods=["POST"])
+def criar_responsavel_area():
+    try:
+        body = request.get_json(force=True) or {}
+        area = str(body.get("area", "")).strip()
+        nome = str(body.get("nome", "")).strip()
+        cargo = str(body.get("cargo", "")).strip()
+        contato = str(body.get("contato", "")).strip()
+        ativo = body.get("ativo", True)
+        if not area or not nome:
+            return jsonify({"ok": False, "error": "area e nome são obrigatórios"}), 400
+
+        ws = _get_responsaveis_areas_sheet()
+        todas = ws.get_all_values()
+        maior = 0
+        for row in todas[1:]:
+            if row and row[0].strip().isdigit():
+                maior = max(maior, int(row[0].strip()))
+        novo_id = str(maior + 1)
+        ws.append_row([novo_id, area, nome, cargo, contato, "TRUE" if ativo else "FALSE"])
+        return jsonify({"ok": True, "responsavelCriado": {
+            "id": novo_id, "area": area, "nome": nome, "cargo": cargo,
+            "contato": contato, "ativo": bool(ativo),
+        }}), 200
+    except Exception as e:
+        log.error(f"[ResponsaveisAreas] Erro ao criar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/responsaveis-areas/atualizar", methods=["POST"])
+def atualizar_responsavel_area():
+    try:
+        body = request.get_json(force=True) or {}
+        resp_id = str(body.get("id", "")).strip()
+        if not resp_id:
+            return jsonify({"ok": False, "error": "id é obrigatório"}), 400
+
+        ws = _get_responsaveis_areas_sheet()
+        valores = ws.get_all_values()
+        linha_idx, linha = None, None
+        for i, row in enumerate(valores[1:], start=2):
+            if row and row[0].strip() == resp_id:
+                linha_idx, linha = i, row
+                break
+        if not linha_idx:
+            return jsonify({"ok": False, "error": f"responsável {resp_id} não encontrado"}), 404
+
+        atual = _linha_para_responsavel(linha)
+        area = str(body.get("area", atual["area"])).strip()
+        nome = str(body.get("nome", atual["nome"])).strip()
+        cargo = str(body.get("cargo", atual["cargo"])).strip()
+        contato = str(body.get("contato", atual["contato"])).strip()
+        ativo = body.get("ativo", atual["ativo"])
+        ws.update(f"B{linha_idx}:F{linha_idx}", [[area, nome, cargo, contato, "TRUE" if ativo else "FALSE"]])
+        return jsonify({"ok": True, "responsavelAtualizado": {
+            "id": resp_id, "area": area, "nome": nome, "cargo": cargo,
+            "contato": contato, "ativo": bool(ativo),
+        }}), 200
+    except Exception as e:
+        log.error(f"[ResponsaveisAreas] Erro ao atualizar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ── Sketchbook / Anotações ───────────────────────────────────────────────
