@@ -17163,19 +17163,44 @@ def deploy_backend():
         # commit + push pro GitHub, so pra manter historico visivel no repo
         # (se falhar, o deploy no servidor segue mesmo assim — o backup local garante
         # que da pra restaurar manualmente se precisar)
+        #
+        # Auto-sincroniza com origin/main ANTES de tentar o push. Existe um
+        # workflow (sync-fracttal.yml) que roda a cada 30min e comita/empurra
+        # pro mesmo branch (só um arquivo de log, nunca app.py) — sem isso,
+        # qualquer push nosso que caia perto desse ciclo vira "non-fast-forward"
+        # e falha (achado + resolvido manualmente em 21/09/2026). A estratégia
+        # "-X ours" no merge garante que o app.py que acabamos de escrever
+        # SEMPRE vence em caso de conflito — é exatamente o conteúdo que já
+        # está rodando no serviço, então é o que deve valer no histórico.
         git_erro = None
-        try:
+        remote = f"https://{GITHUB_DEPLOY_TOKEN}@github.com/{GITHUB_DEPLOY_REPO_BACKEND}.git"
+        git_env = ["-c", "user.email=deploy@painel-falhas", "-c", "user.name=Deploy automatico"]
+
+        def _git_commit_e_push():
             subprocess.run(["git", "add", "app.py"], cwd=APP_DIR, check=True, timeout=15)
-            subprocess.run(
-                ["git", "-c", "user.email=deploy@painel-falhas", "-c", "user.name=Deploy automatico",
-                 "commit", "-m", f"Deploy automatico via /deploy/backend ({ts})"],
-                cwd=APP_DIR, check=True, timeout=15,
-            )
-            remote = f"https://{GITHUB_DEPLOY_TOKEN}@github.com/{GITHUB_DEPLOY_REPO_BACKEND}.git"
+            # só comita se realmente há mudança (evita "nothing to commit" quebrar o fluxo)
+            diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=APP_DIR)
+            if diff.returncode != 0:
+                subprocess.run(
+                    ["git", *git_env, "commit", "-m", f"Deploy automatico via /deploy/backend ({ts})"],
+                    cwd=APP_DIR, check=True, timeout=15,
+                )
             subprocess.run(["git", "push", remote, "HEAD:main"], cwd=APP_DIR, check=True, timeout=30)
-        except subprocess.CalledProcessError as e:
-            git_erro = str(e)
-            log.error(f"[deploy-backend] git commit/push falhou (restart segue mesmo assim): {git_erro}")
+
+        try:
+            _git_commit_e_push()
+        except subprocess.CalledProcessError:
+            # push rejeitado (provavelmente non-fast-forward) — sincroniza e tenta de novo, 1x
+            try:
+                subprocess.run(["git", "fetch", remote, "main"], cwd=APP_DIR, check=True, timeout=30)
+                subprocess.run(
+                    ["git", *git_env, "merge", "FETCH_HEAD", "-X", "ours", "--no-edit"],
+                    cwd=APP_DIR, check=True, timeout=15,
+                )
+                _git_commit_e_push()
+            except subprocess.CalledProcessError as e:
+                git_erro = str(e)
+                log.error(f"[deploy-backend] git commit/push falhou mesmo apos retry (restart segue mesmo assim): {git_erro}")
 
         # reinicia o servico DEPOIS de responder, pra a resposta HTTP nao morrer no meio
         def _reiniciar():
