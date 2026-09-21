@@ -6593,7 +6593,7 @@ FREQUENCIAS_VALIDAS = (
 # só existem quando alguém abre manualmente (evento ocorreu / demanda
 # surgiu). Ficam listadas no painel como "regra disponível", não como
 # card pendente.
-FREQUENCIAS_SOB_DEMANDA = ("porEvento", "sobDemanda", "porUsinaNova")
+FREQUENCIAS_SOB_DEMANDA = ("porEvento", "sobDemanda", "porUsinaNova", "porCiclo")
 
 # Rótulo amigável pra exibir a frequência no painel.
 FREQUENCIA_LABEL = {
