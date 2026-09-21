@@ -6560,9 +6560,13 @@ def _ler_travas(chaves):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# COMPROMISSOS (Boletim de Medição, Relatório de Performance, Relatório
-# PCM) — checklist de prazos recorrentes por cliente/usina, com engine
-# de cálculo de dia útil/dia fixo e alertas push automáticos.
+# COMPROMISSOS — motor genérico de recorrência (BM, Relatório de
+# Performance, Relatório PCM, e os 41 entregáveis da Matriz R02).
+# Cada regra em _ComprometimentosRegras tem uma Frequencia própria
+# (mensal/semanal/trimestral/semestral/anual/porUsinaNova/porCiclo) e o
+# motor decide, a cada passada, se aquela regra "abre" um novo card no
+# período atual. Regras porEvento/sobDemanda nunca geram card sozinhas —
+# ficam disponíveis pra abertura manual quando o evento ocorre.
 # ══════════════════════════════════════════════════════════════════════
 
 COMPROMISSO_ETAPAS = {
@@ -6577,13 +6581,40 @@ COMPROMISSO_LABEL = {
     "RelatorioPCM": "Relatório de Manutenção (PCM)",
 }
 
+# Frequências suportadas pelas regras. "mensal" é o comportamento
+# original (idêntico ao motor antigo). As demais são a generalização
+# pedida pra cobrir os 41 itens da Matriz de Entregáveis R02.
+FREQUENCIAS_VALIDAS = (
+    "diario", "mensal", "semanal", "trimestral", "semestral", "anual",
+    "porUsinaNova", "porCiclo", "porEvento", "sobDemanda",
+)
+
+# Frequências que NUNCA geram card sozinhas via varredura automática —
+# só existem quando alguém abre manualmente (evento ocorreu / demanda
+# surgiu). Ficam listadas no painel como "regra disponível", não como
+# card pendente.
+FREQUENCIAS_SOB_DEMANDA = ("porEvento", "sobDemanda", "porUsinaNova")
+
+# Rótulo amigável pra exibir a frequência no painel.
+FREQUENCIA_LABEL = {
+    "diario": "Diário",
+    "mensal": "Mensal",
+    "semanal": "Semanal",
+    "trimestral": "Trimestral",
+    "semestral": "Semestral",
+    "anual": "Anual",
+    "porUsinaNova": "A cada usina nova",
+    "porCiclo": "Por ciclo",
+    "porEvento": "A cada evento",
+    "sobDemanda": "Sob demanda",
+}
+
 
 def _feriados_nacionais_brasil(ano):
     """Feriados nacionais fixos + móveis (baseados na Páscoa, algoritmo
     de Gauss). Não cobre feriados estaduais/municipais — só o suficiente
     pra não antecipar prazo em cima de feriado nacional por engano."""
     a = ano
-    # Páscoa (algoritmo de Meeus/Jones/Butcher)
     y = a
     g = y % 19
     c = y // 100
@@ -6601,10 +6632,10 @@ def _feriados_nacionais_brasil(ano):
         datetime(a, 11, 15), datetime(a, 12, 25),
     ]
     moveis = [
-        pascoa - timedelta(days=47),  # carnaval segunda
-        pascoa - timedelta(days=46),  # carnaval terça
-        pascoa - timedelta(days=2),   # sexta-feira santa
-        pascoa + timedelta(days=60),  # corpus christi
+        pascoa - timedelta(days=47),
+        pascoa - timedelta(days=46),
+        pascoa - timedelta(days=2),
+        pascoa + timedelta(days=60),
     ]
     return {d.date() for d in (fixos + moveis)}
 
@@ -6622,7 +6653,7 @@ def _enesimo_dia_util(ano, mes, n):
             if contados == n:
                 return dt
         dt += timedelta(days=1)
-        if dt.month != mes:  # segurança: não vaza pro mês seguinte
+        if dt.month != mes:
             return dt - timedelta(days=1)
 
 
@@ -6650,6 +6681,10 @@ def _dia_fixo_com_antecipacao(ano, mes, dia):
 
 
 def _calcular_prazo_compromisso(regra_tipo, regra_valor, ano, mes):
+    """Calcula o prazo DENTRO do mês/período de referência (ano, mes) —
+    usado tanto pelo fluxo mensal original quanto como base pros demais
+    (trimestral/semestral/anual calculam o mês de fechamento e delegam
+    aqui pro dia dentro desse mês)."""
     regra_valor = int(regra_valor)
     if regra_tipo == "nDiaUtil":
         return _enesimo_dia_util(ano, mes, regra_valor)
@@ -6661,7 +6696,6 @@ def _calcular_prazo_compromisso(regra_tipo, regra_valor, ano, mes):
 
 
 def _subtrair_dias_uteis(dt, n):
-    """Volta N dias úteis a partir de dt (não conta o próprio dt)."""
     atual = dt
     contados = 0
     while contados < n:
@@ -6672,7 +6706,6 @@ def _subtrair_dias_uteis(dt, n):
 
 
 def _somar_dias_uteis(dt, n):
-    """Avança N dias úteis a partir de dt (não conta o próprio dt)."""
     atual = dt
     contados = 0
     while contados < n:
@@ -6680,6 +6713,110 @@ def _somar_dias_uteis(dt, n):
         if _e_dia_util(atual):
             contados += 1
     return atual
+
+
+def _proxima_sexta_ou_hoje(dt):
+    """Usado pra frequência semanal: dia-alvo da semana (padrão sexta,
+    configurável via FrequenciaConfig.diaSemana, 0=segunda..6=domingo)."""
+    return dt
+
+
+def _calcular_prazo_semanal(config, referencia):
+    """Calcula o prazo da semana corrente. config: {"diaSemana": 4}
+    (0=segunda, 4=sexta — padrão pros itens semanais da Matriz R02, ex.
+    E-PCM-02 'sexta-feira até 17h'). Se a semana já passou do dia-alvo,
+    aponta pro dia-alvo da mesma semana mesmo assim — o card fica
+    'Atrasado' corretamente, e a próxima passada semanal abre um novo."""
+    dia_semana_alvo = int((config or {}).get("diaSemana", 4))  # sexta
+    inicio_semana = referencia - timedelta(days=referencia.weekday())
+    return inicio_semana + timedelta(days=dia_semana_alvo)
+
+
+def _mes_fechamento_mais_proximo(meses_fechamento, ano, mes):
+    """Dado uma lista de meses de fechamento (ex. [3,6,9,12] pro
+    trimestral), devolve (ano, mes) do fechamento em que 'mes' está
+    contido (fechamento no fim do próprio trimestre/semestre)."""
+    meses_fechamento = sorted(meses_fechamento)
+    for m in meses_fechamento:
+        if mes <= m:
+            return ano, m
+    return ano, meses_fechamento[0]  # vira o ano — próximo ciclo
+
+
+def _periodo_atual_regra(regra, agora):
+    """Devolve uma chave de período estável pra essa regra na data de
+    referência 'agora' — usada tanto pra decidir se já existe card
+    gerado (idempotência) quanto pra rotular a Competencia do card.
+    Formatos por frequência:
+      diario      -> "DD/MM/AAAA"
+      mensal      -> "MM/AAAA"
+      semanal     -> "AAAA-Www" (ISO week)
+      trimestral  -> "TN/AAAA"  (N = 1..4, mês de fechamento)
+      semestral   -> "SN/AAAA"  (N = 1..2)
+      anual       -> "AAAA"
+      porUsinaNova / porCiclo / porEvento / sobDemanda -> não geram
+        automaticamente; não usa este período (ver _regra_deve_gerar_card).
+    """
+    freq = regra["frequencia"]
+    if freq == "diario":
+        return agora.strftime("%d/%m/%Y")
+    if freq == "mensal":
+        return agora.strftime("%m/%Y")
+    if freq == "semanal":
+        ano_iso, semana_iso, _ = agora.isocalendar()
+        return f"{ano_iso}-W{semana_iso:02d}"
+    if freq == "trimestral":
+        config = regra.get("frequenciaConfig") or {}
+        meses = config.get("mesesFechamento", [3, 6, 9, 12])
+        ano_fech, mes_fech = _mes_fechamento_mais_proximo(meses, agora.year, agora.month)
+        trimestre = meses.index(mes_fech) + 1
+        return f"T{trimestre}/{ano_fech}"
+    if freq == "semestral":
+        config = regra.get("frequenciaConfig") or {}
+        meses = config.get("mesesFechamento", [6, 12])
+        ano_fech, mes_fech = _mes_fechamento_mais_proximo(meses, agora.year, agora.month)
+        semestre = meses.index(mes_fech) + 1
+        return f"S{semestre}/{ano_fech}"
+    if freq == "anual":
+        config = regra.get("frequenciaConfig") or {}
+        mes_fech = int(config.get("mesFechamento", 12))
+        ano_fech = agora.year if agora.month <= mes_fech else agora.year + 1
+        return str(ano_fech)
+    return None  # sob demanda / evento / usina nova
+
+
+def _prazo_atual_regra(regra, agora):
+    """Devolve o datetime do prazo (data-limite) pra essa regra no
+    período corrente, conforme a frequência. regra_tipo/regra_valor
+    seguem valendo como 'onde cai o prazo dentro do mês de fechamento'."""
+    freq = regra["frequencia"]
+    regra_tipo, regra_valor = regra["regraTipo"], regra["regraValor"]
+
+    if freq == "diario":
+        # Só rastreamos prazo em granularidade de dia (sem hora) — "até
+        # 9h do dia seguinte" vira "amanhã" pra fins de card/alerta.
+        return agora + timedelta(days=1)
+    if freq == "mensal":
+        return _calcular_prazo_compromisso(regra_tipo, regra_valor, agora.year, agora.month)
+    if freq == "semanal":
+        config = regra.get("frequenciaConfig") or {}
+        return _calcular_prazo_semanal(config, agora)
+    if freq == "trimestral":
+        config = regra.get("frequenciaConfig") or {}
+        meses = config.get("mesesFechamento", [3, 6, 9, 12])
+        ano_fech, mes_fech = _mes_fechamento_mais_proximo(meses, agora.year, agora.month)
+        return _calcular_prazo_compromisso(regra_tipo, regra_valor, ano_fech, mes_fech)
+    if freq == "semestral":
+        config = regra.get("frequenciaConfig") or {}
+        meses = config.get("mesesFechamento", [6, 12])
+        ano_fech, mes_fech = _mes_fechamento_mais_proximo(meses, agora.year, agora.month)
+        return _calcular_prazo_compromisso(regra_tipo, regra_valor, ano_fech, mes_fech)
+    if freq == "anual":
+        config = regra.get("frequenciaConfig") or {}
+        mes_fech = int(config.get("mesFechamento", 12))
+        ano_fech = agora.year if agora.month <= mes_fech else agora.year + 1
+        return _calcular_prazo_compromisso(regra_tipo, regra_valor, ano_fech, mes_fech)
+    raise ValueError(f"frequência sem geração automática: {freq}")
 
 
 # Regra padrão pro fluxo interno de BM (Boletim de Medição), levantada em
@@ -6694,18 +6831,12 @@ BM_APROVACAO_DIAS_UTEIS_APOS_ENVIO = 2
 
 
 def _calcular_subprazos_bm(data_limite_nf):
-    """Calcula as datas de envio do BM e prazo de aprovação do cliente a
-    partir da data-limite da NF, usando a regra padrão (sem cláusula
-    contratual específica encontrada nos contratos analisados)."""
     envio_bm = _subtrair_dias_uteis(data_limite_nf, BM_ENVIO_DIAS_UTEIS_ANTES_NF)
     aprovacao = _somar_dias_uteis(envio_bm, BM_APROVACAO_DIAS_UTEIS_APOS_ENVIO)
     return envio_bm, aprovacao
 
 
 def _garantir_colunas_bm_prazos(ws_comp):
-    """Garante que a planilha Compromissos tenha as colunas M/N
-    (DataLimiteEnvioBM / DataLimiteAprovacao). Sheet foi criada
-    originalmente só até a coluna L (12) — expande sob demanda."""
     if ws_comp.col_count < 14:
         ws_comp.add_cols(14 - ws_comp.col_count)
     header = ws_comp.row_values(1)
@@ -6715,35 +6846,83 @@ def _garantir_colunas_bm_prazos(ws_comp):
         ws_comp.update_cell(1, 14, "DataLimiteAprovacao")
 
 
+# Colunas novas de _ComprometimentosRegras (generalização, 21/09/2026):
+#   H=Frequencia, I=FrequenciaConfig(JSON), J=ResponsavelArea,
+#   K=ParaQuem, L=EntregavelID
+# Regras antigas (seed original, sem essas colunas) são tratadas como
+# Frequencia="mensal" por retrocompatibilidade — ver _linha_para_regra.
+def _garantir_colunas_regras_v2(ws_regras):
+    if ws_regras.col_count < 12:
+        ws_regras.add_cols(12 - ws_regras.col_count)
+    header = ws_regras.row_values(1)
+    colunas_novas = ["Frequencia", "FrequenciaConfig", "ResponsavelArea", "ParaQuem", "EntregavelID"]
+    for offset, nome in enumerate(colunas_novas):
+        idx = 8 + offset  # coluna H=8
+        if len(header) < idx or header[idx - 1] != nome:
+            ws_regras.update_cell(1, idx, nome)
+
+
 def _get_compromissos_regras_sheet():
     sh = get_atividades_sheet().spreadsheet
     try:
-        return sh.worksheet("_ComprometimentosRegras")
+        ws = sh.worksheet("_ComprometimentosRegras")
+        _garantir_colunas_regras_v2(ws)
+        return ws
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title="_ComprometimentosRegras", rows=50, cols=8)
-        ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "RegraTipo", "RegraValor", "Ativo"]])
-        # Seed inicial — só os clientes já mapeados no painel, regra de BM
-        # tirada do calendário de emissão enviado pelo Fred (13/07/2026).
+        ws = sh.add_worksheet(title="_ComprometimentosRegras", rows=100, cols=12)
+        ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "RegraTipo", "RegraValor", "Ativo",
+                           "Frequencia", "FrequenciaConfig", "ResponsavelArea", "ParaQuem", "EntregavelID"]])
         seed = [
-            ["1", "BM", "Renogrid", "", "diaFixo", "25", "TRUE"],
-            ["2", "BM", "Thopen", "", "diaFixo", "15", "TRUE"],
-            ["3", "BM", "2C Energia", "", "nDiaUtil", "5", "TRUE"],
-            ["4", "BM", "GD Energy", "", "nDiaUtil", "5", "TRUE"],
-            ["5", "BM", "Alves Lima", "", "nDiaUtil", "5", "TRUE"],
+            ["1", "BM", "Renogrid", "", "diaFixo", "25", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
+            ["2", "BM", "Thopen", "", "diaFixo", "15", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
+            ["3", "BM", "2C Energia", "", "nDiaUtil", "5", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
+            ["4", "BM", "GD Energy", "", "nDiaUtil", "5", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
+            ["5", "BM", "Alves Lima", "", "nDiaUtil", "5", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
         ]
         ws.append_rows(seed)
         return ws
 
 
+def _linha_para_regra(row):
+    """Converte uma linha crua de _ComprometimentosRegras num dict de
+    regra normalizado, com retrocompatibilidade: linhas antigas (sem
+    colunas H-L) viram Frequencia='mensal' automaticamente."""
+    def _get(i, default=""):
+        return row[i].strip() if len(row) > i and row[i] else default
+
+    freq = _get(7, "mensal") or "mensal"
+    config_raw = _get(8, "")
+    try:
+        config = json.loads(config_raw) if config_raw else {}
+    except Exception:
+        config = {}
+
+    return {
+        "id": _get(0), "tipo": _get(1), "cliente": _get(2), "usina": _get(3),
+        "regraTipo": _get(4), "regraValor": _get(5), "ativo": _get(6).upper() == "TRUE",
+        "frequencia": freq, "frequenciaConfig": config,
+        "responsavelArea": _get(9), "paraQuem": _get(10), "entregavelId": _get(11),
+    }
+
+
 def _get_compromissos_sheet():
     sh = get_atividades_sheet().spreadsheet
     try:
-        return sh.worksheet("Compromissos")
+        ws = sh.worksheet("Compromissos")
+        if ws.col_count < 16:
+            ws.add_cols(16 - ws.col_count)
+        header = ws.row_values(1)
+        if len(header) < 15 or header[14] != "Frequencia":
+            ws.update_cell(1, 15, "Frequencia")
+        if len(header) < 16 or header[15] != "EntregavelID":
+            ws.update_cell(1, 16, "EntregavelID")
+        return ws
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title="Compromissos", rows=200, cols=14)
+        ws = sh.add_worksheet(title="Compromissos", rows=300, cols=16)
         ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "Competencia", "DataLimite",
                            "Etapas", "EtapasConcluidas", "Status", "DataCriacao",
-                           "DataConclusao", "Historico", "DataLimiteEnvioBM", "DataLimiteAprovacao"]])
+                           "DataConclusao", "Historico", "DataLimiteEnvioBM", "DataLimiteAprovacao",
+                           "Frequencia", "EntregavelID"]])
         return ws
 
 
@@ -6766,31 +6945,30 @@ def _status_compromisso(etapas_concluidas, data_limite, hoje):
     return "Pendente"
 
 
-def _gerar_compromissos_mes_atual_se_necessario():
-    """Versão econômica de _gerar_compromissos_mes_atual(): só faz a
-    varredura pesada (2 leituras completas de planilha) 1x por competência,
-    usando a trava em _Sistema (leitura pequena e barata) pra decidir se
-    vale a pena. Sem isso, todo GET /compromissos gastava 2 leituras
-    completas — e como o frontend recarregava a lista a cada clique de
-    checkbox, isso estourou a cota de leitura do Google Sheets (429) e
-    derrubou o resto do painel junto (13/07/2026)."""
+def _gerar_compromissos_periodo_atual_se_necessario():
+    """Versão econômica: só faz a varredura pesada 1x por dia (usando a
+    trava em _Sistema), não a cada GET /compromissos. Regras semanais e
+    mensais convivem bem com essa cadência — a checagem por regra
+    (_periodo_atual_regra) garante idempotência mesmo rodando 1x/dia."""
     agora = agora_br()
-    competencia = agora.strftime("%m/%Y")
-    ja_gerado = _ler_trava("compromissos_gerados_em")
-    if ja_gerado == competencia:
+    hoje_str = agora.strftime("%Y-%m-%d")
+    ja_gerado = _ler_trava("compromissos_gerados_em_dia")
+    if ja_gerado == hoje_str:
         return []
-    criados = _gerar_compromissos_mes_atual()
-    _gravar_trava("compromissos_gerados_em", competencia)
+    criados = _gerar_compromissos_periodo_atual()
+    _gravar_trava("compromissos_gerados_em_dia", hoje_str)
     return criados
 
 
-def _gerar_compromissos_mes_atual():
-    """Idempotente: cria o card do mês corrente pra cada regra ativa que
-    ainda não tenha um card gerado nessa competência. Fecha sozinho o
-    ciclo anterior (o card antigo simplesmente fica com seu status real —
-    Concluído ou Atrasado — e um novo é aberto pra competência atual)."""
+def _gerar_compromissos_periodo_atual():
+    """Idempotente: pra cada regra ativa com frequência automática
+    (todas exceto FREQUENCIAS_SOB_DEMANDA), cria o card do período
+    corrente se ainda não existir um pra essa (tipo, cliente, usina,
+    período). Regras sob demanda/evento/usina nova nunca são tocadas
+    aqui — só via abertura manual (endpoint /compromissos/abrir-manual)."""
     ws_regras = _get_compromissos_regras_sheet()
-    regras = ws_regras.get_all_values()[1:]
+    regras_raw = ws_regras.get_all_values()[1:]
+    regras = [_linha_para_regra(r) for r in regras_raw if r and r[0].strip()]
 
     ws_comp = _get_compromissos_sheet()
     _garantir_colunas_bm_prazos(ws_comp)
@@ -6798,46 +6976,94 @@ def _gerar_compromissos_mes_atual():
     existentes = {(r[1], r[2], r[3], r[4]) for r in todos[1:] if len(r) >= 5}
 
     agora = agora_br()
-    competencia = agora.strftime("%m/%Y")
     criados = []
 
-    for r in regras:
-        if len(r) < 7 or r[6].strip().upper() != "TRUE":
+    for regra in regras:
+        if not regra["ativo"]:
             continue
-        _id, tipo, cliente, usina, regra_tipo, regra_valor = r[0], r[1], r[2], r[3], r[4], r[5]
-        chave = (tipo, cliente, usina, competencia)
+        if regra["frequencia"] in FREQUENCIAS_SOB_DEMANDA:
+            continue
+
+        periodo = _periodo_atual_regra(regra, agora)
+        if periodo is None:
+            continue
+        chave = (regra["tipo"], regra["cliente"], regra["usina"], periodo)
         if chave in existentes:
             continue
         try:
-            prazo = _calcular_prazo_compromisso(regra_tipo, regra_valor, agora.year, agora.month)
+            prazo = _prazo_atual_regra(regra, agora)
         except Exception as e:
-            log.error(f"[Compromissos] Erro ao calcular prazo pra regra {_id}: {e}")
+            log.error(f"[Compromissos] Erro ao calcular prazo pra regra {regra['id']}: {e}")
             continue
 
         envio_bm_str, aprovacao_str = "", ""
-        if tipo == "BM":
+        if regra["tipo"] == "BM":
             envio_bm, aprovacao = _calcular_subprazos_bm(prazo)
             envio_bm_str, aprovacao_str = envio_bm.strftime("%d/%m/%Y"), aprovacao.strftime("%d/%m/%Y")
 
-        etapas = COMPROMISSO_ETAPAS.get(tipo, ["Envio"])
+        etapas = COMPROMISSO_ETAPAS.get(regra["tipo"], ["Envio"])
         novo_id = _proximo_id_compromisso(todos)
-        linha = [novo_id, tipo, cliente, usina, competencia, prazo.strftime("%d/%m/%Y"),
+        linha = [novo_id, regra["tipo"], regra["cliente"], regra["usina"], periodo,
+                  prazo.strftime("%d/%m/%Y"),
                   json.dumps(etapas, ensure_ascii=False), json.dumps([""] * len(etapas)),
                   "Pendente", agora.strftime("%d/%m/%Y %H:%M:%S"), "",
-                  f"{agora.strftime('%d/%m/%Y %H:%M')} - Card criado automaticamente pra competência {competencia}.",
-                  envio_bm_str, aprovacao_str]
+                  f"{agora.strftime('%d/%m/%Y %H:%M')} - Card criado automaticamente pra período {periodo}.",
+                  envio_bm_str, aprovacao_str, regra["frequencia"], regra["entregavelId"]]
         ws_comp.append_row(linha)
         todos.append(linha)
         existentes.add(chave)
-        criados.append({"id": novo_id, "tipo": tipo, "cliente": cliente, "competencia": competencia,
-                         "dataLimite": prazo.strftime("%d/%m/%Y"),
+        criados.append({"id": novo_id, "tipo": regra["tipo"], "cliente": regra["cliente"],
+                         "competencia": periodo, "dataLimite": prazo.strftime("%d/%m/%Y"),
                          "dataLimiteEnvioBM": envio_bm_str, "dataLimiteAprovacao": aprovacao_str})
 
     return criados
 
 
+def _abrir_compromisso_manual(regra_id, editor="desconhecido"):
+    """Abre um card avulso pra uma regra sob demanda/evento/usina nova
+    (frequências que não geram automaticamente). Usado quando o evento
+    realmente ocorre — ex. Fred abre um E-CTR-04 quando surge uma
+    cobrança de adicional, ou Engenharia abre um E-ENG-02 quando recebe
+    um pedido de parecer técnico."""
+    ws_regras = _get_compromissos_regras_sheet()
+    regras_raw = ws_regras.get_all_values()[1:]
+    regra = None
+    for r in regras_raw:
+        if r and r[0].strip() == str(regra_id):
+            regra = _linha_para_regra(r)
+            break
+    if not regra:
+        raise ValueError(f"regra {regra_id} não encontrada")
+    if regra["frequencia"] not in FREQUENCIAS_SOB_DEMANDA:
+        raise ValueError(f"regra {regra_id} tem frequência '{regra['frequencia']}' — já é gerada automaticamente, não precisa abrir manual")
+
+    agora = agora_br()
+    ws_comp = _get_compromissos_sheet()
+    _garantir_colunas_bm_prazos(ws_comp)
+    todos = ws_comp.get_all_values()
+
+    # Prazo pra sob-demanda/evento: N dias corridos a partir de agora,
+    # usando RegraValor como esse N (RegraTipo="diasCorridosAPartirDeHoje"
+    # é o único regraTipo válido pra essas frequências).
+    dias = int(regra["regraValor"]) if regra["regraValor"].isdigit() else 10
+    prazo = agora + timedelta(days=dias)
+    periodo = agora.strftime("%d/%m/%Y %H:%M")  # período = o próprio evento, não uma competência
+
+    etapas = COMPROMISSO_ETAPAS.get(regra["tipo"], ["Envio"])
+    novo_id = _proximo_id_compromisso(todos)
+    linha = [novo_id, regra["tipo"], regra["cliente"], regra["usina"], periodo,
+              prazo.strftime("%d/%m/%Y"),
+              json.dumps(etapas, ensure_ascii=False), json.dumps([""] * len(etapas)),
+              "Pendente", agora.strftime("%d/%m/%Y %H:%M:%S"), "",
+              f"{agora.strftime('%d/%m/%Y %H:%M')} - Card aberto manualmente por {editor} (regra {regra_id}).",
+              "", "", regra["frequencia"], regra["entregavelId"]]
+    ws_comp.append_row(linha)
+    return {"id": novo_id, "tipo": regra["tipo"], "cliente": regra["cliente"],
+            "dataLimite": prazo.strftime("%d/%m/%Y")}
+
+
 def _listar_compromissos_core():
-    _gerar_compromissos_mes_atual_se_necessario()
+    _gerar_compromissos_periodo_atual_se_necessario()
     ws = _get_compromissos_sheet()
     todos = ws.get_all_values()
     agora = agora_br()
@@ -6865,6 +7091,9 @@ def _listar_compromissos_core():
         except Exception:
             pass
 
+        frequencia = row[14] if len(row) > 14 else "mensal"
+        entregavel_id = row[15] if len(row) > 15 else ""
+
         resultado.append({
             "id": row[0], "tipo": row[1], "tipoLabel": COMPROMISSO_LABEL.get(row[1], row[1]),
             "cliente": row[2], "usina": row[3], "competencia": row[4],
@@ -6873,8 +7102,9 @@ def _listar_compromissos_core():
             "dataLimiteAprovacao": data_limite_aprovacao, "diasRestantesAprovacao": dias_restantes_aprovacao,
             "etapas": etapas, "etapasConcluidas": etapas_concluidas,
             "status": status_calc, "dataConclusao": row[10],
+            "frequencia": frequencia, "frequenciaLabel": FREQUENCIA_LABEL.get(frequencia, frequencia),
+            "entregavelId": entregavel_id,
         })
-    # Mais urgente primeiro: atrasado > vence antes > já concluído por último
     ordem_status = {"Atrasado": 0, "Pendente": 1, "Em Andamento": 1, "Concluído": 2}
     resultado.sort(key=lambda c: (ordem_status.get(c["status"], 1), c["diasRestantes"]))
     return resultado
@@ -6894,8 +7124,9 @@ def listar_regras_compromissos():
     try:
         ws_regras = _get_compromissos_regras_sheet()
         valores = ws_regras.get_all_values()
-        cabecalho = valores[0] if valores else []
-        regras = [dict(zip(cabecalho, row)) for row in valores[1:] if row and row[0].strip()]
+        regras = [_linha_para_regra(row) for row in valores[1:] if row and row[0].strip()]
+        for r in regras:
+            r["frequenciaLabel"] = FREQUENCIA_LABEL.get(r["frequencia"], r["frequencia"])
         return jsonify({"ok": True, "regras": regras}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro ao listar regras: {e}")
@@ -6904,21 +7135,17 @@ def listar_regras_compromissos():
 
 @app.route("/compromissos/regras/atualizar", methods=["POST"])
 def atualizar_regra_compromisso():
-    """Atualiza RegraTipo/RegraValor de uma regra em _ComprometimentosRegras
-    e, se já existir um card gerado pra competência atual com essa regra
-    (ainda não concluído), recalcula o DataLimite dele também — porque
-    _gerar_compromissos_mes_atual é idempotente e não regeneraria um card
-    já existente só porque a regra mudou."""
+    """Atualiza uma regra em _ComprometimentosRegras. Aceita RegraTipo/
+    RegraValor (prazo) e, opcionalmente, Frequencia/FrequenciaConfig/
+    ResponsavelArea/ParaQuem/EntregavelID — só grava o que vier no body.
+    Se já existir um card gerado pro período atual dessa regra (ainda
+    não concluído), recalcula o DataLimite dele também."""
     try:
         body = request.get_json(force=True) or {}
         regra_id = str(body.get("id", "")).strip()
-        novo_tipo = str(body.get("regraTipo", "")).strip()
-        novo_valor = str(body.get("regraValor", "")).strip()
         editor = body.get("editor", "desconhecido")
-        if not regra_id or not novo_tipo or not novo_valor:
-            return jsonify({"ok": False, "error": "id, regraTipo e regraValor são obrigatórios"}), 400
-        if novo_tipo not in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil"):
-            return jsonify({"ok": False, "error": f"regraTipo desconhecido: {novo_tipo}"}), 400
+        if not regra_id:
+            return jsonify({"ok": False, "error": "id é obrigatório"}), 400
 
         ws_regras = _get_compromissos_regras_sheet()
         valores = ws_regras.get_all_values()
@@ -6930,39 +7157,59 @@ def atualizar_regra_compromisso():
         if not linha_idx:
             return jsonify({"ok": False, "error": f"regra {regra_id} não encontrada"}), 404
 
+        regra_atual = _linha_para_regra(linha)
+        novo_tipo = str(body.get("regraTipo", regra_atual["regraTipo"])).strip()
+        novo_valor = str(body.get("regraValor", regra_atual["regraValor"])).strip()
+        nova_freq = str(body.get("frequencia", regra_atual["frequencia"])).strip() or "mensal"
+        nova_config = body.get("frequenciaConfig", regra_atual["frequenciaConfig"])
+        novo_resp = str(body.get("responsavelArea", regra_atual["responsavelArea"])).strip()
+        novo_para = str(body.get("paraQuem", regra_atual["paraQuem"])).strip()
+        novo_entregavel = str(body.get("entregavelId", regra_atual["entregavelId"])).strip()
+
+        if nova_freq not in FREQUENCIAS_VALIDAS:
+            return jsonify({"ok": False, "error": f"frequência desconhecida: {nova_freq}"}), 400
+        if nova_freq not in FREQUENCIAS_SOB_DEMANDA and novo_tipo not in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil"):
+            return jsonify({"ok": False, "error": f"regraTipo desconhecido: {novo_tipo}"}), 400
+
         tipo, cliente, usina = linha[1], linha[2], linha[3]
-        ws_regras.update_cell(linha_idx, 5, novo_tipo)   # RegraTipo
-        ws_regras.update_cell(linha_idx, 6, novo_valor)  # RegraValor
+        config_str = json.dumps(nova_config, ensure_ascii=False) if isinstance(nova_config, dict) else str(nova_config or "")
+        ws_regras.update(f"E{linha_idx}:L{linha_idx}", [[
+            novo_tipo, novo_valor, linha[6] if len(linha) > 6 else "TRUE",
+            nova_freq, config_str, novo_resp, novo_para, novo_entregavel,
+        ]])
 
         agora = agora_br()
-        competencia = agora.strftime("%m/%Y")
+        regra_nova = dict(regra_atual, regraTipo=novo_tipo, regraValor=novo_valor,
+                           frequencia=nova_freq, frequenciaConfig=nova_config if isinstance(nova_config, dict) else {})
         card_atualizado = None
-        try:
-            novo_prazo = _calcular_prazo_compromisso(novo_tipo, novo_valor, agora.year, agora.month)
-        except Exception as e:
-            return jsonify({"ok": True, "regraAtualizada": True,
-                             "aviso": f"regra salva, mas não foi possível recalcular o card do mês: {e}"}), 200
+        if nova_freq not in FREQUENCIAS_SOB_DEMANDA:
+            try:
+                periodo = _periodo_atual_regra(regra_nova, agora)
+                novo_prazo = _prazo_atual_regra(regra_nova, agora)
+            except Exception as e:
+                return jsonify({"ok": True, "regraAtualizada": True,
+                                 "aviso": f"regra salva, mas não foi possível recalcular o card do período: {e}"}), 200
 
-        ws_comp = _get_compromissos_sheet()
-        _garantir_colunas_bm_prazos(ws_comp)
-        todos = ws_comp.get_all_values()
-        for i, row in enumerate(todos[1:], start=2):
-            if len(row) < 12:
-                continue
-            if row[1] == tipo and row[2] == cliente and row[3] == usina and row[4] == competencia and row[8] != "Concluído":
-                data_antiga = row[5]
-                nova_data_str = novo_prazo.strftime("%d/%m/%Y")
-                ws_comp.update_cell(i, 6, nova_data_str)  # DataLimite
-                historico_novo = row[11] + f"\n{agora.strftime('%d/%m/%Y %H:%M')} - Prazo corrigido de {data_antiga} para {nova_data_str} (regra ajustada por {editor})."
-                ws_comp.update_cell(i, 12, historico_novo)
-                card_atualizado = {"id": row[0], "dataLimiteAnterior": data_antiga, "dataLimiteNova": nova_data_str}
-                if tipo == "BM":
-                    novo_envio_bm, nova_aprovacao = _calcular_subprazos_bm(novo_prazo)
-                    ws_comp.update_cell(i, 13, novo_envio_bm.strftime("%d/%m/%Y"))
-                    ws_comp.update_cell(i, 14, nova_aprovacao.strftime("%d/%m/%Y"))
-                    card_atualizado["dataLimiteEnvioBM"] = novo_envio_bm.strftime("%d/%m/%Y")
-                    card_atualizado["dataLimiteAprovacao"] = nova_aprovacao.strftime("%d/%m/%Y")
-                break
+            ws_comp = _get_compromissos_sheet()
+            _garantir_colunas_bm_prazos(ws_comp)
+            todos = ws_comp.get_all_values()
+            for i, row in enumerate(todos[1:], start=2):
+                if len(row) < 12:
+                    continue
+                if row[1] == tipo and row[2] == cliente and row[3] == usina and row[4] == periodo and row[8] != "Concluído":
+                    data_antiga = row[5]
+                    nova_data_str = novo_prazo.strftime("%d/%m/%Y")
+                    ws_comp.update_cell(i, 6, nova_data_str)
+                    historico_novo = row[11] + f"\n{agora.strftime('%d/%m/%Y %H:%M')} - Prazo corrigido de {data_antiga} para {nova_data_str} (regra ajustada por {editor})."
+                    ws_comp.update_cell(i, 12, historico_novo)
+                    card_atualizado = {"id": row[0], "dataLimiteAnterior": data_antiga, "dataLimiteNova": nova_data_str}
+                    if tipo == "BM":
+                        novo_envio_bm, nova_aprovacao = _calcular_subprazos_bm(novo_prazo)
+                        ws_comp.update_cell(i, 13, novo_envio_bm.strftime("%d/%m/%Y"))
+                        ws_comp.update_cell(i, 14, nova_aprovacao.strftime("%d/%m/%Y"))
+                        card_atualizado["dataLimiteEnvioBM"] = novo_envio_bm.strftime("%d/%m/%Y")
+                        card_atualizado["dataLimiteAprovacao"] = nova_aprovacao.strftime("%d/%m/%Y")
+                    break
 
         return jsonify({"ok": True, "regraAtualizada": True, "cardAtualizado": card_atualizado}), 200
     except Exception as e:
@@ -7055,10 +7302,10 @@ def backfill_subprazos_bm():
 
 @app.route("/compromissos/regras/criar", methods=["POST"])
 def criar_regra_compromisso():
-    """Cria uma nova regra em _ComprometimentosRegras (novo cliente/tipo
-    entrando no ciclo de compromissos). Não gera o card do mês na hora —
-    isso continua a cargo de _gerar_compromissos_mes_atual_se_necessario()
-    no próximo GET /compromissos, igual às regras do seed."""
+    """Cria uma nova regra em _ComprometimentosRegras. Suporta os campos
+    novos da generalização (frequencia/frequenciaConfig/responsavelArea/
+    paraQuem/entregavelId) — todos opcionais, com Frequencia default
+    'mensal' pra manter o comportamento antigo se omitida."""
     try:
         body = request.get_json(force=True) or {}
         tipo = str(body.get("tipo", "")).strip()
@@ -7067,9 +7314,17 @@ def criar_regra_compromisso():
         regra_tipo = str(body.get("regraTipo", "")).strip()
         regra_valor = str(body.get("regraValor", "")).strip()
         ativo = body.get("ativo", True)
+        frequencia = str(body.get("frequencia", "mensal")).strip() or "mensal"
+        frequencia_config = body.get("frequenciaConfig", {}) or {}
+        responsavel_area = str(body.get("responsavelArea", "")).strip()
+        para_quem = str(body.get("paraQuem", "")).strip()
+        entregavel_id = str(body.get("entregavelId", "")).strip()
+
         if not tipo or not cliente or not regra_tipo or not regra_valor:
             return jsonify({"ok": False, "error": "tipo, cliente, regraTipo e regraValor são obrigatórios"}), 400
-        if regra_tipo not in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil"):
+        if frequencia not in FREQUENCIAS_VALIDAS:
+            return jsonify({"ok": False, "error": f"frequência desconhecida: {frequencia}"}), 400
+        if frequencia not in FREQUENCIAS_SOB_DEMANDA and regra_tipo not in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil"):
             return jsonify({"ok": False, "error": f"regraTipo desconhecido: {regra_tipo}"}), 400
 
         ws_regras = _get_compromissos_regras_sheet()
@@ -7085,15 +7340,39 @@ def criar_regra_compromisso():
                 maior = max(maior, int(row[0].strip()))
         novo_id = str(maior + 1)
 
-        linha = [novo_id, tipo, cliente, usina, regra_tipo, regra_valor, "TRUE" if ativo else "FALSE"]
+        config_str = json.dumps(frequencia_config, ensure_ascii=False) if frequencia_config else ""
+        linha = [novo_id, tipo, cliente, usina, regra_tipo, regra_valor, "TRUE" if ativo else "FALSE",
+                  frequencia, config_str, responsavel_area, para_quem, entregavel_id]
         ws_regras.append_row(linha)
 
         return jsonify({"ok": True, "regraCriada": {
             "id": novo_id, "tipo": tipo, "cliente": cliente, "usina": usina,
             "regraTipo": regra_tipo, "regraValor": regra_valor, "ativo": bool(ativo),
+            "frequencia": frequencia, "frequenciaConfig": frequencia_config,
+            "responsavelArea": responsavel_area, "paraQuem": para_quem, "entregavelId": entregavel_id,
         }}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro ao criar regra: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/compromissos/abrir-manual", methods=["POST"])
+def abrir_compromisso_manual_route():
+    """Abre um card avulso pra uma regra sob demanda/evento/usina nova.
+    Usado pelo botão 'Abrir agora' no painel, pras regras que não geram
+    card sozinhas na varredura automática."""
+    try:
+        body = request.get_json(force=True) or {}
+        regra_id = str(body.get("regraId", "")).strip()
+        editor = body.get("editor", "desconhecido")
+        if not regra_id:
+            return jsonify({"ok": False, "error": "regraId é obrigatório"}), 400
+        card = _abrir_compromisso_manual(regra_id, editor)
+        return jsonify({"ok": True, "cardCriado": card}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        log.error(f"[Compromissos] Erro ao abrir compromisso manual: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -7151,6 +7430,7 @@ def marcar_etapa_compromisso():
     except Exception as e:
         log.error(f"[Compromissos] Erro ao marcar etapa: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
 
 
 # ── Sketchbook / Anotações ───────────────────────────────────────────────
@@ -7386,7 +7666,8 @@ def _verificar_compromissos_se_necessario():
     """Piggyback no /sync-fracttal: roda 1x por dia na janela 07:00-08:30
     (mesma janela alargada dos comunicados, mesmo motivo — cold-start do
     Render podia consumir a janela de 9 minutos inteira em dias ruins).
-    Gera os cards do mês corrente e dispara push pra compromissos
+    Gera os cards do período corrente (mensal/semanal/trimestral/etc,
+    conforme a frequência de cada regra) e dispara push pra compromissos
     vencendo em 3/1/0 dias ou já atrasados."""
     try:
         agora = agora_br()
@@ -7398,7 +7679,7 @@ def _verificar_compromissos_se_necessario():
             return {"disparado": False, "motivo": "já verificado hoje"}
         _gravar_trava("compromissos_verificados_em", hoje_str)
 
-        criados = _gerar_compromissos_mes_atual()
+        criados = _gerar_compromissos_periodo_atual()
         compromissos = _listar_compromissos_core()
         alertados = []
         for c in compromissos:
@@ -16334,41 +16615,6 @@ _CHAT_IA_TOOLS = [{
                 },
             },
         },
-        {
-            "name": "consultar_sobreaviso",
-            "description": "Consulta a Escala de Sobreaviso vigente (quem está de plantão em cada bloco/período, por cluster/grupo de cobertura, com telefone de contato). Fonte: último arquivo de escala enviado via upload na aba Sobreavisos (Comunicados). Use para perguntas como 'quem está de sobreaviso', 'estou de sobreaviso', 'quem é o plantonista', 'supervisor de plantão' em uma data/período.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "nome": {"type": "string", "description": "Nome (ou parte do nome) de uma pessoa específica, pra checar se ela está escalada em algum bloco. Deixe vazio pra listar a escala inteira."},
-                    "bloco": {"type": "integer", "description": "Índice do bloco/período específico (0 = primeiro bloco do arquivo carregado). Deixe vazio para usar o bloco vigente/próximo (sugerido automaticamente)."},
-                },
-            },
-        },
-        {
-            "name": "consultar_compromissos",
-            "description": "Consulta os Compromissos recorrentes por cliente/usina: Boletim de Medição (BM — envio, aprovação do cliente, emissão da NF), Relatório de Performance e Relatório de Manutenção (PCM). Traz prazos, dias restantes e status (Atrasado/Pendente/Em Andamento/Concluído). Use para perguntas sobre BM, boletim de medição, prazo de NF, relatório de performance ou relatório PCM pendente/atrasado.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
-                    "cliente": {"type": "string", "description": "Nome do cliente. Deixe vazio para todos."},
-                    "tipo": {"type": "string", "description": "Tipo de compromisso: 'BM', 'RelatorioPerformance' ou 'RelatorioPCM'. Deixe vazio para todos."},
-                    "status": {"type": "string", "description": "Status: 'Atrasado', 'Pendente', 'Em Andamento' ou 'Concluído'. Deixe vazio para todos."},
-                },
-            },
-        },
-        {
-            "name": "consultar_localizacoes",
-            "description": "Consulta endereço, link do Google Maps e coordenadas de uma ou mais usinas, cadastrados na aba Localizações. Use para perguntas sobre onde fica uma usina, endereço, UF ou distância/localização.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
-                    "cliente": {"type": "string", "description": "Nome do cliente. Deixe vazio para todos."},
-                },
-            },
-        },
     ]
 }]
 
@@ -16545,99 +16791,6 @@ def _ia_consultar_ocorrencias(usina="", cliente="", status=""):
     return {"total_encontrado": len(out), "mostrando": len(limitado), "ocorrencias": limitado}
 
 
-def _ia_consultar_sobreaviso(nome="", bloco=None):
-    """Handler da ferramenta consultar_sobreaviso do Chat-IA. Reaproveita o
-    mesmo estado carregado por /sobreaviso-upload e a mesma lógica de
-    montagem de /gerar-comunicado-sobreaviso — não duplica a leitura do
-    arquivo, só formata pra consumo da IA (campos compactos)."""
-    payload = _sobreaviso_carregar_estado()
-    if not payload:
-        return {"erro": "Nenhuma escala de sobreaviso carregada ainda. É preciso enviar o arquivo na aba Sobreavisos (Comunicados) primeiro — essa consulta não enxerga arquivos que só foram anexados/enviados em outro lugar do painel, só o que passou pelo upload dessa aba especificamente."}
-
-    estado = payload["estado"]
-    blocos = estado.get("blocos", [])
-    grupos = estado.get("grupos", [])
-    contatos = (estado.get("contatos") or {}).get("pessoas", {})
-    if not blocos:
-        return {"erro": "A escala carregada não tem blocos."}
-
-    bloco_idx = bloco if isinstance(bloco, int) else _sobreaviso_indice_bloco_sugerido(blocos)
-    if bloco_idx < 0 or bloco_idx >= len(blocos):
-        return {"erro": f"bloco {bloco_idx} fora do intervalo (0 a {len(blocos) - 1})"}
-    b = blocos[bloco_idx]
-
-    resultado_grupos = []
-    for g in grupos:
-        escala_g = g.get("escala", [])
-        pessoas = escala_g[bloco_idx] if bloco_idx < len(escala_g) else []
-        if nome and not any(nome.strip().lower() in p.strip().lower() for p in pessoas):
-            continue
-        resultado_grupos.append({
-            "grupo": g.get("nome"), "clusters": g.get("clusters", []),
-            "pessoas": pessoas, "supervisores": g.get("supervisores", []),
-        })
-
-    return {
-        "nome_arquivo": payload.get("nome_arquivo", ""),
-        "carregado_em": payload.get("carregado_em"),
-        "periodo": estado.get("periodo"),
-        "bloco": {"idx": bloco_idx, "label": _sobreaviso_fmt_bloco(b), "inicio": b["inicio"], "fim": b["fim"]},
-        "total_grupos_no_bloco": len(grupos), "mostrando": len(resultado_grupos),
-        "grupos": resultado_grupos,
-    }
-
-
-def _ia_consultar_compromissos(usina="", cliente="", tipo="", status=""):
-    """Handler da ferramenta consultar_compromissos do Chat-IA — mesma fonte
-    de /compromissos (_listar_compromissos_core), com campos compactos e
-    filtros aplicados antes de devolver pra Gemini."""
-    todos = _listar_compromissos_core()
-    usina_norm = canonizar_usina(usina) if usina else None
-    out = []
-    for c in todos:
-        if usina_norm and canonizar_usina(c.get("usina", "")) != usina_norm:
-            continue
-        if cliente and cliente.strip().lower() not in c.get("cliente", "").strip().lower():
-            continue
-        if tipo and tipo.strip().lower() != c.get("tipo", "").strip().lower():
-            continue
-        if status and status.strip().lower() != c.get("status", "").strip().lower():
-            continue
-        out.append({
-            "id": c.get("id"), "tipo": c.get("tipoLabel"), "cliente": c.get("cliente"),
-            "usina": c.get("usina"), "competencia": c.get("competencia"),
-            "dataLimite": c.get("dataLimite"), "diasRestantes": c.get("diasRestantes"),
-            "status": c.get("status"), "etapasConcluidas": c.get("etapasConcluidas"),
-        })
-    limitado = out[:25]
-    return {"total_encontrado": len(out), "mostrando": len(limitado), "compromissos": limitado}
-
-
-def _ia_consultar_localizacoes(usina="", cliente=""):
-    """Handler da ferramenta consultar_localizacoes do Chat-IA — mesma fonte
-    de /localizacoes (aba 'Localizacoes')."""
-    ws = get_localizacoes_sheet()
-    todos = _gspread_retry(lambda: ws.get_all_values())
-    usina_norm = canonizar_usina(usina) if usina else None
-    out = []
-    for row in todos[1:]:
-        if len(row) < 2 or not row[1].strip():
-            continue
-        item_cliente = row[0].strip() if len(row) > 0 else ""
-        item_usina = row[1].strip()
-        if usina_norm and canonizar_usina(item_usina) != usina_norm:
-            continue
-        if cliente and cliente.strip().lower() not in item_cliente.strip().lower():
-            continue
-        out.append({
-            "cliente": item_cliente, "usina": item_usina,
-            "endereco": row[2].strip() if len(row) > 2 else "",
-            "mapsLink": row[3].strip() if len(row) > 3 else "",
-        })
-    limitado = out[:25]
-    return {"total_encontrado": len(out), "mostrando": len(limitado), "localizacoes": limitado}
-
-
 _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_atividades": _ia_consultar_atividades,
     "consultar_zeladoria": _ia_consultar_zeladoria,
@@ -16645,9 +16798,6 @@ _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
     "consultar_ocorrencias": _ia_consultar_ocorrencias,
     "consultar_anotacoes": _ia_consultar_anotacoes,
-    "consultar_sobreaviso": _ia_consultar_sobreaviso,
-    "consultar_compromissos": _ia_consultar_compromissos,
-    "consultar_localizacoes": _ia_consultar_localizacoes,
 }
 
 
@@ -16667,7 +16817,7 @@ Alguns clusters têm mais de um nome listado (separados por "/") porque a vistor
     else:
         bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
 
-    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante, programação do PCM, escala de sobreaviso, compromissos (BM/Relatório de Performance/Relatório PCM) e localizações de usina.
+    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante e programação do PCM.
 
 Hoje é {hoje}, horário de Brasília.
 
@@ -16684,8 +16834,7 @@ REGRAS OBRIGATÓRIAS:
 - Responda em português, de forma direta e objetiva — sem rodeios, sem saudações desnecessárias. Fred prefere respostas curtas e factuais, com números e nomes específicos.
 - Em perguntas amplas que exigem várias ferramentas (ex.: "pontos de atenção de hoje", "resumo geral"): seja SELETIVO — destaque só o que realmente precisa de atenção (atrasado, pausado, aguardando algo há muito tempo), não liste item por item de tudo que veio das ferramentas. Respostas mais enxutas geram mais rápido e são mais úteis.
 - Nomes de usina usam numeração romana (ex: Matão I, Sol do Norte I) — normalize antes de comparar.
-- Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas.
-- Sobreaviso: se consultar_sobreaviso retornar erro dizendo que não há escala carregada, informe isso claramente ao Fred e sugira enviar o arquivo na aba Sobreavisos (Comunicados) — não invente quem está de plantão."""
+- Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas."""
 
 
 @app.route("/chat-ia", methods=["POST"])
