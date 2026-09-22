@@ -7791,6 +7791,29 @@ def _ia_consultar_anotacoes(usina="", cliente="", categoria=""):
     return {"total_encontrado": len(out), "mostrando": len(limitado), "anotacoes": limitado}
 
 
+def _ia_registrar_anotacao(texto="", categoria="", usina="", cliente=""):
+    """Handler da ferramenta registrar_anotacao do Chat-IA — grava de
+    verdade no Sketchbook (mesma planilha/lógica de POST /anotacoes),
+    pra que quando a IA disser 'vou registrar isso' o registro exista de
+    fato e sobreviva à conversa, em vez de só aparecer no texto da resposta
+    e desaparecer (armadilha identificada em 22/09/2026: a IA dizia que ia
+    salvar mas não tinha nenhuma ferramenta de escrita disponível)."""
+    texto = (texto or "").strip()
+    if not texto:
+        return {"erro": "texto é obrigatório pra registrar uma anotação"}
+    try:
+        ws = _get_anotacoes_sheet()
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        novo_id = _proximo_id_anotacao(todos)
+        agora = agora_br().strftime("%d/%m/%Y %H:%M")
+        linha = [novo_id, agora, "Fred Alexandrino (via Assistente IA)", (categoria or "").strip(),
+                  texto, (usina or "").strip(), (cliente or "").strip(), "Ativa"]
+        _gspread_retry(lambda: ws.append_row(linha))
+        return {"ok": True, "id": novo_id, "mensagem": f"Anotação #{novo_id} registrada no Sketchbook."}
+    except Exception as e:
+        return {"erro": f"Falha ao gravar no Sketchbook: {e}"}
+
+
 @app.route("/anotacoes", methods=["GET"])
 def listar_anotacoes():
     try:
@@ -16912,6 +16935,55 @@ _CHAT_IA_TOOLS = [{
                 },
             },
         },
+        {
+            "name": "registrar_anotacao",
+            "description": "GRAVA uma nova anotação no Sketchbook, de verdade e permanentemente (planilha). Use SEMPRE que o Fred pedir explicitamente pra anotar, registrar, guardar, lembrar ou salvar alguma informação pra consulta futura (ex: agenda de um cluster, uma regra, uma decisão, um contexto). NUNCA diga que vai 'registrar' ou 'guardar' algo sem de fato chamar esta ferramenta — você não tem memória própria entre conversas, só esta ferramenta grava de verdade.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "texto": {"type": "string", "description": "O conteúdo da anotação, já formatado e completo (não abrevie)."},
+                    "categoria": {"type": "string", "description": "Categoria/tag curta pra facilitar busca depois, ex: 'agenda_clusters'. Deixe vazio se não houver uma óbvia."},
+                    "usina": {"type": "string", "description": "Usina relacionada, se aplicável. Deixe vazio se for algo mais amplo (múltiplos clusters/usinas)."},
+                    "cliente": {"type": "string", "description": "Cliente relacionado, se aplicável. Deixe vazio se não aplicável."},
+                },
+                "required": ["texto"],
+            },
+        },
+        {
+            "name": "consultar_sobreaviso",
+            "description": "Consulta a Escala de Sobreaviso vigente (quem está de plantão em cada bloco/período, por cluster/grupo de cobertura, com telefone de contato). Fonte: último arquivo de escala enviado via upload na aba Sobreavisos (Comunicados). Use para perguntas como 'quem está de sobreaviso', 'estou de sobreaviso', 'quem é o plantonista', 'supervisor de plantão' em uma data/período.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nome": {"type": "string", "description": "Nome (ou parte do nome) de uma pessoa específica, pra checar se ela está escalada em algum bloco. Deixe vazio pra listar a escala inteira."},
+                    "bloco": {"type": "integer", "description": "Índice do bloco/período específico (0 = primeiro bloco do arquivo carregado). Deixe vazio para usar o bloco vigente/próximo (sugerido automaticamente)."},
+                },
+            },
+        },
+        {
+            "name": "consultar_compromissos",
+            "description": "Consulta os Compromissos recorrentes por cliente/usina: Boletim de Medição (BM — envio, aprovação do cliente, emissão da NF), Relatório de Performance e Relatório de Manutenção (PCM). Traz prazos, dias restantes e status (Atrasado/Pendente/Em Andamento/Concluído). Use para perguntas sobre BM, boletim de medição, prazo de NF, relatório de performance ou relatório PCM pendente/atrasado.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
+                    "cliente": {"type": "string", "description": "Nome do cliente. Deixe vazio para todos."},
+                    "tipo": {"type": "string", "description": "Tipo de compromisso: 'BM', 'RelatorioPerformance' ou 'RelatorioPCM'. Deixe vazio para todos."},
+                    "status": {"type": "string", "description": "Status: 'Atrasado', 'Pendente', 'Em Andamento' ou 'Concluído'. Deixe vazio para todos."},
+                },
+            },
+        },
+        {
+            "name": "consultar_localizacoes",
+            "description": "Consulta endereço, link do Google Maps e coordenadas de uma ou mais usinas, cadastrados na aba Localizações. Use para perguntas sobre onde fica uma usina, endereço, UF ou distância/localização.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "usina": {"type": "string", "description": "Nome da usina. Deixe vazio para todas."},
+                    "cliente": {"type": "string", "description": "Nome do cliente. Deixe vazio para todos."},
+                },
+            },
+        },
     ]
 }]
 
@@ -17088,6 +17160,99 @@ def _ia_consultar_ocorrencias(usina="", cliente="", status=""):
     return {"total_encontrado": len(out), "mostrando": len(limitado), "ocorrencias": limitado}
 
 
+def _ia_consultar_sobreaviso(nome="", bloco=None):
+    """Handler da ferramenta consultar_sobreaviso do Chat-IA. Reaproveita o
+    mesmo estado carregado por /sobreaviso-upload e a mesma lógica de
+    montagem de /gerar-comunicado-sobreaviso — não duplica a leitura do
+    arquivo, só formata pra consumo da IA (campos compactos)."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return {"erro": "Nenhuma escala de sobreaviso carregada ainda. É preciso enviar o arquivo na aba Sobreavisos (Comunicados) primeiro — essa consulta não enxerga arquivos que só foram anexados/enviados em outro lugar do painel, só o que passou pelo upload dessa aba especificamente."}
+
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    grupos = estado.get("grupos", [])
+    contatos = (estado.get("contatos") or {}).get("pessoas", {})
+    if not blocos:
+        return {"erro": "A escala carregada não tem blocos."}
+
+    bloco_idx = bloco if isinstance(bloco, int) else _sobreaviso_indice_bloco_sugerido(blocos)
+    if bloco_idx < 0 or bloco_idx >= len(blocos):
+        return {"erro": f"bloco {bloco_idx} fora do intervalo (0 a {len(blocos) - 1})"}
+    b = blocos[bloco_idx]
+
+    resultado_grupos = []
+    for g in grupos:
+        escala_g = g.get("escala", [])
+        pessoas = escala_g[bloco_idx] if bloco_idx < len(escala_g) else []
+        if nome and not any(nome.strip().lower() in p.strip().lower() for p in pessoas):
+            continue
+        resultado_grupos.append({
+            "grupo": g.get("nome"), "clusters": g.get("clusters", []),
+            "pessoas": pessoas, "supervisores": g.get("supervisores", []),
+        })
+
+    return {
+        "nome_arquivo": payload.get("nome_arquivo", ""),
+        "carregado_em": payload.get("carregado_em"),
+        "periodo": estado.get("periodo"),
+        "bloco": {"idx": bloco_idx, "label": _sobreaviso_fmt_bloco(b), "inicio": b["inicio"], "fim": b["fim"]},
+        "total_grupos_no_bloco": len(grupos), "mostrando": len(resultado_grupos),
+        "grupos": resultado_grupos,
+    }
+
+
+def _ia_consultar_compromissos(usina="", cliente="", tipo="", status=""):
+    """Handler da ferramenta consultar_compromissos do Chat-IA — mesma fonte
+    de /compromissos (_listar_compromissos_core), com campos compactos e
+    filtros aplicados antes de devolver pra Gemini."""
+    todos = _listar_compromissos_core()
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for c in todos:
+        if usina_norm and canonizar_usina(c.get("usina", "")) != usina_norm:
+            continue
+        if cliente and cliente.strip().lower() not in c.get("cliente", "").strip().lower():
+            continue
+        if tipo and tipo.strip().lower() != c.get("tipo", "").strip().lower():
+            continue
+        if status and status.strip().lower() != c.get("status", "").strip().lower():
+            continue
+        out.append({
+            "id": c.get("id"), "tipo": c.get("tipoLabel"), "cliente": c.get("cliente"),
+            "usina": c.get("usina"), "competencia": c.get("competencia"),
+            "dataLimite": c.get("dataLimite"), "diasRestantes": c.get("diasRestantes"),
+            "status": c.get("status"), "etapasConcluidas": c.get("etapasConcluidas"),
+        })
+    limitado = out[:25]
+    return {"total_encontrado": len(out), "mostrando": len(limitado), "compromissos": limitado}
+
+
+def _ia_consultar_localizacoes(usina="", cliente=""):
+    """Handler da ferramenta consultar_localizacoes do Chat-IA — mesma fonte
+    de /localizacoes (aba 'Localizacoes')."""
+    ws = get_localizacoes_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    usina_norm = canonizar_usina(usina) if usina else None
+    out = []
+    for row in todos[1:]:
+        if len(row) < 2 or not row[1].strip():
+            continue
+        item_cliente = row[0].strip() if len(row) > 0 else ""
+        item_usina = row[1].strip()
+        if usina_norm and canonizar_usina(item_usina) != usina_norm:
+            continue
+        if cliente and cliente.strip().lower() not in item_cliente.strip().lower():
+            continue
+        out.append({
+            "cliente": item_cliente, "usina": item_usina,
+            "endereco": row[2].strip() if len(row) > 2 else "",
+            "mapsLink": row[3].strip() if len(row) > 3 else "",
+        })
+    limitado = out[:25]
+    return {"total_encontrado": len(out), "mostrando": len(limitado), "localizacoes": limitado}
+
+
 _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_atividades": _ia_consultar_atividades,
     "consultar_zeladoria": _ia_consultar_zeladoria,
@@ -17095,6 +17260,10 @@ _CHAT_IA_FERRAMENTAS_PYTHON = {
     "consultar_programacao_pcm": _ia_consultar_programacao_pcm,
     "consultar_ocorrencias": _ia_consultar_ocorrencias,
     "consultar_anotacoes": _ia_consultar_anotacoes,
+    "registrar_anotacao": _ia_registrar_anotacao,
+    "consultar_sobreaviso": _ia_consultar_sobreaviso,
+    "consultar_compromissos": _ia_consultar_compromissos,
+    "consultar_localizacoes": _ia_consultar_localizacoes,
 }
 
 
@@ -17114,7 +17283,7 @@ Alguns clusters têm mais de um nome listado (separados por "/") porque a vistor
     else:
         bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
 
-    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante e programação do PCM.
+    return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante, programação do PCM, escala de sobreaviso, compromissos (BM/Relatório de Performance/Relatório PCM) e localizações de usina.
 
 Hoje é {hoje}, horário de Brasília.
 
@@ -17131,7 +17300,9 @@ REGRAS OBRIGATÓRIAS:
 - Responda em português, de forma direta e objetiva — sem rodeios, sem saudações desnecessárias. Fred prefere respostas curtas e factuais, com números e nomes específicos.
 - Em perguntas amplas que exigem várias ferramentas (ex.: "pontos de atenção de hoje", "resumo geral"): seja SELETIVO — destaque só o que realmente precisa de atenção (atrasado, pausado, aguardando algo há muito tempo), não liste item por item de tudo que veio das ferramentas. Respostas mais enxutas geram mais rápido e são mais úteis.
 - Nomes de usina usam numeração romana (ex: Matão I, Sol do Norte I) — normalize antes de comparar.
-- Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas."""
+- Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas.
+- Sobreaviso: se consultar_sobreaviso retornar erro dizendo que não há escala carregada, informe isso claramente ao Fred e sugira enviar o arquivo na aba Sobreavisos (Comunicados) — não invente quem está de plantão.
+- MEMÓRIA/REGISTRO — REGRA CRÍTICA: você NÃO tem memória própria entre mensagens nem entre conversas. A ÚNICA forma de algo ficar disponível pra consultas futuras é chamando a ferramenta registrar_anotacao, que grava de verdade no Sketchbook (planilha). Se o Fred pedir pra anotar, registrar, guardar, salvar ou lembrar de algo, você DEVE chamar registrar_anotacao antes de confirmar — nunca diga "vou registrar" ou "ficará disponível pra consultas futuras" sem ter chamado essa ferramenta de fato. Depois de chamar, confirme com base no retorno real da ferramenta (ex: número da anotação), não com uma frase genérica."""
 
 
 @app.route("/chat-ia", methods=["POST"])
