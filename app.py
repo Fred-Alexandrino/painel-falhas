@@ -4488,8 +4488,113 @@ def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=4
                                                               limite_recheck_ao_vivo=limite_recheck_ao_vivo,
                                                               origem=origem)
     resultado_validacao_relatorios = _validar_integridade_relatorios_core(aplicar=True)
+    resultado_lacunas = _auditoria_lacunas_core()
     return {"descoberta": resultado_descoberta, "consistencia": resultado_consistencia,
-            "validacao_relatorios": resultado_validacao_relatorios}
+            "validacao_relatorios": resultado_validacao_relatorios, "lacunas": resultado_lacunas}
+
+
+def _auditoria_lacunas_core(ot_status="1", pagina_limit=100, max_paginas=40):
+    """AUDITORIA DE LACUNAS — corrige a falha estrutural que causou o caso
+    da OS 13888 (criada 18/09/2026, só descoberta 22/09/2026 via backfill
+    manual): a descoberta normal (_sync_fracttal_core / descoberta rápida
+    de 2h / auditoria completa de 24h) usa o parâmetro `since` da API da
+    Fracttal, que filtra por `creation_date` — NUNCA por atualização. Se
+    uma OT específica não for capturada dentro da sua janela original de
+    vida (2h ou 24h após criação, dependendo de qual ciclo rodou primeiro
+    — por falha temporária de rede, erro pontual, ou qualquer outro
+    motivo), ela nunca mais entra em nenhuma consulta `since=` — a janela
+    é sempre relativa a "agora", nunca alcança o passado de novo. Ou seja,
+    a OS não fica "pendente pra descobrir depois": ela é permanentemente
+    invisível pra descoberta normal, mesmo rodando a auditoria completa
+    manualmente quantas vezes for.
+
+    Esta função elimina essa classe de bug inteira, substituindo "o que
+    mudou nas últimas N horas?" (frágil, depende de nunca haver um gap)
+    por "quantas OTs em processo a Fracttal diz que existem no TOTAL,
+    comparado com quantas eu tenho registradas?":
+      1. Consulta a Fracttal com limit=1 (sem `since`) só pra ler o campo
+         `total` da resposta — é o número real e completo de OTs no
+         status pedido, existente em toda a base da Fracttal.
+      2. Compara com o total de folios (numeroOS) distintos já no Painel
+         de Atividades.
+      3. Se o total da Fracttal for maior, pagina o /backfill-fracttal
+         (mesmo motor usado no backfill manual, com sua trava de duplicata
+         por numeroOS) até não haver mais página com OT nova — fechando
+         a lacuna inteira numa só passada, não só a OT que alguém notou.
+
+    Roda dentro da auditoria completa (janelas 7h/12h/16h) — já é o ciclo
+    mais pesado do dia, então não soma uma chamada nova de alta frequência
+    à Fracttal. `max_paginas` é um teto de segurança (4000 OTs) pra nunca
+    rodar infinitamente se algo entrar em loop."""
+    try:
+        _, total_fracttal = _fracttal_listar_pagina(ot_status=ot_status, start=0, limit=1)
+    except Exception as e:
+        log.error(f"[AuditoriaLacunas] Erro ao consultar total na Fracttal: {e}")
+        return {"ok": False, "erro": str(e)}
+
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        folios_existentes = {row[13].strip() for row in todos[1:] if len(row) > 13 and row[13].strip()}
+    except Exception as e:
+        log.error(f"[AuditoriaLacunas] Erro ao ler Painel de Atividades: {e}")
+        return {"ok": False, "erro": str(e)}
+
+    # Não dá pra comparar 1:1 (total_fracttal conta LINHAS de tarefa, não
+    # OSs agrupadas), mas serve como sinal de alerta: se o número de folios
+    # distintos que JÁ temos for muito menor que o total de linhas da
+    # Fracttal, vale a pena paginar e conferir de verdade. Paginar sempre
+    # (mesmo sem essa comparação grosseira) seria mais caro sem necessidade
+    # na maioria dos dias, em que não há lacuna nenhuma.
+    if len(folios_existentes) >= total_fracttal:
+        return {"ok": True, "gap_provavel": False, "total_fracttal_linhas": total_fracttal,
+                "folios_registrados": len(folios_existentes), "criadas": [], "paginas_lidas": 0}
+
+    criadas_total, revisao_manual_total, erros_total = [], [], []
+    start = 0
+    paginas_lidas = 0
+    since_tudo = "2026-03-01T00:00:00-00:00"  # início operacional do painel — nunca perde nada anterior
+    for _ in range(max_paginas):
+        try:
+            ots, total = _fracttal_listar_pagina(since=since_tudo, ot_status=ot_status,
+                                                   start=start, limit=pagina_limit)
+        except Exception as e:
+            log.error(f"[AuditoriaLacunas] Erro ao paginar Fracttal (start={start}): {e}")
+            erros_total.append(f"start={start}: {e}")
+            break
+
+        paginas_lidas += 1
+        for folio, tasks in _fracttal_agrupar_por_wo(ots):
+            if folio in folios_existentes:
+                continue
+            mapeado = _fracttal_mapear_grupo(tasks)
+            if not mapeado:
+                continue
+            if mapeado.get("_revisao_manual"):
+                revisao_manual_total.append({"wo_folio": folio, "motivo": mapeado["motivo"]})
+                continue
+            alerta = mapeado.pop("_alerta", None)
+            mapeado["editor"] = "fracttal-auditoria-lacunas"
+            try:
+                novo_id = _criar_atividade_interna(ws=ws, todos=todos, enviar_notificacao=True, **mapeado)
+                if alerta:
+                    _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
+                                                     "fracttal-auditoria-lacunas", append=True)
+                criadas_total.append({"numeroOS": mapeado["numeroOS"], "id": novo_id, "itens": len(tasks)})
+                folios_existentes.add(folio)
+            except Exception as e:
+                log.error(f"[AuditoriaLacunas] Erro ao criar atividade para OT {folio}: {e}")
+                erros_total.append(folio)
+
+        start += pagina_limit
+        if start >= total:
+            break
+
+    log.info(f"[AuditoriaLacunas] total_fracttal_linhas={total_fracttal} folios_previos={len(folios_existentes) - len(criadas_total)} "
+             f"criadas={len(criadas_total)} revisao_manual={len(revisao_manual_total)} erros={len(erros_total)} paginas={paginas_lidas}")
+    return {"ok": True, "gap_provavel": True, "total_fracttal_linhas": total_fracttal,
+            "criadas": criadas_total, "revisao_manual": revisao_manual_total,
+            "erros": erros_total, "paginas_lidas": paginas_lidas}
 
 
 def _verificar_e_disparar_auditoria_completa_se_necessario():
@@ -4583,6 +4688,26 @@ def auditoria_consistencia_os():
     aplicar = request.args.get("apply", "true").lower() != "false"
     resultado = _auditoria_consistencia_os_core(aplicar, origem="manual (diagnóstico)")
     return jsonify({"ok": True, **resultado}), 200
+
+
+@app.route("/auditoria-lacunas", methods=["POST", "GET"])
+def auditoria_lacunas():
+    """Dispara /_auditoria_lacunas_core() sob demanda (fora das janelas
+    7h/12h/16h em que já roda automaticamente dentro da auditoria
+    completa). Criado em 22/09/2026 depois do caso da OS 13888 — criada
+    18/09, nunca descoberta pela varredura normal porque `since` da API
+    da Fracttal filtra por creation_date e nenhuma janela relativa a
+    "agora" (2h/24h) alcança mais uma OT depois que sua janela de vida
+    passa. Este endpoint existe pra permitir checar/corrigir isso a
+    qualquer momento, sem esperar a próxima janela automática."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    ot_status = request.args.get("ot_status", "1")
+    resultado = _auditoria_lacunas_core(ot_status=ot_status)
+    return jsonify(resultado), (200 if resultado.get("ok") else 500)
 
 
 @app.route("/resumo", methods=["GET"])
