@@ -12535,6 +12535,14 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 # no AI Studio) do que o 2.5 Flash — e não está na lista de aposentadoria
 # de 16/10/2026 (só 2.5 Flash e 2.5 Flash-Lite estão).
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+# Modelo de reserva usado só quando o principal devolve 503 "high demand"
+# (pico de tráfego do lado do Google, não erro nosso) e todas as tentativas
+# no modelo principal (incluindo a chave de teste) se esgotam. Confirmado
+# funcionando com autenticação simples por "?key=" em 23/09/2026 via
+# /diag-testar-modelo-gemini — ao contrário do que a nota acima registrou
+# pra 3.5/3.6, o 2.5 Flash aceita "?key=" normalmente.
+GEMINI_MODEL_FALLBACK = "gemini-2.5-flash"
+GEMINI_URL_FALLBACK = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_FALLBACK}:generateContent"
 
 
 def _montar_prompt_os(d):
@@ -12838,12 +12846,39 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     # esgotou as tentativas na chave principal — tenta a chave de teste
     # como reserva, uma única vez, antes de desistir. Cobre 429 (cota
     # esgotada), 401/403 (chave principal inválida, revogada ou expirada
-    # — identificado 23/07/2026) e agora também timeout/erro de conexão
-    # (identificado 24/07/2026).
-    if (ultimo_status in (429, 401, 403) or teve_timeout_ou_conexao) and not usar_chave_teste and GEMINI_API_KEY_TESTE:
+    # — identificado 23/07/2026), 503 (modelo sobrecarregado do lado do
+    # Google — adicionado 23/09/2026, já que uma chave de projeto
+    # diferente às vezes emplaca numa janela em que a outra falha) e
+    # timeout/erro de conexão (identificado 24/07/2026).
+    if (ultimo_status in (429, 401, 403, 503) or teve_timeout_ou_conexao) and not usar_chave_teste and GEMINI_API_KEY_TESTE:
         try:
             log.warning(f"[Gemini] Chave principal falhou (status={ultimo_status}, timeout={teve_timeout_ou_conexao}) — usando chave de teste como reserva")
             resp = requests.post(f"{GEMINI_URL}?key={GEMINI_API_KEY_TESTE}", json=payload, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except requests.exceptions.HTTPError as e:
+            try:
+                detalhe = resp.text[:500]
+            except Exception:
+                detalhe = ""
+            ultima_excecao = requests.exceptions.HTTPError(f"{e} | corpo: {detalhe}", response=resp)
+            ultimo_status = resp.status_code
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            ultima_excecao = e
+
+    # Última linha de defesa: se o motivo do esgotamento foi 503 (modelo
+    # principal sobrecarregado — não é problema de cota/chave, é o Google
+    # com pico de demanda no gemini-3.1-flash-lite especificamente), tenta
+    # UMA VEZ com um modelo Gemini diferente (GEMINI_MODEL_FALLBACK), já
+    # que um modelo com demanda mais baixa nesse momento pode responder
+    # normalmente mesmo enquanto o principal está saturado. Não repete
+    # esse fallback em cascata pra outros motivos (429/401/403) porque
+    # nesses casos o problema é a chave/cota, não o modelo — trocar de
+    # modelo não ajudaria.
+    if ultimo_status == 503 and GEMINI_URL_FALLBACK:
+        try:
+            log.warning(f"[Gemini] Modelo principal ({GEMINI_MODEL}) esgotado por 503 — tentando modelo de reserva {GEMINI_MODEL_FALLBACK}")
+            resp = requests.post(f"{GEMINI_URL_FALLBACK}?key={chave}", json=payload, timeout=timeout)
             resp.raise_for_status()
             return resp
         except requests.exceptions.HTTPError as e:
