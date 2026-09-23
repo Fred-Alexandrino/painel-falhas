@@ -12868,22 +12868,25 @@ UMA IMAGEM (PRINT) FOI ANEXADA COMO FONTE DE INFORMAÇÃO: extraia dela tudo que
 {bloco_imagem}
 REGRA MAIS IMPORTANTE — OS PONTOS ESPECÍFICOS DO USUÁRIO SÃO O NÚCLEO DO COMUNICADO: tudo que foi pedido explicitamente no tema/observações/imagem (itens a verificar, instruções, prazos, ações) tem que aparecer de forma CLARA E DESTACADA — se forem vários itens/verificações, apresente como LISTA curta (um item por linha), nunca dissolvidos dentro de um parágrafo genérico. Uma instrução prática específica (ex.: "verificar selo de calibração") NUNCA pode se perder atrás de linguagem genérica sobre riscos, normas ou importância do assunto. Se ao reler o texto pronto o ponto principal pedido pelo usuário não pular aos olhos em 2 segundos de leitura, o texto está errado.
 
-Contexto técnico (o "porquê") é permitido, mas com moderação: no máximo UMA frase curta de enquadramento, nunca um parágrafo explicando consequências genéricas de segurança/normas regulatórias. Gaste as linhas do comunicado nos pontos que o usuário efetivamente pediu pra comunicar, não em explicações genéricas sobre o tema.
+CONSEQUÊNCIA/IMPACTO INFORMADO PELO USUÁRIO É NÚCLEO, NÃO CONTEXTO GENÉRICO: se o tema/observações/imagem descrevem o que acontece caso a instrução NÃO seja seguida (ex.: "senão vai ficar entendido que não estamos trabalhando", "gera apontamento de improdutividade", "o cliente cobra atraso"), essa consequência é informação específica dada pelo usuário — não uma explicação genérica de risco — e por isso tem que aparecer de forma explícita e destacada no comunicado, com o mesmo peso das instruções em si. Omitir ou diluir essa consequência é o mesmo erro que omitir um item da lista de instruções: o comunicado perde o senso de urgência que o próprio usuário pediu para transmitir. A restrição abaixo sobre contexto genérico NUNCA se aplica a uma consequência que o usuário efetivamente informou.
+
+Contexto técnico GENÉRICO (o "porquê" que o usuário NÃO informou, e que você estaria acrescentando por conta própria) é permitido, mas com moderação: no máximo UMA frase curta de enquadramento, nunca um parágrafo explicando consequências genéricas de segurança/normas regulatórias que não vieram do usuário.
 
 O que NÃO fazer:
 - Não inventar critérios técnicos adicionais de verificação que não foram citados (ex.: tipos específicos de dano, passos extras de conferência, registro fotográfico) — isso é diferente do contexto genérico permitido; contexto genérico é só uma frase de enquadramento, nunca uma checklist extra por conta própria.
 - Não inventar FATOS ESPECÍFICOS não informados — datas exatas, números de OS, prazos, quantidades, nomes.
-- Não usar linguagem alarmista ou didática demais (nada de "pode resultar em consequências fatais" se isso não foi pedido) — o tom é de instrução profissional direta entre colegas de O&M, não uma aula de segurança.
+- Não inventar uma consequência que o usuário não mencionou. Mas se ele mencionou uma, não rebaixá-la a uma frase solta — ela é ponto central, não adorno.
+- Não usar linguagem alarmista ou didática demais (nada de "pode resultar em consequências fatais" se isso não foi pedido) — o tom é de instrução profissional direta entre colegas de O&M, não uma aula de segurança. Isso não significa suavizar uma consequência real que o usuário informou: relatar com clareza o que ele disse que vai acontecer não é alarmismo, é fidelidade ao conteúdo.
 
 Estrutura padrão (adapte ao conteúdo, mas sempre em blocos curtos com emoji de destaque):
 ⚠️ Linha de abertura com o assunto principal, direto ao ponto.
 📋 Os pontos/itens específicos pedidos pelo usuário (do texto e/ou da imagem) — em lista, se forem vários.
-📋 (opcional, só se necessário) Uma frase curta de contexto técnico ou instrução complementar.
+❗ Se o usuário informou uma consequência/impacto do não cumprimento, uma linha destacada e explícita com ela (não uma frase genérica de risco).
 ✅ Prazo, status ou próximo passo — respeitando rigorosamente o grau de certeza da regra abaixo.
 
 Regras gerais:
 - Vá direto ao ponto, sem saudação genérica tipo "Prezados" ou assinatura formal no final.
-- Tamanho: enxuto — normalmente 3 a 5 linhas curtas. Mais curto e direto é melhor do que mais longo e genérico.
+- Tamanho: enxuto, mas sem cortar conteúdo pedido pelo usuário — normalmente 4 a 7 linhas curtas quando há uma consequência a comunicar, 3 a 5 quando não há. Priorize completude do que foi pedido sobre economia de linhas; nunca sacrifique um ponto específico ou a consequência informada só para caber num tamanho menor.
 
 REGRA CRÍTICA — PRESERVAR O GRAU DE CERTEZA DO TEXTO ORIGINAL: preste muita atenção em palavras que indicam incerteza ou expectativa, como "acredito que", "acho que", "acho possível", "acredito", "acho provável", "talvez", "devemos", "devemos conseguir". NUNCA transforme uma expectativa/crença em uma confirmação ou promessa de prazo. Se o autor disse que "acredita" que algo vai acontecer, sem data confirmada, o comunicado deve deixar claro que ainda NÃO há data definida (ex.: "ainda não temos data para retorno", "sem previsão confirmada", "assim que tivermos confirmação, avisamos") — em vez de anunciar como certo ou "em breve". Errar pra mais confiança do que o texto original tem é pior do que errar pra menos — na dúvida, seja mais conservador, não mais otimista.
 
