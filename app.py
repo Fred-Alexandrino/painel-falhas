@@ -12878,7 +12878,21 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
     if ultimo_status == 503 and GEMINI_URL_FALLBACK:
         try:
             log.warning(f"[Gemini] Modelo principal ({GEMINI_MODEL}) esgotado por 503 — tentando modelo de reserva {GEMINI_MODEL_FALLBACK}")
-            resp = requests.post(f"{GEMINI_URL_FALLBACK}?key={chave}", json=payload, timeout=timeout)
+            # BUG CORRIGIDO (23/09/2026): "thinkingConfig": {"thinkingBudget": 0}
+            # foi escrito pensando no gemini-3.1-flash-lite; o gemini-2.5-flash
+            # (modelo de reserva) não zera o thinking com esse valor do mesmo
+            # jeito — ele ainda reserva tokens de raciocínio (confirmado via
+            # /diag-testar-modelo-gemini: thoughtsTokenCount>0 mesmo em prompt
+            # trivial) que competem com maxOutputTokens original (1024) e
+            # cortavam o comunicado pela metade antes de terminar a estrutura
+            # padrão (⚠️📋❗✅). Pro fallback, removemos o thinkingConfig (deixa
+            # o padrão do 2.5-flash) e damos uma folga bem maior de
+            # maxOutputTokens pra sobrar espaço de sobra mesmo com thinking.
+            payload_fallback = json.loads(json.dumps(payload))  # cópia funda, não mutar o payload original (pode ser reusado por outro caller)
+            gen_config = payload_fallback.setdefault("generationConfig", {})
+            gen_config.pop("thinkingConfig", None)
+            gen_config["maxOutputTokens"] = max(int(gen_config.get("maxOutputTokens", 1024)) * 4, 4096)
+            resp = requests.post(f"{GEMINI_URL_FALLBACK}?key={chave}", json=payload_fallback, timeout=timeout)
             resp.raise_for_status()
             return resp
         except requests.exceptions.HTTPError as e:
