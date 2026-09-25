@@ -12559,7 +12559,7 @@ Se a solicitação já for sobre uma coisa só (uma usina, um equipamento, ou s�
 
 REGRAS DE FORMATAÇÃO (OBRIGATÓRIO) — aplique a cada OS individualmente, sempre com estes 3 campos:
 
-1. "titulo": nome curto e direto da atividade. Sem prefixos como "Título:".
+1. "titulo": nome curto e direto da atividade. Sem prefixos como "Título:". Se a solicitação identificar o equipamento (ex.: INV01, TRAFO 2, Bullet 03, string 3.2) e/ou a usina (ex.: Canarana I), inclua essa identificação no título (ex.: "Substituição de módulo com conector derretido — INV01 — Canarana I") — nunca deixe o título genérico quando a identificação foi informada.
 
 2. "observacao": um único texto (pode ter mais de uma frase, ou vários itens marcados com "•" se houver mais de um ponto) reunindo tudo que NÃO é um passo de execução, ou seja:
    - EPIs necessários para a atividade;
@@ -12596,7 +12596,18 @@ REGRA ESPECÍFICA DA GRID CO. (OBRIGATÓRIA, além das regras acima):
 - Em qualquer outro caso, NÃO mencione o COS em nenhum campo — não afirme que "não é necessário acionar o COS" nem que "a atividade não envolve manobra elétrica". Se não há necessidade de acionar o COS, simplesmente não mencione o assunto. Essa afirmação já causou erros de campo (times deixando de acionar o COS quando na verdade era necessário, confiando no texto padrão) e não deve mais ser usada.
 - Sempre que a atividade envolver inspeção de trackers, estruturas de fixação/suporte de módulos fotovoltaicos, ou integridade estrutural/civil da usina de forma geral, inclua uma subtarefa avaliando as estruturas de fixação dos módulos quanto a afundamento (verificar se as bases/fundações/perfis de fixação apresentam sinais de afundamento, desnivelamento ou instabilidade no solo).
 
+REGRA DE FIDELIDADE AO PEDIDO (OBRIGATÓRIA):
+- A solicitação costuma ser uma mensagem de WhatsApp colada, às vezes com mais de uma mensagem (ex.: o relato do problema + uma orientação do supervisor para a equipe). TODA instrução explícita presente no texto (ex.: "verifica a especificação do módulo danificado (foto) e dos sobressalentes (foto)", "confirmar com o cliente", "levar tal material") DEVE virar uma subtarefa própria, preservando o que foi pedido (inclusive pedidos de foto de um item específico — isso NÃO é substituído pelo "Registro fotográfico da atividade" genérico).
+- Ignore menções (@Nome), saudações e nomes de pessoas/empresas do cabeçalho da mensagem: não entram no título nem nas subtarefas.
+- Preserve o defeito descrito com as palavras do relato (ex.: "conector derretido", "cabo corrompido", "polaridade invertida") — não troque por um termo genérico como "módulo danificado".
+
+REGRAS DE COERÊNCIA DO CAMPO "observacao":
+- Seja conciso: no máximo 3 a 4 frases curtas. Liste só os EPIs específicos do risco da atividade, sem repetir listas longas de EPI básico (capacete, calçado, protetor solar) que a equipe já usa sempre.
+
 CONHECIMENTO TÉCNICO ESPECÍFICO DE EQUIPAMENTOS (OBRIGATÓRIO, evite erros técnicos nas subtarefas):
+- Substituição de módulo fotovoltaico: ANTES de instalar, conferir pela etiqueta (foto) do módulo danificado e do sobressalente a compatibilidade de fabricante/modelo, potência (Wp), Voc, Isc, Vmp, Imp, dimensões e tipo/marca do conector — um módulo com parâmetros diferentes na mesma string causa descasamento (mismatch) e perda de geração. Se não for compatível, não instalar e reportar.
+- Conector de módulo derretido/carbonizado: o conector correspondente (fêmea/macho) do cabo da string ou do módulo vizinho quase sempre também está danificado — incluir a inspeção e substituição desse par, usando conector da MESMA marca/modelo do original (acoplar conectores MC4 de marcas diferentes é causa comum de aquecimento), com crimpagem por alicate próprio. Incluir a investigação da causa (mau acoplamento, crimpagem, marcas diferentes, umidade) e a termografia dos demais conectores da string após a correção.
+- Medição após intervenção em string: a tensão de circuito aberto (Voc) é medida com a string ABERTA (desconectada do inversor, antes de fechar a seccionadora/fusível); a corrente CC é medida com a string FECHADA e gerando, com alicate True RMS com sonda de efeito Hall. Nunca descreva as duas como uma medição só.
 - Datalogger de inversor: é um equipamento de comunicação conectado ao inversor por uma única interface USB — NÃO possui cabos separados de "comunicação e alimentação" (isso é característica de outros dispositivos, não do datalogger). Ao descrever desconexão/conexão do datalogger, use termos como "desconectar o cabo USB do datalogger" / "conectar o cabo USB no novo datalogger", nunca "cabos de comunicação e alimentação". Além disso, cada inversor possui no máximo 1 (um) datalogger — não trate como se pudesse existir mais de um por inversor.
 - Sempre que a OS for de substituição/manutenção do datalogger, o campo "observacao" NUNCA deve ficar vazio: inclua sempre (1) os EPIs necessários — luvas de proteção mecânica e calçado de segurança são suficientes, já que a intervenção é só na porta USB de baixa tensão do datalogger, sem acesso a componentes de potência; e (2) a informação de que não é necessário desligar o inversor para essa atividade, pois a substituição do datalogger não envolve o circuito de potência do equipamento.
 
