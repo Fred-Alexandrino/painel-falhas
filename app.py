@@ -8403,33 +8403,6 @@ def _config_set_lote_core(pares):
     return list(pares.keys())
 
 
-@app.route("/setup-temp-grupo-canarana", methods=["POST"])
-def _setup_temp_grupo_canarana():
-    """ROTA TEMPORÁRIA (26/09/2026) — REMOVER NO PRÓXIMO DEPLOY.
-    Corrige uma lacuna pontual: Canarana I, Canarana II e Ribeirão
-    Cascalheira já tinham cluster_usina configurado (cluster MT Leste 2),
-    mas nunca tiveram grupo_usina configurado — por isso o dashboard não
-    conseguia disparar comunicado de sobreaviso/cluster automaticamente
-    pra elas. Grava grupo_usina:<Usina> = <id do grupo 'Equipe
-    Canarana/Rib.Casc' no WhatsApp> pras 3 usinas, via o mesmo núcleo de
-    /config-set-lote. Autenticada com DEPLOY_SECRET (mesma credencial já
-    usada pra deploy de código) só porque WEBHOOK_SECRET não está
-    disponível nesta sessão — não é uma rota de uso recorrente."""
-    secret = request.headers.get("X-Deploy-Secret", "")
-    if not DEPLOY_SECRET or secret != DEPLOY_SECRET:
-        return jsonify({"ok": False, "error": "unauthorized"}), 401
-    grupo_id = "120363414633259915@g.us"  # "Equipe Canarana/Rib.Casc" no WhatsApp
-    pares = {
-        "grupo_usina:Canarana I": grupo_id,
-        "grupo_usina:Canarana II": grupo_id,
-        "grupo_usina:Ribeirão Cascalheira": grupo_id,
-    }
-    gravados = _config_set_lote_core(pares)
-    _mapa_grupo_usina_cache["dados"] = None
-    _mapa_grupo_usina_cache["expira_em"] = 0
-    return jsonify({"ok": True, "gravados": gravados}), 200
-
-
 # ── Comunicados diários automáticos (WhatsApp) ──────────────────────────
 # Mapeamento usina → grupo do WhatsApp fica na aba "_Sistema", chaves no
 # formato "grupo_usina:<Nome da Usina>" = "<id>@g.us". Fred edita essa
