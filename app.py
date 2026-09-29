@@ -8847,7 +8847,7 @@ def _indices_temporarios():
     return alias_temp, cliente_temp
 
 
-def _mapa_cluster_usina():
+def _mapa_cluster_usina_sistema():
     """Mapeia usina -> código de cluster/equipe regional (ex.: 'SP Centro
     01'), configurado na aba _Sistema como 'cluster_usina:<Usina>'.
     Cache de 10 min com fallback pro cache em memória e depois pro cache
@@ -8886,7 +8886,7 @@ def _mapa_cluster_usina():
 _mapa_coordenador_cluster_cache = {"dados": None, "expira_em": 0}
 
 
-def _mapa_coordenador_cluster():
+def _mapa_coordenador_cluster_sistema():
     """Mapeia cluster -> coordenador/técnico responsável, configurado na
     aba _Sistema como 'coordenador_cluster:<Cluster>' (ex.: gravado via
     /config-set-lote). Levantado por vistoria em 26/08/2026, cruzando o
@@ -8921,6 +8921,28 @@ def _mapa_coordenador_cluster():
     _mapa_coordenador_cluster_cache["dados"] = mapa
     _mapa_coordenador_cluster_cache["expira_em"] = agora_ts + 600
     _mapa_cache_disco_salvar("coordenador_cluster", mapa)
+    return mapa
+
+
+def _mapa_cluster_usina():
+    """usina -> cluster. Base = aba _Sistema ('cluster_usina:<Usina>'), mas o
+    MAPEAMENTO_UFVS (fonte única, 29/09/2026) sempre vence nas usinas que ele
+    cobre — assim a config não fica desatualizada sem ninguém perceber."""
+    mapa = dict(_mapa_cluster_usina_sistema())
+    for u in MAPEAMENTO_UFVS:
+        mapa[u["usina"]] = u["cluster"]
+    return mapa
+
+
+def _mapa_coordenador_cluster():
+    """cluster -> responsável. Base = aba _Sistema ('coordenador_cluster:
+    <Cluster>'); o MAPEAMENTO_UFVS (fonte única) vence nos clusters que cobre."""
+    mapa = dict(_mapa_coordenador_cluster_sistema())
+    vistos = set()
+    for u in MAPEAMENTO_UFVS:
+        if u["cluster"] not in vistos:
+            mapa[u["cluster"]] = u["responsavel"]
+            vistos.add(u["cluster"])
     return mapa
 
 
@@ -17515,7 +17537,7 @@ def mapeamento_ufvs_auditoria():
         if nome not in {u["usina"] for u in MAPEAMENTO_UFVS}:
             divergencias.append({"tipo": "usina_fora_do_mapeamento", "usina": nome})
     try:
-        cluster_sistema = _mapa_cluster_usina()
+        cluster_sistema = _mapa_cluster_usina_sistema()
         for u in MAPEAMENTO_UFVS:
             atual = cluster_sistema.get(u["usina"], "")
             if atual != u["cluster"]:
@@ -17523,13 +17545,15 @@ def mapeamento_ufvs_auditoria():
     except Exception as e:
         divergencias.append({"tipo": "erro_lendo_cluster_usina", "detalhe": str(e)})
     try:
-        coord_sistema = _mapa_coordenador_cluster()
+        coord_sistema = _mapa_coordenador_cluster_sistema()
         esperado = {}
         for u in MAPEAMENTO_UFVS:
             esperado.setdefault(u["cluster"], u["responsavel"])
         for cluster, resp in esperado.items():
             atual = coord_sistema.get(cluster, "")
-            if _norm_usina(resp) not in _norm_usina(atual):
+            _p = _norm_usina(resp).split()
+            _a = _norm_usina(atual)
+            if not atual or not (_p[0] in _a and _p[-1] in _a):
                 divergencias.append({"tipo": "coordenador_cluster", "cluster": cluster, "sistema": atual or "(sem chave)", "mapeamento": resp})
     except Exception as e:
         divergencias.append({"tipo": "erro_lendo_coordenador_cluster", "detalhe": str(e)})
