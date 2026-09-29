@@ -5285,34 +5285,118 @@ def _fracttal_formatar_data_br(iso_str):
     ano, mes, dia = m.groups()
     return f"{dia}/{mes}/{ano}"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# MAPEAMENTO OFICIAL DE UFVs — FONTE ÚNICA (definido pelo Fred em 29/09/2026)
+#
+# Origem: planilha "mapeamento_ufvs_clusters_localizacoes.xlsx" (aba Usinas),
+# anexada aos arquivos do projeto Dashboard FRED. Cada linha = 1 UFV com
+# cliente, cluster, cidade/UF, responsável (com função), demais membros da
+# equipe e técnico alternativo. Fora desta tabela: supervisão temporária
+# (aba _SupervisaoTemporaria, ex.: Solier — Adriano Silva só dá apoio, não faz
+# parte do mapeamento dele), usinas de outros supervisores e descontinuadas.
+#
+# Quem consome: TECNICO_USINAS (cruzamento técnico x usina, alertas de OS),
+# chat-ia (bloco de mapeamento no prompt) e /mapeamento-ufvs (+ /auditoria).
+# Para mudar equipe/cluster/responsável: edite ESTA tabela (e a planilha do
+# projeto) — nunca crie mapeamentos paralelos em outros pontos do código.
+# ══════════════════════════════════════════════════════════════════════════════
+MAPEAMENTO_UFVS = [
+    {"usina": 'ABC Morada Nova', "cliente": 'Alves Lima', "cluster": 'CE Leste 01', "cidade_uf": 'Morada Nova/CE',
+     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Hortina (Quixadá I)', "cliente": 'Sal Energia', "cluster": 'CE Leste 01', "cidade_uf": 'Quixadá/CE',
+     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Vitesse (Quixadá II)', "cliente": 'Sal Energia', "cluster": 'CE Leste 01', "cidade_uf": 'Quixadá/CE',
+     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Sítio Bonfim', "cliente": 'Thopen', "cluster": 'CE Leste 01', "cidade_uf": 'Limoeiro do Norte/CE',
+     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
+    {"usina": 'SunPower (Cascavel)', "cliente": 'Sal Energia', "cluster": 'CE Leste 02', "cidade_uf": 'Cascavel/CE',
+     "responsavel": 'Adriano Silva', "funcao": 'Técnico', "membros": ['Alesson Sousa (Eletricista)'], "alternativo": ''},
+    {"usina": 'Salvales (Aquiraz I)', "cliente": 'Sal Energia', "cluster": 'CE Leste 02', "cidade_uf": 'Aquiraz/CE',
+     "responsavel": 'Adriano Silva', "funcao": 'Técnico', "membros": ['Alesson Sousa (Eletricista)'], "alternativo": ''},
+    {"usina": 'Carosa (Aquiraz II)', "cliente": 'Sal Energia', "cluster": 'CE Leste 02', "cidade_uf": 'Aquiraz/CE',
+     "responsavel": 'Adriano Silva', "funcao": 'Técnico', "membros": ['Alesson Sousa (Eletricista)'], "alternativo": ''},
+    {"usina": 'Guajirú', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
+     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Sol do Norte I', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
+     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Sol do Norte II', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
+     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Crateús', "cliente": 'Renogrid', "cluster": 'CE Oeste 02', "cidade_uf": 'Crateús/CE',
+     "responsavel": 'Railson Gomes', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Sete Lagoas', "cliente": '2C Energia', "cluster": 'MG Centro 01', "cidade_uf": 'Sete Lagoas/MG',
+     "responsavel": 'Daniel de Paula', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Nova Xavantina I', "cliente": 'Renogrid', "cluster": 'MT Leste 01', "cidade_uf": 'Nova Xavantina/MT',
+     "responsavel": 'Gabriel Oliveira', "funcao": 'Mantenedor', "membros": [], "alternativo": ''},
+    {"usina": 'Nova Xavantina II', "cliente": 'Renogrid', "cluster": 'MT Leste 01', "cidade_uf": 'Nova Xavantina/MT',
+     "responsavel": 'Gabriel Oliveira', "funcao": 'Mantenedor', "membros": [], "alternativo": ''},
+    {"usina": 'Canarana I', "cliente": 'Thopen', "cluster": 'MT Leste 02', "cidade_uf": 'Canarana/MT',
+     "responsavel": 'Marcelo Lino', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Canarana II', "cliente": 'Thopen', "cluster": 'MT Leste 02', "cidade_uf": 'Canarana/MT',
+     "responsavel": 'Marcelo Lino', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Ribeirão Cascalheira', "cliente": 'Thopen', "cluster": 'MT Leste 02', "cidade_uf": 'Ribeirão Cascalheira/MT',
+     "responsavel": 'Marcelo Lino', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Colíder I', "cliente": 'Renogrid', "cluster": 'MT Norte 01', "cidade_uf": 'Colíder/MT',
+     "responsavel": 'Deivity Saugo', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Colíder II', "cliente": 'Renogrid', "cluster": 'MT Norte 01', "cidade_uf": 'Colíder/MT',
+     "responsavel": 'Deivity Saugo', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Araputanga', "cliente": '2C Energia', "cluster": 'MT Sul 01', "cidade_uf": 'Araputanga/MT',
+     "responsavel": 'Adriano Moraes', "funcao": 'Técnico', "membros": ['Aniel Rocha (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Poconé', "cliente": 'Thopen', "cluster": 'MT Sul 01', "cidade_uf": 'Poconé/MT',
+     "responsavel": 'Adriano Moraes', "funcao": 'Técnico', "membros": ['Aniel Rocha (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Nobres', "cliente": 'Renogrid', "cluster": 'MT Sul 03', "cidade_uf": 'Nobres/MT',
+     "responsavel": 'Valmir Júnior', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Diamantino', "cliente": 'Thopen', "cluster": 'MT Sul 03', "cidade_uf": 'Diamantino/MT',
+     "responsavel": 'Valmir Júnior', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Boa Esperança do Sul I', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Boa Esperança do Sul/SP',
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Boa Esperança do Sul II', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Boa Esperança do Sul/SP',
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Ibaté I', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Ibaté/SP',
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Ibaté II', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Ibaté/SP',
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Matão I', "cliente": 'Thopen', "cluster": 'SP Centro 02', "cidade_uf": 'Matão/SP',
+     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Matão II - Topázio', "cliente": 'Thopen', "cluster": 'SP Centro 02', "cidade_uf": 'Matão/SP',
+     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Elias Fausto', "cliente": 'Renogrid', "cluster": 'SP Leste 07', "cidade_uf": 'Elias Fausto/SP',
+     "responsavel": 'Bruno Pupo', "funcao": 'Técnico', "membros": [], "alternativo": 'Felipe Lima'},
+]
+
+# Variações de grafia/apelidos vistas na Fracttal → nome oficial na tabela acima.
+_TECNICO_ALIASES = {
+    "deivity jhon cunha saugo": "Deivity Saugo",
+    "bruno vinicius pupo": "Bruno Pupo",
+    "equipe piracicaba": "Bruno Pupo",  # equipe de Elias Fausto (SP Leste 07)
+}
+
+
+def _construir_tecnico_usinas(mapeamento):
+    """Deriva {nome normalizado da pessoa: [usinas]} de MAPEAMENTO_UFVS —
+    responsável, demais membros e alternativo da equipe de cada UFV."""
+    mapa = {}
+    for item in mapeamento:
+        pessoas = [item["responsavel"], *item["membros"], item["alternativo"]]
+        for pessoa in pessoas:
+            nome = re.sub(r"\s*\(.*?\)\s*$", "", pessoa or "").strip()  # tira "(Mantenedor)"
+            if not nome:
+                continue
+            lista = mapa.setdefault(_norm_usina(nome), [])
+            if item["usina"] not in lista:
+                lista.append(item["usina"])
+    for apelido, oficial in _TECNICO_ALIASES.items():
+        if _norm_usina(oficial) in mapa:
+            mapa[_norm_usina(apelido)] = list(mapa[_norm_usina(oficial)])
+    return mapa
+
+
 # ── Cruzamento técnico responsável → usina(s) atendida(s) ─────────────────
 # Usado para VALIDAR o match feito pelo nome do ativo (cross-check) e,
 # quando o nome do ativo não bate com o catálogo, como fallback — mas só
 # quando o técnico atende uma única usina do catálogo (senão é ambíguo e
 # a OT vai para revisão manual em vez de arriscar um chute).
-TECNICO_USINAS = {
-    "rodolfo oliveira":  ["Boa Esperança do Sul I", "Boa Esperança do Sul II", "Ibaté I", "Ibaté II"],
-    "andrick gouveia":   ["Boa Esperança do Sul I", "Boa Esperança do Sul II", "Ibaté I", "Ibaté II"],
-    "equipe piracicaba": ["Elias Fausto"],
-    "deivity saugo":     ["Colíder I", "Colíder II"],
-    "deivity jhon cunha saugo": ["Colíder I", "Colíder II"],
-    "railson gomes":     ["Crateús"],
-    "valmir junior":     ["Nobres"],
-    "lucas lima":        ["Nobres"],
-    "gabriel oliveira":  ["Nova Xavantina I", "Nova Xavantina II"],
-    "eduardo souza":     ["Matão I", "Matão II - Topázio"],
-    "aniel rocha":       ["Araputanga", "Poconé"],
-    "adriano moraes":    ["Araputanga", "Poconé"],
-    "claudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
-    "cláudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
-    "isake costa":       ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
-    "daniel de paula":   ["Sete Lagoas"],
-    # Corrigido 29/09/2026: Adriano Silva atende exclusivamente as usinas da
-    # Sal Energia (CE Leste 02). A Solier (Qair, Cascavel) é usina emprestada
-    # do Iago em que ele só deu apoio pontual — não faz parte do mapeamento.
-    "adriano silva":     ["Salvales (Aquiraz I)", "Carosa (Aquiraz II)", "SunPower (Cascavel)"],
-    "marcelo lino":      ["Canarana I", "Canarana II", "Ribeirão Cascalheira"],
-}
+# Derivado de MAPEAMENTO_UFVS (29/09/2026) — não editar à mão.
+TECNICO_USINAS = _construir_tecnico_usinas(MAPEAMENTO_UFVS)
 
 
 def _normalizar_tecnico(nome):
@@ -17374,6 +17458,15 @@ Alguns clusters têm mais de um nome listado (separados por "/") porque a vistor
     else:
         bloco_clusters = "TABELA DE CLUSTERS E COORDENADORES: não disponível no momento (falha ao ler configuração) — não presuma nomes de coordenador, só responda com base no que as ferramentas retornarem."
 
+    linhas_mapa = "\n".join(
+        f"- {u['usina']} | cliente {u['cliente']} | {u['cluster']} | {u['responsavel']} ({u['funcao']})"
+        + (f" + {', '.join(u['membros'])}" if u["membros"] else "")
+        + (f" | alternativo: {u['alternativo']}" if u["alternativo"] else "")
+        for u in MAPEAMENTO_UFVS
+    )
+    bloco_mapeamento = f"""MAPEAMENTO OFICIAL DAS UFVs (fonte única definida pelo Fred em 29/09/2026 — vale sobre qualquer outra informação; usinas em supervisão temporária ficam fora desta lista):
+{linhas_mapa}"""
+
     return f"""Você é o assistente de IA embutido no dashboard Central O&M da Grid Co., empresa de operação e manutenção de usinas solares fotovoltaicas. Você conversa com Fred Alexandrino, Supervisor de O&M, respondendo perguntas sobre os dados operacionais do painel: atividades/OS, ocorrências/falhas, zeladoria, chamados de fabricante, programação do PCM, escala de sobreaviso, compromissos (BM/Relatório de Performance/Relatório PCM) e localizações de usina.
 
 Hoje é {hoje}, horário de Brasília.
@@ -17381,6 +17474,8 @@ Hoje é {hoje}, horário de Brasília.
 IMPORTANTE — ATIVIDADES x OCORRÊNCIAS SÃO BASES DIFERENTES: "Painel de Atividades" (ferramenta consultar_atividades) tem as OS de manutenção — preventivas, corretivas, rondas. "Painel de Falhas" (ferramenta consultar_ocorrencias) tem as ocorrências/falhas de equipamento detectadas por monitoramento ou ronda (inversor, tracker, string, CFTV, comunicação, etc.), cada uma com falha/causa/ação/status próprios e às vezes um chamado de fabricante e/ou uma OS vinculados. Se a pergunta usar as palavras "ocorrência(s)" ou "falha(s)", use consultar_ocorrencias. Se usar "atividade(s)" ou "OS" no sentido de manutenção programada, use consultar_atividades. Em caso de dúvida real (a pergunta poderia ser sobre qualquer uma), chame as duas.
 
 {bloco_clusters}
+
+{bloco_mapeamento}
 
 IMPORTANTE SOBRE NOMES DE PESSOAS: uma vistoria cruzando atividades reais com clusters (26/08/2026) mostrou que coordenadores de cluster GERALMENTE também aparecem como "responsavel" em várias atividades (eles executam campo também, não só coordenam). Por isso, ao perguntarem sobre "atividades do Fulano": (1) primeiro chame consultar_atividades com responsavel="Fulano" pra pegar o que está diretamente atribuído a ele; (2) SE Fulano for um coordenador de cluster (está na tabela acima), chame TAMBÉM consultar_atividades com cluster="<cluster dele>" pra não perder atividades de outros técnicos da equipe dele que ele também acompanha; (3) apresente os dois resultados de forma clara, deixando explícito o que é "atribuído diretamente a ele" vs "da equipe/cluster dele".
 
@@ -17394,6 +17489,51 @@ REGRAS OBRIGATÓRIAS:
 - Se a pergunta não tiver relação com os dados do painel (ex: pergunta genérica), pode responder normalmente sem usar ferramentas.
 - Sobreaviso: se consultar_sobreaviso retornar erro dizendo que não há escala carregada, informe isso claramente ao Fred e sugira enviar o arquivo na aba Sobreavisos (Comunicados) — não invente quem está de plantão.
 - MEMÓRIA/REGISTRO — REGRA CRÍTICA: você NÃO tem memória própria entre mensagens nem entre conversas. A ÚNICA forma de algo ficar disponível pra consultas futuras é chamando a ferramenta registrar_anotacao, que grava de verdade no Sketchbook (planilha). Se o Fred pedir pra anotar, registrar, guardar, salvar ou lembrar de algo, você DEVE chamar registrar_anotacao antes de confirmar — nunca diga "vou registrar" ou "ficará disponível pra consultas futuras" sem ter chamado essa ferramenta de fato. Depois de chamar, confirme com base no retorno real da ferramenta (ex: número da anotação), não com uma frase genérica."""
+
+
+@app.route("/mapeamento-ufvs", methods=["GET"])
+def mapeamento_ufvs():
+    """Mapeamento oficial de UFVs (cliente, cluster, equipe, responsáveis) —
+    fonte única MAPEAMENTO_UFVS, definida em 29/09/2026 a partir da planilha
+    do projeto. Somente leitura."""
+    return jsonify({"ok": True, "total": len(MAPEAMENTO_UFVS), "itens": MAPEAMENTO_UFVS}), 200
+
+
+@app.route("/mapeamento-ufvs/auditoria", methods=["GET"])
+def mapeamento_ufvs_auditoria():
+    """Compara MAPEAMENTO_UFVS com o que está configurado hoje (catálogo de
+    usinas/clientes no código e aba _Sistema: cluster_usina:/coordenador_
+    cluster:) e lista as divergências, sem alterar nada."""
+    divergencias = []
+    for u in MAPEAMENTO_UFVS:
+        cat = CATALOGO_USINAS.get(u["usina"])
+        if not cat:
+            divergencias.append({"tipo": "usina_fora_do_catalogo", "usina": u["usina"]})
+        elif cat["cliente"] != u["cliente"]:
+            divergencias.append({"tipo": "cliente", "usina": u["usina"], "catalogo": cat["cliente"], "mapeamento": u["cliente"]})
+    for nome in CATALOGO_USINAS:
+        if nome not in {u["usina"] for u in MAPEAMENTO_UFVS}:
+            divergencias.append({"tipo": "usina_fora_do_mapeamento", "usina": nome})
+    try:
+        cluster_sistema = _mapa_cluster_usina()
+        for u in MAPEAMENTO_UFVS:
+            atual = cluster_sistema.get(u["usina"], "")
+            if atual != u["cluster"]:
+                divergencias.append({"tipo": "cluster_usina", "usina": u["usina"], "sistema": atual or "(sem chave)", "mapeamento": u["cluster"]})
+    except Exception as e:
+        divergencias.append({"tipo": "erro_lendo_cluster_usina", "detalhe": str(e)})
+    try:
+        coord_sistema = _mapa_coordenador_cluster()
+        esperado = {}
+        for u in MAPEAMENTO_UFVS:
+            esperado.setdefault(u["cluster"], u["responsavel"])
+        for cluster, resp in esperado.items():
+            atual = coord_sistema.get(cluster, "")
+            if _norm_usina(resp) not in _norm_usina(atual):
+                divergencias.append({"tipo": "coordenador_cluster", "cluster": cluster, "sistema": atual or "(sem chave)", "mapeamento": resp})
+    except Exception as e:
+        divergencias.append({"tipo": "erro_lendo_coordenador_cluster", "detalhe": str(e)})
+    return jsonify({"ok": True, "divergencias": divergencias, "total": len(divergencias)}), 200
 
 
 @app.route("/chat-ia", methods=["POST"])
