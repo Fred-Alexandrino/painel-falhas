@@ -5307,7 +5307,10 @@ TECNICO_USINAS = {
     "cláudio ferreira":  ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
     "isake costa":       ["Sítio Bonfim", "ABC Morada Nova", "Sol do Norte I", "Sol do Norte II", "Guajirú", "Hortina (Quixadá I)", "Vitesse (Quixadá II)"],
     "daniel de paula":   ["Sete Lagoas"],
-    "adriano silva":     ["Solier (Cascavel)"],
+    # Corrigido 29/09/2026: Adriano Silva atende exclusivamente as usinas da
+    # Sal Energia (CE Leste 02). A Solier (Qair, Cascavel) é usina emprestada
+    # do Iago em que ele só deu apoio pontual — não faz parte do mapeamento.
+    "adriano silva":     ["Salvales (Aquiraz I)", "Carosa (Aquiraz II)", "SunPower (Cascavel)"],
     "marcelo lino":      ["Canarana I", "Canarana II", "Ribeirão Cascalheira"],
 }
 
@@ -5626,7 +5629,10 @@ def _fracttal_resolver_usina_tecnico(representante):
 
     if usina_por_ativo:
         usina = usina_por_ativo
-        if usinas_do_tecnico and usina not in usinas_do_tecnico:
+        # Usinas sob supervisão temporária (ex.: Solier) recebem apoio de
+        # técnicos de outros clusters — não é erro de cruzamento.
+        _usina_e_temporaria = usina in {_it["usina"] for _it in _usinas_temporarias()}
+        if usinas_do_tecnico and usina not in usinas_do_tecnico and not _usina_e_temporaria:
             alerta = (f"⚠️ Cruzamento: técnico \"{tecnico_raw}\" não está mapeado para {usina} "
                       f"(usinas esperadas dele: {', '.join(usinas_do_tecnico)}). Confira se a usina está certa.")
     elif len(usinas_do_tecnico) == 1 and not texto_usado.strip():
