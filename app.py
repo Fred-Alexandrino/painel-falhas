@@ -7217,6 +7217,7 @@ def _gerar_compromissos_periodo_atual():
     _garantir_colunas_bm_prazos(ws_comp)
     todos = ws_comp.get_all_values()
     existentes = {(r[1], r[2], r[3], r[4]) for r in todos[1:] if len(r) >= 5}
+    status_por_chave = {(r[1], r[2], r[3], r[4]): (r[8] if len(r) > 8 else "") for r in todos[1:] if len(r) >= 5}
 
     agora = agora_br()
     criados = []
@@ -7227,17 +7228,36 @@ def _gerar_compromissos_periodo_atual():
         if regra["frequencia"] in FREQUENCIAS_SOB_DEMANDA:
             continue
 
-        periodo = _periodo_atual_regra(regra, agora)
-        if periodo is None:
+        periodo_corrente = _periodo_atual_regra(regra, agora)
+        if periodo_corrente is None:
             continue
-        chave = (regra["tipo"], regra["cliente"], regra["usina"], periodo)
-        if chave in existentes:
-            continue
+        referencias = [agora]
+        # BM mensal: se o card do mês corrente já está Concluído, abre já o
+        # do mês seguinte (30/09/2026, pedido do Fred — clientes com NF no
+        # dia 1º ficavam "cegos" sem card aberto).
+        if regra["tipo"] == "BM" and regra["frequencia"] == "mensal":
+            if status_por_chave.get((regra["tipo"], regra["cliente"], regra["usina"], periodo_corrente)) == "Concluído":
+                prox_ano = agora.year + (1 if agora.month == 12 else 0)
+                prox_mes = 1 if agora.month == 12 else agora.month + 1
+                referencias.append(datetime(prox_ano, prox_mes, 1))
+
+        for ref in referencias:
+            periodo = _periodo_atual_regra(regra, ref)
+            chave = (regra["tipo"], regra["cliente"], regra["usina"], periodo)
+            if chave in existentes:
+                continue
+            _criar_card_compromisso(regra, ref, periodo, chave, agora, ws_comp, todos, existentes, criados)
+
+    return criados
+
+
+def _criar_card_compromisso(regra, ref, periodo, chave, agora, ws_comp, todos, existentes, criados):
+    if True:
         try:
-            prazo = _prazo_atual_regra(regra, agora)
+            prazo = _prazo_atual_regra(regra, ref)
         except Exception as e:
             log.error(f"[Compromissos] Erro ao calcular prazo pra regra {regra['id']}: {e}")
-            continue
+            return
 
         envio_bm_str, aprovacao_str = "", ""
         if regra["tipo"] == "BM":
@@ -7258,8 +7278,6 @@ def _gerar_compromissos_periodo_atual():
         criados.append({"id": novo_id, "tipo": regra["tipo"], "cliente": regra["cliente"],
                          "competencia": periodo, "dataLimite": prazo.strftime("%d/%m/%Y"),
                          "dataLimiteEnvioBM": envio_bm_str, "dataLimiteAprovacao": aprovacao_str})
-
-    return criados
 
 
 def _abrir_compromisso_manual(regra_id, editor="desconhecido"):
@@ -7519,6 +7537,17 @@ def testar_alerta_etapas_abertas():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/compromissos/gerar-agora", methods=["POST"])
+def gerar_compromissos_agora():
+    """Força a varredura de geração de cards (ignora a trava diária)."""
+    try:
+        criados = _gerar_compromissos_periodo_atual()
+        return jsonify({"ok": True, "criados": criados}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro na geração manual: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/compromissos/backfill-subprazos-bm", methods=["POST"])
 def backfill_subprazos_bm():
     """Preenche DataLimiteEnvioBM/DataLimiteAprovacao pra cards tipo=BM
@@ -7717,6 +7746,13 @@ def marcar_etapa_compromisso():
             linha[9] if len(linha) > 9 else agora.strftime("%d/%m/%Y %H:%M:%S"),
             data_conclusao, novo_hist,
         ]])
+
+        # Card concluído -> abre já o próximo mês (BM mensal), sem esperar a varredura diária.
+        if novo_status == "Concluído" and linha[1] == "BM":
+            try:
+                _gerar_compromissos_periodo_atual()
+            except Exception as e_gen:
+                log.error(f"[Compromissos] Erro ao abrir próximo período após conclusão: {e_gen}")
 
         return jsonify({"ok": True, "id": comp_id, "status": novo_status,
                          "etapasConcluidas": etapas_concluidas}), 200
