@@ -6868,6 +6868,8 @@ def _feriados_nacionais_brasil(ano):
         datetime(a, 9, 7), datetime(a, 10, 12), datetime(a, 11, 2),
         datetime(a, 11, 15), datetime(a, 12, 25),
     ]
+    if a >= 2024:
+        fixos.append(datetime(a, 11, 20))  # Consciência Negra (nacional desde 2024)
     moveis = [
         pascoa - timedelta(days=47),
         pascoa - timedelta(days=46),
@@ -7056,20 +7058,24 @@ def _prazo_atual_regra(regra, agora):
     raise ValueError(f"frequência sem geração automática: {freq}")
 
 
-# Regra padrão pro fluxo interno de BM (Boletim de Medição), levantada em
-# 03/09/2026: nenhum dos contratos analisados (ABC/Alves Lima, GD Energy,
-# Sal Energia) define prazo próprio de envio do BM nem de aprovação do
-# cliente — só a data final de emissão da NF está no texto contratual.
-# A pedido do Fred, na ausência de cláusula específica no contrato:
-#   Envio do BM = DataLimite da NF menos 5 dias úteis
-#   Aprovação do Cliente = Envio do BM mais 2 dias úteis
-BM_ENVIO_DIAS_UTEIS_ANTES_NF = 5
-BM_APROVACAO_DIAS_UTEIS_APOS_ENVIO = 2
+# Regra de sub-prazos do BM (confirmada por Fred em 30/09/2026, vale pra
+# todos os clientes). Contagem em dias CORRIDOS a partir da emissão da NF;
+# se a data cair em fim de semana/feriado, antecipa pro dia útil anterior:
+#   Envio do BM = Emissão da NF menos 5 dias corridos
+#   Aprovação do Cliente = Emissão da NF menos 1 dia corrido
+BM_ENVIO_DIAS_CORRIDOS_ANTES_NF = 5
+BM_APROVACAO_DIAS_CORRIDOS_ANTES_NF = 1
+
+
+def _antecipar_para_dia_util(dt):
+    while not _e_dia_util(dt):
+        dt -= timedelta(days=1)
+    return dt
 
 
 def _calcular_subprazos_bm(data_limite_nf):
-    envio_bm = _subtrair_dias_uteis(data_limite_nf, BM_ENVIO_DIAS_UTEIS_ANTES_NF)
-    aprovacao = _somar_dias_uteis(envio_bm, BM_APROVACAO_DIAS_UTEIS_APOS_ENVIO)
+    envio_bm = _antecipar_para_dia_util(data_limite_nf - timedelta(days=BM_ENVIO_DIAS_CORRIDOS_ANTES_NF))
+    aprovacao = _antecipar_para_dia_util(data_limite_nf - timedelta(days=BM_APROVACAO_DIAS_CORRIDOS_ANTES_NF))
     return envio_bm, aprovacao
 
 
