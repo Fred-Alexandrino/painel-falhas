@@ -7497,41 +7497,12 @@ def testar_alerta_etapas_abertas():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
     try:
         enviar = request.args.get("enviar", "true").lower() != "false"
-        compromissos = _listar_compromissos_core()
-        etapas_abertas = []
-        for c in compromissos:
-            if c["status"] == "Concluído":
-                continue
-            for idx, nome_etapa in enumerate(c["etapas"]):
-                if c["etapasConcluidas"][idx]:
-                    continue
-                data_str, dias = _prazo_etapa_compromisso(c, idx)
-                if not data_str or dias is None:
-                    continue
-                if dias <= 0:
-                    etapas_abertas.append({
-                        "cliente": c["cliente"], "tipoLabel": c["tipoLabel"],
-                        "usina": c["usina"], "etapa": nome_etapa,
-                        "dataLimite": data_str, "diasAtraso": -dias,
-                    })
-        etapas_abertas.sort(key=lambda e: -e["diasAtraso"])
-
-        if not etapas_abertas:
+        alerta = _montar_alerta_etapas(agora_br())
+        if not alerta:
             return jsonify({"ok": True, "etapasAbertas": 0, "mensagem": "nenhuma etapa em aberto agora"}), 200
-
-        linhas = []
-        for e in etapas_abertas:
-            usina_txt = f" ({e['usina']})" if e["usina"] else ""
-            prazo_txt = f"vence hoje ({e['dataLimite']})" if e["diasAtraso"] == 0 \
-                else f"vencida há {e['diasAtraso']} dia(s) — prazo era {e['dataLimite']}"
-            linhas.append(f"• {e['cliente']}{usina_txt} — {e['tipoLabel']} / {e['etapa']}: {prazo_txt}")
-        texto = (
-            f"⚠️ *Etapas em aberto — {agora_br().strftime('%d/%m/%Y')}*\n\n"
-            + "\n".join(linhas)
-            + "\n\nAbra o Painel Gerencial > Boletins de Medição pra marcar as etapas concluídas."
-        )
+        texto, n_venc, n_avencer = alerta
         resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto) if enviar else None
-        return jsonify({"ok": True, "etapasAbertas": len(etapas_abertas), "texto": texto, "envio": resultado_envio}), 200
+        return jsonify({"ok": True, "etapasAbertas": n_venc, "aVencer": n_avencer, "texto": texto, "envio": resultado_envio}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro no teste manual de alerta de etapas abertas: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -8197,6 +8168,53 @@ def _prazo_etapa_compromisso(c, idx):
     return c["dataLimite"], c["diasRestantes"]
 
 
+ALERTA_ETAPAS_DIAS_A_VENCER = 3  # janela de "a vencer" (mesma cadência dos push: 0, 1 e 3 dias)
+
+
+def _montar_alerta_etapas(agora):
+    """Fonte única do texto do alerta de etapas (usada pelo disparo diário
+    e pelo endpoint de teste). Devolve (texto, n_vencidas_ou_hoje, n_a_vencer)
+    ou None se não há nada a avisar. Lê os prazos JÁ gravados nos cards
+    (_listar_compromissos_core) — não recalcula regra nenhuma aqui."""
+    vencidas, a_vencer = [], []
+    for c in _listar_compromissos_core():
+        if c["status"] == "Concluído":
+            continue
+        for idx, nome_etapa in enumerate(c["etapas"]):
+            if c["etapasConcluidas"][idx]:
+                continue
+            data_str, dias = _prazo_etapa_compromisso(c, idx)
+            if not data_str or dias is None:
+                continue
+            item = {"cliente": c["cliente"], "tipoLabel": c["tipoLabel"], "usina": c["usina"],
+                    "etapa": nome_etapa, "dataLimite": data_str, "dias": dias}
+            if dias <= 0:
+                vencidas.append(item)
+            elif dias <= ALERTA_ETAPAS_DIAS_A_VENCER:
+                a_vencer.append(item)
+    if not vencidas and not a_vencer:
+        return None
+
+    def _linha(e, prazo_txt):
+        usina_txt = f" ({e['usina']})" if e["usina"] else ""
+        return f"• {e['cliente']}{usina_txt} — {e['tipoLabel']} / {e['etapa']}: {prazo_txt}"
+
+    vencidas.sort(key=lambda e: e["dias"])
+    a_vencer.sort(key=lambda e: e["dias"])
+    blocos = []
+    if vencidas:
+        linhas = [_linha(e, f"vence hoje ({e['dataLimite']})" if e["dias"] == 0
+                         else f"vencida há {-e['dias']} dia(s) — prazo era {e['dataLimite']}") for e in vencidas]
+        blocos.append("🔴 *Vencidas / vencem hoje*\n" + "\n".join(linhas))
+    if a_vencer:
+        linhas = [_linha(e, f"vence em {e['dias']} dia(s) — {e['dataLimite']}") for e in a_vencer]
+        blocos.append(f"🟡 *A vencer (próximos {ALERTA_ETAPAS_DIAS_A_VENCER} dias)*\n" + "\n".join(linhas))
+    texto = (f"⚠️ *Etapas em aberto — {agora.strftime('%d/%m/%Y')}*\n\n"
+             + "\n\n".join(blocos)
+             + "\n\nAbra o Painel Gerencial > Boletins de Medição pra marcar as etapas concluídas.")
+    return texto, len(vencidas), len(a_vencer)
+
+
 def _verificar_alertas_etapas_abertas_se_necessario():
     """Piggyback no /sync-fracttal: roda 1x por dia na mesma janela de
     _verificar_compromissos_se_necessario (07:00-08:30). Varre TODAS as
@@ -8216,44 +8234,12 @@ def _verificar_alertas_etapas_abertas_se_necessario():
             return {"disparado": False, "motivo": "já verificado hoje"}
         _gravar_trava("alertas_etapas_abertas_enviado_em", hoje_str)
 
-        compromissos = _listar_compromissos_core()
-        etapas_abertas = []
-        for c in compromissos:
-            if c["status"] == "Concluído":
-                continue
-            for idx, nome_etapa in enumerate(c["etapas"]):
-                if c["etapasConcluidas"][idx]:
-                    continue
-                data_str, dias = _prazo_etapa_compromisso(c, idx)
-                if not data_str or dias is None:
-                    continue
-                if dias <= 0:
-                    etapas_abertas.append({
-                        "cliente": c["cliente"], "tipoLabel": c["tipoLabel"],
-                        "usina": c["usina"], "etapa": nome_etapa,
-                        "dataLimite": data_str, "diasAtraso": -dias,
-                    })
-
-        if not etapas_abertas:
+        alerta = _montar_alerta_etapas(agora)
+        if not alerta:
             return {"disparado": True, "etapasAbertas": 0}
-
-        etapas_abertas.sort(key=lambda e: -e["diasAtraso"])
-        linhas = []
-        for e in etapas_abertas:
-            usina_txt = f" ({e['usina']})" if e["usina"] else ""
-            if e["diasAtraso"] == 0:
-                prazo_txt = f"vence hoje ({e['dataLimite']})"
-            else:
-                prazo_txt = f"vencida há {e['diasAtraso']} dia(s) — prazo era {e['dataLimite']}"
-            linhas.append(f"• {e['cliente']}{usina_txt} — {e['tipoLabel']} / {e['etapa']}: {prazo_txt}")
-
-        texto = (
-            f"⚠️ *Etapas em aberto — {agora.strftime('%d/%m/%Y')}*\n\n"
-            + "\n".join(linhas)
-            + "\n\nAbra o Painel Gerencial > Boletins de Medição pra marcar as etapas concluídas."
-        )
+        texto, n_venc, n_avencer = alerta
         resultado_envio = _enviar_mensagem_grupo(GRUPO_GESTAO_OM_ID, texto)
-        return {"disparado": True, "etapasAbertas": len(etapas_abertas), "envio": resultado_envio}
+        return {"disparado": True, "etapasAbertas": n_venc, "aVencer": n_avencer, "envio": resultado_envio}
     except Exception as e:
         log.error(f"[Compromissos] Erro no alerta de etapas abertas: {e}")
         return {"disparado": False, "erro": str(e)}
