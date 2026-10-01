@@ -7073,8 +7073,18 @@ def _antecipar_para_dia_util(dt):
     return dt
 
 
-def _calcular_subprazos_bm(data_limite_nf):
-    envio_bm = _antecipar_para_dia_util(data_limite_nf - timedelta(days=BM_ENVIO_DIAS_CORRIDOS_ANTES_NF))
+def _calcular_subprazos_bm(data_limite_nf, regra=None):
+    """Sub-prazos do BM a partir da data da NF. Por padrão envio = NF-5 dias
+    corridos. Se a regra tiver frequenciaConfig {"envioBM": "ultimoDiaMesAnterior"}
+    (ex.: Alves Lima, 01/10/2026), o envio é o último dia do mês anterior ao
+    da NF. Em qualquer caso, antecipa pro dia útil anterior se não for útil.
+    Aprovação = NF-1 dia corrido (também antecipada)."""
+    config = (regra or {}).get("frequenciaConfig") or {}
+    if config.get("envioBM") == "ultimoDiaMesAnterior":
+        envio_bruto = data_limite_nf.replace(day=1) - timedelta(days=1)
+    else:
+        envio_bruto = data_limite_nf - timedelta(days=BM_ENVIO_DIAS_CORRIDOS_ANTES_NF)
+    envio_bm = _antecipar_para_dia_util(envio_bruto)
     aprovacao = _antecipar_para_dia_util(data_limite_nf - timedelta(days=BM_APROVACAO_DIAS_CORRIDOS_ANTES_NF))
     return envio_bm, aprovacao
 
@@ -7120,7 +7130,7 @@ def _get_compromissos_regras_sheet():
             ["2", "BM", "Thopen", "", "diaFixo", "15", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
             ["3", "BM", "2C Energia", "", "nDiaUtil", "5", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
             ["4", "BM", "GD Energy", "", "nDiaUtil", "5", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
-            ["5", "BM", "Alves Lima", "", "nDiaUtil", "5", "TRUE", "mensal", "", "", "Cliente (Fred)", ""],
+            ["5", "BM", "Alves Lima", "", "diaFixo", "5", "TRUE", "mensal", '{"envioBM": "ultimoDiaMesAnterior"}', "", "Cliente (Fred)", ""],
         ]
         ws.append_rows(seed)
         return ws
@@ -7261,7 +7271,7 @@ def _criar_card_compromisso(regra, ref, periodo, chave, agora, ws_comp, todos, e
 
         envio_bm_str, aprovacao_str = "", ""
         if regra["tipo"] == "BM":
-            envio_bm, aprovacao = _calcular_subprazos_bm(prazo)
+            envio_bm, aprovacao = _calcular_subprazos_bm(prazo, regra)
             envio_bm_str, aprovacao_str = envio_bm.strftime("%d/%m/%Y"), aprovacao.strftime("%d/%m/%Y")
 
         etapas = COMPROMISSO_ETAPAS.get(regra["tipo"], ["Envio"])
@@ -7473,7 +7483,7 @@ def atualizar_regra_compromisso():
                     ws_comp.update_cell(i, 12, historico_novo)
                     card_atualizado = {"id": row[0], "dataLimiteAnterior": data_antiga, "dataLimiteNova": nova_data_str}
                     if tipo == "BM":
-                        novo_envio_bm, nova_aprovacao = _calcular_subprazos_bm(novo_prazo)
+                        novo_envio_bm, nova_aprovacao = _calcular_subprazos_bm(novo_prazo, regra_nova)
                         ws_comp.update_cell(i, 13, novo_envio_bm.strftime("%d/%m/%Y"))
                         ws_comp.update_cell(i, 14, nova_aprovacao.strftime("%d/%m/%Y"))
                         card_atualizado["dataLimiteEnvioBM"] = novo_envio_bm.strftime("%d/%m/%Y")
