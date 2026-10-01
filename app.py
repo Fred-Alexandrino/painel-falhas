@@ -7209,6 +7209,10 @@ def _gerar_compromissos_periodo_atual_se_necessario():
     if ja_gerado == hoje_str:
         return []
     criados = _gerar_compromissos_periodo_atual()
+    try:
+        _recalcular_cards_abertos(motivo="varredura diária")
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no recálculo diário: {e}")
     _gravar_trava("compromissos_gerados_em_dia", hoje_str)
     return criados
 
@@ -7490,7 +7494,14 @@ def atualizar_regra_compromisso():
                         card_atualizado["dataLimiteAprovacao"] = nova_aprovacao.strftime("%d/%m/%Y")
                     break
 
-        return jsonify({"ok": True, "regraAtualizada": True, "cardAtualizado": card_atualizado}), 200
+        cards_recalculados = []
+        try:
+            cards_recalculados = _recalcular_cards_abertos(regra_id=regra_id, motivo=f"regra ajustada por {editor}")
+        except Exception as e_rec:
+            log.error(f"[Compromissos] Erro ao recalcular cards abertos da regra {regra_id}: {e_rec}")
+
+        return jsonify({"ok": True, "regraAtualizada": True, "cardAtualizado": card_atualizado,
+                         "cardsRecalculados": cards_recalculados}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro ao atualizar regra: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -7515,6 +7526,77 @@ def testar_alerta_etapas_abertas():
         return jsonify({"ok": True, "etapasAbertas": n_venc, "aVencer": n_avencer, "texto": texto, "envio": resultado_envio}), 200
     except Exception as e:
         log.error(f"[Compromissos] Erro no teste manual de alerta de etapas abertas: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _recalcular_cards_abertos(regra_id=None, dry_run=False, motivo="regras atuais"):
+    """Recalcula DataLimite (NF) e, nos BMs, envio/aprovação de TODOS os cards
+    não concluídos de frequência mensal, a partir das regras vigentes
+    (_ComprometimentosRegras + regra de sub-prazos). Etapas já marcadas não
+    são tocadas. Só grava (e registra no histórico do card) o que mudou.
+    regra_id: limita a uma regra. dry_run: só devolve o que mudaria.
+    É a peça que garante que planilha, painel e avisos (que leem os cards)
+    sigam sempre as regras."""
+    import re as _re
+    ws_regras = _get_compromissos_regras_sheet()
+    regras = [_linha_para_regra(r) for r in ws_regras.get_all_values()[1:] if r and r[0].strip()]
+    if regra_id is not None:
+        regras = [r for r in regras if r["id"] == str(regra_id)]
+    por_chave = {(r["tipo"], r["cliente"], r["usina"]): r for r in regras
+                 if r["frequencia"] == "mensal" and r["regraTipo"] in ("nDiaUtil", "diaFixo", "diaAoUltimoUtil")}
+
+    ws_comp = _get_compromissos_sheet()
+    _garantir_colunas_bm_prazos(ws_comp)
+    todos = ws_comp.get_all_values()
+    agora = agora_br()
+    mudancas, updates = [], []
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) < 12 or row[8] == "Concluído":
+            continue
+        regra = por_chave.get((row[1], row[2], row[3]))
+        m = _re.match(r"^(\d{2})/(\d{4})$", row[4].strip())
+        if not regra or not m:
+            continue
+        try:
+            prazo = _calcular_prazo_compromisso(regra["regraTipo"], regra["regraValor"], int(m.group(2)), int(m.group(1)))
+        except Exception as e:
+            log.error(f"[Compromissos] Recalculo: erro no card {row[0]}: {e}")
+            continue
+        novo = {"dataLimite": prazo.strftime("%d/%m/%Y")}
+        if row[1] == "BM":
+            envio, aprov = _calcular_subprazos_bm(prazo, regra)
+            novo["envio"], novo["aprov"] = envio.strftime("%d/%m/%Y"), aprov.strftime("%d/%m/%Y")
+        antigo = {"dataLimite": row[5].strip(),
+                  "envio": row[12].strip() if len(row) > 12 else "", "aprov": row[13].strip() if len(row) > 13 else ""}
+        if all(novo.get(k, antigo[k]) == antigo[k] for k in ("dataLimite", "envio", "aprov")):
+            continue
+        mudancas.append({"id": row[0], "cliente": row[2], "tipo": row[1], "competencia": row[4],
+                          "antes": antigo, "depois": {k: novo.get(k, antigo[k]) for k in antigo}})
+        if dry_run:
+            continue
+        hist = row[11] + f"\n{agora.strftime('%d/%m/%Y %H:%M')} - Prazos recalculados ({motivo}): " \
+            f"NF {antigo['dataLimite']} → {novo['dataLimite']}" \
+            + (f"; envio {antigo['envio'] or '—'} → {novo['envio']}; aprovação {antigo['aprov'] or '—'} → {novo['aprov']}" if "envio" in novo else "") + "."
+        updates.append({"range": f"F{i}", "values": [[novo["dataLimite"]]]})
+        updates.append({"range": f"L{i}", "values": [[hist.strip()]]})
+        if "envio" in novo:
+            updates.append({"range": f"M{i}:N{i}", "values": [[novo["envio"], novo["aprov"]]]})
+    if updates:
+        ws_comp.batch_update(updates)
+    return mudancas
+
+
+@app.route("/compromissos/recalcular-abertos", methods=["POST"])
+def recalcular_abertos_endpoint():
+    """Recalcula os prazos de todos os cards abertos a partir das regras
+    vigentes. Body opcional: {"dryRun": true, "regraId": "5"}."""
+    try:
+        body = request.get_json(silent=True) or {}
+        mud = _recalcular_cards_abertos(regra_id=body.get("regraId"), dry_run=bool(body.get("dryRun", False)),
+                                         motivo="recálculo manual")
+        return jsonify({"ok": True, "dryRun": bool(body.get("dryRun", False)), "alterados": mud}), 200
+    except Exception as e:
+        log.error(f"[Compromissos] Erro no recálculo de cards abertos: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -8244,6 +8326,10 @@ def _verificar_alertas_etapas_abertas_se_necessario():
             return {"disparado": False, "motivo": "já verificado hoje"}
         _gravar_trava("alertas_etapas_abertas_enviado_em", hoje_str)
 
+        try:
+            _recalcular_cards_abertos(motivo="antes do alerta diário")
+        except Exception as e:
+            log.error(f"[Compromissos] Erro no recálculo antes do alerta: {e}")
         alerta = _montar_alerta_etapas(agora)
         if not alerta:
             return {"disparado": True, "etapasAbertas": 0}
