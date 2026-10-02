@@ -528,7 +528,7 @@ CATALOGO_USINAS = {
     },
     "Ipixuna do Pará I": {
         "cliente": "2C Energia",
-        "aliases": ["ipixuna do para i", "ipixuna do para 1", "ipixuna do para", "ipixuna do pará", "2c-ipx100"],
+        "aliases": ["ipixuna do para i", "ipixuna do para 1", "ipixuna do para", "ipixuna do pará", "2c-ipx100", "2c ipixuna 1", "2c ipixuna i", "2c ipixuna"],
     },
     "Tupi Paulista I": {
         "cliente": "2C Energia",
@@ -3458,6 +3458,20 @@ def sobreaviso_blocos():
     }), 200
 
 
+def _sobreaviso_alinhar_usina(nome_usina, supervisor, equipe, cliente):
+    """Alinha uma usina da escala de sobreaviso ao mapeamento oficial atual
+    (02/10/2026): usina do catálogo = supervisão do Fred, cluster/cliente do
+    mapeamento; usina fora do catálogo nunca aparece como do Fred."""
+    canon = canonizar_usina(nome_usina or "")
+    if canon:
+        return ("Fred Alexandrino",
+                _mapa_cluster_usina().get(canon) or equipe,
+                _CLIENTE_INDEX.get(canon) or cliente)
+    if (supervisor or "").strip().lower() == "fred alexandrino":
+        supervisor = "Outro supervisor"
+    return supervisor, equipe, cliente
+
+
 def _sobreaviso_montar_usinas_por_cluster(usinas):
     """cluster -> lista de usinas {usina, equipe, cliente, uf, supervisor}.
     'equipe' é o código de cluster usado no resto do dashboard (ex.: "SP
@@ -3490,12 +3504,14 @@ def _sobreaviso_montar_usinas_por_cluster(usinas):
             nome_oficial = canonizar_usina(u.get("usina") or "")
             if nome_oficial:
                 equipe = mapa_cluster_dashboard.get(nome_oficial)
+        sup_ajust, equipe, cliente_ajust = _sobreaviso_alinhar_usina(
+            u.get("usina"), u.get("resp_dash") or u.get("supervisor"), equipe, u.get("cliente"))
         idx.setdefault(cl, []).append({
             "usina": u.get("usina"),
             "equipe": equipe,
-            "cliente": u.get("cliente"),
+            "cliente": cliente_ajust,
             "uf": u.get("uf"),
-            "supervisor": u.get("resp_dash") or u.get("supervisor"),  # resp_dash = titularidade real do cluster; supervisor = quem assina a escala (pode ser um stand-in geografico, ex.: Cedro)
+            "supervisor": sup_ajust,  # resp_dash = titularidade real do cluster; supervisor = quem assina a escala (pode ser um stand-in geografico, ex.: Cedro)
         })
     return idx
 
@@ -3684,6 +3700,7 @@ def conferencia_sobreaviso():
         supervisor = u.get("resp_dash") or u.get("supervisor")  # resp_dash = titularidade real do cluster; supervisor = quem assina a escala (pode ser um stand-in geografico, ex.: Cedro)
         cliente = u.get("cliente")
         equipe = u.get("equipe")
+        supervisor, equipe, cliente = _sobreaviso_alinhar_usina(nome_usina, supervisor, equipe, cliente)
         if supervisor_filtro and supervisor != supervisor_filtro:
             continue
         total_consideradas += 1
@@ -3893,6 +3910,24 @@ def _zel_montar_indice_colunas(ws):
     return indice
 
 
+@app.route("/canonizar-usinas", methods=["POST", "OPTIONS"])
+def canonizar_usinas_endpoint():
+    """Resolve nomes brutos de usina pro nome oficial do mapeamento atual
+    (None = fora do mapeamento) e devolve o catálogo completo. Usado pelo
+    painel de Zeladoria (02/10/2026) pra filtrar a planilha e incluir as
+    usinas que ainda não têm linha nela."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    nomes = [str(n) for n in (body.get("nomes") or [])][:600]
+    mapa = {}
+    for n in nomes:
+        c = canonizar_usina(n)
+        mapa[n] = {"usina": c, "cliente": inferir_cliente(c)} if c else None
+    catalogo = [{"usina": u["usina"], "cliente": u["cliente"], "cluster": u["cluster"]} for u in MAPEAMENTO_UFVS]
+    return jsonify({"ok": True, "mapa": mapa, "catalogo": catalogo}), 200
+
+
 @app.route("/zeladoria-atualizar-lote", methods=["POST"])
 def zeladoria_atualizar_lote():
     """Recebe uma lista de atualizações {usina, grupo, proximaData,
@@ -3923,6 +3958,19 @@ def zeladoria_atualizar_lote():
         usina = (item.get("usina") or "").strip()
         grupo_bruto = (item.get("grupo") or "").strip()
         linha = mapa_linha_usina.get(_normalizar_tema_comunicado(usina))
+        if not linha:
+            # 02/10/2026: usina do mapeamento atual ainda sem linha na aba
+            # Zeladoria -> cria a linha (cliente, usina) no fim da planilha.
+            canon = canonizar_usina(usina)
+            if canon:
+                linha = mapa_linha_usina.get(_normalizar_tema_comunicado(canon))
+                if not linha:
+                    resp_append = ws.append_row([inferir_cliente(canon), canon], value_input_option="USER_ENTERED")
+                    rng = ((resp_append or {}).get("updates") or {}).get("updatedRange", "")
+                    m_linha = re.search(r"!?[A-Z]+(\d+)(?::|$)", rng)
+                    linha = int(m_linha.group(1)) if m_linha else None
+                    if linha:
+                        mapa_linha_usina[_normalizar_tema_comunicado(canon)] = linha
         grupo = _zel_resolver_grupo(grupo_bruto, indice_cols)
         cols_grupo = indice_cols.get(grupo) if grupo else None
         if not linha or not cols_grupo:
@@ -4021,7 +4069,8 @@ def zeladoria_extrair_print():
 
     ws = get_zeladoria_sheet()
     todos = ws.get_all_values()
-    usinas_validas = sorted({row[1].strip() for row in todos[2:] if len(row) > 1 and row[1].strip()})
+    usinas_validas = sorted({row[1].strip() for row in todos[2:]
+                             if len(row) > 1 and row[1].strip() and usina_permitida(row[1].strip())})
 
     prompt = _montar_prompt_extrair_zeladoria(texto, usinas_validas)
     parts = [{"text": prompt}]
@@ -9195,7 +9244,16 @@ def _mapa_cluster_usina():
     """usina -> cluster. Base = aba _Sistema ('cluster_usina:<Usina>'), mas o
     MAPEAMENTO_UFVS (fonte única, 29/09/2026) sempre vence nas usinas que ele
     cobre — assim a config não fica desatualizada sem ninguém perceber."""
-    mapa = dict(_mapa_cluster_usina_sistema())
+    # 02/10/2026: chaves antigas da _Sistema (usinas que saíram da supervisão,
+    # ex.: Sal Energia, Junco) não entram mais — só usinas do mapeamento atual
+    # ou em supervisão temporária ativa; o MAPEAMENTO_UFVS sempre vence.
+    oficiais = {u["usina"] for u in MAPEAMENTO_UFVS}
+    mapa = {}
+    for usina, cluster in _mapa_cluster_usina_sistema().items():
+        canon = canonizar_usina(usina)
+        if canon is None or canon in oficiais:
+            continue
+        mapa[canon] = cluster
     for u in MAPEAMENTO_UFVS:
         mapa[u["usina"]] = u["cluster"]
     return mapa
@@ -9204,7 +9262,9 @@ def _mapa_cluster_usina():
 def _mapa_coordenador_cluster():
     """cluster -> responsável. Base = aba _Sistema ('coordenador_cluster:
     <Cluster>'); o MAPEAMENTO_UFVS (fonte única) vence nos clusters que cobre."""
-    mapa = dict(_mapa_coordenador_cluster_sistema())
+    # 02/10/2026: só clusters que ainda têm usina no mapeamento atual.
+    clusters_ativos = set(_mapa_cluster_usina().values())
+    mapa = {c: n for c, n in _mapa_coordenador_cluster_sistema().items() if c in clusters_ativos}
     por_cluster = {}
     for u in MAPEAMENTO_UFVS:
         lista = por_cluster.setdefault(u["cluster"], [])
@@ -9881,6 +9941,7 @@ def programacao_pcm():
     linhas_dia = [
         r for r in semana.get("rows", [])
         if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt
+        and _pcm_usina_no_mapeamento(r.get("usina"))  # 02/10/2026: só usinas do mapeamento atual
     ]
 
     mapa_cluster_pcm = _mapa_cluster_usina()
@@ -11166,7 +11227,28 @@ def listar_resumos():
     params.append(limit)
     linhas = conn.execute(query, params).fetchall()
     conn.close()
-    return jsonify({"ok": True, "itens": [dict(r) for r in linhas]}), 200
+    itens = []
+    for r in linhas:
+        d = dict(r)
+        d["texto"] = _filtrar_texto_resumo_usinas_fora(d.get("texto"))
+        itens.append(d)
+    return jsonify({"ok": True, "itens": itens}), 200
+
+
+# Usinas/clientes que saíram da supervisão em 02/10/2026 (Sal Energia, Junco,
+# Demerval Lobão, Thopen Ipixuna 1/2). Resumos/rondas JÁ GRAVADOS citam essas
+# usinas; o texto no banco é preservado, mas a LISTAGEM omite as linhas.
+_RESUMO_USINAS_FORA_RE = re.compile(
+    r"salvales|sun\s?power|cascavel|carosa|hortina|vitesse|sal\s+energia|"
+    r"\bjunco\b|demerval|thopen\s+ipixuna|ipixuna\s+1\s+e\s+2",
+    re.IGNORECASE,
+)
+
+
+def _filtrar_texto_resumo_usinas_fora(texto):
+    if not texto:
+        return texto
+    return "\n".join(l for l in texto.split("\n") if not _RESUMO_USINAS_FORA_RE.search(l))
 
 
 @app.route("/capturar-mensagem-grupo", methods=["POST", "OPTIONS"])
@@ -11252,6 +11334,14 @@ def _buscar_mensagens_periodo(data_inicio, data_fim, grupo_id=None):
 GRUPO_GESTAO_OM_ID = "120363429317295622@g.us"
 
 
+def _pcm_usina_no_mapeamento(usina_raw):
+    """True se a usina de uma linha do PCM pertence ao mapeamento atual
+    (catálogo ou supervisão temporária ativa)."""
+    if not usina_raw:
+        return False
+    return canonizar_usina(_extrair_nome_usina_fracttal(usina_raw) or usina_raw) is not None
+
+
 def _pcm_linhas_do_dia(data_str):
     """Retorna as linhas cruas da programação do PCM pro Fred, numa data
     específica (YYYY-MM-DD) — extraído do endpoint /programacao-pcm pra
@@ -11273,8 +11363,12 @@ def _pcm_linhas_do_dia(data_str):
         return []
     dia_pt = _DIA_SEMANA_PT[dt.weekday()]
     usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
+    # 02/10/2026: só entra usina do mapeamento oficial atual (as que saíram
+    # da supervisão do Fred não aparecem mais em resumo/ronda).
     return [r for r in semana.get("rows", [])
-            if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes) and r.get("dia") == dia_pt]
+            if (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes)
+            and r.get("dia") == dia_pt
+            and _pcm_usina_no_mapeamento(r.get("usina"))]
 
 
 FALHAS_SHEET_NAME_CANDIDATOS = ["Painel de Falhas - Fred Alexandrino", "Painel de Falhas"]
@@ -14587,6 +14681,43 @@ def _montar_prompt_controle_ponto(textos_extraidos, texto_escala_sobreaviso=None
     return instrucoes
 
 
+def _roster_equipe_mapeamento():
+    """Nomes (lista de tokens normalizados) de todas as pessoas do mapeamento
+    oficial (responsável, membros, alternativo) + o próprio Fred."""
+    nomes = {"Fred Alexandrino"}
+    for item in MAPEAMENTO_UFVS:
+        for pessoa in [item.get("responsavel"), *(item.get("membros") or []), item.get("alternativo")]:
+            nome = re.sub(r"\s*\(.*?\)\s*$", "", pessoa or "").strip()
+            if nome:
+                nomes.add(nome)
+    return [_norm_usina(n).split() for n in nomes]
+
+
+def _colaborador_no_mapeamento(nome_colab, roster=None):
+    toks = set(_norm_usina(nome_colab).split())
+    alias = _TECNICO_ALIASES.get(_norm_usina(nome_colab))
+    if alias:
+        toks |= set(_norm_usina(alias).split())
+    for partes in (roster if roster is not None else _roster_equipe_mapeamento()):
+        if not partes:
+            continue
+        if partes[0] in toks and partes[-1] in toks:
+            return True
+    return False
+
+
+def _filtrar_colaboradores_mapeamento(colaboradores):
+    roster = _roster_equipe_mapeamento()
+    mantidos, ocultos = [], []
+    for c in colaboradores:
+        nome = (c.get("nome") if isinstance(c, dict) else "") or ""
+        if _colaborador_no_mapeamento(nome, roster):
+            mantidos.append(c)
+        else:
+            ocultos.append(nome)
+    return mantidos, ocultos
+
+
 @app.route("/analisar-controle-ponto", methods=["POST", "OPTIONS"])
 def analisar_controle_ponto():
     """Setor 'Controle de Ponto' do Painel Gerencial: recebe um ou mais
@@ -14662,6 +14793,14 @@ def analisar_controle_ponto():
         resultado = json.loads(texto_limpo)
         if finish_reason == "MAX_TOKENS":
             resultado["truncado"] = True
+        # 02/10/2026: só aparece colaborador da equipe do mapeamento atual do
+        # Fred; os demais ficam fora da tela (nada é gravado/apagado).
+        try:
+            mantidos, ocultos = _filtrar_colaboradores_mapeamento(resultado.get("colaboradores") or [])
+            resultado["colaboradores"] = mantidos
+            resultado["ocultos"] = ocultos
+        except Exception as e_filtro:
+            log.error(f"[analisar-controle-ponto] Falha ao filtrar colaboradores pelo mapeamento: {e_filtro}")
         return jsonify({"ok": True, "resultado": resultado})
     except json.JSONDecodeError as e:
         log.error(f"[analisar-controle-ponto] Resposta não é JSON válido: {e}")
