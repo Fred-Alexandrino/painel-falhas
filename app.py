@@ -482,11 +482,11 @@ CATALOGO_USINAS = {
 
     # ── 2C ───────────────────────────────────────────────────────────────────
     "Araputanga": {
-        "cliente": "2C",
+        "cliente": "2C Energia",
         "aliases": ["araputanga"],
     },
     "Sete Lagoas": {
-        "cliente": "2C",
+        "cliente": "2C Energia",
         "aliases": ["sete lagoas"],
     },
 
@@ -516,42 +516,132 @@ CATALOGO_USINAS = {
         "aliases": ["abc morada nova", "morada nova"],
     },
 
-    # ── Sal Energia ───────────────────────────────────────────────────────────
-    # Cliente confirmado pelo Fred em 27/07/2026, mas nunca tinha sido
-    # adicionado ao catálogo — por isso nenhuma OS da Fracttal desse
-    # cliente era reconhecida automaticamente (nem na descoberta, nem na
-    # auditoria), sempre caindo em revisão manual. Nomes oficiais no
-    # formato "Codinome (Cidade)", igual usado na tabela de localizações.
-    "SunPower (Cascavel)": {
-        "cliente": "Sal Energia",
-        "aliases": ["sunpower", "sunpower cascavel", "cascavel"],
+    # ── NOVAS USINAS (mapeamento de 02/10/2026) ───────────────────────────────
+    # 2C Energia
+    "União I": {
+        "cliente": "2C Energia",
+        "aliases": ["união i", "união 1", "uniao i", "uniao 1"],
     },
-    "Hortina (Quixadá I)": {
-        "cliente": "Sal Energia",
-        "aliases": ["hortina", "quixada i", "quixada 1", "quixadá i", "quixadá 1"],
+    "União II": {
+        "cliente": "2C Energia",
+        "aliases": ["união ii", "união 2", "uniao ii", "uniao 2"],
     },
-    "Vitesse (Quixadá II)": {
-        "cliente": "Sal Energia",
-        "aliases": ["vitesse", "quixada ii", "quixada 2", "quixadá ii", "quixadá 2"],
+    "Ipixuna do Pará I": {
+        "cliente": "2C Energia",
+        "aliases": ["ipixuna do para i", "ipixuna do para 1", "ipixuna do para", "ipixuna do pará", "2c-ipx100"],
     },
-    "Salvales (Aquiraz I)": {
-        "cliente": "Sal Energia",
-        "aliases": ["salvales", "aquiraz i", "aquiraz 1"],
+    "Tupi Paulista I": {
+        "cliente": "2C Energia",
+        "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
     },
-    "Carosa (Aquiraz II)": {
-        "cliente": "Sal Energia",
-        # Corrigido 24/08/2026: o par estava invertido (Carosa/Aquiraz I,
-        # Salvales/Aquiraz II) desde a criação do catálogo em 27/07/2026,
-        # nunca atualizado após a correção de nomenclatura confirmada com
-        # o Fred em 18/08/2026. Isso fazia canonizar_usina() nunca achar
-        # match exato pro texto real vindo do groups_1_description da
-        # Fracttal ("Carosa (Aquiraz II)"), caindo no fallback de busca
-        # parcial (passo 2) — que score por tamanho de alias e escolhia
-        # "aquiraz ii" (10 chars, olhando o cadastro errado de Salvales)
-        # em vez de "carosa" (6 chars), classificando incorretamente como
-        # Salvales. Ex.: OS 11713 (ativo SALE-CRS200-TRFR1, prefixo CRS =
-        # Carosa) caiu como "Salvales (Aquiraz II)" por causa disso.
-        "aliases": ["carosa", "aquiraz ii", "aquiraz 2"],
+    # Thopen
+    "Alto Paraná I": {
+        "cliente": "Thopen",
+        "aliases": ["alto paraná i", "alto paraná 1", "alto paraná 1a", "alto paraná ia", "alto paraná a"],
+    },
+    "Alto Paraná II": {
+        "cliente": "Thopen",
+        "aliases": ["alto paraná ii", "alto paraná 2", "alto paraná 2b", "alto paraná ib", "alto paraná b"],
+    },
+    "Paranavaí": {
+        "cliente": "Thopen",
+        "aliases": ["paranavai", "paranavaí"],
+    },
+    "Assis Chateaubriand": {
+        "cliente": "Thopen",
+        "aliases": ["assis chateaubriand", "assis"],
+    },
+    "Céu Azul": {
+        "cliente": "Thopen",
+        "aliases": ["ceu azul", "céu azul"],
+    },
+    "Colorado I": {
+        "cliente": "Thopen",
+        "aliases": ["colorado i", "colorado 1", "colorado 1a", "colorado ia", "colorado a"],
+    },
+    "Colorado II": {
+        "cliente": "Thopen",
+        "aliases": ["colorado ii", "colorado 2", "colorado 2b", "colorado ib", "colorado b"],
+    },
+    "Mandaguaçu": {
+        "cliente": "Thopen",
+        "aliases": ["mandaguacu", "mandaguaçu"],
+    },
+    "Sarandi": {
+        "cliente": "Thopen",
+        "aliases": ["sarandi"],
+    },
+    "Nova Londrina I": {
+        "cliente": "Thopen",
+        "aliases": ["nova londrina i", "nova londrina 1", "nova londrina 1a", "nova londrina ia", "nova londrina a"],
+    },
+    "Nova Londrina II": {
+        "cliente": "Thopen",
+        "aliases": ["nova londrina ii", "nova londrina 2", "nova londrina 2b", "nova londrina ib", "nova londrina b"],
+    },
+    "Cidade Gaúcha": {
+        "cliente": "Thopen",
+        "aliases": ["cidade gaucha", "cidade gaúcha"],
+    },
+    "Pharmas II": {
+        "cliente": "Thopen",
+        "aliases": ["pharmas ii", "pharmas 2"],
+    },
+    "Pharmas III": {
+        "cliente": "Thopen",
+        "aliases": ["pharmas iii", "pharmas 3"],
+    },
+    "Pharmas IV": {
+        "cliente": "Thopen",
+        "aliases": ["pharmas iv", "pharmas 4"],
+    },
+    "Santo Antonio da Platina": {
+        "cliente": "Thopen",
+        "aliases": ["santo antonio da platina", "santo antônio da platina", "sant antonio da platina"],
+    },
+    "Coração I": {
+        "cliente": "Thopen",
+        "aliases": ["coração i", "coração 1", "coração 1a", "coração ia", "coração a", "coracao i", "coracao 1"],
+    },
+    "Coração II": {
+        "cliente": "Thopen",
+        "aliases": ["coração ii", "coração 2", "coração 2b", "coração ib", "coração b", "coracao ii", "coracao 2"],
+    },
+    "Guatambu I": {
+        "cliente": "Thopen",
+        "aliases": ["guatambu i", "guatambu 1"],
+    },
+    "Guatambu II": {
+        "cliente": "Thopen",
+        "aliases": ["guatambu ii", "guatambu 2"],
+    },
+    "Guatambu III": {
+        "cliente": "Thopen",
+        "aliases": ["guatambu iii", "guatambu 3"],
+    },
+    "Guatambu IV": {
+        "cliente": "Thopen",
+        "aliases": ["guatambu iv", "guatambu 4"],
+    },
+    "Ceilândia I": {
+        "cliente": "Thopen",
+        "aliases": ["ceilândia i", "ceilândia 1", "ceilandia i", "ceilandia 1"],
+    },
+    "Ceilândia II": {
+        "cliente": "Thopen",
+        "aliases": ["ceilândia ii", "ceilândia 2", "ceilandia ii", "ceilandia 2"],
+    },
+    "Sítio dos Nogueiras": {
+        "cliente": "Thopen",
+        "aliases": ["sitio dos nogueiras", "sítio dos nogueiras", "nogueiras"],
+    },
+    "Aparecida do Taboado I": {
+        "cliente": "Thopen",
+        "aliases": ["aparecida do taboado i", "aparecida do taboado 1", "aparecida do taboado 1a", "aparecida do taboado ia", "aparecida do taboado a", "thpn-adt100"],
+    },
+    "Aparecida do Taboado II": {
+        "cliente": "Thopen",
+        "aliases": ["aparecida do taboado ii", "aparecida do taboado 2", "aparecida do taboado 2b", "aparecida do taboado ib", "aparecida do taboado b"],
     },
 }
 
@@ -5302,25 +5392,15 @@ def _fracttal_formatar_data_br(iso_str):
 # ══════════════════════════════════════════════════════════════════════════════
 MAPEAMENTO_UFVS = [
     {"usina": 'ABC Morada Nova', "cliente": 'Alves Lima', "cluster": 'CE Leste 01', "cidade_uf": 'Morada Nova/CE',
-     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
-    {"usina": 'Hortina (Quixadá I)', "cliente": 'Sal Energia', "cluster": 'CE Leste 01', "cidade_uf": 'Quixadá/CE',
-     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
-    {"usina": 'Vitesse (Quixadá II)', "cliente": 'Sal Energia', "cluster": 'CE Leste 01', "cidade_uf": 'Quixadá/CE',
-     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
+     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": '', "transicao": True},
     {"usina": 'Sítio Bonfim', "cliente": 'Thopen', "cluster": 'CE Leste 01', "cidade_uf": 'Limoeiro do Norte/CE',
-     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": ''},
-    {"usina": 'SunPower (Cascavel)', "cliente": 'Sal Energia', "cluster": 'CE Leste 02', "cidade_uf": 'Cascavel/CE',
-     "responsavel": 'Adriano Silva', "funcao": 'Técnico', "membros": ['Alesson Sousa (Eletricista)'], "alternativo": ''},
-    {"usina": 'Salvales (Aquiraz I)', "cliente": 'Sal Energia', "cluster": 'CE Leste 02', "cidade_uf": 'Aquiraz/CE',
-     "responsavel": 'Adriano Silva', "funcao": 'Técnico', "membros": ['Alesson Sousa (Eletricista)'], "alternativo": ''},
-    {"usina": 'Carosa (Aquiraz II)', "cliente": 'Sal Energia', "cluster": 'CE Leste 02', "cidade_uf": 'Aquiraz/CE',
-     "responsavel": 'Adriano Silva', "funcao": 'Técnico', "membros": ['Alesson Sousa (Eletricista)'], "alternativo": ''},
+     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": '', "transicao": True},
     {"usina": 'Guajirú', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
-     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Sol do Norte I', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
-     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Sol do Norte II', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
-     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Crateús', "cliente": 'Renogrid', "cluster": 'CE Oeste 02', "cidade_uf": 'Crateús/CE',
      "responsavel": 'Railson Gomes', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Sete Lagoas', "cliente": '2C Energia', "cluster": 'MG Centro 01', "cidade_uf": 'Sete Lagoas/MG',
@@ -5348,19 +5428,82 @@ MAPEAMENTO_UFVS = [
     {"usina": 'Diamantino', "cliente": 'Thopen', "cluster": 'MT Sul 03', "cidade_uf": 'Diamantino/MT',
      "responsavel": 'Valmir Júnior', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Boa Esperança do Sul I', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Boa Esperança do Sul/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
     {"usina": 'Boa Esperança do Sul II', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Boa Esperança do Sul/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
     {"usina": 'Ibaté I', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Ibaté/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
     {"usina": 'Ibaté II', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Ibaté/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": ''},
+     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
     {"usina": 'Matão I', "cliente": 'Thopen', "cluster": 'SP Centro 02', "cidade_uf": 'Matão/SP',
-     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Matão II - Topázio', "cliente": 'Thopen', "cluster": 'SP Centro 02', "cidade_uf": 'Matão/SP',
-     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Elias Fausto', "cliente": 'Renogrid', "cluster": 'SP Leste 07', "cidade_uf": 'Elias Fausto/SP',
      "responsavel": 'Bruno Pupo', "funcao": 'Técnico', "membros": [], "alternativo": 'Felipe Lima'},
+    # ── Novas, definitivas com o Fred (arquivo de 02/10/2026) ──
+    {"usina": 'União I', "cliente": '2C Energia', "cluster": 'PI Oeste 01', "cidade_uf": 'União/PI',
+     "responsavel": 'Ailton Leal', "funcao": 'Técnico', "membros": ['Antônio Neto (Eletricista)'], "alternativo": ''},
+    {"usina": 'União II', "cliente": '2C Energia', "cluster": 'PI Oeste 01', "cidade_uf": 'União/PI',
+     "responsavel": 'Ailton Leal', "funcao": 'Técnico', "membros": ['Antônio Neto (Eletricista)'], "alternativo": ''},
+    {"usina": 'Ipixuna do Pará I', "cliente": '2C Energia', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
+     "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Tupi Paulista I', "cliente": '2C Energia', "cluster": 'SP Oeste 01', "cidade_uf": 'Tupi Paulista/SP',
+     "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": ''},
+    {"usina": 'Alto Paraná I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
+     "responsavel": 'Matheus Gois', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Alto Paraná II', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
+     "responsavel": 'Matheus Gois', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Paranavaí', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Paranavaí/PR',
+     "responsavel": 'Matheus Gois', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Assis Chateaubriand', "cliente": 'Thopen', "cluster": 'PR Sul 01', "cidade_uf": 'Assis Chateaubriand/PR',
+     "responsavel": 'Gilson Milhomem', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Céu Azul', "cliente": 'Thopen', "cluster": 'PR Sul 01', "cidade_uf": 'Céu Azul/PR',
+     "responsavel": 'Gilson Milhomem', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Colorado I', "cliente": 'Thopen', "cluster": 'PR Norte 01', "cidade_uf": 'Colorado/PR',
+     "responsavel": 'Marcos Camargo', "funcao": 'Técnico', "membros": ['Douglas Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Colorado II', "cliente": 'Thopen', "cluster": 'PR Norte 01', "cidade_uf": 'Colorado/PR',
+     "responsavel": 'Marcos Camargo', "funcao": 'Técnico', "membros": ['Douglas Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Mandaguaçu', "cliente": 'Thopen', "cluster": 'PR Norte 01', "cidade_uf": 'Mandaguaçu/PR',
+     "responsavel": 'Marcos Camargo', "funcao": 'Técnico', "membros": ['Douglas Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Sarandi', "cliente": 'Thopen', "cluster": 'PR Norte 01', "cidade_uf": 'Sarandi/PR',
+     "responsavel": 'Marcos Camargo', "funcao": 'Técnico', "membros": ['Douglas Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Nova Londrina I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Nova Londrina/PR',
+     "responsavel": 'Ronaldo Silva', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Nova Londrina II', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Nova Londrina/PR',
+     "responsavel": 'Ronaldo Silva', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Cidade Gaúcha', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Cidade Gaúcha/PR',
+     "responsavel": 'Ronaldo Silva', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Pharmas II', "cliente": 'Thopen', "cluster": 'PR Norte 02', "cidade_uf": '',
+     "responsavel": 'Valdir Felix', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Pharmas III', "cliente": 'Thopen', "cluster": 'PR Norte 02', "cidade_uf": '',
+     "responsavel": 'Valdir Felix', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Pharmas IV', "cliente": 'Thopen', "cluster": 'PR Norte 02', "cidade_uf": '',
+     "responsavel": 'Valdir Felix', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Santo Antonio da Platina', "cliente": 'Thopen', "cluster": 'PR Norte 02', "cidade_uf": 'Santo Antônio da Platina/PR',
+     "responsavel": 'Valdir Felix', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Coração I', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": '',
+     "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Coração II', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": '',
+     "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Guatambu I', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
+     "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Guatambu II', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
+     "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Guatambu III', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
+     "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Guatambu IV', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
+     "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": '',
+     "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": '',
+     "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": '',
+     "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Aparecida do Taboado I', "cliente": 'Thopen', "cluster": 'MS Leste 01', "cidade_uf": 'Aparecida do Taboado/MS',
+     "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    {"usina": 'Aparecida do Taboado II', "cliente": 'Thopen', "cluster": 'MS Leste 01', "cidade_uf": 'Aparecida do Taboado/MS',
+     "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
 ]
 
 # Variações de grafia/apelidos vistas na Fracttal → nome oficial na tabela acima.
@@ -9062,11 +9205,13 @@ def _mapa_coordenador_cluster():
     """cluster -> responsável. Base = aba _Sistema ('coordenador_cluster:
     <Cluster>'); o MAPEAMENTO_UFVS (fonte única) vence nos clusters que cobre."""
     mapa = dict(_mapa_coordenador_cluster_sistema())
-    vistos = set()
+    por_cluster = {}
     for u in MAPEAMENTO_UFVS:
-        if u["cluster"] not in vistos:
-            mapa[u["cluster"]] = u["responsavel"]
-            vistos.add(u["cluster"])
+        lista = por_cluster.setdefault(u["cluster"], [])
+        if u["responsavel"] not in lista:
+            lista.append(u["responsavel"])  # cluster com 2+ responsáveis (ex.: PR Oeste 01) lista todos
+    for cluster, nomes in por_cluster.items():
+        mapa[cluster] = " / ".join(nomes)
     return mapa
 
 
@@ -13822,7 +13967,7 @@ REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
 
 REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre TODOS os outros critérios abaixo, incluindo o limite de quantidade por turno do critério 3): a equipe do Cláudio Ferreira (cluster CE Leste 01) tem dias fixos por usina, definidos pelo Fred (regra atualizada em 07/08/2026 — as usinas da GD Energy saíram desse cluster/equipe e foram pro cluster CE Norte 01, equipe do Felipe Xavier; não têm mais dia fixo aqui):
 - Segunda-feira: usina ABC Morada Nova (cliente Alves Lima).
-- Terça-feira: usinas Hortina e Vitesse (cliente Sal Energia).
+- Terça-feira: NÃO tem usina fixa (Hortina e Vitesse, da Sal Energia, saíram do mapeamento em 02/10/2026). Trate como a sexta-feira: encaixe a usina do cluster com maior backlog.
 - Quinta-feira: usina Sítio Bonfim (cliente Thopen).
 - Sexta-feira: NÃO tem usina fixa. Olhe todas as atividades em aberto dessa equipe/cluster (as da lista abaixo) e identifique qual usina do cluster tem o maior backlog (mais atividades acumuladas/atrasadas) — encaixe as atividades dessa usina na sexta-feira. Explique esse raciocínio na "justificativa".
 - Se não houver nenhuma data do dia da semana correspondente disponível na lista de dias úteis fornecida, escolha a data disponível mais próxima e explique isso claramente na "justificativa".
@@ -17672,13 +17817,19 @@ def mapeamento_ufvs_auditoria():
         coord_sistema = _mapa_coordenador_cluster_sistema()
         esperado = {}
         for u in MAPEAMENTO_UFVS:
-            esperado.setdefault(u["cluster"], u["responsavel"])
-        for cluster, resp in esperado.items():
+            lista = esperado.setdefault(u["cluster"], [])
+            if u["responsavel"] not in lista:
+                lista.append(u["responsavel"])
+        for cluster, resps in esperado.items():
             atual = coord_sistema.get(cluster, "")
-            _p = _norm_usina(resp).split()
             _a = _norm_usina(atual)
-            if not atual or not (_p[0] in _a and _p[-1] in _a):
-                divergencias.append({"tipo": "coordenador_cluster", "cluster": cluster, "sistema": atual or "(sem chave)", "mapeamento": resp})
+            ok = bool(atual)
+            for resp in resps:
+                _p = _norm_usina(resp).split()
+                if not (_p[0] in _a and _p[-1] in _a):
+                    ok = False
+            if not ok:
+                divergencias.append({"tipo": "coordenador_cluster", "cluster": cluster, "sistema": atual or "(sem chave)", "mapeamento": " / ".join(resps)})
     except Exception as e:
         divergencias.append({"tipo": "erro_lendo_coordenador_cluster", "detalhe": str(e)})
     return jsonify({"ok": True, "divergencias": divergencias, "total": len(divergencias)}), 200
