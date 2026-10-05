@@ -5634,6 +5634,8 @@ GRUPOS_EQUIPE_UFVS = [
      "usinas": ["Aparecida do Taboado I", "Aparecida do Taboado II"]},
     {"id": "120363432086889798@g.us", "nome": "Equipe Colorado/Mandaguaçu/Sarandi",
      "usinas": ["Colorado I", "Colorado II", "Mandaguaçu", "Sarandi"]},
+    {"id": "120363414633259915@g.us", "nome": "Equipe Canarana/Rib.Casc",
+     "usinas": ["Canarana I", "Canarana II", "Ribeirão Cascalheira"]},
 ]
 for _g in GRUPOS_EQUIPE_UFVS:
     for _u in MAPEAMENTO_UFVS:
@@ -13690,6 +13692,7 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363410279004309": "Equipe Coração/Guatambu",
     "120363410716694628": "Equipe Aparecida do Taboado",
     "120363432086889798": "Equipe Colorado/Mandaguaçu/Sarandi",
+    "120363414633259915": "Equipe Canarana/Rib.Casc",
 }
 
 
