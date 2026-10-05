@@ -5650,6 +5650,101 @@ if _ids_ja:  # .env sem GRUPOS_IDS = aceita todos os grupos; não vira filtro s�
     GRUPOS_FILTRO = [x for x in GRUPOS_FILTRO if x.strip()]
 
 
+# ── Edição do mapeamento pelo painel (Fred, 05/10/2026) ─────────────────────
+# MAPEAMENTO_UFVS continua sendo a base (código). As alterações feitas no
+# painel Gerencial → Mapeamento de Usinas ficam na aba _Sistema, chave
+# "mapeamento_override" (JSON {usina: {campo: valor}}, só as diferenças da
+# base), e são aplicadas POR CIMA da base, no próprio MAPEAMENTO_UFVS (mesmos
+# dicts, mesma ordem). Nunca apaga usina; "restaurar" volta ao valor do código.
+import copy as _copy
+_MAPEAMENTO_BASE = _copy.deepcopy(MAPEAMENTO_UFVS)
+_MAP_OVERRIDE_KEY = "mapeamento_override"
+_MAP_CAMPOS_TEXTO = ("cluster", "cliente", "cidade_uf", "responsavel", "funcao", "alternativo", "grupo", "grupo_nome")
+_MAP_CAMPOS_OBRIGATORIOS = ("cluster", "cliente", "responsavel")
+_map_override_estado = {"dados": {}, "ts": 0.0, "assin": None}
+_map_override_lock = threading.RLock()
+
+
+def _map_validar_campos(campos):
+    """Limpa/valida os campos recebidos do painel. Devolve (limpos, erro)."""
+    limpos = {}
+    for k, v in (campos or {}).items():
+        if k in _MAP_CAMPOS_TEXTO:
+            v = (v or "").strip() if isinstance(v, str) or v is None else str(v).strip()
+            if k in _MAP_CAMPOS_OBRIGATORIOS and not v:
+                return None, f"campo '{k}' não pode ficar vazio"
+            if k == "grupo" and v and not v.endswith("@g.us"):
+                v = v + "@g.us"
+            limpos[k] = v
+        elif k == "membros":
+            if isinstance(v, str):
+                v = [x for x in re.split(r"[;\n]", v)]
+            if not isinstance(v, list):
+                return None, "campo 'membros' deve ser lista"
+            limpos[k] = [str(x).strip() for x in v if str(x).strip()]
+        elif k == "temporaria":
+            limpos[k] = bool(v)
+        else:
+            return None, f"campo '{k}' não é editável"
+    return limpos, None
+
+
+def _map_override_aplicar(dados):
+    """Reaplica base + overrides em MAPEAMENTO_UFVS (in-place) e recalcula o
+    que deriva dele (técnico→usinas, cliente no catálogo, grupos aceitos)."""
+    with _map_override_lock:
+        for item, base in zip(MAPEAMENTO_UFVS, _MAPEAMENTO_BASE):
+            ov = dados.get(base["usina"]) or {}
+            novo = _copy.deepcopy(base)
+            validos, _ = _map_validar_campos(ov)
+            if validos:
+                novo.update(validos)
+                novo["editados"] = sorted(validos.keys())
+                if validos.get("grupo") and "grupo_nome" not in validos:
+                    novo["grupo_nome"] = next((g["nome"] for g in GRUPOS_EQUIPE_UFVS if g["id"] == validos["grupo"]), "")
+            for k in [k for k in item if k not in novo]:
+                del item[k]
+            item.update(novo)
+            cat = CATALOGO_USINAS.get(base["usina"])
+            if cat is not None:
+                cat["cliente"] = item["cliente"]
+            if item.get("grupo") and GRUPOS_FILTRO and item["grupo"] not in GRUPOS_FILTRO \
+                    and item["grupo"].replace("@g.us", "") not in {x.replace("@g.us", "") for x in GRUPOS_FILTRO}:
+                GRUPOS_FILTRO.append(item["grupo"])
+        TECNICO_USINAS.clear()
+        TECNICO_USINAS.update(_construir_tecnico_usinas(MAPEAMENTO_UFVS))
+        _map_override_estado["dados"] = dados
+        _map_override_estado["assin"] = json.dumps(dados, sort_keys=True, ensure_ascii=False)
+
+
+def _map_override_sincronizar(force=False):
+    """Lê o override da _Sistema (cache de 90 s) e reaplica se mudou — assim
+    todos os workers do gunicorn convergem sozinhos após uma edição."""
+    agora = time.time()
+    if not force and agora - _map_override_estado["ts"] < 90:
+        return
+    _map_override_estado["ts"] = agora
+    try:
+        ws_cfg = _get_config_sheet()
+        valores = _gspread_retry(lambda: ws_cfg.get_all_values())
+        bruto = ""
+        for row in valores[1:]:
+            if row and row[0].strip() == _MAP_OVERRIDE_KEY:
+                bruto = row[1] if len(row) > 1 else ""
+                break
+        dados = json.loads(bruto) if bruto.strip() else {}
+        if not isinstance(dados, dict):
+            dados = {}
+    except Exception as e:
+        log.error(f"[mapeamento_override] falha lendo override ({e}) — mantendo o atual")
+        _map_override_estado["ts"] = agora - 60  # tenta de novo em ~30 s
+        return
+    if json.dumps(dados, sort_keys=True, ensure_ascii=False) != _map_override_estado["assin"]:
+        _map_override_aplicar(dados)
+        for _c in (_mapa_grupo_usina_cache, _mapa_cluster_usina_cache):
+            _c["expira_em"] = 0
+
+
 
 def _normalizar_tecnico(nome):
     return _norm_usina(nome)  # mesma normalização (sem acento, minúsculo) já usada pra usina
@@ -8948,6 +9043,7 @@ def _mapa_grupo_usina():
     """usina -> id do grupo. Base = aba _Sistema ("grupo_usina:<Usina>"); o
     MAPEAMENTO_UFVS (campo "grupo", 05/10/2026) sempre vence nas usinas que
     ele cobre. Devolve cópia, pra quem chama poder alterar à vontade."""
+    _map_override_sincronizar()
     mapa = dict(_mapa_grupo_usina_base())
     for u in MAPEAMENTO_UFVS:
         if u.get("grupo"):
@@ -9318,6 +9414,7 @@ def _mapa_cluster_usina():
     # 02/10/2026: chaves antigas da _Sistema (usinas que saíram da supervisão,
     # ex.: Sal Energia, Junco) não entram mais — só usinas do mapeamento atual
     # ou em supervisão temporária ativa; o MAPEAMENTO_UFVS sempre vence.
+    _map_override_sincronizar()
     oficiais = {u["usina"] for u in MAPEAMENTO_UFVS}
     mapa = {}
     for usina, cluster in _mapa_cluster_usina_sistema().items():
@@ -18009,8 +18106,55 @@ REGRAS OBRIGATÓRIAS:
 def mapeamento_ufvs():
     """Mapeamento oficial de UFVs (cliente, cluster, equipe, responsáveis) —
     fonte única MAPEAMENTO_UFVS, definida em 29/09/2026 a partir da planilha
-    do projeto. Somente leitura."""
+    do projeto, + edições feitas no painel (aba _Sistema, mapeamento_override)."""
+    _map_override_sincronizar()
     return jsonify({"ok": True, "total": len(MAPEAMENTO_UFVS), "itens": MAPEAMENTO_UFVS}), 200
+
+
+@app.route("/mapeamento-ufvs/editar", methods=["POST", "OPTIONS"])
+def mapeamento_ufvs_editar():
+    """Edita campos de uma UFV do mapeamento pelo painel Gerencial.
+    Body: {usina, campos:{cluster,cliente,cidade_uf,responsavel,funcao,membros,
+    alternativo,grupo,grupo_nome,temporaria}} ou {usina, restaurar:true}.
+    Grava só a diferença contra a base do código; nunca apaga usina."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = request.get_json(force=True, silent=True) or {}
+    usina = (body.get("usina") or "").strip()
+    base = next((b for b in _MAPEAMENTO_BASE if b["usina"] == usina), None)
+    if not base:
+        return jsonify({"ok": False, "error": "usina fora do mapeamento"}), 404
+    _map_override_sincronizar(force=True)
+    with _map_override_lock:
+        dados = _copy.deepcopy(_map_override_estado["dados"])
+        if body.get("restaurar"):
+            dados.pop(usina, None)
+        else:
+            limpos, erro = _map_validar_campos(body.get("campos"))
+            if erro:
+                return jsonify({"ok": False, "error": erro}), 400
+            atual = dados.get(usina, {})
+            for k, v in limpos.items():
+                if v == base.get(k, False if k == "temporaria" else ([] if k == "membros" else "")):
+                    atual.pop(k, None)
+                else:
+                    atual[k] = v
+            if atual:
+                dados[usina] = atual
+            else:
+                dados.pop(usina, None)
+    try:
+        _config_set_lote_core({_MAP_OVERRIDE_KEY: json.dumps(dados, ensure_ascii=False, sort_keys=True)})
+    except Exception as e:
+        log.error(f"[mapeamento_override] falha gravando ({e})")
+        return jsonify({"ok": False, "error": "não consegui gravar na planilha — tente de novo"}), 502
+    _map_override_aplicar(dados)
+    _map_override_estado["ts"] = time.time()
+    for _c in (_mapa_grupo_usina_cache, _mapa_cluster_usina_cache):
+        _c["expira_em"] = 0
+    log.info(f"[mapeamento_override] {usina}: {body.get('campos') or 'restaurado'}")
+    item = next(u for u in MAPEAMENTO_UFVS if u["usina"] == usina)
+    return jsonify({"ok": True, "item": item}), 200
 
 
 @app.route("/mapeamento-ufvs/auditoria", methods=["GET"])
