@@ -5604,6 +5604,48 @@ def _construir_tecnico_usinas(mapeamento):
 # Derivado de MAPEAMENTO_UFVS (29/09/2026) — não editar à mão.
 TECNICO_USINAS = _construir_tecnico_usinas(MAPEAMENTO_UFVS)
 
+# ── Grupos de WhatsApp das equipes (Fred, 05/10/2026) ───────────────────────
+# Cada grupo "Equipe ..." atende uma ou mais UFVs do mapeamento. Daqui saem:
+#  - o vínculo usina -> grupo (comunicados de OS, comunicado livre, rondas e
+#    resumos): sobrepõe o "grupo_usina:<Usina>" da aba _Sistema, como o resto
+#    do mapeamento (MAPEAMENTO_UFVS sempre vence);
+#  - a lista de grupos aceitos pelo webhook (GRUPOS_FILTRO), somada ao
+#    GRUPOS_IDS do .env — sem isso as mensagens do grupo seriam ignoradas.
+GRUPOS_EQUIPE_UFVS = [
+    {"id": "120363431215102670@g.us", "nome": "Equipe Ceilandia I e II/Sitio Nogueiras",
+     "usinas": ["Ceilândia I", "Ceilândia II", "Sítio dos Nogueiras"]},
+    {"id": "120363431601050989@g.us", "nome": "Equipe Ipixuna - 2C",
+     "usinas": ["Ipixuna do Pará I"]},
+    {"id": "120363430888041572@g.us", "nome": "Equipe União 2C",
+     "usinas": ["União I", "União II"]},
+    {"id": "120363430482583512@g.us", "nome": "Equipe Tupi Paulista",
+     "usinas": ["Tupi Paulista I", "Álvares Machado", "Santo Anastácio"]},
+    {"id": "120363431235680039@g.us", "nome": "Equipe Alto Parana/Paranavaí",
+     "usinas": ["Alto Paraná I", "Alto Paraná II", "Paranavaí"]},
+    {"id": "120363429760086977@g.us", "nome": "Equipe St. Ant. Platina/Pharmas",
+     "usinas": ["Santo Antonio da Platina", "Pharmas II", "Pharmas III", "Pharmas IV"]},
+    {"id": "120363415487852204@g.us", "nome": "Equipe Nova Londrina/Cid. Gaúcha",
+     "usinas": ["Nova Londrina I", "Nova Londrina II", "Cidade Gaúcha"]},
+    {"id": "120363413986264625@g.us", "nome": "Equipe Céu Azul/Assis Chat.",
+     "usinas": ["Céu Azul", "Assis Chateaubriand"]},
+    {"id": "120363410279004309@g.us", "nome": "Equipe Coração/Guatambu",
+     "usinas": ["Coração I", "Coração II", "Guatambu I", "Guatambu II", "Guatambu III", "Guatambu IV"]},
+    {"id": "120363410716694628@g.us", "nome": "Equipe Aparecida do Taboado",
+     "usinas": ["Aparecida do Taboado I", "Aparecida do Taboado II"]},
+]
+for _g in GRUPOS_EQUIPE_UFVS:
+    for _u in MAPEAMENTO_UFVS:
+        if _u["usina"] in _g["usinas"]:
+            _u["grupo"] = _g["id"]
+            _u["grupo_nome"] = _g["nome"]
+_ids_ja = {x.strip().replace("@g.us", "") for x in GRUPOS_FILTRO if x.strip()}
+if _ids_ja:  # .env sem GRUPOS_IDS = aceita todos os grupos; não vira filtro só com os novos
+    for _g in GRUPOS_EQUIPE_UFVS:
+        if _g["id"].replace("@g.us", "") not in _ids_ja:
+            GRUPOS_FILTRO.append(_g["id"])
+    GRUPOS_FILTRO = [x for x in GRUPOS_FILTRO if x.strip()]
+
+
 
 def _normalizar_tecnico(nome):
     return _norm_usina(nome)  # mesma normalização (sem acento, minúsculo) já usada pra usina
@@ -8857,7 +8899,7 @@ def _mapa_cache_disco_carregar(nome):
 _mapa_grupo_usina_cache = {"dados": None, "expira_em": 0}
 
 
-def _mapa_grupo_usina():
+def _mapa_grupo_usina_base():
     """Cache de 10 min (era 30s) — essa função é chamada muitas vezes
     durante o processamento de fotos de zeladoria, e mesmo com cache
     curto ainda contribuía pra estourar a cota de leitura do Google
@@ -8895,6 +8937,17 @@ def _mapa_grupo_usina():
     _mapa_grupo_usina_cache["dados"] = mapa
     _mapa_grupo_usina_cache["expira_em"] = agora_ts + 600
     _mapa_cache_disco_salvar("grupo_usina", mapa)
+    return mapa
+
+
+def _mapa_grupo_usina():
+    """usina -> id do grupo. Base = aba _Sistema ("grupo_usina:<Usina>"); o
+    MAPEAMENTO_UFVS (campo "grupo", 05/10/2026) sempre vence nas usinas que
+    ele cobre. Devolve cópia, pra quem chama poder alterar à vontade."""
+    mapa = dict(_mapa_grupo_usina_base())
+    for u in MAPEAMENTO_UFVS:
+        if u.get("grupo"):
+            mapa[u["usina"]] = u["grupo"]
     return mapa
 
 
@@ -13623,6 +13676,17 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363428178674382": "Equipe - Aquiraz/Cascavel",
     "120363406919935108": "Arquivos NVX",
     "120363423651075316": "Equipe Camila O&M",
+    # Equipes das usinas novas (05/10/2026)
+    "120363431215102670": "Equipe Ceilandia I e II/Sitio Nogueiras",
+    "120363431601050989": "Equipe Ipixuna - 2C",
+    "120363430888041572": "Equipe União 2C",
+    "120363430482583512": "Equipe Tupi Paulista",
+    "120363431235680039": "Equipe Alto Parana/Paranavaí",
+    "120363429760086977": "Equipe St. Ant. Platina/Pharmas",
+    "120363415487852204": "Equipe Nova Londrina/Cid. Gaúcha",
+    "120363413986264625": "Equipe Céu Azul/Assis Chat.",
+    "120363410279004309": "Equipe Coração/Guatambu",
+    "120363410716694628": "Equipe Aparecida do Taboado",
 }
 
 
