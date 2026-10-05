@@ -18049,7 +18049,21 @@ def mapeamento_ufvs_auditoria():
                 divergencias.append({"tipo": "coordenador_cluster", "cluster": cluster, "sistema": atual or "(sem chave)", "mapeamento": " / ".join(resps)})
     except Exception as e:
         divergencias.append({"tipo": "erro_lendo_coordenador_cluster", "detalhe": str(e)})
-    return jsonify({"ok": True, "divergencias": divergencias, "total": len(divergencias)}), 200
+    # 05/10/2026: grupo de WhatsApp efetivo de cada usina (mapeamento + _Sistema)
+    grupos_efetivos = {}
+    try:
+        mapa_g = _mapa_grupo_usina()
+        for u in MAPEAMENTO_UFVS:
+            gid = mapa_g.get(u["usina"], "")
+            nome_g = _NOMES_GRUPOS_CONHECIDOS.get(gid.replace("@g.us", "")) if gid else None
+            grupos_efetivos[u["usina"]] = {"grupo_id": gid, "grupo_nome": nome_g or "", "origem": "mapeamento" if u.get("grupo") else ("_Sistema" if gid else "")}
+            if not gid:
+                divergencias.append({"tipo": "usina_sem_grupo", "usina": u["usina"], "cluster": u["cluster"]})
+            elif gid.replace("@g.us", "") not in {x.strip().replace("@g.us", "") for x in GRUPOS_FILTRO}:
+                divergencias.append({"tipo": "grupo_fora_do_filtro", "usina": u["usina"], "grupo_id": gid})
+    except Exception as e:
+        divergencias.append({"tipo": "erro_lendo_grupo_usina", "detalhe": str(e)})
+    return jsonify({"ok": True, "divergencias": divergencias, "total": len(divergencias), "grupos_efetivos": grupos_efetivos}), 200
 
 
 @app.route("/chat-ia", methods=["POST"])
