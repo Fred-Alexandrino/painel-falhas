@@ -7466,7 +7466,7 @@ def _gerar_compromissos_periodo_atual():
     criados = []
 
     for regra in regras:
-        if not regra["ativo"]:
+        if not regra["ativo"] or _cliente_fora_da_carteira(regra["cliente"]):
             continue
         if regra["frequencia"] in FREQUENCIAS_SOB_DEMANDA:
             continue
@@ -7566,6 +7566,16 @@ def _abrir_compromisso_manual(regra_id, editor="desconhecido"):
             "dataLimite": prazo.strftime("%d/%m/%Y")}
 
 
+# Clientes que saíram da carteira do Fred (06/10/2026): Alves Lima e GD Energy
+# (usinas em transição) e Sal Energia (fora desde 02/10/2026). Os cards e regras
+# continuam na planilha, mas não aparecem nem são gerados nos painéis.
+_CLIENTES_FORA_CARTEIRA = {"alves lima", "gd energy", "sal energia"}
+
+
+def _cliente_fora_da_carteira(nome):
+    return str(nome or "").strip().lower() in _CLIENTES_FORA_CARTEIRA
+
+
 def _listar_compromissos_core():
     _gerar_compromissos_periodo_atual_se_necessario()
     ws = _get_compromissos_sheet()
@@ -7574,6 +7584,8 @@ def _listar_compromissos_core():
     resultado = []
     for row in todos[1:]:
         if len(row) < 12 or not row[0].strip():
+            continue
+        if _cliente_fora_da_carteira(row[2]):
             continue
         try:
             data_limite = datetime.strptime(row[5].strip(), "%d/%m/%Y")
@@ -7629,6 +7641,7 @@ def listar_regras_compromissos():
         ws_regras = _get_compromissos_regras_sheet()
         valores = ws_regras.get_all_values()
         regras = [_linha_para_regra(row) for row in valores[1:] if row and row[0].strip()]
+        regras = [r for r in regras if not _cliente_fora_da_carteira(r["cliente"])]
         for r in regras:
             r["frequenciaLabel"] = FREQUENCIA_LABEL.get(r["frequencia"], r["frequencia"])
         return jsonify({"ok": True, "regras": regras}), 200
