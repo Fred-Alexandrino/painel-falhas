@@ -7387,25 +7387,36 @@ def _linha_para_regra(row):
     }
 
 
+_cmp_ws_cache = {"ws": None, "ts": 0.0}
+
+
 def _get_compromissos_sheet():
-    sh = get_atividades_sheet().spreadsheet
+    # 06/10/2026: o handle da aba é reaproveitado por 30 min. Antes, cada
+    # chamada refazia 5-6 leituras só pra achar a aba e conferir o cabeçalho,
+    # o que somava com o resto do sistema, estourava a cota de leitura do
+    # Google Sheets e fazia o check das etapas falhar (a tela voltava atrás).
+    agora_ts = time.time()
+    if _cmp_ws_cache["ws"] is not None and agora_ts - _cmp_ws_cache["ts"] < 1800:
+        return _cmp_ws_cache["ws"]
+    sh = _gspread_retry(lambda: get_atividades_sheet().spreadsheet)
     try:
-        ws = sh.worksheet("Compromissos")
+        ws = _gspread_retry(lambda: sh.worksheet("Compromissos"))
         if ws.col_count < 16:
             ws.add_cols(16 - ws.col_count)
-        header = ws.row_values(1)
+        header = _gspread_retry(lambda: ws.row_values(1))
         if len(header) < 15 or header[14] != "Frequencia":
             ws.update_cell(1, 15, "Frequencia")
         if len(header) < 16 or header[15] != "EntregavelID":
             ws.update_cell(1, 16, "EntregavelID")
-        return ws
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title="Compromissos", rows=300, cols=16)
         ws.update("A1", [["ID", "Tipo", "Cliente", "Usina", "Competencia", "DataLimite",
                            "Etapas", "EtapasConcluidas", "Status", "DataCriacao",
                            "DataConclusao", "Historico", "DataLimiteEnvioBM", "DataLimiteAprovacao",
                            "Frequencia", "EntregavelID"]])
-        return ws
+    _cmp_ws_cache["ws"] = ws
+    _cmp_ws_cache["ts"] = agora_ts
+    return ws
 
 
 def _proximo_id_compromisso(todos):
@@ -8015,7 +8026,7 @@ def marcar_etapa_compromisso():
             return jsonify({"ok": False, "error": "id e etapaIndex são obrigatórios"}), 400
 
         ws = _get_compromissos_sheet()
-        todos = ws.get_all_values()
+        todos = _gspread_retry(lambda: ws.get_all_values(), tentativas=4, esperas=(3, 6, 12))
         linha_idx, linha = None, None
         for i, row in enumerate(todos[1:], start=2):
             if row and row[0].strip() == comp_id:
@@ -8046,11 +8057,11 @@ def marcar_etapa_compromisso():
         hist_atual = linha[11] if len(linha) > 11 else ""
         novo_hist = f"{hist_atual}\n{entry}".strip() if hist_atual else entry
 
-        ws.update(f"H{linha_idx}:L{linha_idx}", [[
+        _gspread_retry(lambda: ws.update(f"H{linha_idx}:L{linha_idx}", [[
             json.dumps(etapas_concluidas, ensure_ascii=False), novo_status,
             linha[9] if len(linha) > 9 else agora.strftime("%d/%m/%Y %H:%M:%S"),
             data_conclusao, novo_hist,
-        ]])
+        ]]), tentativas=4, esperas=(3, 6, 12))
 
         # Card concluído -> abre já o próximo mês (BM mensal), sem esperar a varredura diária.
         if novo_status == "Concluído" and linha[1] == "BM":
