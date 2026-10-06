@@ -389,69 +389,6 @@ CATALOGO_USINAS = {
     },
 
     # ── THOPEN ────────────────────────────────────────────────────────────────
-    "Boa Esperança do Sul I": {
-        "cliente": "Thopen",
-        "aliases": [
-            "boa esperanca do sul i", "boa esperanca do sul 1",
-            "boa esperanca do sul a", "boa esperanca do sul 1a",
-            "boa esperanca do sul ia",
-            "boa esperança do sul i", "boa esperança do sul 1",
-            "boa esperança do sul a", "boa esperança do sul 1a",
-            "boa esperança do sul ia",
-            "boa esperanca i", "boa esperanca 1",
-            "boa esperança i", "boa esperança 1",
-        ],
-    },
-    "Boa Esperança do Sul II": {
-        "cliente": "Thopen",
-        "aliases": [
-            "boa esperanca do sul ii", "boa esperanca do sul 2",
-            "boa esperanca do sul b", "boa esperanca do sul 1b",
-            "boa esperanca do sul ib",
-            "boa esperança do sul ii", "boa esperança do sul 2",
-            "boa esperança do sul b", "boa esperança do sul 1b",
-            "boa esperança do sul ib",
-            "boa esperanca ii", "boa esperanca 2",
-            "boa esperança ii", "boa esperança 2",
-        ],
-    },
-    "Ibaté I": {
-        "cliente": "Thopen",
-        "aliases": [
-            "ibate i", "ibate 1", "ibate 1a", "ibate ia", "ibate a",
-            "ibaté i", "ibaté 1", "ibaté 1a", "ibaté ia", "ibaté a",
-        ],
-    },
-    "Ibaté II": {
-        "cliente": "Thopen",
-        "aliases": [
-            "ibate ii", "ibate 2", "ibate 1b", "ibate ib", "ibate b",
-            "ibaté ii", "ibaté 2", "ibaté 1b", "ibaté ib", "ibaté b",
-        ],
-    },
-    "Matão I": {
-        "cliente": "Thopen",
-        "aliases": [
-            "matao 1", "matao i", "matao 1a", "matao ia", "matao a",
-            "matão 1", "matão i", "matão 1a", "matão ia", "matão a",
-        ],
-    },
-    "Matão II - Topázio": {
-        "cliente": "Thopen",
-        "aliases": [
-            "matao 2", "matao ii", "matao 1b", "matao ib", "matao b",
-            "matão 2", "matão ii", "matão 1b", "matão ib", "matão b",
-            "matao 2 topazio", "matão 2 topázio",
-            "topazio", "topázio",
-        ],
-    },
-    "Sítio Bonfim": {
-        "cliente": "Thopen",
-        "aliases": [
-            "sitio bonfim", "sítio bonfim",
-            "bonfim",
-        ],
-    },
     "Poconé": {
         "cliente": "Thopen",
         "aliases": ["pocone", "poconé", "poconé"],
@@ -491,30 +428,8 @@ CATALOGO_USINAS = {
     },
 
     # ── GD Energy ─────────────────────────────────────────────────────────────
-    "Guajirú": {
-        "cliente": "GD Energy",
-        "aliases": ["guajiru", "guajirú", "guajiru"],
-    },
-    "Sol do Norte I": {
-        "cliente": "GD Energy",
-        "aliases": [
-            "sol do norte i", "sol do norte 1",
-            "sol do norte 1a", "sol do norte ia", "sol do norte a",
-        ],
-    },
-    "Sol do Norte II": {
-        "cliente": "GD Energy",
-        "aliases": [
-            "sol do norte ii", "sol do norte 2",
-            "sol do norte 1b", "sol do norte ib", "sol do norte b",
-        ],
-    },
 
     # ── Alves Lima ────────────────────────────────────────────────────────────
-    "ABC Morada Nova": {
-        "cliente": "Alves Lima",
-        "aliases": ["abc morada nova", "morada nova"],
-    },
 
     # ── NOVAS USINAS (mapeamento de 02/10/2026) ───────────────────────────────
     # 2C Energia
@@ -1455,23 +1370,12 @@ LOCALIZACOES_SEED = [
     ('Renogrid', 'Nobres', 'Fazenda Lavrinha, S/N, Nobres - MT, 78470-000', 'https://maps.app.goo.gl/ndrKoLEk3aDyroLJ9', "", ""),
     ('Renogrid', 'Elias Fausto', 'Sítio Santa Izabel, Gleba B, Elias Fausto – SP, CEP: 13.358-899', 'https://maps.app.goo.gl/uy57XM69H3ejTENJ6', "", ""),
     ('Renogrid', 'Crateús', 'Fazenda São Luiz, Crateús - CE, CEP: 63.709-899', 'https://maps.app.goo.gl/W9VS4Jdcd57rqCgC9', "", ""),
-    ('Thopen', 'Boa Esperança do Sul I', 'Rua Sete de Setembro, Boa Esperança do Sul - SP, 14930-000', 'https://maps.app.goo.gl/T74pDLBrsd3yGDPP6', "", ""),
-    ('Thopen', 'Boa Esperança do Sul II', 'Rua Sete de Setembro, Boa Esperança do Sul - SP, 14930-000', 'https://maps.app.goo.gl/T74pDLBrsd3yGDPP6', "", ""),
-    ('Thopen', 'Ibaté I', 'R. Júlio Gonzaga, Ibaté - SP, 14815-000', 'https://maps.app.goo.gl/8fPjE3dNwtgZucqF8', "", ""),
-    ('Thopen', 'Ibaté II', 'BR-267, 292-1040 - Jardim Nosso Teto, Ibaté - SP, 14815-000', 'https://maps.app.goo.gl/2m6UqXNHHhtr4zsb9', "", ""),
-    ('Thopen', 'Matão I', 'Via Luís Gonzaga da Silva Leite - Pedreira, Matão - SP', 'https://maps.app.goo.gl/CFsFFwniYJffJH9w9', "", ""),
-    ('Thopen', 'Matão II - Topázio', 'Via Carl Fisher, 5600 - Matão, SP, 15995-054', 'https://maps.app.goo.gl/MJnvbaMm3Ar2nUxF7', "", ""),
-    ('Thopen', 'Sítio Bonfim', 'Sítio Morros, Limoeiro do Norte - CE, 62930-000', 'https://maps.app.goo.gl/7bc56bH8vXEAWAu18', "", ""),
     ('Thopen', 'Poconé', 'Assentamento Beija Flor, Lote 04, Zona Rural, Poconé - MT, 78175-000', 'https://maps.app.goo.gl/y3weGpiKFnVAGMHz8', "", ""),
     ('Thopen', 'Canarana I', 'MT-110, Canarana - MT, 78640-000', 'https://maps.app.goo.gl/2WeCCv27u1KSQXjs9', "", ""),
     ('Thopen', 'Canarana II', 'FPPJ+996 Canarana, MT', 'https://maps.app.goo.gl/rTLEK4FVzrRz4UNA7', "", ""),
     ('Thopen', 'Ribeirão Cascalheira', '35HX+8PR Ribeirão Cascalheira, MT', 'https://maps.app.goo.gl/BL8xuoi7hy5w4yev6', "", ""),
     ('2C Energia', 'Araputanga', 'Rodovia MT 175, Araputanga - MT', 'https://maps.app.goo.gl/AzpfpHjkqxyqBwAV7', "", ""),
     ('2C Energia', 'Sete Lagoas', 'Zona Rural, Sete Lagoas - MG, 35702-087', 'https://maps.app.goo.gl/mCoLpWAobk6K2qLG7', "", ""),
-    ('GD Energy', 'Guajirú', 'Sítio Ilha, s/n - Vassouras, Trairi - CE, 62690-000', 'https://maps.app.goo.gl/rv2uhbD7o37ANCdSA', "", ""),
-    ('GD Energy', 'Sol do Norte I', 'Sítio Ilha, s/n - Vassouras, Trairi - CE, 62690-000', 'https://maps.app.goo.gl/rv2uhbD7o37ANCdSA', "", ""),
-    ('GD Energy', 'Sol do Norte II', 'Sítio Ilha, s/n - Vassouras, Trairi - CE, 62690-000', 'https://maps.app.goo.gl/rv2uhbD7o37ANCdSA', "", ""),
-    ('Alves Lima', 'ABC Morada Nova', 'Estr. Tigre A Dourado, 2 - Pedras, Morada Nova - CE, 62940-000', 'https://maps.app.goo.gl/GPmb3Ea9JMGnHXBB6', "", ""),
     ('Sal Energia', 'SunPower (Cascavel)', 'Zona Rural, s/n – Cascavel - CE', 'https://maps.app.goo.gl/gogYXrktX8D3TfFPA', -4.105639, -38.319028),
     ('Sal Energia', 'Hortina (Quixadá I)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
     ('Sal Energia', 'Vitesse (Quixadá II)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
@@ -5449,16 +5353,6 @@ def _fracttal_formatar_data_br(iso_str):
 # projeto) — nunca crie mapeamentos paralelos em outros pontos do código.
 # ══════════════════════════════════════════════════════════════════════════════
 MAPEAMENTO_UFVS = [
-    {"usina": 'ABC Morada Nova', "cliente": 'Alves Lima', "cluster": 'CE Leste 01', "cidade_uf": 'Morada Nova/CE',
-     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": '', "transicao": True},
-    {"usina": 'Sítio Bonfim', "cliente": 'Thopen', "cluster": 'CE Leste 01', "cidade_uf": 'Limoeiro do Norte/CE',
-     "responsavel": 'Cláudio Ferreira', "funcao": 'Técnico', "membros": ['Isake Costa (Mantenedor)'], "alternativo": '', "transicao": True},
-    {"usina": 'Guajirú', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
-     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": '', "transicao": True},
-    {"usina": 'Sol do Norte I', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
-     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": '', "transicao": True},
-    {"usina": 'Sol do Norte II', "cliente": 'GD Energy', "cluster": 'CE Norte 01', "cidade_uf": 'Trairi/CE',
-     "responsavel": 'Felipe Xavier', "funcao": 'Técnico', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Crateús', "cliente": 'Renogrid', "cluster": 'CE Oeste 02', "cidade_uf": 'Crateús/CE',
      "responsavel": 'Railson Gomes', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Sete Lagoas', "cliente": '2C Energia', "cluster": 'MG Centro 01', "cidade_uf": 'Sete Lagoas/MG',
@@ -5485,18 +5379,6 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Valmir Júnior', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Diamantino', "cliente": 'Thopen', "cluster": 'MT Sul 03', "cidade_uf": 'Diamantino/MT',
      "responsavel": 'Valmir Júnior', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Boa Esperança do Sul I', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Boa Esperança do Sul/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
-    {"usina": 'Boa Esperança do Sul II', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Boa Esperança do Sul/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
-    {"usina": 'Ibaté I', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Ibaté/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
-    {"usina": 'Ibaté II', "cliente": 'Thopen', "cluster": 'SP Centro 01', "cidade_uf": 'Ibaté/SP',
-     "responsavel": 'Rogério Paravani', "funcao": 'Técnico', "membros": ['Andrick Gouveia (Mantenedor)'], "alternativo": '', "transicao": True},
-    {"usina": 'Matão I', "cliente": 'Thopen', "cluster": 'SP Centro 02', "cidade_uf": 'Matão/SP',
-     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": '', "transicao": True},
-    {"usina": 'Matão II - Topázio', "cliente": 'Thopen', "cluster": 'SP Centro 02', "cidade_uf": 'Matão/SP',
-     "responsavel": 'Eduardo Souza', "funcao": 'Eletricista', "membros": [], "alternativo": '', "transicao": True},
     {"usina": 'Elias Fausto', "cliente": 'Renogrid', "cluster": 'SP Leste 07', "cidade_uf": 'Elias Fausto/SP',
      "responsavel": 'Bruno Pupo', "funcao": 'Técnico', "membros": [], "alternativo": 'Felipe Lima'},
     # ── Novas, definitivas com o Fred (arquivo de 02/10/2026) ──
@@ -10321,6 +10203,14 @@ def excluir_atividade():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# Usinas retiradas do mapeamento do Fred em 06/10/2026 (em transição para
+# outros supervisores): não aparecem mais em nenhum painel.
+_USINAS_SAIDAS_06_10 = {_norm_usina(n) for n in (
+    "ABC Morada Nova", "Sítio Bonfim", "Guajirú", "Sol do Norte I", "Sol do Norte II",
+    "Boa Esperança do Sul I", "Boa Esperança do Sul II", "Ibaté I", "Ibaté II",
+    "Matão I", "Matão II - Topázio")}
+
+
 @app.route("/localizacoes", methods=["GET"])
 def listar_localizacoes():
     """Lista as localizações (endereço + link do Maps + lat/lng já
@@ -10337,6 +10227,8 @@ def listar_localizacoes():
         for row in todos[1:]:
             if len(row) < 2 or not row[1].strip():
                 continue
+            if _norm_usina(row[1].strip()) in _USINAS_SAIDAS_06_10:
+                continue  # saíram do mapeamento do Fred em 06/10/2026 (transição)
             lat = row[4].strip() if len(row) > 4 else ""
             lng = row[5].strip() if len(row) > 5 else ""
             def _num(v):
