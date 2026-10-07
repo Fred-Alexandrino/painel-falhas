@@ -948,6 +948,14 @@ def _definir_escopo_supervisora():
 
 
 _sup_ciclo_lock = threading.Lock()
+_sup_ciclo_ultimo = {}
+
+
+@app.route("/supervisoras/status", methods=["GET"])
+def supervisoras_status():
+    """Só contadores/diagnóstico do ciclo das supervisoras — sem dados de OS."""
+    return jsonify({"ok": True, "ciclo": _sup_ciclo_ultimo, "backfill": _sup_backfill_ultimo,
+                    "escopos": list(_SUP_MAPEAMENTO)}), 200
 
 
 def _supervisoras_ciclo():
@@ -977,13 +985,17 @@ def _supervisoras_ciclo():
                 hoje = agora_br().strftime("%Y-%m-%d")
                 chave = f"sup_lacunas_{esc}"
                 if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
-                    _gravar_trava(chave, hoje)
-                    lac = _auditoria_lacunas_core(ot_status="1")
-                    r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", []))}
+                    lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
+                    r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
+                                    "erros": lac.get("erros"), "paginas": lac.get("paginas_lidas"),
+                                    "gap": lac.get("gap_provavel"), "total": lac.get("total_fracttal_linhas")}
+                    if lac.get("ok") and not lac.get("erros"):
+                        _gravar_trava(chave, hoje)  # só marca "feito hoje" se concluiu sem erro
             except Exception as e:
                 log.error(f"[Supervisoras:{esc}] erro na varredura de lacunas: {e}")
                 r["lacunas"] = {"erro": str(e)}
             resultado[esc] = r
+            _sup_ciclo_ultimo[esc] = {"quando": agora_br().isoformat(), **r}
     finally:
         _escopo_tl.v = None
         _sup_ciclo_lock.release()
@@ -1006,7 +1018,7 @@ def supervisoras_backfill():
         for esc in escopos:
             _escopo_tl.v = esc
             try:
-                res = _auditoria_lacunas_core(ot_status=status_ot)
+                res = _auditoria_lacunas_core(ot_status=status_ot, max_paginas=150)
                 _sup_backfill_ultimo[esc] = {"quando": agora_br().isoformat(), "ok": res.get("ok"),
                                               "criadas": len(res.get("criadas", [])), "erros": res.get("erros"),
                                               "paginas": res.get("paginas_lidas")}
