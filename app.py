@@ -431,6 +431,98 @@ CATALOGO_USINAS = {
 
     # ── Alves Lima ────────────────────────────────────────────────────────────
 
+    # ── REATIVADAS SÓ PARA A REUNIÃO SEMANAL (Fred, 07/10/2026) ──────────────────
+    # Usinas em transição (saíram do mapeamento em 06/10/2026), mas Alves Lima e
+    # GD Energy ainda precisam da apresentação desta semana: voltam ao catálogo
+    # com "so_reuniao": True — as OSs delas voltam a ser lidas e o gerador de
+    # apresentação as reconhece, mas elas NÃO entram em clientes-configurados,
+    # no mapeamento nem nos painéis. REMOVER este bloco depois da reunião.
+    "ABC Morada Nova": {
+        "cliente": "Alves Lima", "so_reuniao": True,
+        "aliases": ["abc morada nova", "morada nova"],
+    },
+    "Sítio Bonfim": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "sitio bonfim", "sítio bonfim",
+            "bonfim",
+        ],
+    },
+    "Guajirú": {
+        "cliente": "GD Energy", "so_reuniao": True,
+        "aliases": ["guajiru", "guajirú", "guajiru"],
+    },
+    "Sol do Norte I": {
+        "cliente": "GD Energy", "so_reuniao": True,
+        "aliases": [
+            "sol do norte i", "sol do norte 1",
+            "sol do norte 1a", "sol do norte ia", "sol do norte a",
+        ],
+    },
+    "Sol do Norte II": {
+        "cliente": "GD Energy", "so_reuniao": True,
+        "aliases": [
+            "sol do norte ii", "sol do norte 2",
+            "sol do norte 1b", "sol do norte ib", "sol do norte b",
+        ],
+    },
+    "Boa Esperança do Sul I": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "boa esperanca do sul i", "boa esperanca do sul 1",
+            "boa esperanca do sul a", "boa esperanca do sul 1a",
+            "boa esperanca do sul ia",
+            "boa esperança do sul i", "boa esperança do sul 1",
+            "boa esperança do sul a", "boa esperança do sul 1a",
+            "boa esperança do sul ia",
+            "boa esperanca i", "boa esperanca 1",
+            "boa esperança i", "boa esperança 1",
+        ],
+    },
+    "Boa Esperança do Sul II": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "boa esperanca do sul ii", "boa esperanca do sul 2",
+            "boa esperanca do sul b", "boa esperanca do sul 1b",
+            "boa esperanca do sul ib",
+            "boa esperança do sul ii", "boa esperança do sul 2",
+            "boa esperança do sul b", "boa esperança do sul 1b",
+            "boa esperança do sul ib",
+            "boa esperanca ii", "boa esperanca 2",
+            "boa esperança ii", "boa esperança 2",
+        ],
+    },
+    "Ibaté I": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "ibate i", "ibate 1", "ibate 1a", "ibate ia", "ibate a",
+            "ibaté i", "ibaté 1", "ibaté 1a", "ibaté ia", "ibaté a",
+        ],
+    },
+    "Ibaté II": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "ibate ii", "ibate 2", "ibate 1b", "ibate ib", "ibate b",
+            "ibaté ii", "ibaté 2", "ibaté 1b", "ibaté ib", "ibaté b",
+        ],
+    },
+    "Matão I": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "matao 1", "matao i", "matao 1a", "matao ia", "matao a",
+            "matão 1", "matão i", "matão 1a", "matão ia", "matão a",
+        ],
+    },
+    "Matão II - Topázio": {
+        "cliente": "Thopen", "so_reuniao": True,
+        "aliases": [
+            "matao 2", "matao ii", "matao 1b", "matao ib", "matao b",
+            "matão 2", "matão ii", "matão 1b", "matão ib", "matão b",
+            "matao 2 topazio", "matão 2 topázio",
+            "topazio", "topázio",
+        ],
+    },
+
     # ── NOVAS USINAS (mapeamento de 02/10/2026) ───────────────────────────────
     # 2C Energia
     "União I": {
@@ -11174,7 +11266,7 @@ def listar_clientes_configurados():
     /supervisao-temporaria), consistente com o resto do sistema.
     """
     _, cliente_temp = _indices_temporarios()
-    clientes = sorted(set(_CLIENTE_INDEX.values()) | set(cliente_temp.values()))
+    clientes = sorted({c for n, c in _CLIENTE_INDEX.items() if not CATALOGO_USINAS.get(n, {}).get("so_reuniao")} | set(cliente_temp.values()))
     return jsonify({"ok": True, "clientes": clientes}), 200
 
 
@@ -18086,6 +18178,8 @@ def mapeamento_ufvs_auditoria():
         elif cat["cliente"] != u["cliente"]:
             divergencias.append({"tipo": "cliente", "usina": u["usina"], "catalogo": cat["cliente"], "mapeamento": u["cliente"]})
     for nome in CATALOGO_USINAS:
+        if CATALOGO_USINAS[nome].get("so_reuniao"):
+            continue
         if nome not in {u["usina"] for u in MAPEAMENTO_UFVS}:
             divergencias.append({"tipo": "usina_fora_do_mapeamento", "usina": nome})
     try:
