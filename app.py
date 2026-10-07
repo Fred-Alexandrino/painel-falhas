@@ -1034,6 +1034,26 @@ def supervisoras_backfill():
 _sup_backfill_ultimo = {}
 
 
+@app.route("/supervisoras/diagnostico", methods=["GET"])
+def supervisoras_diagnostico():
+    """Diagnóstico agregado da aba da supervisora (só contagens): linhas e usinas gravadas."""
+    esc = (request.args.get("escopo") or "danuth").strip().lower()
+    if esc not in _SUP_MAPEAMENTO:
+        return jsonify({"ok": False}), 400
+    _escopo_tl.v = esc
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        from collections import Counter
+        usinas = Counter((r[2] if len(r) > 2 else "") for r in todos[1:] if r and r[0].strip())
+        nao_reconhecidas = {u: n for u, n in usinas.items() if canonizar_usina(u) is None}
+        return jsonify({"ok": True, "aba": ws.title, "linhas": len(todos) - 1, "usinas": dict(usinas),
+                        "nao_reconhecidas": nao_reconhecidas,
+                        "amostra_folios": [r[13] for r in todos[1:6] if len(r) > 13]}), 200
+    finally:
+        _escopo_tl.v = None
+
+
 
 # Mantém compatibilidade com código legado que usava CLIENTE_POR_USINA
 CLIENTE_POR_USINA = {
