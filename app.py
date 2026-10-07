@@ -1049,7 +1049,7 @@ def supervisoras_diagnostico():
         nao_reconhecidas = {u: n for u, n in usinas.items() if canonizar_usina(u) is None}
         return jsonify({"ok": True, "aba": ws.title, "linhas": len(todos) - 1, "usinas": dict(usinas),
                         "nao_reconhecidas": nao_reconhecidas,
-                        "amostra_folios": [r[13] for r in todos[1:6] if len(r) > 13]}), 200
+                        "amostra_folios": [r[13] for r in todos[1:6] if len(r) > 13], "cru": [[c[:25] for c in r[:16]] for r in todos[1:4] + todos[-3:]]}), 200
     finally:
         _escopo_tl.v = None
 
