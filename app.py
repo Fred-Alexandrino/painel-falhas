@@ -711,6 +711,10 @@ def canonizar_usina(texto_bruto):
     if not texto_bruto:
         return None
 
+    _esc = _escopo_atual()
+    if _esc:
+        return _sup_canonizar(_esc, texto_bruto)
+
     # Remove emojis e caracteres especiais comuns
     s = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", texto_bruto).strip()
     # Remove sufixos como "| NORMALIZADA | Trip 59B"
@@ -753,6 +757,9 @@ def canonizar_usina(texto_bruto):
 
 def inferir_cliente(usina_canonical):
     """Retorna o cliente dado o nome canônico da usina."""
+    _esc = _escopo_atual()
+    if _esc:
+        return _sup_cliente(_esc, usina_canonical)
     if usina_canonical in _CLIENTE_INDEX:
         return _CLIENTE_INDEX[usina_canonical]
     _, cliente_temp = _indices_temporarios()
@@ -762,6 +769,257 @@ def inferir_cliente(usina_canonical):
 def usina_permitida(texto):
     """Retorna True se a usina for reconhecida no catálogo."""
     return canonizar_usina(texto) is not None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUPERVISORAS — escopo restrito (07/10/2026, pedido do Fred: acesso da Danuth)
+#
+# Cada supervisora tem catálogo próprio de usinas e uma ABA PRÓPRIA de
+# atividades ("Painel de Atividades - <Nome>"), 100% separada da aba do Fred:
+# nada do catálogo/aba dela aparece em qualquer painel, resumo, comunicado,
+# relatório ou push do Fred. O "escopo" vale por thread (ciclo em segundo
+# plano) ou por requisição (header X-Escopo enviado pelo painel dela) e troca,
+# de forma transparente, as 4 funções-base: canonizar_usina, inferir_cliente,
+# get_atividades_sheet e _mapa_cluster_usina (+ cadastro de técnicos). Todo o
+# resto do pipeline da Fracttal (descoberta, rodízio de status, auditoria)
+# roda inalterado em cima delas. Push e WhatsApp ficam desligados no escopo.
+# ══════════════════════════════════════════════════════════════════════════════
+from flask import g, has_request_context
+
+_escopo_tl = threading.local()
+
+_SUP_MAPEAMENTO = {
+    "danuth": [
+        {'usina': 'Ponto Belo I', 'cliente': 'Axis', 'cluster': 'BA Sul 01', 'cidade_uf': 'Ponto Belo', 'responsavel': 'Thiago Morais', 'funcao': 'Técnico', 'membros': ['Alex Cardoso'], 'alternativo': ''},
+        {'usina': 'Vargem Grande I', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'São Mateus', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Linhares I (Axis)', 'cliente': 'Axis', 'cluster': 'ES Norte 01', 'cidade_uf': 'Linhares', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Córrego de Sapucaia', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'São Mateus', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Primavera I', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'Vargem Grande', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Primavera II', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'Vargem Grande', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Linhares I (Thopen)', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'Linhares', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Timon 200', 'cliente': 'Athon', 'cluster': 'MA Leste 01', 'cidade_uf': 'Timon', 'responsavel': 'Luiz Silva', 'funcao': 'Técnico', 'membros': ['José Neto'], 'alternativo': ''},
+        {'usina': 'Timon 100', 'cliente': 'Athon', 'cluster': 'MA Leste 01', 'cidade_uf': 'Timon', 'responsavel': 'Luiz Silva', 'funcao': 'Técnico', 'membros': ['José Neto'], 'alternativo': ''},
+        {'usina': 'Matões 100', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': ''},
+        {'usina': 'Matões 200', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': ''},
+        {'usina': 'Petrolina 3', 'cliente': 'Axis', 'cluster': 'PE Oeste 01', 'cidade_uf': 'Petrolina', 'responsavel': 'Rodrigo Silva', 'funcao': 'Técnico', 'membros': ['Eliam Silva'], 'alternativo': ''},
+        {'usina': 'Petrolina II', 'cliente': 'Axis', 'cluster': 'PE Oeste 01', 'cidade_uf': 'Petrolina', 'responsavel': 'Rodrigo Silva', 'funcao': 'Técnico', 'membros': ['Eliam Silva'], 'alternativo': ''},
+        {'usina': 'Marialva I', 'cliente': 'Axis', 'cluster': 'PR Norte 01', 'cidade_uf': 'Marialva', 'responsavel': 'Marcos Camargo', 'funcao': 'Técnico', 'membros': ['Douglas Silva'], 'alternativo': ''},
+        {'usina': 'Fazenda Limão I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
+        {'usina': 'Saturnino I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
+        {'usina': 'Goytacazes I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
+        {'usina': 'São Bento 5', 'cliente': 'Thopen', 'cluster': 'RJ Sul 01', 'cidade_uf': 'Barra Mansa', 'responsavel': 'Adão Neto', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'Aparecida 3', 'cliente': 'Thopen', 'cluster': 'SP Leste 01', 'cidade_uf': 'Aparecida', 'responsavel': 'Henri Almeida', 'funcao': 'Técnico', 'membros': ['Douglas Chagas'], 'alternativo': ''},
+        {'usina': 'Guaratinguetá 5', 'cliente': 'Thopen', 'cluster': 'SP Leste 01', 'cidade_uf': 'Guaratinguetá', 'responsavel': 'Henri Almeida', 'funcao': 'Técnico', 'membros': ['Douglas Chagas'], 'alternativo': ''},
+        {'usina': 'Sorocaba', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Sorocaba', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
+        {'usina': 'Araçoiaba da Serra IA', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Araçoiaba da Serra', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
+        {'usina': 'Araçoiaba da Serra IB', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Araçoiaba da Serra', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
+        {'usina': 'Salto Pirapora 3', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Salto de Pirapora', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
+        {'usina': 'Indaiatuba', 'cliente': 'Thopen', 'cluster': 'SP Leste 03', 'cidade_uf': 'Indaiatuba', 'responsavel': 'Felipe Lima', 'funcao': 'Técnico', 'membros': ['Igor Cruz'], 'alternativo': ''},
+        {'usina': 'Santa Bárbara I', 'cliente': 'Thopen', 'cluster': 'SP Leste 03', 'cidade_uf': 'Santa Bárbara D´Oeste', 'responsavel': 'Felipe Lima', 'funcao': 'Técnico', 'membros': ['Igor Cruz'], 'alternativo': ''},
+        {'usina': 'Piracicaba I', 'cliente': 'Thopen', 'cluster': 'SP Leste 03', 'cidade_uf': 'Piracicaba', 'responsavel': 'Felipe Lima', 'funcao': 'Técnico', 'membros': ['Igor Cruz'], 'alternativo': ''},
+        {'usina': 'Caxambu I', 'cliente': 'Thopen', 'cluster': 'SP Leste 03', 'cidade_uf': 'Jundiaí', 'responsavel': 'Felipe Lima', 'funcao': 'Técnico', 'membros': ['Igor Cruz'], 'alternativo': ''},
+        {'usina': 'Santo Inácio I', 'cliente': 'Thopen', 'cluster': 'SP Leste 04', 'cidade_uf': 'Caçapava', 'responsavel': 'Hélio Silva', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'Santo Inácio II', 'cliente': 'Thopen', 'cluster': 'SP Leste 04', 'cidade_uf': 'Caçapava', 'responsavel': 'Hélio Silva', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'Marajoara I', 'cliente': 'Thopen', 'cluster': 'SP Leste 04', 'cidade_uf': 'Caçapava', 'responsavel': 'Hélio Silva', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'Embu Guaçu', 'cliente': 'Thopen', 'cluster': 'SP Leste 05', 'cidade_uf': 'Embu Guaçu', 'responsavel': 'Lucas Alberto Freitas de Faria', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'Cipó Guaçu', 'cliente': 'Thopen', 'cluster': 'SP Leste 05', 'cidade_uf': 'Cipó Guaçu', 'responsavel': 'Lucas Alberto Freitas de Faria', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''}
+    ],
+}
+_SUP_ABAS = {"danuth": "Painel de Atividades - Danuth"}
+_SUP_IDX_CACHE = {}
+
+
+def _escopo_atual():
+    """Escopo ativo ('danuth' ou None): thread dedicada tem prioridade; senão,
+    o header X-Escopo da requisição HTTP em curso."""
+    v = getattr(_escopo_tl, "v", None)
+    if v:
+        return v
+    try:
+        if has_request_context():
+            return getattr(g, "escopo_sup", None)
+    except Exception:
+        pass
+    return None
+
+
+def _sup_chave(txt):
+    """Chave de comparação: sem acento/caixa/prefixo/parênteses; sufixo 1/I/A/IA -> '1', 2/II/B/IB -> '2'."""
+    s = _norm_usina(txt)
+    s = re.sub(r"\(.*?\)", "", s)
+    s = re.sub(r"^(ufv|usina)\s+", "", s)
+    s = re.sub(r"\s+", " ", s).strip(" -.,:|")
+    s = re.sub(r"\s+(ii|2|b|ib)$", " 2", s)
+    s = re.sub(r"\s+(i|1|a|ia)$", " 1", s)
+    return s
+
+
+def _sup_indices(escopo):
+    idx = _SUP_IDX_CACHE.get(escopo)
+    if idx is None:
+        por_chave, por_nome = {}, {}
+        for u in _SUP_MAPEAMENTO[escopo]:
+            por_chave.setdefault(_sup_chave(u["usina"]), []).append(u)
+            por_nome[u["usina"]] = u
+        clientes = {_norm_usina(u["cliente"]) for u in _SUP_MAPEAMENTO[escopo]}
+        idx = {"chave": por_chave, "nome": por_nome, "clientes": clientes}
+        _SUP_IDX_CACHE[escopo] = idx
+    return idx
+
+
+def _sup_resolver_um(escopo, nome, cliente_hint=""):
+    idx = _sup_indices(escopo)
+    cands = idx["chave"].get(_sup_chave(nome), [])
+    if cliente_hint:
+        h = _norm_usina(cliente_hint)
+        cands = [u for u in cands if h in _norm_usina(u["cliente"]) or _norm_usina(u["cliente"]) in h]
+    if len(cands) == 1:
+        return cands[0]
+    return None  # sem match, ou ambíguo (mesmo nome em dois clientes e sem cliente informado)
+
+
+def _sup_canonizar(escopo, texto_bruto):
+    """Equivalente de canonizar_usina() pro catálogo da supervisora. Aceita 'Usina',
+    'Cliente - Usina', 'Cliente - Usina - UF' e linhas combinadas ('Base 1 e 2')."""
+    if not texto_bruto:
+        return None
+    s = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", str(texto_bruto)).strip()
+    partes = [x.strip() for x in s.split(" - ") if x.strip()]
+    if not partes:
+        return None
+    idx = _sup_indices(escopo)
+    hint = ""
+    if _norm_usina(partes[0]) in idx["clientes"]:
+        hint, partes = partes[0], partes[1:]
+    if len(partes) >= 2 and re.fullmatch(r"[A-Za-z]{2}", partes[-1]):
+        partes = partes[:-1]
+    nome = " - ".join(partes).strip()
+    if not nome:
+        return None
+    comb = re.match(r"^(.+?)\s+(\d+|[ivx]+)\s+e\s+(\d+|[ivx]+)$", nome, re.IGNORECASE)
+    if comb:
+        a = _sup_resolver_um(escopo, f"{comb.group(1)} {comb.group(2)}", hint)
+        b = _sup_resolver_um(escopo, f"{comb.group(1)} {comb.group(3)}", hint)
+        if a and b:
+            return f"{a['usina']} e {b['usina'].rsplit(' ', 1)[-1]}"
+        return None
+    u = _sup_resolver_um(escopo, nome, hint)
+    return u["usina"] if u else None
+
+
+def _sup_cliente(escopo, usina_canonica):
+    u = _sup_indices(escopo)["nome"].get(usina_canonica)
+    if u:
+        return u["cliente"]
+    base = (usina_canonica or "").split(" e ")[0]
+    u = _sup_indices(escopo)["nome"].get(base)
+    return u["cliente"] if u else ""
+
+
+def _sup_tecnico_usinas(escopo):
+    return _construir_tecnico_usinas(_SUP_MAPEAMENTO[escopo])
+
+
+def _sup_resolver_usina_tecnico(rep, escopo):
+    """Versão da _fracttal_resolver_usina_tecnico pro catálogo da supervisora (mesmo formato de retorno)."""
+    grupo_raw = rep.get("groups_1_description") or ""
+    texto_ativo = rep.get("items_log_description") or rep.get("parent_description") or rep.get("item_code") or ""
+    texto_usado = _extrair_nome_usina_fracttal(grupo_raw) or texto_ativo
+    usina = _sup_canonizar(escopo, grupo_raw) or _sup_canonizar(escopo, texto_ativo)
+    tecnico_raw = (rep.get("personnel_description") or rep.get("responsible") or rep.get("created_by") or "").strip()
+    usinas_tec = _sup_tecnico_usinas(escopo).get(_normalizar_tecnico(tecnico_raw), [])
+    alerta = motivo = None
+    if usina:
+        if usinas_tec and usina not in usinas_tec:
+            alerta = (f"⚠️ Cruzamento: técnico \"{tecnico_raw}\" não está mapeado para {usina} "
+                      f"(usinas esperadas dele: {', '.join(usinas_tec)}). Confira se a usina está certa.")
+    else:
+        motivo = f"Grupo/ativo (\"{texto_usado}\") não reconhecido nas usinas do escopo {escopo}."
+    return {"usina": usina, "cliente": _sup_cliente(escopo, usina) if usina else None, "alerta": alerta,
+            "motivo_revisao": motivo, "texto_usado": texto_usado, "tecnico_raw": tecnico_raw, "texto_ativo": texto_ativo}
+
+
+@app.before_request
+def _definir_escopo_supervisora():
+    h = (request.headers.get("X-Escopo") or "").strip().lower()
+    g.escopo_sup = h if h in _SUP_MAPEAMENTO else None
+    if g.escopo_sup and request.path.startswith("/disparar-"):
+        return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
+
+
+_sup_ciclo_lock = threading.Lock()
+
+
+def _supervisoras_ciclo():
+    """Segundo passe do sync da Fracttal, só pras supervisoras (thread própria, escopo por thread):
+    1) rodízio/auditoria de status das OSs da aba dela; 2) descoberta de OTs novas (janela 3h);
+    3) uma vez por dia, varredura de lacunas (OTs abertas antigas que nenhuma janela curta alcança)."""
+    if not _sup_ciclo_lock.acquire(blocking=False):
+        return {"ok": True, "status": "ciclo anterior ainda em andamento"}
+    resultado = {}
+    try:
+        for esc in list(_SUP_MAPEAMENTO):
+            _escopo_tl.v = esc
+            r = {}
+            try:
+                aud = _auditoria_consistencia_os_core(aplicar=True, origem=f"automática ({esc})")
+                r["status"] = {k: aud.get(k) for k in ("divergencias", "revalidadas") if isinstance(aud, dict) and k in aud} if isinstance(aud, dict) else "ok"
+            except Exception as e:
+                log.error(f"[Supervisoras:{esc}] erro no rodízio de status: {e}")
+                r["status"] = {"erro": str(e)}
+            try:
+                desc, st = _sync_fracttal_core(desde_horas=3)
+                r["descoberta"] = {"http": st, "criadas": len(desc.get("criadas", [])) if isinstance(desc, dict) else None}
+            except Exception as e:
+                log.error(f"[Supervisoras:{esc}] erro na descoberta: {e}")
+                r["descoberta"] = {"erro": str(e)}
+            try:
+                hoje = agora_br().strftime("%Y-%m-%d")
+                chave = f"sup_lacunas_{esc}"
+                if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
+                    _gravar_trava(chave, hoje)
+                    lac = _auditoria_lacunas_core(ot_status="1")
+                    r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", []))}
+            except Exception as e:
+                log.error(f"[Supervisoras:{esc}] erro na varredura de lacunas: {e}")
+                r["lacunas"] = {"erro": str(e)}
+            resultado[esc] = r
+    finally:
+        _escopo_tl.v = None
+        _sup_ciclo_lock.release()
+    return resultado
+
+
+@app.route("/supervisoras/backfill", methods=["POST", "GET"])
+def supervisoras_backfill():
+    """Carga inicial: varre as OTs abertas da Fracttal (desde 01/03/2026) e cria na aba da supervisora as
+    que forem das usinas dela. Roda em segundo plano. ?escopo=danuth (padrão: todas)."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    alvo = (request.args.get("escopo") or "").strip().lower()
+    escopos = [alvo] if alvo in _SUP_MAPEAMENTO else list(_SUP_MAPEAMENTO)
+    status_ot = request.args.get("ot_status", "1")
+
+    def _rodar():
+        for esc in escopos:
+            _escopo_tl.v = esc
+            try:
+                res = _auditoria_lacunas_core(ot_status=status_ot)
+                _sup_backfill_ultimo[esc] = {"quando": agora_br().isoformat(), "ok": res.get("ok"),
+                                              "criadas": len(res.get("criadas", [])), "erros": res.get("erros"),
+                                              "paginas": res.get("paginas_lidas")}
+            except Exception as e:
+                log.error(f"[Supervisoras:{esc}] backfill falhou: {e}")
+                _sup_backfill_ultimo[esc] = {"quando": agora_br().isoformat(), "ok": False, "erro": str(e)}
+            finally:
+                _escopo_tl.v = None
+    threading.Thread(target=_rodar, daemon=True).start()
+    return jsonify({"ok": True, "background": True, "escopos": escopos, "ultimo": _sup_backfill_ultimo}), 200
+
+
+_sup_backfill_ultimo = {}
 
 
 
@@ -1491,10 +1749,12 @@ def get_localizacoes_sheet():
 def get_atividades_sheet():
     gc = get_gc()
     ss = gc.open_by_key(SHEET_ID)
+    _esc = _escopo_atual()
+    _nome_aba = _SUP_ABAS[_esc] if _esc else ATIVIDADES_SHEET_NAME  # supervisora: aba própria, separada da do Fred
     try:
-        ws = ss.worksheet(ATIVIDADES_SHEET_NAME)
+        ws = ss.worksheet(_nome_aba)
     except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=ATIVIDADES_SHEET_NAME, rows=1000, cols=len(ATIVIDADES_HEADERS))
+        ws = ss.add_worksheet(title=_nome_aba, rows=1000, cols=len(ATIVIDADES_HEADERS))
         ws.append_row(ATIVIDADES_HEADERS)
         return ws
     # migração incremental: garante que colunas novas (ex: Equipamento, NumeroOS) existam
@@ -2659,6 +2919,8 @@ def enviar_push(titulo, corpo, tipo="geral", url="https://fred-alexandrino.githu
     Envia notificação push para todos os dispositivos registrados.
     tipo: "desligamento" | "nova_ocorrencia" | "geral"
     """
+    if _escopo_atual():
+        return 0  # escopo de supervisora: nunca notifica o Fred
     if not PUSH_ENABLED:
         log.warning("[Push] pywebpush não disponível")
         return 0
@@ -5970,6 +6232,10 @@ def _fracttal_resolver_usina_tecnico(representante):
     Retorna: {"usina": str|None, "cliente": str|None, "alerta": str|None,
               "motivo_revisao": str|None, "texto_usado": str, "tecnico_raw": str}
     """
+    _esc = _escopo_atual()
+    if _esc:
+        return _sup_resolver_usina_tecnico(representante, _esc)
+
     texto_grupo = _extrair_nome_usina_fracttal(representante.get("groups_1_description") or "")
     texto_ativo = representante.get("items_log_description") or representante.get("parent_description") or representante.get("item_code") or ""
 
@@ -9277,6 +9543,8 @@ def _usinas_temporarias():
     Implementado em 30/07/2026 a pedido do Fred; restaurado em 31/07/2026
     depois que uma sessão paralela sobrescreveu o app.py sem essa
     funcionalidade (ver histórico de commits — commit 3b1d1e77c0)."""
+    if _escopo_atual():
+        return []  # supervisora: sem supervisão temporária
     agora_ts = time.time()
     if _usinas_temporarias_cache["dados"] is not None and agora_ts < _usinas_temporarias_cache["expira_em"]:
         return _usinas_temporarias_cache["dados"]
@@ -9409,6 +9677,9 @@ def _mapa_cluster_usina():
     """usina -> cluster. Base = aba _Sistema ('cluster_usina:<Usina>'), mas o
     MAPEAMENTO_UFVS (fonte única, 29/09/2026) sempre vence nas usinas que ele
     cobre — assim a config não fica desatualizada sem ninguém perceber."""
+    _esc = _escopo_atual()
+    if _esc:
+        return {u["usina"]: u["cluster"] for u in _SUP_MAPEAMENTO[_esc]}
     # 02/10/2026: chaves antigas da _Sistema (usinas que saíram da supervisão,
     # ex.: Sal Energia, Junco) não entram mais — só usinas do mapeamento atual
     # ou em supervisão temporária ativa; o MAPEAMENTO_UFVS sempre vence.
@@ -9880,6 +10151,15 @@ def _sync_fracttal_worker():
     except Exception as e:
         log.error(f"[DescobertaRapida] Erro no piggyback: {e}")
         body["descoberta_rapida_check"] = {"erro": str(e)}
+
+    # Segundo passe, só pras supervisoras (aba e catálogo próprios) — em thread
+    # separada pra nunca atrasar nem travar o ciclo do Fred.
+    try:
+        threading.Thread(target=_supervisoras_ciclo, daemon=True).start()
+        body["supervisoras"] = "disparado em segundo plano"
+    except Exception as e:
+        log.error(f"[Supervisoras] Falha ao disparar ciclo: {e}")
+        body["supervisoras"] = {"erro": str(e)}
 
     _sync_fracttal_last_result["body"] = body
     _sync_fracttal_last_result["concluido_em"] = datetime.now(_TZ_BR).isoformat()
@@ -12068,6 +12348,8 @@ FORMATO DE SAÍDA (OBRIGATÓRIO): responda APENAS com um JSON válido (sem markd
 
 
 def _enviar_mensagem_grupo(grupo_id, texto):
+    if _escopo_atual():
+        raise RuntimeError("Envio por WhatsApp desabilitado no escopo de supervisora")
     if not WPP_SERVER_URL:
         raise RuntimeError("WPP_SERVER_URL não configurado")
     r = requests.post(
