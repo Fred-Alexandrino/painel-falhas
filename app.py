@@ -1038,6 +1038,14 @@ _sup_backfill_ultimo = {}
 def supervisoras_diagnostico():
     """Diagnóstico agregado da aba da supervisora (só contagens): linhas e usinas gravadas."""
     esc = (request.args.get("escopo") or "danuth").strip().lower()
+    if esc == "fred":  # aba principal, só pra checar vazamento de linhas das supervisoras
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        from collections import Counter
+        usinas = Counter((r[2] if len(r) > 2 else "") for r in todos[1:] if r and r[0].strip())
+        return jsonify({"ok": True, "aba": ws.title, "linhas": len(todos) - 1,
+                        "nao_reconhecidas": {u: n for u, n in usinas.items() if canonizar_usina(u) is None},
+                        "ultimas": [[c[:20] for c in r[:5]] + [r[13] if len(r) > 13 else ""] for r in todos[-4:]]}), 200
     if esc not in _SUP_MAPEAMENTO:
         return jsonify({"ok": False}), 400
     _escopo_tl.v = esc
