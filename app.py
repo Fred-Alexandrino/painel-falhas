@@ -1003,12 +1003,14 @@ def _supervisoras_ciclo():
                 r["descoberta"] = {"erro": str(e)}
             try:
                 hoje = agora_br().strftime("%Y-%m-%d")
-                chave = f"sup_lacunas_v2_{esc}"
+                chave = f"sup_lacunas_v3_{esc}"
                 if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
                     lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
                     r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
                                     "erros": lac.get("erros"), "paginas": lac.get("paginas_lidas"),
-                                    "gap": lac.get("gap_provavel"), "total": lac.get("total_fracttal_linhas")}
+                                    "gap": lac.get("gap_provavel"), "total": lac.get("total_fracttal_linhas"),
+                                    "nao_reconhecidos": sorted({x.get("motivo", "")[:90] for x in lac.get("revisao_manual", [])
+                                                                if any(c in x.get("motivo", "") for c in ("Athon", "Axis", "Thopen"))})[:40]}
                     if lac.get("ok") and not lac.get("erros"):
                         _gravar_trava(chave, hoje)  # só marca "feito hoje" se concluiu sem erro
             except Exception as e:
