@@ -958,6 +958,21 @@ def supervisoras_status():
                     "escopos": list(_SUP_MAPEAMENTO)}), 200
 
 
+def _sup_limpar_lixo(ws):
+    """Remove linhas "órfãs" (sem ID na coluna A) da aba da supervisora — resíduo de gravações
+    deslocadas — e regrava as válidas coladas no topo. Só roda se houver lixo."""
+    todos = ws.get_all_values()
+    legit = [r for r in todos[1:] if r and r[0].strip()]
+    lixo = [r for r in todos[1:] if r and not r[0].strip() and any(c.strip() for c in r)]
+    if not lixo:
+        return 0
+    ws.batch_clear([f"A2:Z{len(todos)}"])
+    if legit:
+        ws.update(range_name="A2", values=[r + [""] * (len(ATIVIDADES_HEADERS) - len(r)) for r in legit],
+                  value_input_option="USER_ENTERED")
+    return len(lixo)
+
+
 def _supervisoras_ciclo():
     """Segundo passe do sync da Fracttal, só pras supervisoras (thread própria, escopo por thread):
     1) rodízio/auditoria de status das OSs da aba dela; 2) descoberta de OTs novas (janela 3h);
@@ -969,6 +984,11 @@ def _supervisoras_ciclo():
         for esc in list(_SUP_MAPEAMENTO):
             _escopo_tl.v = esc
             r = {}
+            try:
+                r["limpeza"] = _sup_limpar_lixo(get_atividades_sheet())
+            except Exception as e:
+                log.error(f"[Supervisoras:{esc}] erro na limpeza da aba: {e}")
+                r["limpeza"] = {"erro": str(e)}
             try:
                 aud = _auditoria_consistencia_os_core(aplicar=True, origem=f"automática ({esc})")
                 r["status"] = {k: aud.get(k) for k in ("divergencias", "revalidadas") if isinstance(aud, dict) and k in aud} if isinstance(aud, dict) else "ok"
@@ -5348,7 +5368,13 @@ def _criar_atividade_interna(cliente, usina="", equipamento="", descricao="", re
              prioridade, status, agora, data_conclusao_inicial, historico_inicial, editor, numeroOS,
              statusOS, observacoesOS, linkOS, statusTarefaOS, etiquetasOS, anotacoesPessoais,
              percentualOS, statusGeralOS, detalhesEquipamentosOS, "", ""]
-    ws.append_row(linha)
+    if _escopo_atual():
+        # aba de supervisora: escrita em linha explícita (o append_row do gspread
+        # deslocava colunas quando a aba tinha linhas parciais) — nunca afeta a aba do Fred
+        _gspread_retry(lambda: ws.update(range_name=f"A{len(todos) + 1}", values=[linha],
+                                          value_input_option="USER_ENTERED"))
+    else:
+        ws.append_row(linha)
     # mantém `todos` coerente para quem estiver criando várias atividades em sequência
     todos.append(linha)
     log.info(f"[atividade] #{novo_id} {cliente}/{usina} — {descricao[:60]} | editor={editor}")
