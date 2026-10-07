@@ -1003,7 +1003,7 @@ def _supervisoras_ciclo():
                 r["descoberta"] = {"erro": str(e)}
             try:
                 hoje = agora_br().strftime("%Y-%m-%d")
-                chave = f"sup_lacunas_v3_{esc}"
+                chave = f"sup_lacunas_v4_{esc}"
                 if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
                     lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
                     r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
