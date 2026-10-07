@@ -5046,13 +5046,23 @@ def _auditoria_lacunas_core(ot_status="1", pagina_limit=100, max_paginas=40):
     paginas_lidas = 0
     since_tudo = "2026-03-01T00:00:00-00:00"  # início operacional do painel — nunca perde nada anterior
     for _ in range(max_paginas):
-        try:
-            ots, total = _fracttal_listar_pagina(since=since_tudo, ot_status=ot_status,
-                                                   start=start, limit=pagina_limit)
-        except Exception as e:
-            log.error(f"[AuditoriaLacunas] Erro ao paginar Fracttal (start={start}): {e}")
-            erros_total.append(f"start={start}: {e}")
+        ots = None
+        for _tent in range(5):  # a Fracttal limita (429) quando várias varreduras rodam juntas: espera e tenta de novo
+            try:
+                ots, total = _fracttal_listar_pagina(since=since_tudo, ot_status=ot_status,
+                                                       start=start, limit=pagina_limit)
+                break
+            except Exception as e:
+                if "429" in str(e) and _tent < 4:
+                    time.sleep(20 * (_tent + 1))
+                    continue
+                log.error(f"[AuditoriaLacunas] Erro ao paginar Fracttal (start={start}): {e}")
+                erros_total.append(f"start={start}: {e}")
+                break
+        if ots is None:
             break
+        if _escopo_atual():
+            time.sleep(2)  # ritmo mais lento no passe das supervisoras, pra não competir com o ciclo principal
 
         paginas_lidas += 1
         for folio, tasks in _fracttal_agrupar_por_wo(ots):
