@@ -966,10 +966,10 @@ def _sup_limpar_lixo(ws):
     lixo = [r for r in todos[1:] if r and not r[0].strip() and any(c.strip() for c in r)]
     if not lixo:
         return 0
-    ws.batch_clear([f"A2:Z{len(todos)}"])
-    if legit:
-        ws.update(range_name="A2", values=[r + [""] * (len(ATIVIDADES_HEADERS) - len(r)) for r in legit],
-                  value_input_option="USER_ENTERED")
+    n = len(ATIVIDADES_HEADERS)
+    ws.clear()  # limpa a aba inteira (o lixo ficava em colunas muito além de Z)
+    ws.update(range_name="A1", values=[todos[0][:n]] + [(r + [""] * n)[:n] for r in legit],
+              value_input_option="USER_ENTERED")
     return len(lixo)
 
 
@@ -1003,7 +1003,7 @@ def _supervisoras_ciclo():
                 r["descoberta"] = {"erro": str(e)}
             try:
                 hoje = agora_br().strftime("%Y-%m-%d")
-                chave = f"sup_lacunas_v4_{esc}"
+                chave = f"sup_lacunas_v5_{esc}"
                 if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
                     lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
                     r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
