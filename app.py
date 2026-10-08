@@ -3977,13 +3977,24 @@ def _sobreaviso_extrair_estado_do_html(html_text):
     atualizada"), com um '<\\/script>' ESCAPADO no meio do valor — um regex
     simples de fechamento acaba pegando a tag errada e quebra o parse."""
     marca = 'id="estado"'
-    pos = html_text.find(marca)
-    if pos == -1:
+    if marca not in html_text:
         raise ValueError("Tag <script id=\"estado\"> não encontrada — esse arquivo não parece ser a Escala de Sobreaviso.")
-    inicio = html_text.find(">", pos) + 1
     decoder = json.JSONDecoder()
-    estado, _ = decoder.raw_decode(html_text, inicio)
-    return estado
+    # O arquivo pode ter MAIS DE UMA tag id="estado": o artifact publicado traz
+    # uma cópia do próprio HTML (template com o placeholder {{ESTADO}}) antes do
+    # JSON real. Tenta cada ocorrência e fica com a primeira que é um estado
+    # válido (dict com 'blocos' e 'grupos').
+    pos = html_text.find(marca)
+    while pos != -1:
+        inicio = html_text.find(">", pos) + 1
+        try:
+            estado, _ = decoder.raw_decode(html_text, inicio)
+            if isinstance(estado, dict) and "blocos" in estado and "grupos" in estado:
+                return estado
+        except ValueError:
+            pass
+        pos = html_text.find(marca, pos + len(marca))
+    raise ValueError("Nenhum estado válido (blocos/grupos) encontrado no arquivo — esse arquivo não parece ser a Escala de Sobreaviso.")
 
 
 def _sobreaviso_salvar_estado(estado, nome_arquivo=""):
