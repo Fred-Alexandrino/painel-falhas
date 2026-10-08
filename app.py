@@ -1128,6 +1128,19 @@ _sup_ciclo_lock = threading.Lock()
 _sup_ciclo_ultimo = {}
 
 
+@app.route("/supervisoras/fracttal-ping", methods=["GET"])
+def supervisoras_fracttal_ping():
+    """Diagnóstico: uma única consulta mínima à Fracttal, devolvendo status e cabeçalhos de limite."""
+    try:
+        _fracttal_listar_pagina(ot_status="1", start=0, limit=1)
+        return jsonify({"ok": True})
+    except Exception as e:
+        resp = getattr(e, "response", None)
+        hdr = {k: v for k, v in (resp.headers.items() if resp is not None else []) if k.lower().startswith(("retry", "x-rate", "x-ratelimit"))}
+        return jsonify({"ok": False, "erro": str(e)[:200], "headers": hdr,
+                        "corpo": (resp.text[:300] if resp is not None else "")}), 200
+
+
 @app.route("/supervisoras/status", methods=["GET"])
 def supervisoras_status():
     """Só contadores/diagnóstico do ciclo das supervisoras — sem dados de OS."""
