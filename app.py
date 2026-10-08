@@ -1176,6 +1176,19 @@ def _sup_limpar_lixo(ws):
     return len(lixo)
 
 
+def _sup_fracttal_livre(tentativas=8, espera=20):
+    """Espera a cota da Fracttal (≈200 req/min por empresa) liberar antes de gastar chamadas."""
+    for _ in range(tentativas):
+        try:
+            _fracttal_listar_pagina(ot_status="1", start=0, limit=1)
+            return True
+        except Exception as e:
+            if "429" not in str(e):
+                return False
+            time.sleep(espera)
+    return False
+
+
 _sup_lacunas_tentativa = {"ts": 0.0}
 _sup_ciclo_inicio = {"ts": 0.0}
 
@@ -1259,6 +1272,9 @@ def _supervisoras_ciclo():
     _sup_ciclo_inicio["ts"] = time.time()
     resultado = {}
     try:
+        if not _sup_fracttal_livre():
+            _sup_ciclo_ultimo["pulado"] = {"quando": agora_br().isoformat(), "motivo": "Fracttal limitando (429) — ciclo adiado"}
+            return {"ok": True, "status": "Fracttal limitando — adiado"}
         for esc in list(_SUP_MAPEAMENTO):
             _escopo_tl.v = esc
             r = {}
@@ -1276,7 +1292,11 @@ def _supervisoras_ciclo():
                 log.error(f"[Supervisoras:{esc}] erro no rodízio de status: {e}")
                 r["status"] = {"erro": str(e)}
             try:
-                desc, st = _sync_fracttal_core(desde_horas=3)
+                for _t in range(3):
+                    desc, st = _sync_fracttal_core(desde_horas=3)
+                    if st != 502:
+                        break
+                    time.sleep(20)
                 r["descoberta"] = {"http": st, "criadas": len(desc.get("criadas", [])) if isinstance(desc, dict) else None}
             except Exception as e:
                 log.error(f"[Supervisoras:{esc}] erro na descoberta: {e}")
