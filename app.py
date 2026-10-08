@@ -826,31 +826,162 @@ _SUP_MAPEAMENTO = {
     ],
 }
 _SUP_MAPEAMENTO["camila"] = [
-        {'cluster': 'MT OESTE', 'cliente': 'Thopen', 'usina': 'Aparecida do Taboado', 'cidade': 'Aparecida do Taboado', 'responsavel': 'Paulo Sergio Ribeiro', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'SP NORTE 02', 'cliente': 'Thopen', 'usina': 'Barretos', 'cidade': 'Barretos', 'responsavel': 'Anderson Luiz Trigo Parente', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'SP NORTE 02', 'cliente': 'Thopen', 'usina': 'Altair', 'cidade': 'Altair', 'responsavel': 'Anderson Luiz Trigo Parente', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'SP NORTE 03', 'cliente': 'Thopen', 'usina': 'Brodowski', 'cidade': 'Brodowski', 'responsavel': 'Luis Paulo Alves de Moura', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'SP OESTE', 'cliente': 'Thopen', 'usina': 'Tanabi', 'cidade': 'Tanabi', 'responsavel': 'Paulo Sergio Ribeiro', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'SP OESTE', 'cliente': 'Thopen', 'usina': 'Fernandópolis', 'cidade': 'Fernandópolis', 'responsavel': 'Paulo Sergio Ribeiro', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN SUL 01', 'cliente': 'Thopen', 'usina': 'Parelhas', 'cidade': 'Parelhas', 'responsavel': 'Claudio Martins da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN SUL 01', 'cliente': 'Thopen', 'usina': 'Rodrigues 1', 'cidade': 'Rodrigues', 'responsavel': 'Claudio Martins da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN SUL 01', 'cliente': 'Thopen', 'usina': 'Caicó', 'cidade': 'Caicó', 'responsavel': 'Claudio Martins da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN OESTE 01', 'cliente': 'Thopen', 'usina': 'Jucurutu', 'cidade': 'Jucurutu', 'responsavel': 'Cleiton Fernandes de Farias Júnior', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN OESTE 01', 'cliente': 'Thopen', 'usina': 'Itajá 1', 'cidade': 'Itajá', 'responsavel': 'Cleiton Fernandes de Farias Júnior', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN OESTE 01', 'cliente': 'Thopen', 'usina': 'Itajá 2', 'cidade': 'Itajá', 'responsavel': 'Cleiton Fernandes de Farias Júnior', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN LESTE 01', 'cliente': 'Thopen', 'usina': 'Rodrigues 2', 'cidade': 'Rodrigues', 'responsavel': 'Valdério Paz', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'RN LESTE 01', 'cliente': 'Thopen', 'usina': 'Senador Elói', 'cidade': 'Senador Elói', 'responsavel': 'Valdério Paz', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'AL OESTE 01', 'cliente': 'Thopen', 'usina': 'Santana do Ipanema', 'cidade': 'Santana do Ipanema', 'responsavel': 'Ricardo da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'AL OESTE 01', 'cliente': 'Thopen', 'usina': 'Inhapi', 'cidade': 'Inhapi', 'responsavel': 'Ricardo da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'AL OESTE 01', 'cliente': 'Thopen', 'usina': 'Ouro Branco', 'cidade': 'Ouro Branco', 'responsavel': 'Ricardo da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'PA NORTE 01', 'cliente': 'Athon', 'usina': 'Santa Maria', 'cidade': 'Santa Maria', 'responsavel': 'Gilson Souza', 'funcao': 'Técnico', 'membros': ['Manuel Silva'], 'aliases': ['SMP100'], 'alternativo': ''},
-        {'cluster': 'PA NORTE 01', 'cliente': 'Athon', 'usina': 'Capitão Poço', 'cidade': 'Capitão Poço', 'responsavel': 'Gilson Souza', 'funcao': 'Técnico', 'membros': ['Manuel Silva'], 'aliases': ['CPP100'], 'alternativo': ''},
-        {'cluster': 'PA NORTE 02', 'cliente': 'Athon', 'usina': 'Mãe do Rio', 'cidade': 'Mãe do Rio', 'responsavel': 'Frank Melo', 'funcao': 'Técnico', 'membros': ['Azinaldo'], 'aliases': ['MRO100'], 'alternativo': ''},
-        {'cluster': 'PARÁ LESTE', 'cliente': 'Athon', 'usina': 'Jacundá', 'cidade': 'Jacundá', 'responsavel': 'James Chaves', 'funcao': 'Técnico', 'membros': ['Joilson'], 'aliases': ['JCD100'], 'alternativo': ''},
-        {'cluster': 'PARÁ LESTE', 'cliente': 'Athon', 'usina': 'Marabá 1', 'cidade': 'Marabá', 'responsavel': 'James Chaves', 'funcao': 'Técnico', 'membros': ['Joilson'], 'aliases': ['MAB100'], 'alternativo': ''},
-        {'cluster': 'PARÁ LESTE', 'cliente': 'Athon', 'usina': 'Marabá 2', 'cidade': 'Marabá', 'responsavel': 'James Chaves', 'funcao': 'Técnico', 'membros': ['Joilson'], 'aliases': ['MAB200'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Inhapi', 'cidade': 'AL', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-INP100', 'Inhapi AL'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Ouro Branco', 'cidade': 'AL', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-ORB100', 'Ouro Branco AL'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Santana do Ipanema', 'cidade': 'AL', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-SDI100', 'Santana do Ipanema AL'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Thopen', 'usina': 'Bonfim Limoeiro do Norte', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-BLN100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Belo Jardim', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-BJD100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'São Bento do Una', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-SBU100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Vertentes 2', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-VRT200'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Thopen', 'usina': 'Junco', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-JNC100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Caicó', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['CAI100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Thopen', 'usina': 'Itajá 1 e 2', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Itajá 1', 'Itajá 2', 'ITA100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Thopen', 'usina': 'Jucurutu', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-JUC100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Parelhas', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-PRL100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Rodrigues I', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-RDR100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Rodrigues II', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-RDR200'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Thopen', 'usina': 'Senador Elói I', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-SNE100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Altair', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-ALT100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Alvares Machado', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Álvares Machado', 'THPN-ALM100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Barretos 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-BRS100'], 'alternativo': ''},
+        {'cluster': 'Sul · Maringá-PR', 'cliente': 'Thopen', 'usina': 'Bernardino de Campos', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['BDC100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Boa Esperança do Sul 1 e 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Boa Esperança do Sul 1', 'Boa Esperança do Sul 2', 'THPN-BES100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Brodowski', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-BWK100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Fernandópolis', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-FRN100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Ibaté 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-IBT100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Ibaté 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-IBT200'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Matão 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-MTO100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Sítio Bonfim', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-STA100'], 'alternativo': ''},
+        {'cluster': 'Sul · Maringá-PR', 'cliente': 'Thopen', 'usina': 'Taguaí 1 e 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Taguaí 1', 'Taguaí 2', 'THPN-TGI100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Tanabi', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-TNB100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Topázio (Matão 2)', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Topázio', 'Matão 2', 'THPN-TPZ100'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Capitão Poço 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Capitão Poço', 'Capitão Poço 1', 'ATHN-CPP100', 'CPP100'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Jacundá 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Jacundá', 'Jacundá 1', 'ATHN-JCD100', 'JCD100'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Marabá 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Marabá 1', 'ATHN-MAB100', 'MAB100'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Marabá 200', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Marabá 2', 'ATHN-MAB200', 'MAB200'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Mãe do Rio 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Mãe do Rio', 'Mãe do Rio 1', 'ATHN-MRO100', 'MRO100'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Santa Maria do Pará 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Santa Maria', 'Santa Maria do Pará', 'ATHN-SMP100', 'SMP100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Qair', 'usina': 'Aquiraz', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Qair', 'usina': 'Cascavel', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Thopen', 'usina': 'Ipixuna 1 e 2', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Ipixuna 1', 'Ipixuna 2', 'THPN-IPX100'], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Thopen', 'usina': 'Santarém 1 e 2', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Santarém 1', 'Santarém 2', 'THPN-STR100'], 'alternativo': ''},
 ]
-_SUP_ABAS = {"danuth": "Painel de Atividades - Danuth", "camila": "Painel de Atividades - Camila"}
+_SUP_MAPEAMENTO["daniel"] = [
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Faro Energy', 'usina': 'Porto Seguro 15', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Faro Energy', 'usina': 'São Sebastião do Passé 1', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Faro Energy', 'usina': 'São Sebastião do Passé 2', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Monte Alto 1', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Monte Alto 2', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Monte Alto 3', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Morro Branco 2', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Morro Branco 3', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Morro Branco 8', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Praia Grande 1', 'cidade': 'MA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Praia Grande 2', 'cidade': 'MA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Praia Grande 3', 'cidade': 'MA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Praia Grande 4', 'cidade': 'MA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Praia Grande 6', 'cidade': 'MA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Praia Grande 8', 'cidade': 'MA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Cabo Branco 2', 'cidade': 'PB', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Cabo Branco 3', 'cidade': 'PB', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Alto do Pajeú 1', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Alto do Pajeú 2', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Canabrava', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Corisco', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Oiticica', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Olinda', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Ponta da Pedra 1', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Ponta da Pedra 2', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Faro Energy', 'usina': 'Ponta da Pedra 3', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Pedra do Sal 1', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Pedra do Sal 2', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Pedra do Sal 3', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Pedra do Sal 4', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Riacho Fundo 2', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Riacho Fundo 1', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Faro Energy', 'usina': 'Riacho Fundo 3', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Faro Energy', 'usina': 'Rio do Fogo 3', 'cidade': 'TO', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Faro Energy', 'usina': 'Rio do Fogo 1', 'cidade': 'TO', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Faro Energy', 'usina': 'Rio do Fogo 2', 'cidade': 'TO', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Apolo', 'usina': 'Ibipeba', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Apolo', 'usina': 'Iramaia II', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Apolo', 'usina': 'Rio do Peixe I e II', 'cidade': 'PB', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Rio do Peixe I', 'Rio do Peixe II', 'Rio do Peixe 1', 'Rio do Peixe 2'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Apolo', 'usina': 'Gravataí II', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GD Energy', 'usina': 'Guajirú', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-GJR100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GD Energy', 'usina': 'Sol do Norte 1', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-SON100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GD Energy', 'usina': 'Sol do Norte 2', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-SON200'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Alves Lima', 'usina': 'Morada Nova', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['ALLM-MRN100'], 'alternativo': ''},
+]
+_SUP_MAPEAMENTO["patrick"] = [
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Elis Energia', 'usina': 'Brumado', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Elis Energia', 'usina': 'Luís Eduardo Magalhães 1 a 3', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Luís Eduardo Magalhães 1', 'Luís Eduardo Magalhães 2', 'Luís Eduardo Magalhães 3'], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Elis Energia', 'usina': 'Santa Maria da Vitória 1', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Elis Energia', 'usina': 'Tanhaçu', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SE · Leste de SP', 'cliente': 'Elis Energia', 'usina': 'Catingueiro', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SE · Leste de SP', 'cliente': 'Elis Energia', 'usina': 'Divinópolis 1 a 4', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Divinópolis 1', 'Divinópolis 2', 'Divinópolis 3', 'Divinópolis 4'], 'alternativo': ''},
+        {'cluster': 'SE · Leste de SP', 'cliente': 'Elis Energia', 'usina': 'Olaria', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SE · Leste de SP', 'cliente': 'Elis Energia', 'usina': 'Ranca Toco 1 a 3', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Ranca Toco 1', 'Ranca Toco 2', 'Ranca Toco 3'], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Elis Energia', 'usina': 'Petrolina 1 a 3', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Petrolina 1', 'Petrolina 2', 'Petrolina 3'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'Elis Energia', 'usina': 'Surubim 1 a 3', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Surubim 1', 'Surubim 2', 'Surubim 3'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Elis Energia', 'usina': 'Bom Jesus 1,2 e 3', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Bom Jesus 1', 'Bom Jesus 2', 'Bom Jesus 3'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Elis Energia', 'usina': 'Bom Jesus 4', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Elis Energia', 'usina': 'Francisco Santos', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'GreenYellow', 'usina': 'Irece 1', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GY-IRC100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GreenYellow', 'usina': 'Cedro 1', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GY-CDR100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GreenYellow', 'usina': 'Cedro 2', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GY-CDR200'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GreenYellow', 'usina': 'Castelo do Piauí', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GY-CDP100'], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GreenYellow', 'usina': 'Demerval Lobão 1', 'cidade': 'PI', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GY-DML100'], 'alternativo': ''},
+        {'cluster': 'NE · Recife-PE', 'cliente': 'GreenYellow', 'usina': 'Macaíba 1', 'cidade': 'RN', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GY-MCB100'], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'SEMP', 'usina': 'Tucano 1', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['SEMP-TCN100'], 'alternativo': ''},
+        {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'SEMP', 'usina': 'Tucano 2', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['SEMP-TCN200'], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Brasília', 'cidade': 'DF', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Brazlandia II', 'cidade': 'DF', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Brazlândia II'], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Brazlândia I', 'cidade': 'DF', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Pinheiros', 'cidade': 'ES', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Ipameri', 'cidade': 'GO', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': "Sitiod'Abadia", 'cidade': 'GO', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ["Sítio d'Abadia", "Sítio D'Abadia"], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Bambuí', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Jacutinga 2', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Lagoa da Prata', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Luz I', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Luz II', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Muzambinho', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Poté1', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Poté 1'], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Poté2', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Poté 2'], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Poté3', 'cidade': 'MG', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Poté 3'], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Barra das Garças', 'cidade': 'MT', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Chapada dos Guimarães', 'cidade': 'MT', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Nova Xavantina', 'cidade': 'MT', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Poconé', 'cidade': 'MT', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Porto Real 1', 'cidade': 'RJ', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Porto Real 2', 'cidade': 'RJ', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Porto Real 3', 'cidade': 'RJ', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'São Fidelis', 'cidade': 'RJ', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['São Fidélis'], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Valença', 'cidade': 'RJ', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Andradina 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Andradina 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Boituva I', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Boituva II', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Cachoeira Paulista 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Cachoeira Paulista 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Cachoeira Paulista 3', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Caçapava', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Duartina', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Getulina 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Getulina 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Guararema', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Itapui 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Itapui 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Martinópolis', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Panorama', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Piacatu', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Pirapora do Bom Jesus 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Pirapora do Bom Jesus 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Porto Feliz', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+]
+_SUP_RENOMEAR = {"camila": {'Barretos': 'Barretos 1', 'Rodrigues 1': 'Rodrigues I', 'Rodrigues 2': 'Rodrigues II', 'Senador Elói': 'Senador Elói I', 'Santa Maria': 'Santa Maria do Pará 100', 'Capitão Poço': 'Capitão Poço 100', 'Mãe do Rio': 'Mãe do Rio 100', 'Jacundá': 'Jacundá 100', 'Marabá 1': 'Marabá 100', 'Marabá 2': 'Marabá 200'}}
+_SUP_ABAS = {"danuth": "Painel de Atividades - Danuth", "camila": "Painel de Atividades - Camila",
+             "daniel": "Painel de Atividades - Daniel", "patrick": "Painel de Atividades - Patrick"}
 _SUP_IDX_CACHE = {}
 
 
@@ -937,11 +1068,16 @@ def _sup_canonizar(escopo, texto_bruto):
     nome = re.sub(r"\s+AL$", "", nome)  # "Ouro Branco AL" (UF colada ao nome, como na tabela)
     if not nome:
         return None
+    direto = _sup_resolver_um(escopo, nome, hint)   # nome exato/alias (inclui "X 1 e 2", "X 1 a 3" cadastrados)
+    if direto:
+        return direto["usina"]
     comb = re.match(r"^(.+?)\s+(\d+|[ivx]+)\s+e\s+(\d+|[ivx]+)$", nome, re.IGNORECASE)
     if comb:
         a = _sup_resolver_um(escopo, f"{comb.group(1)} {comb.group(2)}", hint)
         b = _sup_resolver_um(escopo, f"{comb.group(1)} {comb.group(3)}", hint)
         if a and b:
+            if a is b:
+                return a["usina"]
             return f"{a['usina']} e {b['usina'].rsplit(' ', 1)[-1]}"
         return None
     u = _sup_resolver_um(escopo, nome, hint)
@@ -999,6 +1135,19 @@ def supervisoras_status():
                     "escopos": list(_SUP_MAPEAMENTO)}), 200
 
 
+def _sup_renomear_usinas(ws, esc):
+    """Ajusta, na aba da supervisora, usinas gravadas com o nome antigo do mapeamento (coluna Usina)."""
+    mapa = _SUP_RENOMEAR.get(esc)
+    if not mapa:
+        return 0
+    todos = ws.get_all_values()
+    upd = [{"range": f"C{i}", "values": [[mapa[r[2].strip()]]]}
+           for i, r in enumerate(todos[1:], start=2) if len(r) > 2 and r[2].strip() in mapa]
+    for k in range(0, len(upd), 100):
+        ws.batch_update(upd[k:k + 100], value_input_option="USER_ENTERED")
+    return len(upd)
+
+
 def _sup_limpar_lixo(ws):
     """Remove linhas "órfãs" (sem ID na coluna A) da aba da supervisora — resíduo de gravações
     deslocadas — e regrava as válidas coladas no topo. Só roda se houver lixo."""
@@ -1026,7 +1175,9 @@ def _supervisoras_ciclo():
             _escopo_tl.v = esc
             r = {}
             try:
-                r["limpeza"] = _sup_limpar_lixo(get_atividades_sheet())
+                _ws_sup = get_atividades_sheet()
+                r["renomeadas"] = _sup_renomear_usinas(_ws_sup, esc)
+                r["limpeza"] = _sup_limpar_lixo(_ws_sup)
             except Exception as e:
                 log.error(f"[Supervisoras:{esc}] erro na limpeza da aba: {e}")
                 r["limpeza"] = {"erro": str(e)}
@@ -1044,7 +1195,7 @@ def _supervisoras_ciclo():
                 r["descoberta"] = {"erro": str(e)}
             try:
                 hoje = agora_br().strftime("%Y-%m-%d")
-                chave = f"sup_lacunas_v6_{esc}"
+                chave = f"sup_lacunas_v7_{esc}"
                 if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
                     lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
                     r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
@@ -14308,6 +14459,8 @@ def disparar_comunicado_livre():
 _ASSINATURAS = {
     "danuth": ("Danuth Fernandes", "Supervisora de Contratos"),
     "camila": ("Camila Viana", "Supervisora de Contratos"),
+    "daniel": ("Daniel Rodrigues", "Supervisor de Contratos"),
+    "patrick": ("Patrick Viana", "Supervisor de Contratos"),
 }
 
 
