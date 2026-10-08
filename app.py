@@ -1190,6 +1190,7 @@ def _sup_fracttal_livre(tentativas=8, espera=20):
 
 
 _sup_lacunas_tentativa = {"ts": 0.0}
+_sup_lacunas_retomar = {"start": 0}   # varredura retomável: segue de onde parou se a Fracttal limitar
 _sup_ciclo_inicio = {"ts": 0.0}
 
 
@@ -1210,7 +1211,7 @@ def _sup_lacunas_compartilhada(escopos):
         estado[esc] = {"ws": ws, "todos": todos,
                        "folios": {r[13].strip() for r in todos[1:] if len(r) > 13 and r[13].strip()},
                        "criadas": 0, "unrec": set()}
-    erros, paginas, start = [], 0, 0
+    erros, paginas, start = [], 0, int(_sup_lacunas_retomar["start"] or 0)
     since_tudo = "2026-03-01T00:00:00-00:00"
     try:
         for _ in range(150):
@@ -1226,6 +1227,7 @@ def _sup_lacunas_compartilhada(escopos):
                     erros.append(f"start={start}: {e}")
                     break
             if ots is None:
+                _sup_lacunas_retomar["start"] = start   # retoma daqui na próxima tentativa
                 break
             paginas += 1
             grupos = _fracttal_agrupar_por_wo(ots)
@@ -1252,9 +1254,11 @@ def _sup_lacunas_compartilhada(escopos):
                     except Exception as e:
                         erros.append(f"{esc}:{folio}: {str(e)[:80]}")
             start += 100
+            _sup_lacunas_retomar["start"] = start
             if start >= total:
+                _sup_lacunas_retomar["start"] = 0
                 break
-            time.sleep(2.5)
+            time.sleep(3.5)
     finally:
         _escopo_tl.v = None
     return {"ok": True, "total": total, "paginas": paginas, "erros": erros[:12], "n_erros": len(erros),
@@ -1309,7 +1313,7 @@ def _supervisoras_ciclo():
             hoje = agora_br().strftime("%Y-%m-%d")
             chave = "sup_lacunas_v8_" + "_".join(sorted(_SUP_MAPEAMENTO))
             if (agora_br().hour >= 6 and _ler_trava(chave) != hoje
-                    and time.time() - _sup_lacunas_tentativa["ts"] > 900):
+                    and time.time() - _sup_lacunas_tentativa["ts"] > 300):
                 _sup_lacunas_tentativa["ts"] = time.time()
                 lac = _sup_lacunas_compartilhada(list(_SUP_MAPEAMENTO))
                 resultado["lacunas"] = lac
