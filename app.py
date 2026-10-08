@@ -1164,6 +1164,7 @@ def _sup_limpar_lixo(ws):
 
 
 _sup_lacunas_tentativa = {"ts": 0.0}
+_sup_ciclo_inicio = {"ts": 0.0}
 
 
 def _sup_lacunas_compartilhada(escopos):
@@ -1238,8 +1239,11 @@ def _supervisoras_ciclo():
     """Segundo passe do sync da Fracttal, só pras supervisoras (thread própria, escopo por thread):
     1) rodízio/auditoria de status das OSs da aba dela; 2) descoberta de OTs novas (janela 3h);
     3) uma vez por dia, varredura de lacunas (OTs abertas antigas que nenhuma janela curta alcança)."""
+    if time.time() - _sup_ciclo_inicio["ts"] < 540:
+        return {"ok": True, "status": "ciclo recente — aguardando intervalo (menos carga na API da Fracttal)"}
     if not _sup_ciclo_lock.acquire(blocking=False):
         return {"ok": True, "status": "ciclo anterior ainda em andamento"}
+    _sup_ciclo_inicio["ts"] = time.time()
     resultado = {}
     try:
         for esc in list(_SUP_MAPEAMENTO):
@@ -1253,7 +1257,7 @@ def _supervisoras_ciclo():
                 log.error(f"[Supervisoras:{esc}] erro na limpeza da aba: {e}")
                 r["limpeza"] = {"erro": str(e)}
             try:
-                aud = _auditoria_consistencia_os_core(aplicar=True, origem=f"automática ({esc})")
+                aud = _auditoria_consistencia_os_core(aplicar=True, limite_recheck_ao_vivo=8, origem=f"automática ({esc})")
                 r["status"] = {k: aud.get(k) for k in ("divergencias", "revalidadas") if isinstance(aud, dict) and k in aud} if isinstance(aud, dict) else "ok"
             except Exception as e:
                 log.error(f"[Supervisoras:{esc}] erro no rodízio de status: {e}")
