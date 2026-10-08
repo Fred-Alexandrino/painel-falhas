@@ -1163,6 +1163,77 @@ def _sup_limpar_lixo(ws):
     return len(lixo)
 
 
+_sup_lacunas_tentativa = {"ts": 0.0}
+
+
+def _sup_lacunas_compartilhada(escopos):
+    """Varredura de lacunas ÚNICA para todas as supervisoras: pagina a Fracttal uma vez só e,
+    pra cada OT ainda desconhecida, cria na aba de cada supervisora a que for das usinas dela.
+    (Uma varredura por supervisora multiplicava as chamadas e a Fracttal respondia 429.)"""
+    ot_status = "1"
+    try:
+        _, total = _fracttal_listar_pagina(ot_status=ot_status, start=0, limit=1)
+    except Exception as e:
+        return {"ok": False, "erro": str(e)}
+    estado = {}
+    for esc in escopos:
+        _escopo_tl.v = esc
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        estado[esc] = {"ws": ws, "todos": todos,
+                       "folios": {r[13].strip() for r in todos[1:] if len(r) > 13 and r[13].strip()},
+                       "criadas": 0, "unrec": set()}
+    erros, paginas, start = [], 0, 0
+    since_tudo = "2026-03-01T00:00:00-00:00"
+    try:
+        for _ in range(150):
+            ots = None
+            for tent in range(6):
+                try:
+                    ots, total = _fracttal_listar_pagina(since=since_tudo, ot_status=ot_status, start=start, limit=100)
+                    break
+                except Exception as e:
+                    if "429" in str(e) and tent < 5:
+                        time.sleep(30 * (tent + 1))
+                        continue
+                    erros.append(f"start={start}: {e}")
+                    break
+            if ots is None:
+                break
+            paginas += 1
+            grupos = _fracttal_agrupar_por_wo(ots)
+            for esc in escopos:
+                _escopo_tl.v = esc
+                st = estado[esc]
+                for folio, tasks in grupos:
+                    if folio in st["folios"]:
+                        continue
+                    try:
+                        mapeado = _fracttal_mapear_grupo(tasks)
+                        if not mapeado:
+                            continue
+                        if mapeado.get("_revisao_manual"):
+                            continue
+                        alerta = mapeado.pop("_alerta", None)
+                        mapeado["editor"] = "fracttal-auditoria-lacunas"
+                        _criar_atividade_interna(ws=st["ws"], todos=st["todos"], enviar_notificacao=False, **mapeado)
+                        if alerta:
+                            _aplicar_update_campo_atividade(st["ws"], len(st["todos"]), st["todos"][-1], "historico", alerta,
+                                                             "fracttal-auditoria-lacunas", append=True)
+                        st["folios"].add(folio)
+                        st["criadas"] += 1
+                    except Exception as e:
+                        erros.append(f"{esc}:{folio}: {str(e)[:80]}")
+            start += 100
+            if start >= total:
+                break
+            time.sleep(2.5)
+    finally:
+        _escopo_tl.v = None
+    return {"ok": True, "total": total, "paginas": paginas, "erros": erros[:12], "n_erros": len(erros),
+            "criadas": {e: estado[e]["criadas"] for e in escopos}}
+
+
 def _supervisoras_ciclo():
     """Segundo passe do sync da Fracttal, só pras supervisoras (thread própria, escopo por thread):
     1) rodízio/auditoria de status das OSs da aba dela; 2) descoberta de OTs novas (janela 3h);
@@ -1193,23 +1264,24 @@ def _supervisoras_ciclo():
             except Exception as e:
                 log.error(f"[Supervisoras:{esc}] erro na descoberta: {e}")
                 r["descoberta"] = {"erro": str(e)}
-            try:
-                hoje = agora_br().strftime("%Y-%m-%d")
-                chave = f"sup_lacunas_v7_{esc}"
-                if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
-                    lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
-                    r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
-                                    "erros": lac.get("erros"), "paginas": lac.get("paginas_lidas"),
-                                    "gap": lac.get("gap_provavel"), "total": lac.get("total_fracttal_linhas"),
-                                    "nao_reconhecidos": sorted({x.get("motivo", "")[:90] for x in lac.get("revisao_manual", [])
-                                                                if any(c in x.get("motivo", "") for c in ("Athon", "Axis", "Thopen"))})[:40]}
-                    if lac.get("ok") and not lac.get("erros"):
-                        _gravar_trava(chave, hoje)  # só marca "feito hoje" se concluiu sem erro
-            except Exception as e:
-                log.error(f"[Supervisoras:{esc}] erro na varredura de lacunas: {e}")
-                r["lacunas"] = {"erro": str(e)}
             resultado[esc] = r
             _sup_ciclo_ultimo[esc] = {"quando": agora_br().isoformat(), **r}
+            time.sleep(3)  # espaça as chamadas à Fracttal entre supervisoras
+        # varredura de lacunas: uma só pra todas, 1x/dia com sucesso; se falhar, tenta de novo a cada 15 min
+        try:
+            hoje = agora_br().strftime("%Y-%m-%d")
+            chave = "sup_lacunas_v8_" + "_".join(sorted(_SUP_MAPEAMENTO))
+            if (agora_br().hour >= 6 and _ler_trava(chave) != hoje
+                    and time.time() - _sup_lacunas_tentativa["ts"] > 900):
+                _sup_lacunas_tentativa["ts"] = time.time()
+                lac = _sup_lacunas_compartilhada(list(_SUP_MAPEAMENTO))
+                resultado["lacunas"] = lac
+                _sup_ciclo_ultimo["lacunas"] = {"quando": agora_br().isoformat(), **lac}
+                if lac.get("ok") and not lac.get("n_erros"):
+                    _gravar_trava(chave, hoje)
+        except Exception as e:
+            log.error(f"[Supervisoras] erro na varredura de lacunas: {e}")
+            _sup_ciclo_ultimo["lacunas"] = {"erro": str(e)}
     finally:
         _escopo_tl.v = None
         _sup_ciclo_lock.release()
