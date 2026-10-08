@@ -14305,6 +14305,18 @@ def disparar_comunicado_livre():
     return jsonify({"ok": True, "enviados": enviados, "erros": erros})
 
 
+_ASSINATURAS = {
+    "danuth": ("Danuth Fernandes", "Supervisora de Contratos"),
+    "camila": ("Camila Viana", "Supervisora de Contratos"),
+}
+
+
+def _assinatura_atual():
+    """(nome, cargo) de quem assina comunicados pra cliente: a supervisora do escopo ativo
+    (header X-Escopo do painel dela) ou, por padrão, o Fred."""
+    return _ASSINATURAS.get(_escopo_atual() or "", ("Fred Alexandrino", "Supervisor de Contratos"))
+
+
 def _montar_saudacao_cliente():
     """Saudação por horário (Brasília), calculada no momento em que o texto
     é gerado — usado no resumo pro cliente final (Gestão Cliente). Bom dia
@@ -14362,7 +14374,8 @@ def _montar_prompt_resumo_cliente(cliente, atividades, anotacoes, saudacao):
             "se não fizer sentido — integre ao texto do jeito mais natural):\n" + "\n".join(linhas_anotacoes)
         )
 
-    return f"""Aja como Fred Alexandrino, Supervisor de O&M da Grid Co., escrevendo uma mensagem de WhatsApp pro cliente final ({cliente}) com o panorama de atividades programadas para hoje.
+    _ass_nome, _ass_cargo = _assinatura_atual()
+    return f"""Aja como {_ass_nome}, {_ass_cargo} da Grid Co., escrevendo uma mensagem de WhatsApp pro cliente final ({cliente}) com o panorama de atividades programadas para hoje.
 
 Esta mensagem é PRA CLIENTE, não pra equipe técnica interna — o tom deve ser polido, profissional, amigável e direto, como uma comunicação de relacionamento com cliente (não uma ordem de serviço interna).
 
@@ -14378,9 +14391,9 @@ Regras obrigatórias de formato:
 - Termine com uma frase curta de disponibilidade/cordialidade (ex. equipe de campo mobilizada, à disposição para dúvidas).
 - Assine ao final com:
 Atenciosamente,
-Fred Alexandrino
-Supervisor de O&M — Grid Co.
-- Não use fontes de negrito/asterisco no WhatsApp além do já convencional (*texto* vira negrito no WhatsApp, pode usar com moderação pro nome da usina e pro nome do Fred na assinatura).
+{_ass_nome}
+{_ass_cargo} — Grid Co.
+- Não use fontes de negrito/asterisco no WhatsApp além do já convencional (*texto* vira negrito no WhatsApp, pode usar com moderação pro nome da usina e pro nome de quem assina).
 
 Cliente: {cliente}
 Atividades selecionadas (agrupadas por usina):
@@ -14513,8 +14526,8 @@ def _montar_resumo_chamados_cliente(cliente, chamados, saudacao):
         f"{corpo}\n\n"
         f"Qualquer novidade, seguimos informando. Estamos à disposição.\n\n"
         f"Atenciosamente,\n"
-        f"Fred Alexandrino\n"
-        f"Supervisor de O&M — Grid Co."
+        f"{_assinatura_atual()[0]}\n"
+        f"{_assinatura_atual()[1]} — Grid Co."
     )
 
 
