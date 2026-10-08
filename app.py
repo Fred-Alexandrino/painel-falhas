@@ -4085,6 +4085,7 @@ def sobreaviso_blocos():
         "nome_arquivo": payload.get("nome_arquivo", ""),
         "carregado_em": payload.get("carregado_em"),
         "periodo": estado.get("periodo"),
+        "gerado": (estado.get("meta") or {}).get("gerado"),
         "blocos": [{"idx": i, "inicio": b["inicio"], "fim": b["fim"], "tipo": b["tipo"],
                     "feriado": b.get("feriado", False), "label": _sobreaviso_fmt_bloco(b),
                     "supervisores": [{"nome": s, "telefone": contatos.get(s, "")} for s in b.get("supervisores", [])]}
