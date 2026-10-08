@@ -825,7 +825,32 @@ _SUP_MAPEAMENTO = {
         {'usina': 'Cipó Guaçu', 'cliente': 'Thopen', 'cluster': 'SP Leste 05', 'cidade_uf': 'Cipó Guaçu', 'responsavel': 'Lucas Alberto Freitas de Faria', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''}
     ],
 }
-_SUP_ABAS = {"danuth": "Painel de Atividades - Danuth"}
+_SUP_MAPEAMENTO["camila"] = [
+        {'cluster': 'MT OESTE', 'cliente': 'Thopen', 'usina': 'Aparecida do Taboado', 'cidade': 'Aparecida do Taboado', 'responsavel': 'Paulo Sergio Ribeiro', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SP NORTE 02', 'cliente': 'Thopen', 'usina': 'Barretos', 'cidade': 'Barretos', 'responsavel': 'Anderson Luiz Trigo Parente', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SP NORTE 02', 'cliente': 'Thopen', 'usina': 'Altair', 'cidade': 'Altair', 'responsavel': 'Anderson Luiz Trigo Parente', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SP NORTE 03', 'cliente': 'Thopen', 'usina': 'Brodowski', 'cidade': 'Brodowski', 'responsavel': 'Luis Paulo Alves de Moura', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SP OESTE', 'cliente': 'Thopen', 'usina': 'Tanabi', 'cidade': 'Tanabi', 'responsavel': 'Paulo Sergio Ribeiro', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'SP OESTE', 'cliente': 'Thopen', 'usina': 'Fernandópolis', 'cidade': 'Fernandópolis', 'responsavel': 'Paulo Sergio Ribeiro', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN SUL 01', 'cliente': 'Thopen', 'usina': 'Parelhas', 'cidade': 'Parelhas', 'responsavel': 'Claudio Martins da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN SUL 01', 'cliente': 'Thopen', 'usina': 'Rodrigues 1', 'cidade': 'Rodrigues', 'responsavel': 'Claudio Martins da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN SUL 01', 'cliente': 'Thopen', 'usina': 'Caicó', 'cidade': 'Caicó', 'responsavel': 'Claudio Martins da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN OESTE 01', 'cliente': 'Thopen', 'usina': 'Jucurutu', 'cidade': 'Jucurutu', 'responsavel': 'Cleiton Fernandes de Farias Júnior', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN OESTE 01', 'cliente': 'Thopen', 'usina': 'Itajá 1', 'cidade': 'Itajá', 'responsavel': 'Cleiton Fernandes de Farias Júnior', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN OESTE 01', 'cliente': 'Thopen', 'usina': 'Itajá 2', 'cidade': 'Itajá', 'responsavel': 'Cleiton Fernandes de Farias Júnior', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN LESTE 01', 'cliente': 'Thopen', 'usina': 'Rodrigues 2', 'cidade': 'Rodrigues', 'responsavel': 'Valdério Paz', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'RN LESTE 01', 'cliente': 'Thopen', 'usina': 'Senador Elói', 'cidade': 'Senador Elói', 'responsavel': 'Valdério Paz', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'AL OESTE 01', 'cliente': 'Thopen', 'usina': 'Santana do Ipanema', 'cidade': 'Santana do Ipanema', 'responsavel': 'Ricardo da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'AL OESTE 01', 'cliente': 'Thopen', 'usina': 'Inhapi', 'cidade': 'Inhapi', 'responsavel': 'Ricardo da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'AL OESTE 01', 'cliente': 'Thopen', 'usina': 'Ouro Branco', 'cidade': 'Ouro Branco', 'responsavel': 'Ricardo da Silva', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'PA NORTE 01', 'cliente': 'Athon', 'usina': 'Santa Maria', 'cidade': 'Santa Maria', 'responsavel': 'Gilson Souza', 'funcao': 'Técnico', 'membros': ['Manuel Silva'], 'aliases': ['SMP100'], 'alternativo': ''},
+        {'cluster': 'PA NORTE 01', 'cliente': 'Athon', 'usina': 'Capitão Poço', 'cidade': 'Capitão Poço', 'responsavel': 'Gilson Souza', 'funcao': 'Técnico', 'membros': ['Manuel Silva'], 'aliases': ['CPP100'], 'alternativo': ''},
+        {'cluster': 'PA NORTE 02', 'cliente': 'Athon', 'usina': 'Mãe do Rio', 'cidade': 'Mãe do Rio', 'responsavel': 'Frank Melo', 'funcao': 'Técnico', 'membros': ['Azinaldo'], 'aliases': ['MRO100'], 'alternativo': ''},
+        {'cluster': 'PARÁ LESTE', 'cliente': 'Athon', 'usina': 'Jacundá', 'cidade': 'Jacundá', 'responsavel': 'James Chaves', 'funcao': 'Técnico', 'membros': ['Joilson'], 'aliases': ['JCD100'], 'alternativo': ''},
+        {'cluster': 'PARÁ LESTE', 'cliente': 'Athon', 'usina': 'Marabá 1', 'cidade': 'Marabá', 'responsavel': 'James Chaves', 'funcao': 'Técnico', 'membros': ['Joilson'], 'aliases': ['MAB100'], 'alternativo': ''},
+        {'cluster': 'PARÁ LESTE', 'cliente': 'Athon', 'usina': 'Marabá 2', 'cidade': 'Marabá', 'responsavel': 'James Chaves', 'funcao': 'Técnico', 'membros': ['Joilson'], 'aliases': ['MAB200'], 'alternativo': ''},
+]
+_SUP_ABAS = {"danuth": "Painel de Atividades - Danuth", "camila": "Painel de Atividades - Camila"}
 _SUP_IDX_CACHE = {}
 
 
@@ -859,7 +884,10 @@ def _sup_indices(escopo):
     if idx is None:
         por_chave, por_nome = {}, {}
         for u in _SUP_MAPEAMENTO[escopo]:
-            por_chave.setdefault(_sup_chave(u["usina"]), []).append(u)
+            for nm in [u["usina"], *u.get("aliases", [])]:
+                lst = por_chave.setdefault(_sup_chave(nm), [])
+                if u not in lst:
+                    lst.append(u)
             por_nome[u["usina"]] = u
         clientes = {_norm_usina(u["cliente"]) for u in _SUP_MAPEAMENTO[escopo]}
         idx = {"chave": por_chave, "nome": por_nome, "clientes": clientes}
@@ -869,7 +897,19 @@ def _sup_indices(escopo):
 
 def _sup_resolver_um(escopo, nome, cliente_hint=""):
     idx = _sup_indices(escopo)
-    cands = idx["chave"].get(_sup_chave(nome), [])
+    k0 = _sup_chave(nome)
+    tentativas = [k0]
+    if k0.endswith(" 1"):
+        tentativas.append(k0[:-2])   # "Brodowski 1" no Fracttal x "Brodowski" no mapeamento
+    elif (k0 + " 2") not in idx["chave"]:
+        tentativas.append(k0 + " 1")  # sem irmã numerada: "Brodowski" == "Brodowski 1"
+    for pedaco in [x for x in nome.split(" - ") if x.strip()] if " - " in nome else []:
+        tentativas.append(_sup_chave(pedaco))  # "Santa Maria - SMP100": aceita nome ou código
+    cands = []
+    for k in tentativas:
+        cands = idx["chave"].get(k, [])
+        if cands:
+            break
     if cliente_hint:
         h = _norm_usina(cliente_hint)
         cands = [u for u in cands if h in _norm_usina(u["cliente"]) or _norm_usina(u["cliente"]) in h]
@@ -894,6 +934,7 @@ def _sup_canonizar(escopo, texto_bruto):
     if len(partes) >= 2 and re.fullmatch(r"[A-Za-z]{2}", partes[-1]):
         partes = partes[:-1]
     nome = " - ".join(partes).strip()
+    nome = re.sub(r"\s+AL$", "", nome)  # "Ouro Branco AL" (UF colada ao nome, como na tabela)
     if not nome:
         return None
     comb = re.match(r"^(.+?)\s+(\d+|[ivx]+)\s+e\s+(\d+|[ivx]+)$", nome, re.IGNORECASE)
@@ -1003,7 +1044,7 @@ def _supervisoras_ciclo():
                 r["descoberta"] = {"erro": str(e)}
             try:
                 hoje = agora_br().strftime("%Y-%m-%d")
-                chave = f"sup_lacunas_v5_{esc}"
+                chave = f"sup_lacunas_v6_{esc}"
                 if agora_br().hour >= 6 and _ler_trava(chave) != hoje:
                     lac = _auditoria_lacunas_core(ot_status="1", max_paginas=150)
                     r["lacunas"] = {"ok": lac.get("ok"), "criadas": len(lac.get("criadas", [])),
