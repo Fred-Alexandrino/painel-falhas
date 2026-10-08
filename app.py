@@ -4275,6 +4275,130 @@ def sobreaviso_ajustar_texto():
     return jsonify({"ok": True, "texto": texto, "pessoas": pessoas}), 200
 
 
+def _sobreaviso_usinas_do_grupo(g, usinas_por_cluster):
+    """Lista de usinas (dedup por nome) cobertas por um grupo de cobertura."""
+    usinas_grupo, vistas = [], set()
+    for cl in g.get("clusters", []):
+        for u in usinas_por_cluster.get(cl, []):
+            if u["usina"] in vistas:
+                continue
+            vistas.add(u["usina"])
+            usinas_grupo.append(u)
+    return usinas_grupo
+
+
+@app.route("/sobreaviso-tabela-opcoes", methods=["GET"])
+def sobreaviso_tabela_opcoes():
+    """Opções dos filtros multi-seleção da tabela de escala de sobreaviso:
+    usinas, equipes (código de cluster do dashboard), clusters (nome do cluster
+    na escala) e colaboradores (técnicos do rodízio/escala)."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+    estado = payload["estado"]
+    grupos = estado.get("grupos", [])
+    usinas_por_cluster = _sobreaviso_montar_usinas_por_cluster(estado.get("usinas", []))
+    usinas, equipes, clusters, colabs = {}, set(), set(), set()
+    for g in grupos:
+        for cl in g.get("clusters", []):
+            clusters.add(cl)
+        for u in _sobreaviso_usinas_do_grupo(g, usinas_por_cluster):
+            if u.get("usina"):
+                usinas[u["usina"]] = {"usina": u["usina"], "equipe": u.get("equipe"), "cliente": u.get("cliente")}
+            if u.get("equipe"):
+                equipes.add(u["equipe"])
+        for p in g.get("pool", []):
+            if p.get("t"):
+                colabs.add(p["t"])
+        for bloco_pessoas in g.get("escala", []):
+            for nome in bloco_pessoas or []:
+                colabs.add(nome)
+    ordena = lambda it: sorted(it, key=lambda x: x.lower())
+    return jsonify({
+        "ok": True,
+        "usinas": sorted(usinas.values(), key=lambda u: u["usina"].lower()),
+        "equipes": ordena(equipes),
+        "clusters": ordena(clusters),
+        "colaboradores": ordena(colabs),
+    }), 200
+
+
+@app.route("/sobreaviso-tabela", methods=["POST"])
+def sobreaviso_tabela():
+    """Tabela de escala de sobreaviso (grupo de cobertura x período) para o
+    próximo período (fds) ou um mês completo, com filtros multi-seleção.
+
+    Body: {"periodo": "fds"|"mes", "mes": "YYYY-MM" (só p/ mes),
+           "usinas": [..], "equipes": [..], "clusters": [..], "colaboradores": [..]}
+    Filtros: OR dentro de cada tipo, AND entre tipos. 'colaboradores' mantém só
+    as linhas/períodos em que a pessoa está escalada. Devolve estrutura (blocos
+    + linhas com células); o texto de WhatsApp é montado no frontend."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    grupos = estado.get("grupos", [])
+    if not blocos:
+        return jsonify({"ok": False, "error": "A escala carregada não tem blocos."}), 400
+
+    dados = request.get_json(force=True, silent=True) or {}
+    periodo = (dados.get("periodo") or "fds").strip().lower()
+    f_usinas = {x for x in (dados.get("usinas") or []) if x}
+    f_equipes = {x for x in (dados.get("equipes") or []) if x}
+    f_clusters = {x for x in (dados.get("clusters") or []) if x}
+    f_colabs = {x for x in (dados.get("colaboradores") or []) if x}
+
+    if periodo == "mes":
+        sug = _sobreaviso_indice_bloco_sugerido(blocos)
+        mes = (dados.get("mes") or blocos[sug]["inicio"][:7]).strip()
+        if not re.fullmatch(r"\d{4}-\d{2}", mes):
+            return jsonify({"ok": False, "error": "mes inválido (use YYYY-MM)"}), 400
+        idxs = [i for i, b in enumerate(blocos) if b["inicio"][:7] == mes or b["fim"][:7] == mes]
+        if not idxs:
+            return jsonify({"ok": False, "error": f"Nenhum período de sobreaviso em {mes} na escala carregada."}), 404
+        rotulo = f"Mês {mes[5:7]}/{mes[:4]}"
+    elif periodo == "fds":
+        idxs = [_sobreaviso_indice_bloco_sugerido(blocos)]
+        rotulo = "Próximo período"
+    else:
+        return jsonify({"ok": False, "error": "periodo deve ser 'fds' ou 'mes'"}), 400
+
+    usinas_por_cluster = _sobreaviso_montar_usinas_por_cluster(estado.get("usinas", []))
+    linhas = []
+    for g in grupos:
+        usinas_g = _sobreaviso_usinas_do_grupo(g, usinas_por_cluster)
+        equipes_g = sorted({u["equipe"] for u in usinas_g if u.get("equipe")})
+        if f_usinas and not any(u.get("usina") in f_usinas for u in usinas_g):
+            continue
+        if f_equipes and not (set(equipes_g) & f_equipes):
+            continue
+        if f_clusters and not (set(g.get("clusters", [])) & f_clusters):
+            continue
+        escala_g = g.get("escala", [])
+        celulas = [list(escala_g[i]) if i < len(escala_g) and escala_g[i] else [] for i in idxs]
+        if f_colabs and not any(set(c) & f_colabs for c in celulas):
+            continue
+        linhas.append({
+            "nome": g.get("nome"),
+            "clusters": g.get("clusters", []),
+            "equipes": equipes_g,
+            "usinas": usinas_g,
+            "supervisores": g.get("supervisores", []),
+            "por_bloco": g.get("por_bloco", 1),
+            "celulas": celulas,
+        })
+
+    return jsonify({
+        "ok": True,
+        "periodo": periodo,
+        "rotulo": rotulo,
+        "blocos": [{"idx": i, "inicio": blocos[i]["inicio"], "fim": blocos[i]["fim"],
+                    "tipo": blocos[i].get("tipo"), "label": _sobreaviso_fmt_bloco(blocos[i])} for i in idxs],
+        "linhas": linhas,
+    }), 200
+
+
 def _sobreaviso_montar_indice_grupo_por_cluster(grupos):
     """cluster -> grupo (dict), pra achar rápido qual grupo de cobertura
     fundido inclui cada cluster."""
