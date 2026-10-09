@@ -851,7 +851,7 @@ _SUP_MAPEAMENTO["camila"] = [
         {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Ibaté 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-IBT100'], 'alternativo': ''},
         {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Ibaté 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-IBT200'], 'alternativo': ''},
         {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Matão 1', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-MTO100'], 'alternativo': ''},
-        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Sítio Bonfim', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-STA100'], 'alternativo': ''},
+        {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Santo Anastácio', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Sto Anastácio', 'THPN-STA100'], 'alternativo': ''},
         {'cluster': 'Sul · Maringá-PR', 'cliente': 'Thopen', 'usina': 'Taguaí 1 e 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Taguaí 1', 'Taguaí 2', 'THPN-TGI100'], 'alternativo': ''},
         {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Tanabi', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['THPN-TNB100'], 'alternativo': ''},
         {'cluster': 'SE · Oeste de SP', 'cliente': 'Thopen', 'usina': 'Topázio (Matão 2)', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Topázio', 'Matão 2', 'THPN-TPZ100'], 'alternativo': ''},
@@ -15963,6 +15963,8 @@ def gerar_relatorio_semanal_route():
         # relatório inteiro não pode falhar por causa disso -- cai pro
         # comportamento antigo (página sai com "Em acompanhamento.").
         try:
+            if _escopo_atual():
+                raise RuntimeError("supervisora: sem Zeladoria (planilha é do Fred)")
             ws_zeladoria = get_zeladoria_sheet()
             todos_zeladoria = carregar_planilha(ws_zeladoria)
             # Mesma correção de nome de usina malformado aplicada em
