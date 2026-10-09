@@ -541,15 +541,6 @@ CATALOGO_USINAS = {
         "cliente": "2C Energia",
         "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
     },
-    # Thopen — SP Oeste 01 (temporárias, adicionadas ao cluster do Tupi Paulista I em 05/10/2026)
-    "Álvares Machado": {
-        "cliente": "Thopen",
-        "aliases": ["álvares machado", "alvares machado", "álvares machado 1", "alvares machado 1", "alvares machado i", "álvares machado i"],
-    },
-    "Santo Anastácio": {
-        "cliente": "Thopen",
-        "aliases": ["santo anastácio", "santo anastacio", "santo anastácio 1", "santo anastacio 1", "santo anastacio i", "santo anastácio i"],
-    },
     # Thopen
     "Alto Paraná I": {
         "cliente": "Thopen",
@@ -6264,11 +6255,6 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Tupi Paulista I', "cliente": '2C Energia', "cluster": 'SP Oeste 01', "cidade_uf": 'Tupi Paulista/SP',
      "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": ''},
-    # Temporárias (Fred, 05/10/2026): entram no cluster que atende Tupi Paulista I, mesma equipe.
-    {"usina": 'Álvares Machado', "cliente": 'Thopen', "cluster": 'SP Oeste 01', "cidade_uf": 'Álvares Machado/SP',
-     "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": '', "temporaria": True},
-    {"usina": 'Santo Anastácio', "cliente": 'Thopen', "cluster": 'SP Oeste 01', "cidade_uf": 'Santo Anastácio/SP',
-     "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": '', "temporaria": True},
     {"usina": 'Alto Paraná I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
      "responsavel": 'Matheus Gois', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Alto Paraná II', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
@@ -6375,7 +6361,7 @@ GRUPOS_EQUIPE_UFVS = [
     {"id": "120363430888041572@g.us", "nome": "Equipe União 2C",
      "usinas": ["União I", "União II"]},
     {"id": "120363430482583512@g.us", "nome": "Equipe Tupi Paulista",
-     "usinas": ["Tupi Paulista I", "Álvares Machado", "Santo Anastácio"]},
+     "usinas": ["Tupi Paulista I"]},
     {"id": "120363431235680039@g.us", "nome": "Equipe Alto Parana/Paranavaí",
      "usinas": ["Alto Paraná I", "Alto Paraná II", "Paranavaí"]},
     {"id": "120363429760086977@g.us", "nome": "Equipe St. Ant. Platina/Pharmas",
