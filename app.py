@@ -1177,6 +1177,8 @@ def _sup_grupos_diag_worker(statuses):
                 linhas.append({"grupo": g, "os": n, "ativo_ex": ex[g], "reconhecido_por": rec})
             res[stt] = {"total": total, "grupos": linhas}
         _sup_grupos_diag.update({"estado": "pronto", "resultado": res})
+        with open("/tmp/sup_grupos.json", "w", encoding="utf-8") as _f:
+            json.dump({"estado": "pronto", "resultado": res}, _f, ensure_ascii=False)
     except Exception as e:
         _sup_grupos_diag.update({"estado": "erro", "erro": str(e)[:300]})
 
@@ -1189,6 +1191,9 @@ def supervisoras_fracttal_grupos():
         sts = [x for x in (request.args.get("status") or "1").split(",") if x]
         _sup_grupos_diag.clear(); _sup_grupos_diag["estado"] = "rodando"
         threading.Thread(target=_sup_grupos_diag_worker, args=(sts,), daemon=True).start()
+    if request.args.get("resultado") and os.path.exists("/tmp/sup_grupos.json"):
+        with open("/tmp/sup_grupos.json", encoding="utf-8") as _f:
+            return jsonify({"ok": True, **json.load(_f)}), 200
     return jsonify({"ok": True, **_sup_grupos_diag}), 200
 
 
