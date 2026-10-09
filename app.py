@@ -19309,6 +19309,645 @@ def deploy_backend():
         return jsonify({"error": "falha inesperada", "detalhe": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# OCORRÊNCIAS — novo painel (substitui por completo o antigo Painel de Falhas)
+#
+# Decisões do Fred (09/10/2026):
+#  • O próprio painel é a fonte dos dados: as ocorrências são criadas,
+#    editadas e finalizadas direto no dashboard. Sem planilha externa, sem
+#    script no PC e sem automação de WhatsApp.
+#  • Usinas que saíram do mapeamento (_USINAS_SAIDAS_06_10) vêm marcadas com
+#    "foraMapa": true e o painel as oculta, como nos demais painéis.
+#  • Anotações e plano de ação são só do Fred. Como os endpoints do dashboard
+#    não têm autenticação no servidor (a proteção é o login do painel), aqui
+#    o bloqueio é: qualquer requisição com escopo de supervisora (X-Escopo)
+#    recebe 403 em TODAS as rotas de ocorrências.
+#
+# Persistência: 4 abas na mesma planilha do dashboard.
+#   Ocorrencias           uma linha por ocorrência (exclusão é "suave")
+#   OcorrenciasHistorico  uma linha por registro de histórico
+#   OcorrenciasNotas      anotações privadas
+#   OcorrenciasPlano      plano de ação (no máximo uma linha por ocorrência)
+# Tudo é gravado com value_input_option="RAW" para o Sheets nunca interpretar
+# texto digitado como fórmula.
+# ══════════════════════════════════════════════════════════════════════════
+OC_SHEET_NAME = "Ocorrencias"
+OC_HIST_SHEET_NAME = "OcorrenciasHistorico"
+OC_NOTAS_SHEET_NAME = "OcorrenciasNotas"
+OC_PLANO_SHEET_NAME = "OcorrenciasPlano"
+
+OC_HEADERS = ["ID", "Status", "Criticidade", "Grave", "Usina", "Cliente", "Equipamento",
+              "Identificação", "Fabricante", "Chamado", "S/N", "Descrição", "Impacto",
+              "Início", "Fim", "Responsável", "Criada em", "Atualizada em", "Excluída"]
+OC_HIST_HEADERS = ["HID", "Ocorrência", "Data", "Texto", "Criado em"]
+OC_NOTAS_HEADERS = ["NID", "Ocorrência", "Texto", "Criada em", "Editada em"]
+OC_PLANO_HEADERS = ["Ocorrência", "Ação", "Responsável", "Prazo", "Situação", "Atualizada em"]
+
+OC_STATUS = ["Em andamento", "Pausado", "Finalizado"]
+OC_CRITICIDADES = ["", "Baixa", "Média", "Alta", "Muito Alta"]
+OC_SITUACOES_PLANO = ["A fazer", "Em andamento", "Concluída"]
+
+# chave do JSON  → nome da coluna na aba Ocorrencias
+OC_CAMPOS = {
+    "status": "Status", "crit": "Criticidade", "grave": "Grave", "usina": "Usina",
+    "cliente": "Cliente", "equip": "Equipamento", "nequip": "Identificação",
+    "fab": "Fabricante", "chamado": "Chamado", "sn": "S/N", "causa": "Descrição",
+    "impacto": "Impacto", "inicio": "Início", "fim": "Fim", "resp": "Responsável",
+}
+OC_LIMITES = {"causa": 1500, "impacto": 300, "usina": 120, "cliente": 80, "equip": 80,
+              "nequip": 200, "fab": 60, "chamado": 120, "sn": 120, "resp": 80}
+OC_TEXTO_MAX = 8000
+
+# Prefixos (sem acento, minúsculos) das usinas que saíram do mapeamento em
+# 06/10/2026. Casa por prefixo para pegar também nomes compostos do histórico
+# ("Ibaté I e II", "Boa Esperança do Sul IA e IB", "Matão 1"...).
+_OC_BASES_FORA_MAPA = ("abc morada nova", "sitio bonfim", "guajiru", "sol do norte",
+                       "boa esperanca do sul", "ibate", "matao")
+
+_OC_LOCK = threading.RLock()
+_OC_WS = {}
+_OC_CACHE = {"t": 0.0, "v": None}
+_OC_CACHE_TTL = 6.0
+_OC_RE_DATA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _oc_agora():
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _oc_hoje():
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d")
+
+
+def _oc_bloqueio():
+    """Painel exclusivo do Fred: qualquer escopo de supervisora é recusado."""
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Sem acesso ao painel de ocorrências."}), 403
+    return None
+
+
+def _oc_aba(nome, headers, linhas=1000):
+    """Aba (cria com cabeçalho se ainda não existir); cacheada no processo."""
+    ws = _OC_WS.get(nome)
+    if ws is not None:
+        return ws
+    ss = _gspread_retry(lambda: get_gc().open_by_key(SHEET_ID))
+    try:
+        ws = _gspread_retry(lambda: ss.worksheet(nome))
+    except gspread.WorksheetNotFound:
+        ws = _gspread_retry(lambda: ss.add_worksheet(title=nome, rows=linhas, cols=len(headers)))
+        _gspread_retry(lambda: ws.append_row(headers, value_input_option="RAW"))
+    _OC_WS[nome] = ws
+    return ws
+
+
+def _oc_linhas(ws, n_cols):
+    """[(número_da_linha_na_aba, [valores...]), ...] sem o cabeçalho."""
+    vals = _gspread_retry(lambda: ws.get_all_values())
+    saida = []
+    for i, row in enumerate(vals[1:], start=2):
+        row = list(row) + [""] * (n_cols - len(row))
+        if any(str(c).strip() for c in row[:n_cols]):
+            saida.append((i, row[:n_cols]))
+    return saida
+
+
+def _oc_col(headers, nome):
+    return headers.index(nome)
+
+
+def _oc_invalidar():
+    _OC_CACHE["t"] = 0.0
+    _OC_CACHE["v"] = None
+
+
+def _oc_fora_do_mapa(usina):
+    n = _norm_usina(usina)
+    return any(n.startswith(b) for b in _OC_BASES_FORA_MAPA)
+
+
+_OC_RE_COMPOSTA = re.compile(r"(\s+e\s+|/|,)", re.I)
+
+
+def _oc_normalizar_usina(texto):
+    """Nome oficial da usina quando é uma só e está no catálogo; nomes
+    compostos ("Ibaté I e II") e usinas desconhecidas ficam como digitados."""
+    t = re.sub(r"\s+", " ", str(texto or "")).strip()
+    if not t or _OC_RE_COMPOSTA.search(t):
+        return t
+    try:
+        c = canonizar_usina(t)
+    except Exception:
+        c = None
+    return c or t
+
+
+def _oc_texto(valor, limite=None):
+    t = str(valor if valor is not None else "").replace("\r\n", "\n").strip()
+    return t[:limite] if limite else t
+
+
+def _oc_data(valor, campo):
+    v = _oc_texto(valor)
+    if v and not _OC_RE_DATA.match(v):
+        raise ValueError(f"{campo}: use o formato AAAA-MM-DD")
+    if v:
+        datetime.strptime(v, "%Y-%m-%d")
+    return v
+
+
+def _oc_carregar(forcar=False):
+    """Todas as ocorrências (sem as excluídas) com o histórico embutido."""
+    agora = time.time()
+    if not forcar and _OC_CACHE["v"] is not None and agora - _OC_CACHE["t"] < _OC_CACHE_TTL:
+        return _OC_CACHE["v"]
+    with _OC_LOCK:
+        ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+        wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+        hist_por = {}
+        for _, r in _oc_linhas(wh, len(OC_HIST_HEADERS)):
+            hist_por.setdefault(r[1], []).append({"hid": r[0], "d": r[2], "t": r[3]})
+        for lista in hist_por.values():
+            lista.sort(key=lambda e: (e["d"] or "9999-99-99", e["hid"]))
+        c = {h: OC_HEADERS.index(h) for h in OC_HEADERS}
+        itens = []
+        for _, r in _oc_linhas(ws, len(OC_HEADERS)):
+            if r[c["Excluída"]].strip():
+                continue
+            oid = r[c["ID"]]
+            hist = hist_por.get(oid, [])
+            datas = [e["d"] for e in hist if e["d"]]
+            usina = r[c["Usina"]]
+            itens.append({
+                "id": oid, "status": r[c["Status"]] or "Em andamento", "crit": r[c["Criticidade"]],
+                "grave": r[c["Grave"]].strip().lower() in ("sim", "1", "true"),
+                "usina": usina, "cliente": r[c["Cliente"]], "equip": r[c["Equipamento"]],
+                "nequip": r[c["Identificação"]], "fab": r[c["Fabricante"]],
+                "chamado": r[c["Chamado"]], "sn": r[c["S/N"]], "causa": r[c["Descrição"]],
+                "impacto": r[c["Impacto"]], "inicio": r[c["Início"]], "fim": r[c["Fim"]] or None,
+                "resp": r[c["Responsável"]], "hist": hist,
+                "ult": max(datas) if datas else None,
+                "criada": r[c["Criada em"]], "atualizada": r[c["Atualizada em"]],
+                "foraMapa": _oc_fora_do_mapa(usina),
+            })
+        _OC_CACHE["v"] = itens
+        _OC_CACHE["t"] = time.time()
+        return itens
+
+
+def _oc_proximo_id(ws):
+    mx = 0
+    for _, r in _oc_linhas(ws, len(OC_HEADERS)):
+        m = re.match(r"^OC-(\d+)$", r[0])
+        if m:
+            mx = max(mx, int(m.group(1)))
+    return f"OC-{mx + 1:04d}"
+
+
+def _oc_achar_linha(ws, n_cols, coluna, valor):
+    for nlinha, r in _oc_linhas(ws, n_cols):
+        if r[coluna] == valor:
+            return nlinha, r
+    return None, None
+
+
+def _oc_tocar(oid):
+    """Atualiza 'Atualizada em' da ocorrência."""
+    ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+    nlinha, _ = _oc_achar_linha(ws, len(OC_HEADERS), 0, oid)
+    if nlinha:
+        col = chr(65 + OC_HEADERS.index("Atualizada em"))
+        _gspread_retry(lambda: ws.batch_update(
+            [{"range": f"{col}{nlinha}", "values": [[_oc_agora()]]}], value_input_option="RAW"))
+
+
+def _oc_validar_campos(dados, criando):
+    """Valida e normaliza os campos recebidos; devolve {chave: valor}."""
+    saida = {}
+    for k in OC_CAMPOS:
+        if k not in dados:
+            continue
+        v = dados[k]
+        if k == "grave":
+            saida[k] = "Sim" if (v is True or str(v).strip().lower() in ("sim", "1", "true")) else ""
+        elif k == "status":
+            v = _oc_texto(v)
+            if v not in OC_STATUS:
+                raise ValueError("status inválido")
+            saida[k] = v
+        elif k == "crit":
+            v = _oc_texto(v)
+            if v not in OC_CRITICIDADES:
+                raise ValueError("criticidade inválida")
+            saida[k] = v
+        elif k in ("inicio", "fim"):
+            saida[k] = _oc_data(v, "início" if k == "inicio" else "fim")
+        elif k == "usina":
+            saida[k] = _oc_normalizar_usina(_oc_texto(v, OC_LIMITES["usina"]))
+        else:
+            saida[k] = _oc_texto(v, OC_LIMITES.get(k))
+    if criando:
+        if not saida.get("usina"):
+            raise ValueError("informe a usina")
+        if not saida.get("causa"):
+            raise ValueError("descreva a ocorrência")
+        if not saida.get("equip"):
+            raise ValueError("informe o equipamento")
+        saida.setdefault("status", "Em andamento")
+        saida.setdefault("inicio", _oc_hoje())
+        saida.setdefault("resp", "Fred")
+        if not saida.get("cliente"):
+            try:
+                saida["cliente"] = inferir_cliente(saida["usina"]) or ""
+            except Exception:
+                saida["cliente"] = ""
+    return saida
+
+
+def _oc_resposta_erro(e, codigo=500):
+    log.error(f"[ocorrencias] {e}")
+    return jsonify({"ok": False, "error": str(e)}), codigo
+
+
+@app.route("/ocorrencias", methods=["GET"])
+def oc_listar():
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    try:
+        itens = _oc_carregar(forcar=request.args.get("forcar") == "1")
+        return jsonify({"ok": True, "itens": itens, "total": len(itens), "hoje": _oc_hoje()}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/salvar", methods=["POST", "OPTIONS"])
+def oc_salvar():
+    """Cria (sem 'id') ou atualiza parcialmente (com 'id') uma ocorrência.
+    No create, 'registro' (texto opcional) vira o primeiro item do histórico."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    dados = request.get_json(force=True, silent=True) or {}
+    oid = _oc_texto(dados.get("id"))
+    try:
+        with _OC_LOCK:
+            ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            agora = _oc_agora()
+            if not oid:
+                campos = _oc_validar_campos(dados, criando=True)
+                if campos["status"] == "Finalizado" and not campos.get("fim"):
+                    campos["fim"] = _oc_hoje()
+                oid = _oc_proximo_id(ws)
+                linha = {h: "" for h in OC_HEADERS}
+                linha["ID"] = oid
+                for k, coluna in OC_CAMPOS.items():
+                    linha[coluna] = campos.get(k, "")
+                linha["Criada em"] = agora
+                linha["Atualizada em"] = agora
+                _gspread_retry(lambda: ws.append_row([linha[h] for h in OC_HEADERS],
+                                                     value_input_option="RAW"))
+                registro = _oc_texto(dados.get("registro"), OC_TEXTO_MAX)
+                if registro:
+                    wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+                    _gspread_retry(lambda: wh.append_row(
+                        ["H" + uuid.uuid4().hex[:8], oid, campos["inicio"], registro, agora],
+                        value_input_option="RAW"))
+            else:
+                nlinha, row = _oc_achar_linha(ws, len(OC_HEADERS), 0, oid)
+                if not nlinha:
+                    return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+                campos = _oc_validar_campos(dados, criando=False)
+                atual = dict(zip(OC_HEADERS, row))
+                for k, v in campos.items():
+                    atual[OC_CAMPOS[k]] = v
+                if "status" in campos:
+                    if campos["status"] == "Finalizado" and not atual["Fim"]:
+                        atual["Fim"] = _oc_hoje()
+                    elif campos["status"] != "Finalizado" and "fim" not in campos:
+                        atual["Fim"] = ""
+                if atual["Fim"] and atual["Início"] and atual["Fim"] < atual["Início"]:
+                    raise ValueError("a data de fim não pode ser anterior ao início")
+                atual["Atualizada em"] = agora
+                fim_col = chr(64 + len(OC_HEADERS))
+                _gspread_retry(lambda: ws.batch_update(
+                    [{"range": f"A{nlinha}:{fim_col}{nlinha}",
+                      "values": [[atual[h] for h in OC_HEADERS]]}], value_input_option="RAW"))
+            _oc_invalidar()
+            item = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+        return jsonify({"ok": True, "item": item}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/excluir", methods=["POST", "OPTIONS"])
+def oc_excluir():
+    """Exclusão suave: marca a linha como excluída (recuperável na planilha)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    oid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("id"))
+    try:
+        with _OC_LOCK:
+            ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            nlinha, _ = _oc_achar_linha(ws, len(OC_HEADERS), 0, oid)
+            if not nlinha:
+                return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+            col = chr(65 + OC_HEADERS.index("Excluída"))
+            _gspread_retry(lambda: ws.batch_update(
+                [{"range": f"{col}{nlinha}", "values": [[_oc_agora()]]}], value_input_option="RAW"))
+            _oc_invalidar()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/historico/salvar", methods=["POST", "OPTIONS"])
+def oc_historico_salvar():
+    """Acrescenta (sem 'hid') ou edita (com 'hid') um registro do histórico."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    dados = request.get_json(force=True, silent=True) or {}
+    oid = _oc_texto(dados.get("ocorrencia"))
+    hid = _oc_texto(dados.get("hid"))
+    texto = _oc_texto(dados.get("texto"), OC_TEXTO_MAX)
+    try:
+        if not texto:
+            raise ValueError("escreva o registro")
+        data = _oc_data(dados.get("data"), "data") or _oc_hoje()
+        with _OC_LOCK:
+            wo = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            if not _oc_achar_linha(wo, len(OC_HEADERS), 0, oid)[0]:
+                return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+            wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+            if hid:
+                nlinha, row = _oc_achar_linha(wh, len(OC_HIST_HEADERS), 0, hid)
+                if not nlinha or row[1] != oid:
+                    return jsonify({"ok": False, "error": "Registro não encontrado."}), 404
+                _gspread_retry(lambda: wh.batch_update(
+                    [{"range": f"C{nlinha}:D{nlinha}", "values": [[data, texto]]}],
+                    value_input_option="RAW"))
+            else:
+                hid = "H" + uuid.uuid4().hex[:8]
+                _gspread_retry(lambda: wh.append_row([hid, oid, data, texto, _oc_agora()],
+                                                     value_input_option="RAW"))
+            _oc_tocar(oid)
+            _oc_invalidar()
+            item = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+        return jsonify({"ok": True, "item": item}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/historico/excluir", methods=["POST", "OPTIONS"])
+def oc_historico_excluir():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    hid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("hid"))
+    try:
+        with _OC_LOCK:
+            wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+            nlinha, row = _oc_achar_linha(wh, len(OC_HIST_HEADERS), 0, hid)
+            if not nlinha:
+                return jsonify({"ok": False, "error": "Registro não encontrado."}), 404
+            oid = row[1]
+            _gspread_retry(lambda: wh.delete_rows(nlinha))
+            _oc_tocar(oid)
+            _oc_invalidar()
+            item = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+        return jsonify({"ok": True, "item": item}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+# ── Anotações (privadas do Fred) ────────────────────────────────────────────
+@app.route("/ocorrencias/anotacoes", methods=["GET"])
+def oc_anotacoes_listar():
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    try:
+        wn = _oc_aba(OC_NOTAS_SHEET_NAME, OC_NOTAS_HEADERS)
+        itens = [{"nid": r[0], "ocorrencia": r[1], "texto": r[2], "criada": r[3], "editada": r[4]}
+                 for _, r in _oc_linhas(wn, len(OC_NOTAS_HEADERS))]
+        itens.sort(key=lambda n: n["criada"], reverse=True)
+        return jsonify({"ok": True, "itens": itens}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/anotacoes/salvar", methods=["POST", "OPTIONS"])
+def oc_anotacoes_salvar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    dados = request.get_json(force=True, silent=True) or {}
+    oid = _oc_texto(dados.get("ocorrencia"))
+    nid = _oc_texto(dados.get("nid"))
+    texto = _oc_texto(dados.get("texto"), OC_TEXTO_MAX)
+    try:
+        if not texto:
+            raise ValueError("escreva a anotação")
+        with _OC_LOCK:
+            wo = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            if not _oc_achar_linha(wo, len(OC_HEADERS), 0, oid)[0]:
+                return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+            wn = _oc_aba(OC_NOTAS_SHEET_NAME, OC_NOTAS_HEADERS)
+            agora = _oc_agora()
+            if nid:
+                nlinha, row = _oc_achar_linha(wn, len(OC_NOTAS_HEADERS), 0, nid)
+                if not nlinha or row[1] != oid:
+                    return jsonify({"ok": False, "error": "Anotação não encontrada."}), 404
+                _gspread_retry(lambda: wn.batch_update(
+                    [{"range": f"C{nlinha}", "values": [[texto]]},
+                     {"range": f"E{nlinha}", "values": [[agora]]}], value_input_option="RAW"))
+                nota = {"nid": nid, "ocorrencia": oid, "texto": texto, "criada": row[3], "editada": agora}
+            else:
+                nid = "N" + uuid.uuid4().hex[:8]
+                _gspread_retry(lambda: wn.append_row([nid, oid, texto, agora, ""],
+                                                     value_input_option="RAW"))
+                nota = {"nid": nid, "ocorrencia": oid, "texto": texto, "criada": agora, "editada": ""}
+        return jsonify({"ok": True, "nota": nota}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/anotacoes/excluir", methods=["POST", "OPTIONS"])
+def oc_anotacoes_excluir():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    nid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("nid"))
+    try:
+        with _OC_LOCK:
+            wn = _oc_aba(OC_NOTAS_SHEET_NAME, OC_NOTAS_HEADERS)
+            nlinha, _ = _oc_achar_linha(wn, len(OC_NOTAS_HEADERS), 0, nid)
+            if not nlinha:
+                return jsonify({"ok": False, "error": "Anotação não encontrada."}), 404
+            _gspread_retry(lambda: wn.delete_rows(nlinha))
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+# ── Plano de ação (privado do Fred) ─────────────────────────────────────────
+@app.route("/ocorrencias/plano", methods=["GET"])
+def oc_plano_listar():
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    try:
+        wp = _oc_aba(OC_PLANO_SHEET_NAME, OC_PLANO_HEADERS)
+        itens = [{"ocorrencia": r[0], "acao": r[1], "resp": r[2], "prazo": r[3],
+                  "sit": r[4] if r[4] in OC_SITUACOES_PLANO else "A fazer", "atualizada": r[5]}
+                 for _, r in _oc_linhas(wp, len(OC_PLANO_HEADERS))]
+        return jsonify({"ok": True, "itens": itens}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/plano/salvar", methods=["POST", "OPTIONS"])
+def oc_plano_salvar():
+    """Cria ou atualiza (upsert por ocorrência) a linha do plano de ação."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    dados = request.get_json(force=True, silent=True) or {}
+    oid = _oc_texto(dados.get("ocorrencia"))
+    try:
+        sit = _oc_texto(dados.get("sit")) or "A fazer"
+        if sit not in OC_SITUACOES_PLANO:
+            raise ValueError("situação inválida")
+        prazo = _oc_data(dados.get("prazo"), "prazo")
+        acao = _oc_texto(dados.get("acao"), OC_TEXTO_MAX)
+        resp = _oc_texto(dados.get("resp"), 80)
+        with _OC_LOCK:
+            wo = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            if not _oc_achar_linha(wo, len(OC_HEADERS), 0, oid)[0]:
+                return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+            wp = _oc_aba(OC_PLANO_SHEET_NAME, OC_PLANO_HEADERS)
+            agora = _oc_agora()
+            linha = [oid, acao, resp, prazo, sit, agora]
+            nlinha, _ = _oc_achar_linha(wp, len(OC_PLANO_HEADERS), 0, oid)
+            if nlinha:
+                _gspread_retry(lambda: wp.batch_update(
+                    [{"range": f"A{nlinha}:F{nlinha}", "values": [linha]}], value_input_option="RAW"))
+            else:
+                _gspread_retry(lambda: wp.append_row(linha, value_input_option="RAW"))
+        return jsonify({"ok": True, "plano": {"ocorrencia": oid, "acao": acao, "resp": resp,
+                                               "prazo": prazo, "sit": sit, "atualizada": agora}}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/plano/excluir", methods=["POST", "OPTIONS"])
+def oc_plano_excluir():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    oid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("ocorrencia"))
+    try:
+        with _OC_LOCK:
+            wp = _oc_aba(OC_PLANO_SHEET_NAME, OC_PLANO_HEADERS)
+            nlinha, _ = _oc_achar_linha(wp, len(OC_PLANO_HEADERS), 0, oid)
+            if nlinha:
+                _gspread_retry(lambda: wp.delete_rows(nlinha))
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+# ── Importação única do histórico (355 ocorrências do arquivo do Fred) ──────
+@app.route("/ocorrencias/importar", methods=["POST", "OPTIONS"])
+def oc_importar():
+    """Carga inicial. Protegida pelo DEPLOY_SECRET (header X-Deploy-Secret) e
+    recusada se a aba já tiver dados (a menos que 'forcar': true — nesse caso
+    as linhas importadas são ACRESCENTADAS, nada é apagado). Higieniza:
+    nomes de usina pelo catálogo, ocorrências finalizadas sem data de fim
+    (usa a última data do histórico, senão o início) e IDs novos e estáveis."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    corpo = request.get_json(force=True, silent=True) or {}
+    itens = corpo.get("itens")
+    if not isinstance(itens, list) or not itens:
+        return jsonify({"ok": False, "error": "envie 'itens' (lista)"}), 400
+    try:
+        with _OC_LOCK:
+            ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS, 2000)
+            if _oc_linhas(ws, len(OC_HEADERS)) and not corpo.get("forcar"):
+                return jsonify({"ok": False, "error": "A aba Ocorrencias já tem dados; "
+                                "use forcar:true para acrescentar."}), 409
+            wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 4000)
+            agora = _oc_agora()
+            seq = int(_oc_proximo_id(ws).split("-")[1])
+            linhas, hist_linhas = [], []
+            ajustes = {"fim_inferido": [], "usina_alterada": {}, "descartadas": []}
+            for it in sorted(itens, key=lambda x: (str(x.get("inicio") or ""), str(x.get("key") or ""))):
+                try:
+                    campos = _oc_validar_campos(it, criando=True)
+                except ValueError as e:
+                    ajustes["descartadas"].append({"causa": str(it.get("causa"))[:60], "motivo": str(e)})
+                    continue
+                usina_orig = _oc_texto(it.get("usina"))
+                if campos["usina"] != usina_orig:
+                    ajustes["usina_alterada"][usina_orig] = campos["usina"]
+                if campos["cliente"] != _oc_texto(it.get("cliente"), 80):
+                    campos["cliente"] = _oc_texto(it.get("cliente"), 80)  # mantém o cliente da planilha original
+                hist = [h for h in (it.get("hist") or []) if _oc_texto(h.get("t"))]
+                datas = [h.get("d") for h in hist if h.get("d")]
+                oid = f"OC-{seq:04d}"
+                seq += 1
+                if campos["status"] == "Finalizado" and not campos.get("fim"):
+                    campos["fim"] = max(datas) if datas else campos["inicio"]
+                    ajustes["fim_inferido"].append(oid)
+                linha = {h: "" for h in OC_HEADERS}
+                linha["ID"] = oid
+                for k, coluna in OC_CAMPOS.items():
+                    linha[coluna] = campos.get(k, "")
+                linha["Criada em"] = agora
+                linha["Atualizada em"] = agora
+                linhas.append([linha[h] for h in OC_HEADERS])
+                for h in hist:
+                    d = _oc_texto(h.get("d")) if _OC_RE_DATA.match(_oc_texto(h.get("d"))) else ""
+                    hist_linhas.append(["H" + uuid.uuid4().hex[:8], oid, d, _oc_texto(h.get("t"), OC_TEXTO_MAX), agora])
+            _gspread_retry(lambda: ws.append_rows(linhas, value_input_option="RAW"))
+            if hist_linhas:
+                _gspread_retry(lambda: wh.append_rows(hist_linhas, value_input_option="RAW"))
+            _oc_invalidar()
+        return jsonify({"ok": True, "ocorrencias": len(linhas), "historico": len(hist_linhas),
+                        "ajustes": ajustes}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
 try:
     carregar_push_subscriptions()
 except Exception as e:
