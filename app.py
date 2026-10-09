@@ -784,25 +784,25 @@ _SUP_MAPEAMENTO = {
         {'usina': 'Ponto Belo I', 'cliente': 'Axis', 'cluster': 'BA Sul 01', 'cidade_uf': 'Ponto Belo', 'responsavel': 'Thiago Morais', 'funcao': 'Técnico', 'membros': ['Alex Cardoso'], 'alternativo': ''},
         {'usina': 'Vargem Grande I', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'São Mateus', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
         {'usina': 'Linhares I (Axis)', 'cliente': 'Axis', 'cluster': 'ES Norte 01', 'cidade_uf': 'Linhares', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
-        {'usina': 'Córrego de Sapucaia', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'São Mateus', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
+        {'usina': 'Córrego de Sapucaia', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'São Mateus', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': '', 'aliases': ['Córrego do Sapucaia']},
         {'usina': 'Primavera I', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'Vargem Grande', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
         {'usina': 'Primavera II', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'Vargem Grande', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
         {'usina': 'Linhares I (Thopen)', 'cliente': 'Thopen', 'cluster': 'ES Norte 01', 'cidade_uf': 'Linhares', 'responsavel': 'Marcos Duarte', 'funcao': 'Técnico', 'membros': ['Italo Oliveira'], 'alternativo': ''},
-        {'usina': 'Timon 200', 'cliente': 'Athon', 'cluster': 'MA Leste 01', 'cidade_uf': 'Timon', 'responsavel': 'Luiz Silva', 'funcao': 'Técnico', 'membros': ['José Neto'], 'alternativo': ''},
-        {'usina': 'Timon 100', 'cliente': 'Athon', 'cluster': 'MA Leste 01', 'cidade_uf': 'Timon', 'responsavel': 'Luiz Silva', 'funcao': 'Técnico', 'membros': ['José Neto'], 'alternativo': ''},
-        {'usina': 'Matões 100', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': ''},
-        {'usina': 'Matões 200', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': ''},
+        {'usina': 'Timon 200', 'cliente': 'Athon', 'cluster': 'MA Leste 01', 'cidade_uf': 'Timon', 'responsavel': 'Luiz Silva', 'funcao': 'Técnico', 'membros': ['José Neto'], 'alternativo': '', 'aliases': ['Timon 2']},
+        {'usina': 'Timon 100', 'cliente': 'Athon', 'cluster': 'MA Leste 01', 'cidade_uf': 'Timon', 'responsavel': 'Luiz Silva', 'funcao': 'Técnico', 'membros': ['José Neto'], 'alternativo': '', 'aliases': ['Timon 1']},
+        {'usina': 'Matões 100', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': '', 'aliases': ['Matões 1']},
+        {'usina': 'Matões 200', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': '', 'aliases': ['Matões 2']},
         {'usina': 'Petrolina 3', 'cliente': 'Axis', 'cluster': 'PE Oeste 01', 'cidade_uf': 'Petrolina', 'responsavel': 'Rodrigo Silva', 'funcao': 'Técnico', 'membros': ['Eliam Silva'], 'alternativo': ''},
         {'usina': 'Petrolina II', 'cliente': 'Axis', 'cluster': 'PE Oeste 01', 'cidade_uf': 'Petrolina', 'responsavel': 'Rodrigo Silva', 'funcao': 'Técnico', 'membros': ['Eliam Silva'], 'alternativo': ''},
         {'usina': 'Marialva I', 'cliente': 'Axis', 'cluster': 'PR Norte 01', 'cidade_uf': 'Marialva', 'responsavel': 'Marcos Camargo', 'funcao': 'Técnico', 'membros': ['Douglas Silva'], 'alternativo': ''},
         {'usina': 'Fazenda Limão I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
         {'usina': 'Saturnino I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
-        {'usina': 'Goytacazes I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
+        {'usina': 'Goytacazes I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': '', 'aliases': ['Campos dos Goytacazes 1', 'Campos dos Goytacazes']},
         {'usina': 'São Bento 5', 'cliente': 'Thopen', 'cluster': 'RJ Sul 01', 'cidade_uf': 'Barra Mansa', 'responsavel': 'Adão Neto', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
         {'usina': 'Aparecida 3', 'cliente': 'Thopen', 'cluster': 'SP Leste 01', 'cidade_uf': 'Aparecida', 'responsavel': 'Henri Almeida', 'funcao': 'Técnico', 'membros': ['Douglas Chagas'], 'alternativo': ''},
         {'usina': 'Guaratinguetá 5', 'cliente': 'Thopen', 'cluster': 'SP Leste 01', 'cidade_uf': 'Guaratinguetá', 'responsavel': 'Henri Almeida', 'funcao': 'Técnico', 'membros': ['Douglas Chagas'], 'alternativo': ''},
         {'usina': 'Sorocaba', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Sorocaba', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
-        {'usina': 'Araçoiaba da Serra IA', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Araçoiaba da Serra', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
+        {'usina': 'Araçoiaba da Serra IA', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Araçoiaba da Serra', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': '', 'aliases': ['Araçoiaba da Serra 1', 'Araçoiaba da Serra 1 SP']},
         {'usina': 'Araçoiaba da Serra IB', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Araçoiaba da Serra', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
         {'usina': 'Salto Pirapora 3', 'cliente': 'Thopen', 'cluster': 'SP Leste 02', 'cidade_uf': 'Salto de Pirapora', 'responsavel': 'Eduardo Mendes', 'funcao': 'Técnico', 'membros': ['Milton Ramos'], 'alternativo': ''},
         {'usina': 'Indaiatuba', 'cliente': 'Thopen', 'cluster': 'SP Leste 03', 'cidade_uf': 'Indaiatuba', 'responsavel': 'Felipe Lima', 'funcao': 'Técnico', 'membros': ['Igor Cruz'], 'alternativo': ''},
@@ -1057,6 +1057,8 @@ def _sup_canonizar(escopo, texto_bruto):
         partes = partes[:-1]
     nome = " - ".join(partes).strip()
     nome = re.sub(r"\s+AL$", "", nome)  # "Ouro Branco AL" (UF colada ao nome, como na tabela)
+    nome = re.sub(r"(?<=\S)-\s*[A-Za-z]{2}$", "", nome).strip()  # "Araçoiaba da Serra 1- SP" (hífen colado)
+    nome = re.sub(r"^(.+?)\s+12$", r"\1 1 e 2", nome)  # "Santo Inácio 12" == "Santo Inácio 1 e 2"
     if not nome:
         return None
     direto = _sup_resolver_um(escopo, nome, hint)   # nome exato/alias (inclui "X 1 e 2", "X 1 a 3" cadastrados)
@@ -1367,7 +1369,7 @@ def _supervisoras_ciclo():
         # varredura de lacunas: uma só pra todas, 1x/dia com sucesso; se falhar, tenta de novo a cada 15 min
         try:
             hoje = agora_br().strftime("%Y-%m-%d")
-            chave = "sup_lacunas_v8_" + "_".join(sorted(_SUP_MAPEAMENTO))
+            chave = "sup_lacunas_v9_" + "_".join(sorted(_SUP_MAPEAMENTO))
             if (agora_br().hour >= 6 and _ler_trava(chave) != hoje
                     and time.time() - _sup_lacunas_tentativa["ts"] > 300):
                 _sup_lacunas_tentativa["ts"] = time.time()
