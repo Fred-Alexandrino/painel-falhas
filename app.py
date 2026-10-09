@@ -19468,7 +19468,7 @@ def _oc_carregar(forcar=False):
         for _, r in _oc_linhas(wh, len(OC_HIST_HEADERS)):
             hist_por.setdefault(r[1], []).append({"hid": r[0], "d": r[2], "t": r[3]})
         for lista in hist_por.values():
-            lista.sort(key=lambda e: (e["d"] or "9999-99-99", e["hid"]))
+            lista.sort(key=lambda e: e["d"] or "9999-99-99")  # estável: mantém a ordem de inserção dentro do mesmo dia
         c = {h: OC_HEADERS.index(h) for h in OC_HEADERS}
         itens = []
         for _, r in _oc_linhas(ws, len(OC_HEADERS)):
