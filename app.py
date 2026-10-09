@@ -1132,6 +1132,66 @@ def supervisoras_fracttal_ping():
                         "corpo": (resp.text[:300] if resp is not None else "")}), 200
 
 
+_sup_grupos_diag = {"estado": "ocioso"}
+
+
+def _sup_grupos_diag_worker(statuses):
+    """Diagnóstico read-only: pagina a Fracttal e conta OTs por grupo/usina, dizendo qual escopo reconhece cada um."""
+    from collections import Counter
+    try:
+        res = {}
+        for stt in statuses:
+            cont, ex = Counter(), {}
+            start, total = 0, None
+            while True:
+                ots = None
+                for tent in range(6):
+                    try:
+                        ots, total = _fracttal_listar_pagina(since="2026-01-01T00:00:00-00:00", ot_status=stt, start=start, limit=100)
+                        break
+                    except Exception as e:
+                        if "429" in str(e) and tent < 5:
+                            time.sleep(30 * (tent + 1))
+                            continue
+                        raise
+                for folio, tasks in _fracttal_agrupar_por_wo(ots):
+                    rep = tasks[0]
+                    g = (rep.get("groups_1_description") or "").strip()
+                    cont[g] += 1
+                    ex.setdefault(g, (rep.get("items_log_description") or rep.get("parent_description") or "")[:60])
+                start += 100
+                _sup_grupos_diag.update({"estado": "rodando", "status": stt, "start": start, "total": total})
+                if start >= (total or 0):
+                    break
+                time.sleep(3.5)
+            linhas = []
+            for g, n in cont.most_common():
+                rec = {}
+                for esc in _SUP_MAPEAMENTO:
+                    try:
+                        u = _sup_canonizar(esc, _extrair_nome_usina_fracttal(g)) or _sup_canonizar(esc, ex[g])
+                    except Exception:
+                        u = None
+                    if u:
+                        rec[esc] = u
+                linhas.append({"grupo": g, "os": n, "ativo_ex": ex[g], "reconhecido_por": rec})
+            res[stt] = {"total": total, "grupos": linhas}
+        _sup_grupos_diag.update({"estado": "pronto", "resultado": res})
+    except Exception as e:
+        _sup_grupos_diag.update({"estado": "erro", "erro": str(e)[:300]})
+
+
+@app.route("/supervisoras/fracttal-grupos", methods=["GET"])
+def supervisoras_fracttal_grupos():
+    if request.headers.get("X-Deploy-Secret", "") != os.environ.get("DEPLOY_SECRET", "x-vazio"):
+        return jsonify({"ok": False}), 401
+    if request.args.get("iniciar") and _sup_grupos_diag.get("estado") != "rodando":
+        sts = [x for x in (request.args.get("status") or "1").split(",") if x]
+        _sup_grupos_diag.clear(); _sup_grupos_diag["estado"] = "rodando"
+        threading.Thread(target=_sup_grupos_diag_worker, args=(sts,), daemon=True).start()
+    return jsonify({"ok": True, **_sup_grupos_diag}), 200
+
+
 @app.route("/supervisoras/status", methods=["GET"])
 def supervisoras_status():
     """Só contadores/diagnóstico do ciclo das supervisoras — sem dados de OS."""
