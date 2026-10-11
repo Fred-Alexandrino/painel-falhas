@@ -14010,26 +14010,59 @@ def converter_atividade_em_ocorrencia():
         if historico_ativ:
             historico_ocorrencia += "\n" + historico_ativ
 
-        status_ocorrencia = status_ativ if status_ativ and status_ativ.lower() not in (
-            "concluído", "concluido", "convertida em ocorrência") else "Em Aberto"
-
-        ws_falhas = get_sheet()
-        todos_falhas = carregar_planilha(ws_falhas)
-        novo_id_ocorrencia = proximo_id(todos_falhas)
-
-        dados = {
-            "cliente":      cliente,
-            "usina":        usina,
-            "equipamento":  equipamento,
-            "falha":        descricao,
-            "causa":        "",
-            "equip_impact": equipamento,
-            "acao":         f"Responsável original: {responsavel}." if responsavel else "",
-            "status":       status_ocorrencia,
-            "os":           numero_os_ativ,
-            "historico":    historico_ocorrencia,
+        # Desde 09/10/2026 o painel de Ocorrências lê das abas Ocorrencias*
+        # (não mais do antigo Painel de Falhas): a conversão grava lá, com o
+        # histórico da atividade transferido para OcorrenciasHistorico.
+        # (Bug 11/10/2026: gravava na planilha antiga e a ocorrência não aparecia.)
+        sl = (status_ativ or "").lower()
+        status_ocorrencia = "Pausado" if "paus" in sl else "Em andamento"
+        eq_txt = (equipamento or "").strip()
+        el = eq_txt.upper()
+        tipo_equip = ("Inversor" if ("INVR" in el or "INVERSOR" in el) else
+                      "Tracker" if ("ETKR" in el or "TRACKER" in el) else
+                      "Transformador" if ("TRFR" in el or "TRANSFORMADOR" in el) else
+                      (eq_txt[:80] or "Não informado"))
+        prio = (linha_atual[7] if len(linha_atual) > 7 else "") or ""
+        crit = {"alta": "Alta", "média": "Média", "media": "Média", "baixa": "Baixa"}.get(prio.strip().lower(), "")
+        dados_oc = {
+            "usina": usina, "cliente": cliente, "equip": tipo_equip,
+            "nequip": eq_txt if eq_txt and eq_txt != "Não informado" else "",
+            "causa": descricao or "Atividade convertida", "status": status_ocorrencia,
+            "crit": crit, "resp": "Fred", "inicio": _oc_hoje(),
         }
-        gravar_nova_ocorrencia(ws_falhas, todos_falhas, dados)
+        if numero_os_ativ:
+            dados_oc["chamado"] = f"OS {numero_os_ativ}"
+        with _OC_LOCK:
+            ws_oc = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            campos = _oc_validar_campos(dados_oc, criando=True)
+            novo_id_ocorrencia = _oc_proximo_id(ws_oc)
+            agora_oc = _oc_agora()
+            linha_oc = {h: "" for h in OC_HEADERS}
+            linha_oc["ID"] = novo_id_ocorrencia
+            for k, coluna in OC_CAMPOS.items():
+                linha_oc[coluna] = campos.get(k, "")
+            linha_oc["Criada em"] = agora_oc
+            linha_oc["Atualizada em"] = agora_oc
+            _gspread_retry(lambda: ws_oc.append_row([linha_oc[h] for h in OC_HEADERS],
+                                                    value_input_option="RAW"))
+            wh_oc = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+            hist_rows = []
+            for ln in (historico_ativ or "").split("\n"):
+                ln = ln.strip()
+                if not ln:
+                    continue
+                m = re.match(r"^(\d{2})/(\d{2})/(\d{4})(?: \d{2}:\d{2}(?::\d{2})?)? - (.*)$", ln)
+                data_h, texto_h = (f"{m.group(3)}-{m.group(2)}-{m.group(1)}", m.group(4)) if m else (_oc_hoje(), ln)
+                if "marcado como visualizado" in texto_h.lower():
+                    continue
+                hist_rows.append(["H" + uuid.uuid4().hex[:8], novo_id_ocorrencia, data_h,
+                                  _oc_texto(texto_h, OC_TEXTO_MAX), agora_oc])
+            nota = (f"Convertida do Painel de Atividades (Atividade #{atividade_id}"
+                    + (f", OS {numero_os_ativ}" if numero_os_ativ else "") + f") por {_editor_legivel(editor)}."
+                    + (f" Responsável original: {responsavel}." if responsavel else ""))
+            hist_rows.append(["H" + uuid.uuid4().hex[:8], novo_id_ocorrencia, _oc_hoje(), nota, agora_oc])
+            _gspread_retry(lambda: wh_oc.append_rows(hist_rows, value_input_option="RAW"))
+            _oc_invalidar()
 
         # Marca a atividade original como convertida e registra no histórico dela
         ws_ativ.update_cell(linha_idx, 9, "Convertida em Ocorrência")  # coluna I = Status
