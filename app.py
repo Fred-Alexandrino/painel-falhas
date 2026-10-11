@@ -14032,13 +14032,42 @@ def converter_atividade_em_ocorrencia():
         }
         if numero_os_ativ:
             dados_oc["os"] = str(numero_os_ativ).strip()
+        oc_existente = str(body.get("ocorrenciaId", "")).strip()
+        if oc_existente:
+            # Vincula a OS da atividade a uma ocorrência JÁ existente (não cria outra).
+            with _OC_LOCK:
+                ws_v = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+                nlin, rowv = _oc_achar_linha(ws_v, len(OC_HEADERS), 0, oc_existente)
+                if not nlin or rowv[OC_HEADERS.index("Excluída")].strip():
+                    return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+                if not numero_os_ativ:
+                    return jsonify({"ok": False, "error": "Esta atividade não tem número de OS para vincular."}), 400
+                toks = _oc_os_tokens(rowv[OC_HEADERS.index("OS")])
+                if str(numero_os_ativ).strip() not in toks:
+                    toks.append(str(numero_os_ativ).strip())
+                col_os = chr(65 + OC_HEADERS.index("OS"))
+                col_up = chr(65 + OC_HEADERS.index("Atualizada em"))
+                _gspread_retry(lambda: ws_v.batch_update([
+                    {"range": f"{col_os}{nlin}", "values": [[", ".join(toks)]]},
+                    {"range": f"{col_up}{nlin}", "values": [[_oc_agora()]]}], value_input_option="RAW"))
+                wh_v = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+                nota_v = (f"OS {numero_os_ativ} vinculada a esta ocorrência (Atividade #{atividade_id}) por "
+                          f"{_editor_legivel(editor)}." + (f" Técnico: {responsavel}." if responsavel else ""))
+                _gspread_retry(lambda: wh_v.append_row(
+                    ["H" + uuid.uuid4().hex[:8], oc_existente, _oc_hoje(), nota_v, _oc_agora()],
+                    value_input_option="RAW"))
+                _oc_invalidar()
+            entry_v = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - OS vinculada à ocorrência {oc_existente} "
+                       f"por {_editor_legivel(editor)} (a OS segue controlada aqui).")
+            ws_ativ.update_cell(linha_idx, 12, f"{historico_ativ}\n{entry_v}".strip() if historico_ativ else entry_v)
+            return jsonify({"ok": True, "novaOcorrenciaId": oc_existente, "vinculada": True})
         with _OC_LOCK:
             ws_oc = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
             # Já existe ocorrência aberta referenciando essa OS? Não duplica.
             if numero_os_ativ:
                 for _, rr in _oc_linhas(ws_oc, len(OC_HEADERS)):
                     if (not rr[OC_HEADERS.index("Excluída")].strip()
-                            and rr[OC_HEADERS.index("OS")].strip() == str(numero_os_ativ).strip()
+                            and str(numero_os_ativ).strip() in _oc_os_tokens(rr[OC_HEADERS.index("OS")])
                             and rr[OC_HEADERS.index("Status")] != "Finalizado"):
                         return jsonify({"ok": True, "novaOcorrenciaId": rr[0], "jaExistia": True})
             campos = _oc_validar_campos(dados_oc, criando=True)
@@ -19611,6 +19640,10 @@ def _oc_achar_linha(ws, n_cols, coluna, valor):
         if r[coluna] == valor:
             return nlinha, r
     return None, None
+
+
+def _oc_os_tokens(texto):
+    return [t for t in re.split(r"[,;/\s]+", str(texto or "")) if t]
 
 
 def _oc_tocar(oid):
