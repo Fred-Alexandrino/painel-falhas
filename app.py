@@ -19462,7 +19462,7 @@ OC_PLANO_SHEET_NAME = "OcorrenciasPlano"
 
 OC_HEADERS = ["ID", "Status", "Criticidade", "Grave", "Usina", "Cliente", "Equipamento",
               "Identificação", "Fabricante", "Chamado", "S/N", "Descrição", "Impacto",
-              "Início", "Fim", "Responsável", "Criada em", "Atualizada em", "Excluída", "OS"]
+              "Início", "Fim", "Responsável", "Criada em", "Atualizada em", "Excluída", "OS", "Título"]
 OC_HIST_HEADERS = ["HID", "Ocorrência", "Data", "Texto", "Criado em"]
 OC_NOTAS_HEADERS = ["NID", "Ocorrência", "Texto", "Criada em", "Editada em"]
 OC_PLANO_HEADERS = ["Ocorrência", "Ação", "Responsável", "Prazo", "Situação", "Atualizada em"]
@@ -19476,10 +19476,10 @@ OC_CAMPOS = {
     "status": "Status", "crit": "Criticidade", "grave": "Grave", "usina": "Usina",
     "cliente": "Cliente", "equip": "Equipamento", "nequip": "Identificação",
     "fab": "Fabricante", "chamado": "Chamado", "sn": "S/N", "causa": "Descrição",
-    "impacto": "Impacto", "inicio": "Início", "fim": "Fim", "resp": "Responsável", "os": "OS",
+    "impacto": "Impacto", "inicio": "Início", "fim": "Fim", "resp": "Responsável", "os": "OS", "titulo": "Título",
 }
 OC_LIMITES = {"causa": 1500, "impacto": 300, "usina": 120, "cliente": 80, "equip": 80,
-              "nequip": 200, "fab": 60, "chamado": 120, "sn": 120, "resp": 80, "os": 120}
+              "nequip": 200, "fab": 60, "chamado": 120, "sn": 120, "resp": 80, "os": 120, "titulo": 200}
 OC_TEXTO_MAX = 8000
 
 # Prefixos (sem acento, minúsculos) das usinas que saíram do mapeamento em
@@ -19616,7 +19616,7 @@ def _oc_carregar(forcar=False):
                 "nequip": r[c["Identificação"]], "fab": r[c["Fabricante"]],
                 "chamado": r[c["Chamado"]], "sn": r[c["S/N"]], "causa": r[c["Descrição"]],
                 "impacto": r[c["Impacto"]], "inicio": r[c["Início"]], "fim": r[c["Fim"]] or None,
-                "resp": r[c["Responsável"]], "os": r[c["OS"]], "hist": hist,
+                "resp": r[c["Responsável"]], "os": r[c["OS"]], "titulo": r[c["Título"]], "hist": hist,
                 "ult": max(datas) if datas else None,
                 "criada": r[c["Criada em"]], "atualizada": r[c["Atualizada em"]],
                 "foraMapa": _oc_fora_do_mapa(usina),
