@@ -13962,7 +13962,7 @@ def converter_atividade_em_ocorrencia():
     """
     Converte uma Atividade em uma Ocorrência: cria uma nova linha no Painel de
     Falhas com os dados da atividade (incluindo o histórico cronológico
-    transferido), e marca a atividade original como "Convertida em Ocorrência".
+    transferido), e mantém a atividade no painel de Atividades (só anota o vínculo no histórico).
     """
     if request.method == "OPTIONS":
         return ("", 204)
@@ -14031,9 +14031,16 @@ def converter_atividade_em_ocorrencia():
             "crit": crit, "resp": "Fred", "inicio": _oc_hoje(),
         }
         if numero_os_ativ:
-            dados_oc["chamado"] = f"OS {numero_os_ativ}"
+            dados_oc["os"] = str(numero_os_ativ).strip()
         with _OC_LOCK:
             ws_oc = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+            # Já existe ocorrência aberta referenciando essa OS? Não duplica.
+            if numero_os_ativ:
+                for _, rr in _oc_linhas(ws_oc, len(OC_HEADERS)):
+                    if (not rr[OC_HEADERS.index("Excluída")].strip()
+                            and rr[OC_HEADERS.index("OS")].strip() == str(numero_os_ativ).strip()
+                            and rr[OC_HEADERS.index("Status")] != "Finalizado"):
+                        return jsonify({"ok": True, "novaOcorrenciaId": rr[0], "jaExistia": True})
             campos = _oc_validar_campos(dados_oc, criando=True)
             novo_id_ocorrencia = _oc_proximo_id(ws_oc)
             agora_oc = _oc_agora()
@@ -14064,10 +14071,10 @@ def converter_atividade_em_ocorrencia():
             _gspread_retry(lambda: wh_oc.append_rows(hist_rows, value_input_option="RAW"))
             _oc_invalidar()
 
-        # Marca a atividade original como convertida e registra no histórico dela
-        ws_ativ.update_cell(linha_idx, 9, "Convertida em Ocorrência")  # coluna I = Status
-        entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Convertida em ocorrência "
-                 f"#{novo_id_ocorrencia} por {_editor_legivel(editor)}.")
+        # A atividade NÃO sai do painel de Atividades (é lá que fica o controle da OS):
+        # só ganha uma nota no histórico apontando para a ocorrência.
+        entry = (f"{agora_br().strftime('%d/%m/%Y %H:%M')} - Ocorrência {novo_id_ocorrencia} aberta a partir "
+                 f"desta atividade por {_editor_legivel(editor)} (a OS segue controlada aqui).")
         novo_hist_ativ = f"{historico_ativ}\n{entry}".strip() if historico_ativ else entry
         ws_ativ.update_cell(linha_idx, 12, novo_hist_ativ)  # coluna L = Historico
 
@@ -19426,7 +19433,7 @@ OC_PLANO_SHEET_NAME = "OcorrenciasPlano"
 
 OC_HEADERS = ["ID", "Status", "Criticidade", "Grave", "Usina", "Cliente", "Equipamento",
               "Identificação", "Fabricante", "Chamado", "S/N", "Descrição", "Impacto",
-              "Início", "Fim", "Responsável", "Criada em", "Atualizada em", "Excluída"]
+              "Início", "Fim", "Responsável", "Criada em", "Atualizada em", "Excluída", "OS"]
 OC_HIST_HEADERS = ["HID", "Ocorrência", "Data", "Texto", "Criado em"]
 OC_NOTAS_HEADERS = ["NID", "Ocorrência", "Texto", "Criada em", "Editada em"]
 OC_PLANO_HEADERS = ["Ocorrência", "Ação", "Responsável", "Prazo", "Situação", "Atualizada em"]
@@ -19440,10 +19447,10 @@ OC_CAMPOS = {
     "status": "Status", "crit": "Criticidade", "grave": "Grave", "usina": "Usina",
     "cliente": "Cliente", "equip": "Equipamento", "nequip": "Identificação",
     "fab": "Fabricante", "chamado": "Chamado", "sn": "S/N", "causa": "Descrição",
-    "impacto": "Impacto", "inicio": "Início", "fim": "Fim", "resp": "Responsável",
+    "impacto": "Impacto", "inicio": "Início", "fim": "Fim", "resp": "Responsável", "os": "OS",
 }
 OC_LIMITES = {"causa": 1500, "impacto": 300, "usina": 120, "cliente": 80, "equip": 80,
-              "nequip": 200, "fab": 60, "chamado": 120, "sn": 120, "resp": 80}
+              "nequip": 200, "fab": 60, "chamado": 120, "sn": 120, "resp": 80, "os": 120}
 OC_TEXTO_MAX = 8000
 
 # Prefixos (sem acento, minúsculos) das usinas que saíram do mapeamento em
@@ -19482,6 +19489,13 @@ def _oc_aba(nome, headers, linhas=1000):
     ss = _gspread_retry(lambda: get_gc().open_by_key(SHEET_ID))
     try:
         ws = _gspread_retry(lambda: ss.worksheet(nome))
+        # Migração: aba criada antes de uma coluna nova (ex.: "OS", 11/10/2026)
+        cab = _gspread_retry(lambda: ws.row_values(1))
+        if len(cab) < len(headers) and list(cab) == list(headers[:len(cab)]):
+            if ws.col_count < len(headers):
+                _gspread_retry(lambda: ws.add_cols(len(headers) - ws.col_count))
+            _gspread_retry(lambda: ws.update(f"A1:{chr(64 + len(headers))}1", [list(headers)],
+                                             value_input_option="RAW"))
     except gspread.WorksheetNotFound:
         ws = _gspread_retry(lambda: ss.add_worksheet(title=nome, rows=linhas, cols=len(headers)))
         _gspread_retry(lambda: ws.append_row(headers, value_input_option="RAW"))
@@ -19573,7 +19587,7 @@ def _oc_carregar(forcar=False):
                 "nequip": r[c["Identificação"]], "fab": r[c["Fabricante"]],
                 "chamado": r[c["Chamado"]], "sn": r[c["S/N"]], "causa": r[c["Descrição"]],
                 "impacto": r[c["Impacto"]], "inicio": r[c["Início"]], "fim": r[c["Fim"]] or None,
-                "resp": r[c["Responsável"]], "hist": hist,
+                "resp": r[c["Responsável"]], "os": r[c["OS"]], "hist": hist,
                 "ult": max(datas) if datas else None,
                 "criada": r[c["Criada em"]], "atualizada": r[c["Atualizada em"]],
                 "foraMapa": _oc_fora_do_mapa(usina),
