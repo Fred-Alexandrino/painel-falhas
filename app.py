@@ -11023,6 +11023,294 @@ def programacao_pcm():
     }), 200
 
 
+# ══════════════════════════════════════════════════════════════════════
+# PROGRAMAÇÃO PCM — VISÃO SEMANAL POR CLUSTER (13/10/2026)
+#
+# Mesma fonte (banco_dados.json) e MESMO filtro do /programacao-pcm
+# (responsável O&M = Fred ou usina emprestada, e só usinas do mapeamento
+# oficial atual), mas devolvendo a semana inteira (seg–sex) de uma vez, no
+# formato do calendário "Semana" do portal do PCM — pra o painel mostrar
+# o calendário por dia e pra gerar o visual semanal de cada cluster.
+#
+# Os nomes de rota começam com "/programacao-pcm/" e "/disparar-comunicado"
+# DE PROPÓSITO: o frontend já bloqueia esses prefixos pras supervisoras
+# (_SUP_GET_VAZIO e _SUP_BLOQUEIO_ENVIO) — a visão e o envio são só do Fred.
+# ══════════════════════════════════════════════════════════════════════
+
+_PCM_DIAS_UTEIS = [
+    ("seg", "Segunda-feira", "SEG"),
+    ("ter", "Terça-feira", "TER"),
+    ("qua", "Quarta-feira", "QUA"),
+    ("qui", "Quinta-feira", "QUI"),
+    ("sex", "Sexta-feira", "SEX"),
+]
+_PCM_MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def _pcm_turno(h_ini):
+    """Turno como o portal do PCM rotula: MANHÃ 07:00–11:59, TARDE
+    12:00–16:59 e NOITE no resto (inclui madrugada)."""
+    try:
+        hh, mm = str(h_ini).split(":")[:2]
+        minutos = int(hh) * 60 + int(mm)
+    except Exception:
+        return ""
+    if 7 * 60 <= minutos < 12 * 60:
+        return "MANHÃ"
+    if 12 * 60 <= minutos < 17 * 60:
+        return "TARDE"
+    return "NOITE"
+
+
+def _pcm_dia_do_plano(gerada_em):
+    """Dia (YYYY-MM-DD, horário de Brasília) em que o PCM gerou o plano da
+    semana. OS criada nesse dia ou depois entra como "criada após o plano"
+    (regra conferida contra a tela do portal em 13/10/2026: 14/15/3/0/1)."""
+    try:
+        d = datetime.fromisoformat(str(gerada_em).replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(_TZ_BR).strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _pcm_nome_usina_exibicao(usina_raw):
+    """'Thopen - Sítio dos Nogueiras 1 - GO' → 'Sítio dos Nogueiras 1 - GO'
+    (tira o prefixo do cliente, igual aos cards do portal do PCM)."""
+    texto = str(usina_raw or "").strip()
+    partes = [p.strip() for p in texto.split(" - ") if p.strip()]
+    if len(partes) >= 2:
+        return " - ".join(partes[1:])
+    return texto or "(sem usina)"
+
+
+def _pcm_grupo_do_cluster(cluster, mapa_cluster=None, mapa_grupo=None):
+    """(grupo_id, qtd_grupos_distintos) do WhatsApp que atende as usinas de
+    um cluster. Normalmente todas as usinas do cluster caem no mesmo grupo
+    (mesma equipe de campo); se houver mais de um, vale o mais frequente."""
+    if mapa_cluster is None:
+        mapa_cluster = _mapa_cluster_usina()
+    if mapa_grupo is None:
+        mapa_grupo = _mapa_grupo_usina()
+    contagem = {}
+    for usina, c in mapa_cluster.items():
+        if c != cluster:
+            continue
+        g = mapa_grupo.get(usina)
+        if g:
+            contagem[g] = contagem.get(g, 0) + 1
+    if not contagem:
+        return None, 0
+    escolhido = sorted(contagem.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    return escolhido, len(contagem)
+
+
+def _pcm_nome_grupo(grupo_id):
+    if not grupo_id:
+        return None
+    return (_NOMES_GRUPOS_CONHECIDOS.get(str(grupo_id).replace("@g.us", ""))
+            or _nome_amigavel_grupo(grupo_id)
+            or "Grupo configurado")
+
+
+@app.route("/programacao-pcm/semana", methods=["GET"])
+def programacao_pcm_semana():
+    """
+    Calendário semanal (seg–sex) da Programação PCM, filtrado pro Fred e
+    pro mapeamento atual — com cluster pelo NOSSO mapeamento (fonte de
+    verdade), totais por dia e a lista de clusters (com técnico responsável
+    e se há grupo de WhatsApp configurado pra receber o visual da semana).
+    Parâmetros opcionais:
+      ?data=YYYY-MM-DD  qualquer dia da semana desejada (default: hoje)
+      ?forcar=1          rebaixa o banco_dados.json ignorando o cache
+    """
+    forcar = request.args.get("forcar") in ("1", "true", "True")
+    data_filtro = request.args.get("data", "").strip() or datetime.now(_TZ_BR).strftime("%Y-%m-%d")
+    try:
+        dt = datetime.strptime(data_filtro, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"ok": False, "error": "parâmetro 'data' inválido, use YYYY-MM-DD"}), 400
+
+    try:
+        cache = _buscar_programacao_pcm_core(forcar=forcar)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Falha ao consultar PCM: {e}"}), 502
+
+    dados = cache.get("dados") or {}
+    semanas = dados.get("semanas", [])
+    iso_year, iso_week, _ = dt.isocalendar()
+    semana_alvo = f"{iso_year}-W{iso_week:02d}"
+    segunda = dt - timedelta(days=dt.weekday())
+    datas = [segunda + timedelta(days=i) for i in range(5)]
+    d0, d4 = datas[0], datas[4]
+    if d0.month == d4.month:
+        rotulo_periodo = f"{d0.day:02d}–{d4.day:02d} {_PCM_MESES_ABREV[d4.month - 1]} {d4.year}"
+    else:
+        rotulo_periodo = (f"{d0.day:02d} {_PCM_MESES_ABREV[d0.month - 1]} – "
+                          f"{d4.day:02d} {_PCM_MESES_ABREV[d4.month - 1]} {d4.year}")
+    base = {
+        "ok": True,
+        "semana": semana_alvo,
+        "numero": iso_week,
+        "rotulo": f"Semana {iso_week} · {rotulo_periodo}",
+        "segunda": segunda.strftime("%Y-%m-%d"),
+        "fonte": {"geradoEmPCM": cache.get("gerado_em")},
+        "semanasDisponiveis": [s.get("week") for s in semanas],
+    }
+
+    semana = next((s for s in semanas if s.get("week") == semana_alvo), None)
+    if semana is None:
+        janela = ", ".join(s.get("week", "") for s in semanas)
+        base.update({
+            "total": 0, "dias": [], "clusters": [],
+            "aviso": f"Sem programação publicada pelo PCM pra semana {semana_alvo} (janela disponível: {janela}).",
+        })
+        return jsonify(base), 200
+
+    plano_dia = _pcm_dia_do_plano(semana.get("geradaEm"))
+    usinas_temp_nomes = {item["usina"] for item in _usinas_temporarias()}
+    mapa_cluster_pcm = _mapa_cluster_usina()
+    mapa_grupo = _mapa_grupo_usina()
+    hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
+
+    chave_por_dia = {nome: (chave, rot, datas[i]) for i, (chave, nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
+    dias = {chave: {"chave": chave, "rotulo": rot, "data": datas[i].strftime("%Y-%m-%d"),
+                    "dataCurta": datas[i].strftime("%d/%m"), "total": 0, "horas": 0.0,
+                    "aposPlano": 0, "finalizadas": 0, "itens": []}
+            for i, (chave, _nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
+
+    for r in semana.get("rows", []):
+        if not (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes):
+            continue
+        if not _pcm_usina_no_mapeamento(r.get("usina")):
+            continue
+        info_dia = chave_por_dia.get(r.get("dia"))
+        if not info_dia:
+            continue  # sábado/domingo ficam fora do calendário seg–sex
+        chave_dia, _rot, data_dia = info_dia
+        usina_raw = r.get("usina") or ""
+        usina_canonica = canonizar_usina(_extrair_nome_usina_fracttal(usina_raw) or usina_raw) if usina_raw else None
+        cluster = (mapa_cluster_pcm.get(usina_canonica) if usina_canonica else None) or r.get("cluster") or "(sem cluster)"
+        estado = _PCM_STATUS_NORMALIZADO.get(r.get("status"), r.get("status") or "")
+        h_ini = r.get("h_ini") or ""
+        duracao = r.get("duracao") or 0
+        try:
+            duracao = float(duracao)
+        except (TypeError, ValueError):
+            duracao = 0.0
+        apos_plano = bool(plano_dia and str(r.get("dataCriacao") or "")[:10] >= plano_dia)
+        d = dias[chave_dia]
+        d["itens"].append({
+            "os": r.get("os_id"),
+            "cliente": r.get("cliente"),
+            "usina": _pcm_nome_usina_exibicao(usina_raw),
+            "cluster": cluster,
+            "tipo": r.get("tipo"),
+            "tarefa": r.get("tarefa"),
+            "estado": estado,
+            "hIni": h_ini,
+            "hFim": r.get("h_fim") or "",
+            "duracaoH": round(duracao, 2),
+            "turno": _pcm_turno(h_ini),
+            "tecnico": r.get("resp_os"),
+            "reprogramavel": (r.get("reprog") or "").strip().lower() == "sim",
+            "semanas": r.get("vezes"),
+            "aposPlano": apos_plano,
+            "atrasado": data_dia.strftime("%Y-%m-%d") < hoje_str and estado != "Finalizada",
+            "dia": chave_dia,
+        })
+        d["total"] += 1
+        d["horas"] += duracao
+        if apos_plano:
+            d["aposPlano"] += 1
+        if estado == "Finalizada":
+            d["finalizadas"] += 1
+
+    lista_dias = []
+    por_cluster = {}
+    for chave, _nome, _rot in _PCM_DIAS_UTEIS:
+        d = dias[chave]
+        d["itens"].sort(key=lambda it: (it.get("hIni") or "", it.get("usina") or "", str(it.get("os") or "")))
+        d["horas"] = round(d["horas"], 1)
+        lista_dias.append(d)
+        for it in d["itens"]:
+            c = por_cluster.setdefault(it["cluster"], {"total": 0, "usinas": set()})
+            c["total"] += 1
+            c["usinas"].add(it["usina"])
+
+    coordenadores = _mapa_coordenador_cluster()
+    todos_clusters = set(por_cluster) | set(mapa_cluster_pcm.values())
+    clusters = []
+    for nome in sorted(todos_clusters):
+        grupo_id, n_grupos = _pcm_grupo_do_cluster(nome, mapa_cluster_pcm, mapa_grupo)
+        info = por_cluster.get(nome, {"total": 0, "usinas": set()})
+        clusters.append({
+            "cluster": nome,
+            "total": info["total"],
+            "usinas": sorted(info["usinas"]),
+            "tecnicos": coordenadores.get(nome) or "",
+            "grupoConfigurado": bool(grupo_id),
+            "grupoNome": _pcm_nome_grupo(grupo_id),
+            "gruposDistintos": n_grupos,
+        })
+
+    base.update({
+        "total": sum(d["total"] for d in lista_dias),
+        "dias": lista_dias,
+        "clusters": clusters,
+        "planoEm": plano_dia,
+    })
+    return jsonify(base), 200
+
+
+@app.route("/disparar-comunicado-programacao-pcm", methods=["POST", "OPTIONS"])
+def disparar_comunicado_programacao_pcm():
+    """Envia o visual (PNG) da programação da semana de UM cluster pro grupo
+    de WhatsApp desse cluster — mesma resolução de grupo do
+    /disparar-comunicado-cluster (grupo_usina das usinas do cluster).
+    O dashboard chama uma vez por cluster, então cada equipe só recebe a
+    própria programação. Corpo: {cluster, imagemBase64, legenda}.
+    Sem WEBHOOK_SECRET aqui de propósito (chamado direto do navegador, igual
+    ao /disparar-comunicado-cluster); a proteção é o login no painel."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not WPP_SERVER_URL:
+        return jsonify({"ok": False, "error": "WPP_SERVER_URL não configurado"}), 400
+
+    dados = request.get_json(force=True, silent=True) or {}
+    cluster = (dados.get("cluster") or "").strip()
+    legenda = (dados.get("legenda") or "").strip()
+    imagem_b64 = (dados.get("imagemBase64") or "").strip()
+    if imagem_b64.startswith("data:") and "," in imagem_b64[:100]:
+        imagem_b64 = imagem_b64.split(",", 1)[1]  # aceita data URL do canvas
+    if not cluster or not imagem_b64:
+        return jsonify({"ok": False, "error": "cluster e imagemBase64 são obrigatórios"}), 400
+    if len(imagem_b64) > 14_000_000:
+        return jsonify({"ok": False, "error": "imagem grande demais (máx. ~10 MB)"}), 400
+
+    mapa_cluster = _mapa_cluster_usina()
+    if cluster not in set(mapa_cluster.values()):
+        return jsonify({"ok": False, "error": f"Cluster \"{cluster}\" não existe no mapeamento atual."}), 400
+    grupo_id, _n = _pcm_grupo_do_cluster(cluster, mapa_cluster)
+    if not grupo_id:
+        return jsonify({"ok": False, "error": (f"Nenhum grupo de WhatsApp configurado pras usinas do cluster "
+                        f"\"{cluster}\". Configure em _Sistema: \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
+
+    try:
+        payload = {"grupoId": grupo_id, "imagemBase64": imagem_b64}
+        if legenda:
+            payload["legenda"] = legenda
+        ok, erro = _wpp_enviar_com_retry(payload, "/api/enviar-imagem", timeout=60)
+        if ok:
+            log.info(f"[ProgramacaoPCM] visual semanal enviado — cluster {cluster} → grupo {grupo_id}")
+            return jsonify({"ok": True, "cluster": cluster, "grupo": _pcm_nome_grupo(grupo_id)}), 200
+        log.error(f"[ProgramacaoPCM] falha ao enviar visual semanal do cluster {cluster}: {erro}")
+        return jsonify({"ok": False, "error": erro or "falha ao enviar"}), 502
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/alertar-wpp-status", methods=["POST"])
 def alertar_wpp_status():
     """
