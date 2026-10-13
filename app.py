@@ -897,11 +897,11 @@ _SUP_MAPEAMENTO["daniel"] = [
         {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Apolo', 'usina': 'Ibipeba', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
         {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Apolo', 'usina': 'Iramaia II', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
         {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Apolo', 'usina': 'Rio do Peixe I e II', 'cidade': 'PB', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Rio do Peixe I', 'Rio do Peixe II', 'Rio do Peixe 1', 'Rio do Peixe 2'], 'alternativo': ''},
-        {'cluster': 'NE · Recife-PE', 'cliente': 'Apolo', 'usina': 'Gravataí II', 'cidade': 'PE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GD Energy', 'usina': 'Guajirú', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-GJR100'], 'alternativo': ''},
-        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GD Energy', 'usina': 'Sol do Norte 1', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-SON100'], 'alternativo': ''},
-        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'GD Energy', 'usina': 'Sol do Norte 2', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-SON200'], 'alternativo': ''},
-        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Alves Lima', 'usina': 'Morada Nova', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['ALLM-MRN100'], 'alternativo': ''},
+        {'cluster': 'PE Leste 02', 'cliente': 'Apolo', 'usina': 'Gravatá 2', 'cidade': 'PE', 'responsavel': 'Matheus Leite', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Gravataí II', 'Gravatá II'], 'alternativo': ''},
+        {'cluster': 'CE Norte 01', 'cliente': 'GD Energy', 'usina': 'Guajirú', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-GJR100'], 'alternativo': ''},
+        {'cluster': 'CE Norte 01', 'cliente': 'GD Energy', 'usina': 'Sol do Norte 1', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-SON100'], 'alternativo': ''},
+        {'cluster': 'CE Norte 01', 'cliente': 'GD Energy', 'usina': 'Sol do Norte 2', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['GDEN-SON200'], 'alternativo': ''},
+        {'cluster': 'CE Leste 01', 'cliente': 'Alves Lima', 'usina': 'Morada Nova', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': ['ALLM-MRN100'], 'alternativo': ''},
 ]
 _SUP_MAPEAMENTO["patrick"] = [
         {'cluster': 'NE · Feira de Santana-BA', 'cliente': 'Elis Energia', 'usina': 'Brumado', 'cidade': 'BA', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
@@ -970,7 +970,7 @@ _SUP_MAPEAMENTO["patrick"] = [
         {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Pirapora do Bom Jesus 2', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
         {'cluster': 'A mobilizar', 'cliente': 'E1', 'usina': 'Porto Feliz', 'cidade': 'SP', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
 ]
-_SUP_RENOMEAR = {"camila": {'Barretos': 'Barretos 1', 'Rodrigues 1': 'Rodrigues I', 'Rodrigues 2': 'Rodrigues II', 'Senador Elói': 'Senador Elói I', 'Santa Maria': 'Santa Maria do Pará 100', 'Capitão Poço': 'Capitão Poço 100', 'Mãe do Rio': 'Mãe do Rio 100', 'Jacundá': 'Jacundá 100', 'Marabá 1': 'Marabá 100', 'Marabá 2': 'Marabá 200'}}
+_SUP_RENOMEAR = {"daniel": {"Gravataí II": "Gravatá 2"}, "camila": {'Barretos': 'Barretos 1', 'Rodrigues 1': 'Rodrigues I', 'Rodrigues 2': 'Rodrigues II', 'Senador Elói': 'Senador Elói I', 'Santa Maria': 'Santa Maria do Pará 100', 'Capitão Poço': 'Capitão Poço 100', 'Mãe do Rio': 'Mãe do Rio 100', 'Jacundá': 'Jacundá 100', 'Marabá 1': 'Marabá 100', 'Marabá 2': 'Marabá 200'}}
 _SUP_ABAS = {"danuth": "Painel de Atividades - Danuth", "camila": "Painel de Atividades - Camila",
              "daniel": "Painel de Atividades - Daniel", "patrick": "Painel de Atividades - Patrick"}
 _SUP_IDX_CACHE = {}
