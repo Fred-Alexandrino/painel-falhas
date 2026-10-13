@@ -6475,11 +6475,11 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Guatambu IV', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
      "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
-    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'Ceilândia/DF',
+    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'Ceilândia/DF',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'Ceilândia/DF',
+    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'Ceilândia/DF',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'GO',
+    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'GO',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Aparecida do Taboado I', "cliente": 'Thopen', "cluster": 'MS Leste 01', "cidade_uf": 'Aparecida do Taboado/MS',
      "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
@@ -11295,6 +11295,7 @@ def programacao_pcm_semana():
     mapa_grupo = _mapa_grupo_usina()
     hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
 
+    _oficial_nomes = {u["usina"] for u in MAPEAMENTO_UFVS}
     chave_por_dia = {nome: (chave, rot, datas[i]) for i, (chave, nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
     dias = {chave: {"chave": chave, "rotulo": rot, "data": datas[i].strftime("%Y-%m-%d"),
                     "dataCurta": datas[i].strftime("%d/%m"), "total": 0, "horas": 0.0,
@@ -11329,6 +11330,7 @@ def programacao_pcm_semana():
             "usina": _pcm_nome_usina_exibicao(usina_raw),
             "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
             "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else None),
+            "foraMapeamento": (usina_canonica not in _oficial_nomes),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
