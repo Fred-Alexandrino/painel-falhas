@@ -11250,6 +11250,7 @@ def programacao_pcm_semana():
             "cliente": _pcm_cliente_mapeado(usina_canonica, r.get("cliente")),
             "usina": _pcm_nome_usina_exibicao(usina_raw),
             "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
+            "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else None),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
@@ -11300,10 +11301,37 @@ def programacao_pcm_semana():
             "gruposDistintos": n_grupos,
         })
 
+    # Destinos de envio = (cluster do MAPEAMENTO, grupo de WhatsApp). Um cluster
+    # com duas equipes (ex.: PR Oeste 01 = Alto Paraná/Paranavaí + Nova
+    # Londrina/Cid. Gaúcha) vira dois destinos, cada um só com as usinas do seu
+    # grupo. Cluster que não está no mapeamento (ex.: Sal Energia) não entra.
+    resp_por_usina = {u["usina"]: u.get("responsavel") for u in MAPEAMENTO_UFVS}
+    envios = []
+    for nome in sorted(set(mapa_cluster_pcm.values())):
+        por_grupo = {}
+        for usina, c in mapa_cluster_pcm.items():
+            if c == nome:
+                por_grupo.setdefault(mapa_grupo.get(usina), []).append(usina)
+        for gid, usinas_g in sorted(por_grupo.items(), key=lambda kv: (kv[0] is None, str(kv[0]))):
+            resp = []
+            for u in sorted(usinas_g):
+                n = resp_por_usina.get(u)
+                if n and n not in resp:
+                    resp.append(n)
+            envios.append({
+                "cluster": nome,
+                "grupoId": gid,
+                "grupoNome": _pcm_nome_grupo(gid),
+                "usinas": sorted(usinas_g),
+                "tecnicos": " / ".join(resp) or (coordenadores.get(nome) or ""),
+                "multi": len(por_grupo) > 1,
+            })
+
     base.update({
         "total": sum(d["total"] for d in lista_dias),
         "dias": lista_dias,
         "clusters": clusters,
+        "envios": envios,
         "planoEm": plano_dia,
     })
     return jsonify(base), 200
@@ -11337,7 +11365,15 @@ def disparar_comunicado_programacao_pcm():
     mapa_cluster = _mapa_cluster_usina()
     if cluster not in set(mapa_cluster.values()):
         return jsonify({"ok": False, "error": f"Cluster \"{cluster}\" não existe no mapeamento atual."}), 400
-    grupo_id, _n = _pcm_grupo_do_cluster(cluster, mapa_cluster)
+    mapa_grupo = _mapa_grupo_usina()
+    grupos_do_cluster = {mapa_grupo[u] for u, c in mapa_cluster.items() if c == cluster and mapa_grupo.get(u)}
+    grupo_pedido = (dados.get("grupoId") or "").strip()
+    if grupo_pedido:
+        if grupo_pedido not in grupos_do_cluster:
+            return jsonify({"ok": False, "error": f"O grupo informado não pertence ao cluster \"{cluster}\" no mapeamento atual."}), 400
+        grupo_id = grupo_pedido
+    else:
+        grupo_id, _n = _pcm_grupo_do_cluster(cluster, mapa_cluster, mapa_grupo)
     if not grupo_id:
         return jsonify({"ok": False, "error": (f"Nenhum grupo de WhatsApp configurado pras usinas do cluster "
                         f"\"{cluster}\". Configure em _Sistema: \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
