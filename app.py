@@ -6475,11 +6475,11 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Guatambu IV', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
      "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
-    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'Ceilândia/DF',
+    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'Ceilândia/DF',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'Ceilândia/DF',
+    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'Ceilândia/DF',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'GO',
+    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'GO',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Aparecida do Taboado I', "cliente": 'Thopen', "cluster": 'MS Leste 01', "cidade_uf": 'Aparecida do Taboado/MS',
      "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
@@ -11295,7 +11295,6 @@ def programacao_pcm_semana():
     mapa_grupo = _mapa_grupo_usina()
     hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
 
-    _oficial_nomes = {u["usina"] for u in MAPEAMENTO_UFVS}
     chave_por_dia = {nome: (chave, rot, datas[i]) for i, (chave, nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
     dias = {chave: {"chave": chave, "rotulo": rot, "data": datas[i].strftime("%Y-%m-%d"),
                     "dataCurta": datas[i].strftime("%d/%m"), "total": 0, "horas": 0.0,
@@ -11330,7 +11329,6 @@ def programacao_pcm_semana():
             "usina": _pcm_nome_usina_exibicao(usina_raw),
             "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
             "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else None),
-            "foraMapeamento": (usina_canonica not in _oficial_nomes),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
@@ -14496,7 +14494,7 @@ def converter_atividade_em_ocorrencia():
             "usina": usina, "cliente": cliente, "equip": tipo_equip,
             "nequip": eq_txt if eq_txt and eq_txt != "Não informado" else "",
             "causa": descricao or "Atividade convertida", "status": status_ocorrencia,
-            "crit": crit, "resp": "Fred", "inicio": _oc_hoje(),
+            "crit": crit, "resp": _oc_resp_padrao(), "inicio": _oc_hoje(),
         }
         if numero_os_ativ:
             dados_oc["os"] = str(numero_os_ativ).strip()
@@ -19978,6 +19976,90 @@ def _oc_bloqueio():
     return None
 
 
+def _oc_resp_padrao():
+    """Responsável padrão de uma ocorrência nova: primeiro nome de quem está logado."""
+    return _assinatura_atual()[0].split(" ")[0]
+
+
+def _oc_cli_ok(a, b):
+    a, b = _norm_usina(a), _norm_usina(b)
+    return not a or not b or a in b or b in a
+
+
+_OC_CLI_CONH = {"v": None}
+
+
+def _oc_clientes_conhecidos():
+    if _OC_CLI_CONH["v"] is None:
+        c = {_norm_usina(u["cliente"]) for ul in _SUP_MAPEAMENTO.values() for u in ul}
+        c |= {_norm_usina(i["cliente"]) for i in CATALOGO_USINAS.values() if i.get("cliente")}
+        _OC_CLI_CONH["v"] = c
+    return _OC_CLI_CONH["v"]
+
+
+def _oc_dono(esc, usina, cliente=""):
+    """True se a ocorrência (usina/cliente) pertence ao escopo da supervisora `esc`.
+    Aceita nomes compostos ("Ibaté I e II") e confere o cliente quando há dois clientes com o mesmo nome de usina."""
+    usina = str(usina or "").strip()
+    if not usina:
+        return False
+    cands = [usina] + [p.strip() for p in re.split(r"\s+e\s+|/|,", usina) if p.strip()]
+    for c in cands:
+        try:
+            r = _sup_canonizar(esc, c)
+        except Exception:
+            r = None
+        if not r:
+            continue
+        try:
+            cm = _sup_cliente(esc, r.split(" e ")[0]) or ""
+        except Exception:
+            cm = ""
+        # só descarta por cliente quando o cliente da ocorrência é um cliente CONHECIDO e diferente
+        # (ex.: "Poconé" Thopen x "Poconé" E1); nomes antigos como "Raízen" não impedem o vínculo.
+        if cliente and cm and not _oc_cli_ok(cliente, cm) and _norm_usina(cliente) in _oc_clientes_conhecidos():
+            continue
+        return True
+    return False
+
+
+def _oc_visiveis(itens):
+    """Supervisora: só as ocorrências das usinas dela. Fred: esconde também as de usinas que são das supervisoras
+    (e que não estão no catálogo dele) — nada delas no painel dele."""
+    esc = _escopo_atual()
+    if esc:
+        return [dict(i, foraMapa=False) for i in itens if _oc_dono(esc, i["usina"], i["cliente"])]
+    saida = []
+    for i in itens:
+        fm = i["foraMapa"]
+        if not fm:
+            try:
+                fred_ok = bool(canonizar_usina(i["usina"]))
+            except Exception:
+                fred_ok = True
+            if not fred_ok and any(_oc_dono(e, i["usina"], i["cliente"]) for e in _SUP_MAPEAMENTO):
+                fm = True
+        saida.append(i if fm == i["foraMapa"] else dict(i, foraMapa=fm))
+    return saida
+
+
+def _oc_exigir_escopo(usina, cliente=""):
+    esc = _escopo_atual()
+    if esc and not _oc_dono(esc, usina, cliente):
+        raise ValueError("a usina informada não está no seu mapeamento")
+
+
+def _oc_negar_se_alheia(oid):
+    """Supervisora só mexe em ocorrência das usinas dela."""
+    esc = _escopo_atual()
+    if not esc:
+        return None
+    item = next((x for x in _oc_carregar() if x["id"] == oid), None)
+    if not item or not _oc_dono(esc, item["usina"], item["cliente"]):
+        return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+    return None
+
+
 def _oc_aba(nome, headers, linhas=1000):
     """Aba (cria com cabeçalho se ainda não existir); cacheada no processo."""
     ws = _OC_WS.get(nome)
@@ -20158,7 +20240,7 @@ def _oc_validar_campos(dados, criando):
             raise ValueError("informe o equipamento")
         saida.setdefault("status", "Em andamento")
         saida.setdefault("inicio", _oc_hoje())
-        saida.setdefault("resp", "Fred")
+        saida.setdefault("resp", _oc_resp_padrao())
         if not saida.get("cliente"):
             try:
                 saida["cliente"] = inferir_cliente(saida["usina"]) or ""
@@ -20174,11 +20256,8 @@ def _oc_resposta_erro(e, codigo=500):
 
 @app.route("/ocorrencias", methods=["GET"])
 def oc_listar():
-    bloq = _oc_bloqueio()
-    if bloq:
-        return bloq
     try:
-        itens = _oc_carregar(forcar=request.args.get("forcar") == "1")
+        itens = _oc_visiveis(_oc_carregar(forcar=request.args.get("forcar") == "1"))
         return jsonify({"ok": True, "itens": itens, "total": len(itens), "hoje": _oc_hoje()}), 200
     except Exception as e:
         return _oc_resposta_erro(e)
@@ -20190,17 +20269,19 @@ def oc_salvar():
     No create, 'registro' (texto opcional) vira o primeiro item do histórico."""
     if request.method == "OPTIONS":
         return ("", 204)
-    bloq = _oc_bloqueio()
-    if bloq:
-        return bloq
     dados = request.get_json(force=True, silent=True) or {}
     oid = _oc_texto(dados.get("id"))
+    if oid:
+        neg = _oc_negar_se_alheia(oid)
+        if neg:
+            return neg
     try:
         with _OC_LOCK:
             ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
             agora = _oc_agora()
             if not oid:
                 campos = _oc_validar_campos(dados, criando=True)
+                _oc_exigir_escopo(campos.get("usina"), campos.get("cliente", ""))
                 if campos["status"] == "Finalizado" and not campos.get("fim"):
                     campos["fim"] = _oc_hoje()
                 oid = _oc_proximo_id(ws)
@@ -20224,6 +20305,8 @@ def oc_salvar():
                     return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
                 campos = _oc_validar_campos(dados, criando=False)
                 atual = dict(zip(OC_HEADERS, row))
+                if "usina" in campos:
+                    _oc_exigir_escopo(campos["usina"], campos.get("cliente", atual.get("Cliente", "")))
                 for k, v in campos.items():
                     atual[OC_CAMPOS[k]] = v
                 if "status" in campos:
@@ -20239,7 +20322,7 @@ def oc_salvar():
                     [{"range": f"A{nlinha}:{fim_col}{nlinha}",
                       "values": [[atual[h] for h in OC_HEADERS]]}], value_input_option="RAW"))
             _oc_invalidar()
-            item = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+            item = next((x for x in _oc_visiveis(_oc_carregar(forcar=True)) if x["id"] == oid), None)
         return jsonify({"ok": True, "item": item}), 200
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -20252,10 +20335,10 @@ def oc_excluir():
     """Exclusão suave: marca a linha como excluída (recuperável na planilha)."""
     if request.method == "OPTIONS":
         return ("", 204)
-    bloq = _oc_bloqueio()
-    if bloq:
-        return bloq
     oid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("id"))
+    neg = _oc_negar_se_alheia(oid)
+    if neg:
+        return neg
     try:
         with _OC_LOCK:
             ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
@@ -20276,11 +20359,11 @@ def oc_historico_salvar():
     """Acrescenta (sem 'hid') ou edita (com 'hid') um registro do histórico."""
     if request.method == "OPTIONS":
         return ("", 204)
-    bloq = _oc_bloqueio()
-    if bloq:
-        return bloq
     dados = request.get_json(force=True, silent=True) or {}
     oid = _oc_texto(dados.get("ocorrencia"))
+    neg = _oc_negar_se_alheia(oid)
+    if neg:
+        return neg
     hid = _oc_texto(dados.get("hid"))
     texto = _oc_texto(dados.get("texto"), OC_TEXTO_MAX)
     try:
@@ -20305,7 +20388,7 @@ def oc_historico_salvar():
                                                      value_input_option="RAW"))
             _oc_tocar(oid)
             _oc_invalidar()
-            item = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+            item = next((x for x in _oc_visiveis(_oc_carregar(forcar=True)) if x["id"] == oid), None)
         return jsonify({"ok": True, "item": item}), 200
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -20317,9 +20400,6 @@ def oc_historico_salvar():
 def oc_historico_excluir():
     if request.method == "OPTIONS":
         return ("", 204)
-    bloq = _oc_bloqueio()
-    if bloq:
-        return bloq
     hid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("hid"))
     try:
         with _OC_LOCK:
@@ -20328,10 +20408,13 @@ def oc_historico_excluir():
             if not nlinha:
                 return jsonify({"ok": False, "error": "Registro não encontrado."}), 404
             oid = row[1]
+            neg = _oc_negar_se_alheia(oid)
+            if neg:
+                return neg
             _gspread_retry(lambda: wh.delete_rows(nlinha))
             _oc_tocar(oid)
             _oc_invalidar()
-            item = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+            item = next((x for x in _oc_visiveis(_oc_carregar(forcar=True)) if x["id"] == oid), None)
         return jsonify({"ok": True, "item": item}), 200
     except Exception as e:
         return _oc_resposta_erro(e)
