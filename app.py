@@ -1055,6 +1055,12 @@ def _sup_canonizar(escopo, texto_bruto):
         hint, partes = partes[0], partes[1:]
     if len(partes) >= 2 and re.fullmatch(r"[A-Za-z]{2}", partes[-1]):
         partes = partes[:-1]
+    # Cliente do grupo do Fracttal que não é deste escopo (ex.: "Axis - Petrolina 2" na carteira do Patrick,
+    # "RenoGrid - Nova Xavantina 1", "Thopen - Poconé 1"): é outra usina de mesmo nome — não pertence a esta supervisora.
+    if not hint and len(partes) >= 2 and not _sup_resolver_um(escopo, partes[0]):
+        _c0 = _norm_usina(partes[0])
+        if not any(_c0 in c or c in _c0 for c in idx["clientes"]):
+            return None
     nome = " - ".join(partes).strip()
     nome = re.sub(r"\s+AL$", "", nome)  # "Ouro Branco AL" (UF colada ao nome, como na tabela)
     nome = re.sub(r"(?<=\S)-\s*[A-Za-z]{2}$", "", nome).strip()  # "Araçoiaba da Serra 1- SP" (hífen colado)
@@ -1234,6 +1240,30 @@ def _sup_limpar_lixo(ws):
     return len(lixo)
 
 
+_SUP_PURGAR = {"patrick": {"Petrolina 1 a 3"}}  # OSs de grupos de OUTRO cliente (Axis Petrolina) gravadas por engano
+
+
+def _sup_purgar_usinas_erradas(ws, esc):
+    """Remove da aba as OSs automáticas (Fracttal) de usinas que foram associadas ao cliente errado."""
+    alvo = _SUP_PURGAR.get(esc)
+    if not alvo:
+        return 0
+    todos = ws.get_all_values()
+    if not todos:
+        return 0
+    iu, ie = ATIVIDADES_HEADERS.index("Usina"), ATIVIDADES_HEADERS.index("Editor") if "Editor" in ATIVIDADES_HEADERS else None
+    def ruim(r):
+        return len(r) > iu and r[iu].strip() in alvo and (ie is None or (len(r) > ie and r[ie].strip().lower().startswith("fracttal")))
+    manter = [r for r in todos[1:] if r and r[0].strip() and not ruim(r)]
+    n_rem = len([r for r in todos[1:] if r and r[0].strip() and ruim(r)])
+    if not n_rem:
+        return 0
+    n = len(ATIVIDADES_HEADERS)
+    ws.clear()
+    ws.update(range_name="A1", values=[todos[0][:n]] + [(r + [""] * n)[:n] for r in manter], value_input_option="USER_ENTERED")
+    return n_rem
+
+
 def _sup_fracttal_livre(tentativas=8, espera=20):
     """Espera a cota da Fracttal (≈200 req/min por empresa) liberar antes de gastar chamadas."""
     for _ in range(tentativas):
@@ -1344,6 +1374,7 @@ def _supervisoras_ciclo():
                 _ws_sup = get_atividades_sheet()
                 r["renomeadas"] = _sup_renomear_usinas(_ws_sup, esc)
                 r["limpeza"] = _sup_limpar_lixo(_ws_sup)
+                r["purgadas"] = _sup_purgar_usinas_erradas(_ws_sup, esc)
             except Exception as e:
                 log.error(f"[Supervisoras:{esc}] erro na limpeza da aba: {e}")
                 r["limpeza"] = {"erro": str(e)}
