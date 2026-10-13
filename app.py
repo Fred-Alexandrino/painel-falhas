@@ -869,6 +869,9 @@ _SUP_MAPEAMENTO = {
         {'usina': 'Matões 200', 'cliente': 'Athon', 'cluster': 'MA Leste 02', 'cidade_uf': 'Matões', 'responsavel': 'Francisco Santos', 'funcao': 'Técnico', 'membros': ['Pedro Silva'], 'alternativo': '', 'aliases': ['Matões 2']},
         {'usina': 'Petrolina 3', 'cliente': 'Axis', 'cluster': 'PE Oeste 01', 'cidade_uf': 'Petrolina', 'responsavel': 'Rodrigo Silva', 'funcao': 'Técnico', 'membros': ['Eliam Silva'], 'alternativo': ''},
         {'usina': 'Petrolina II', 'cliente': 'Axis', 'cluster': 'PE Oeste 01', 'cidade_uf': 'Petrolina', 'responsavel': 'Rodrigo Silva', 'funcao': 'Técnico', 'membros': ['Eliam Silva'], 'alternativo': ''},
+        {'usina': 'Ibirapuã 1', 'cliente': 'Utragaz', 'cluster': 'A definir', 'cidade_uf': 'Ibirapuã', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'Ibirapuã 2', 'cliente': 'Utragaz', 'cluster': 'A definir', 'cidade_uf': 'Ibirapuã', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
+        {'usina': 'São José do Egito 1', 'cliente': 'Axis', 'cluster': 'A definir', 'cidade_uf': 'São José do Egito', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'alternativo': ''},
         {'usina': 'Marialva I', 'cliente': 'Axis', 'cluster': 'PR Norte 01', 'cidade_uf': 'Marialva', 'responsavel': 'Marcos Camargo', 'funcao': 'Técnico', 'membros': ['Douglas Silva'], 'alternativo': ''},
         {'usina': 'Fazenda Limão I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
         {'usina': 'Saturnino I', 'cliente': 'Thopen', 'cluster': 'RJ Norte 01', 'cidade_uf': 'Campos dos Goytacazes', 'responsavel': 'Carlos Bruno Pessanha Pereira', 'funcao': 'Técnico', 'membros': ['Luiz Hermogenes'], 'alternativo': ''},
@@ -927,8 +930,8 @@ _SUP_MAPEAMENTO["camila"] = [
         {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Marabá 200', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Marabá 2', 'ATHN-MAB200', 'MAB200'], 'alternativo': ''},
         {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Mãe do Rio 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Mãe do Rio', 'Mãe do Rio 1', 'ATHN-MRO100', 'MRO100'], 'alternativo': ''},
         {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Athon', 'usina': 'Santa Maria do Pará 100', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Santa Maria', 'Santa Maria do Pará', 'ATHN-SMP100', 'SMP100'], 'alternativo': ''},
-        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Qair', 'usina': 'Aquiraz', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
-        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Qair', 'usina': 'Cascavel', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Solier', 'usina': 'Aquiraz', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
+        {'cluster': 'NE · Fortaleza-CE e Teresina-PI', 'cliente': 'Solier', 'usina': 'Cascavel', 'cidade': 'CE', 'responsavel': '', 'funcao': 'Técnico', 'membros': [], 'aliases': [], 'alternativo': ''},
         {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Thopen', 'usina': 'Ipixuna 1 e 2', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Ipixuna 1', 'Ipixuna 2', 'THPN-IPX100'], 'alternativo': ''},
         {'cluster': 'CO+N · Planaltina-DF', 'cliente': 'Thopen', 'usina': 'Santarém 1 e 2', 'cidade': 'PA', 'responsavel': 'Vitor Valadares', 'funcao': 'Técnico', 'membros': [], 'aliases': ['Santarém 1', 'Santarém 2', 'THPN-STR100'], 'alternativo': ''},
 ]
@@ -6472,11 +6475,11 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Guatambu IV', "cliente": 'Thopen', "cluster": 'SC Oeste 01', "cidade_uf": 'Guatambu/SC',
      "responsavel": 'Ademir', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
-    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'Ceilândia/DF',
+    {"usina": 'Ceilândia I', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'Ceilândia/DF',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'Ceilândia/DF',
+    {"usina": 'Ceilândia II', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'Ceilândia/DF',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Leste 02', "cidade_uf": 'GO',
+    {"usina": 'Sítio dos Nogueiras', "cliente": 'Thopen', "cluster": 'GO Centro 01', "cidade_uf": 'GO',
      "responsavel": 'Janderson Miranda', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Aparecida do Taboado I', "cliente": 'Thopen', "cluster": 'MS Leste 01', "cidade_uf": 'Aparecida do Taboado/MS',
      "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
@@ -11292,7 +11295,6 @@ def programacao_pcm_semana():
     mapa_grupo = _mapa_grupo_usina()
     hoje_str = datetime.now(_TZ_BR).strftime("%Y-%m-%d")
 
-    _oficial_nomes = {u["usina"] for u in MAPEAMENTO_UFVS}
     chave_por_dia = {nome: (chave, rot, datas[i]) for i, (chave, nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
     dias = {chave: {"chave": chave, "rotulo": rot, "data": datas[i].strftime("%Y-%m-%d"),
                     "dataCurta": datas[i].strftime("%d/%m"), "total": 0, "horas": 0.0,
@@ -11327,7 +11329,6 @@ def programacao_pcm_semana():
             "usina": _pcm_nome_usina_exibicao(usina_raw),
             "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
             "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else None),
-            "foraMapeamento": (usina_canonica not in _oficial_nomes),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
