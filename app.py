@@ -762,6 +762,81 @@ def usina_permitida(texto):
     return canonizar_usina(texto) is not None
 
 
+# ── Bases com mais de uma unidade (achado 13/10/2026, caso Nova Londrina) ──────
+# BUG REAL: quando a planilha do SharePoint traz a UFV SEM sufixo de unidade
+# (ex.: "Nova Londrina" em vez de "Nova Londrina I"/"II"), canonizar_usina()
+# cai no fallback de busca parcial (passo 2) e escolhe UM nome oficial
+# qualquer por tamanho de alias — nunca retorna None nem sinaliza ambiguidade.
+# Resultado: o chamado é silenciosamente etiquetado como se fosse de UMA
+# unidade específica (escolha arbitrária, decidida por ordem/tamanho de
+# alias) e desaparece de qualquer filtro pela OUTRA unidade — exatamente o
+# caso do chamado 80015957/16165351/15914966 (UFV "Nova Londrina", sumiu do
+# Painel de Chamados quando filtrado por "Nova Londrina I" ou "II" isolados).
+# Auditoria (13/10/2026) mostrou que isso vale pra TODA usina com mais de uma
+# unidade no catálogo, não só Nova Londrina — lista abaixo gerada a partir do
+# próprio CATALOGO_USINAS (toda usina cujo nome oficial termina em I/II/III/IV
+# e tem 2+ unidades agrupadas pelo mesmo nome-base).
+_USINAS_BASES_AMBIGUAS = {
+    'Nova Xavantina': ['Nova Xavantina I', 'Nova Xavantina II'],
+    'Colíder': ['Colíder I', 'Colíder II'],
+    'Canarana': ['Canarana I', 'Canarana II'],
+    'Sol do Norte': ['Sol do Norte I', 'Sol do Norte II'],
+    'Boa Esperança do Sul': ['Boa Esperança do Sul I', 'Boa Esperança do Sul II'],
+    'Ibaté': ['Ibaté I', 'Ibaté II'],
+    'União': ['União I', 'União II'],
+    'Alto Paraná': ['Alto Paraná I', 'Alto Paraná II'],
+    'Colorado': ['Colorado I', 'Colorado II'],
+    'Nova Londrina': ['Nova Londrina I', 'Nova Londrina II'],
+    'Pharmas': ['Pharmas II', 'Pharmas III', 'Pharmas IV'],
+    'Coração': ['Coração I', 'Coração II'],
+    'Guatambu': ['Guatambu I', 'Guatambu II', 'Guatambu III', 'Guatambu IV'],
+    'Ceilândia': ['Ceilândia I', 'Ceilândia II'],
+    'Aparecida do Taboado': ['Aparecida do Taboado I', 'Aparecida do Taboado II'],
+}
+_BASES_AMBIGUAS_NORM = {_norm_usina(_base): _nomes for _base, _nomes in _USINAS_BASES_AMBIGUAS.items()}
+
+
+def resolver_usinas_chamado(texto_bruto):
+    """Como canonizar_usina(), mas dedicado ao pipeline de Chamados de
+    Fabricante: em vez de adivinhar UMA unidade quando a planilha não
+    informa sufixo (ver nota acima), detecta esse caso ANTES do fallback
+    de busca parcial e devolve a LISTA com todas as unidades reais da
+    usina-base — pro chamado aparecer em qualquer filtro de qualquer uma
+    delas, em vez de sumir / ficar preso numa unidade errada.
+
+    Retorna sempre uma lista: [] (não reconhecida), [nome] (caso normal,
+    sem ambiguidade) ou [nome1, nome2, ...] (nome base ambíguo, sem sufixo).
+    """
+    if not texto_bruto:
+        return []
+
+    s = re.sub(r"[🔴🟡🟢🟠✅⏸️🔧⚠️*]", "", texto_bruto).strip()
+    s = _SUFIXOS_USINA.sub("", s).strip()
+    s = _PREFIXOS_USINA.sub("", s).strip()
+    s = s.rstrip(".,:-|").strip()
+    s_norm = _norm_usina(s)
+
+    if s_norm in _BASES_AMBIGUAS_NORM:
+        return list(_BASES_AMBIGUAS_NORM[s_norm])
+
+    nome = canonizar_usina(texto_bruto)
+
+    # Resguardo pedido pelo Fred (13/10/2026): "Ipixuna" (Thopen — ainda
+    # fora do catálogo atual) e "Ipixuna do Pará" (2C Energia) são usinas
+    # DIFERENTES e não podem ser confundidas. O fallback de busca parcial
+    # de canonizar_usina() casa qualquer texto bruto começando com
+    # "Ipixuna" (ex.: "Ipixuna", "Ipixuna I", "Ipixuna 1 e 2") com
+    # "Ipixuna do Pará I" só por conter a palavra "Ipixuna" nos aliases
+    # dessa usina (ex.: "2c ipixuna i") — sem nenhuma menção a "Pará" no
+    # texto original. Barra especificamente esse caso: melhor não
+    # reconhecer (cai no "fora do catálogo") do que atribuir o chamado à
+    # usina/cliente errado.
+    if nome == "Ipixuna do Pará I" and s_norm.startswith("ipixuna") and "para" not in s_norm:
+        return []
+
+    return [nome] if nome else []
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPERVISORAS — escopo restrito (07/10/2026, pedido do Fred: acesso da Danuth)
 #
@@ -12122,8 +12197,8 @@ def _chamados_fabricante_itens():
             continue
         item = dict(zip(CHAMADOS_FABRICANTE_HEADERS, row[:len(CHAMADOS_FABRICANTE_HEADERS)]))
         ufv_bruta = item.get("UFV", "")
-        ufv_canonica = canonizar_usina(ufv_bruta) if ufv_bruta else None
-        if ufv_bruta and ufv_canonica is None:
+        ufv_nomes = resolver_usinas_chamado(ufv_bruta) if ufv_bruta else []
+        if ufv_bruta and not ufv_nomes:
             continue  # usina não reconhecida = não é do Fred, não deveria estar nessa planilha
         # chave_nota usa a UFV BRUTA (como sempre foi) — não a canônica —
         # pra não perder o vínculo com notas já salvas antes desta correção.
@@ -12136,7 +12211,8 @@ def _chamados_fabricante_itens():
         # esta função: painel de Chamados, popup de Resumo, Gestão
         # Cliente e o relatório semanal (Fred, 04/09/2026 — caso real:
         # ticket 24845 / GD Energy / Guajirú).
-        if ufv_canonica:
+        if len(ufv_nomes) == 1:
+            ufv_canonica = ufv_nomes[0]
             item["UFV"] = ufv_canonica
             # A coluna "Cliente" bruta vem da mesma planilha externa do
             # SharePoint e pode vir vazia/inconsistente pra alguns
@@ -12148,6 +12224,21 @@ def _chamados_fabricante_itens():
             # 24845 / GD Energy / Guajirú, sumindo do relatório mesmo
             # aparecendo certo no painel).
             cliente_real = inferir_cliente(ufv_canonica)
+            if cliente_real:
+                item["Cliente"] = cliente_real
+        elif len(ufv_nomes) > 1:
+            # UFV ambígua (sem sufixo de unidade na planilha, ex.: "Nova
+            # Londrina" em vez de "I"/"II" — achado 13/10/2026, ver
+            # resolver_usinas_chamado). Em vez de adivinhar UMA unidade,
+            # monta o formato combinado "Base I e II[...]" que o painel
+            # (_chamadoUsinasCanonicas, no index.html) já sabe expandir
+            # pras unidades reais — assim o chamado aparece em qualquer
+            # filtro por qualquer uma delas, num item só (sem duplicar
+            # contagem em relatórios).
+            base = ufv_nomes[0].rsplit(" ", 1)[0]
+            sufixos = [n.rsplit(" ", 1)[1] for n in ufv_nomes]
+            item["UFV"] = f"{base} {' e '.join(sufixos)}"
+            cliente_real = inferir_cliente(ufv_nomes[0])
             if cliente_real:
                 item["Cliente"] = cliente_real
         itens.append(item)
