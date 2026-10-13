@@ -11307,9 +11307,12 @@ def programacao_pcm_semana():
     # grupo. Cluster que não está no mapeamento (ex.: Sal Energia) não entra.
     resp_por_usina = {u["usina"]: u.get("responsavel") for u in MAPEAMENTO_UFVS}
     envios = []
-    for nome in sorted(set(mapa_cluster_pcm.values())):
+    # só o mapeamento OFICIAL (as UFVs da tabela do painel Mapeamento): sobras
+    # antigas da aba _Sistema (usinas que saíram da supervisão) não viram destino
+    oficial = {u["usina"]: u["cluster"] for u in MAPEAMENTO_UFVS}
+    for nome in sorted(set(oficial.values())):
         por_grupo = {}
-        for usina, c in mapa_cluster_pcm.items():
+        for usina, c in oficial.items():
             if c == nome:
                 por_grupo.setdefault(mapa_grupo.get(usina), []).append(usina)
         for gid, usinas_g in sorted(por_grupo.items(), key=lambda kv: (kv[0] is None, str(kv[0]))):
