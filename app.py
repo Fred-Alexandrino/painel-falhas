@@ -11026,9 +11026,9 @@ def programacao_pcm():
 # ══════════════════════════════════════════════════════════════════════
 # PROGRAMAÇÃO PCM — VISÃO SEMANAL POR CLUSTER (13/10/2026)
 #
-# Mesma fonte (banco_dados.json) e MESMO filtro do /programacao-pcm
-# (responsável O&M = Fred ou usina emprestada, e só usinas do mapeamento
-# oficial atual), mas devolvendo a semana inteira (seg–sex) de uma vez, no
+# Mesma fonte (banco_dados.json) do /programacao-pcm, filtrando só por
+# responsável O&M = Fred (ou usina emprestada) — SEM filtro de mapeamento, pra
+# bater com o total do portal do PCM — mas devolvendo a semana inteira (seg–sex) de uma vez, no
 # formato do calendário "Semana" do portal do PCM — pra o painel mostrar
 # o calendário por dia e pra gerar o visual semanal de cada cluster.
 #
@@ -11183,8 +11183,9 @@ def programacao_pcm_semana():
     for r in semana.get("rows", []):
         if not (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes):
             continue
-        if not _pcm_usina_no_mapeamento(r.get("usina")):
-            continue
+        # 13/10/2026: SEM filtro de mapeamento — o calendário espelha tudo que o
+        # PCM programou pro Fred (mesmo total do portal do PCM). Usina fora do
+        # mapeamento atual entra com o cluster que o próprio PCM informa.
         info_dia = chave_por_dia.get(r.get("dia"))
         if not info_dia:
             continue  # sábado/domingo ficam fora do calendário seg–sex
