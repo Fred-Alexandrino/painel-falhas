@@ -11016,7 +11016,9 @@ def programacao_pcm():
         cluster_correto = mapa_cluster_pcm.get(usina_canonica) if usina_canonica else None
         por_usina.setdefault(usina, []).append({
             "os": r.get("os_id"),
-            "cliente": r.get("cliente"),
+            "cliente": _pcm_cliente_mapeado(usina_canonica, r.get("cliente")),
+            "usinaCanonica": usina_canonica or usina,
+            "tecnico": r.get("resp_os"),
             "cluster": cluster_correto or r.get("cluster"),
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
@@ -11076,6 +11078,16 @@ _PCM_DIAS_UTEIS = [
     ("sex", "Sexta-feira", "SEX"),
 ]
 _PCM_MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def _pcm_cliente_mapeado(usina_canonica, cliente_pcm):
+    """Cliente como o mapeamento (e a sidebar do painel) chama; cai no que o
+    PCM mandou quando a usina não está no mapeamento."""
+    if usina_canonica:
+        for u in MAPEAMENTO_UFVS:
+            if u["usina"] == usina_canonica and u.get("cliente"):
+                return u["cliente"]
+    return cliente_pcm
 
 
 def _pcm_turno(h_ini):
@@ -11235,8 +11247,9 @@ def programacao_pcm_semana():
         d = dias[chave_dia]
         d["itens"].append({
             "os": r.get("os_id"),
-            "cliente": r.get("cliente"),
+            "cliente": _pcm_cliente_mapeado(usina_canonica, r.get("cliente")),
             "usina": _pcm_nome_usina_exibicao(usina_raw),
+            "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
