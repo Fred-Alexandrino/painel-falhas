@@ -20571,6 +20571,136 @@ def oc_plano_excluir():
         return _oc_resposta_erro(e)
 
 
+# ── Comunicado da ocorrência (plano de ação + histórico → texto p/ WhatsApp) ─
+# O texto é gerado aqui; o ENVIO reaproveita o /disparar-comunicado-livre e a
+# lista /grupos-configurados já usados no comunicado livre. As anotações
+# privadas do Fred NUNCA entram no texto — só dados da ocorrência, plano de
+# ação e histórico.
+def _oc_plano_da(oid):
+    wp = _oc_aba(OC_PLANO_SHEET_NAME, OC_PLANO_HEADERS)
+    for _, r in _oc_linhas(wp, len(OC_PLANO_HEADERS)):
+        if r[0] == oid:
+            return {"acao": r[1], "resp": r[2], "prazo": r[3], "sit": r[4] or "A fazer"}
+    return None
+
+
+def _oc_grupos_sugeridos(usina):
+    """Grupo(s) de WhatsApp mapeados para a usina (vazio se o nome for
+    composto/desconhecido). Devolve [{id, nome}]."""
+    try:
+        oficial = canonizar_usina(usina)
+        if not oficial:
+            return []
+        gid = _mapa_grupo_usina().get(oficial)
+        if not gid:
+            return []
+        nome = next((g["nome"] for g in GRUPOS_EQUIPE_UFVS if g["id"] == gid), "") or _NOMES_GRUPOS_CONHECIDOS.get(gid.replace("@g.us", "")) or _nome_amigavel_grupo(gid) or gid
+        return [{"id": gid, "nome": nome}]
+    except Exception as e:
+        log.error(f"[ocorrencias/comunicado] grupo sugerido falhou: {e}")
+        return []
+
+
+def _oc_dmy(iso):
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", iso or "")
+    return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else ""
+
+
+def _oc_comunicado_fallback(it, plano):
+    """Texto estruturado sem IA (usado se o Gemini falhar)."""
+    linhas = [f"⚠️ *{it['usina']}* — {it['equip']}{(' ' + it['nequip']) if it['nequip'] else ''}", f"📌 {it['causa']}"]
+    if it.get("impacto"):
+        linhas.append(f"📉 Impacto: {it['impacto']}")
+    if plano and plano.get("acao"):
+        linhas.append(f"📋 O que precisa ser feito: {plano['acao']}")
+    ult = (it.get("hist") or [])[-1:] 
+    if ult:
+        linhas.append(f"🕒 Última atualização ({_oc_dmy(ult[0]['d'])}): {ult[0]['t']}")
+    if plano and plano.get("prazo"):
+        linhas.append(f"✅ Prazo: {_oc_dmy(plano['prazo'])}")
+    if it.get("chamado"):
+        linhas.append(f"🎫 Chamado: {it['chamado']}")
+    return "\n".join(linhas)
+
+
+@app.route("/ocorrencias/comunicado/gerar", methods=["POST", "OPTIONS"])
+def oc_comunicado_gerar():
+    """Gera o texto do comunicado da ocorrência (o que precisa ser executado)
+    a partir do plano de ação + histórico, e sugere o grupo da usina."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    body = request.get_json(force=True, silent=True) or {}
+    oid = _oc_texto(body.get("id"))
+    instrucao = _oc_texto(body.get("instrucao"), 600)
+    try:
+        it = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+        if not it:
+            return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+        plano = _oc_plano_da(oid)
+        grupos = _oc_grupos_sugeridos(it["usina"])
+        hist = [h for h in (it.get("hist") or []) if h.get("t")][-12:]
+        digest = [
+            "Este comunicado é sobre UMA ocorrência em andamento e deve dizer à equipe o que PRECISA SER EXECUTADO por ela, montando a lista a partir do PLANO DE AÇÃO e do que o HISTÓRICO mostra que está pendente/aguardando.",
+            "Não recontar o histórico inteiro: resuma a situação em uma ou duas linhas e foque nas ações. Use só as informações abaixo; não invente prazos, nomes ou números. Se o plano de ação estiver vazio, deduza as pendências do histórico; se não houver nenhuma pendência de execução clara, diga isso e peça apenas retorno sobre o andamento.",
+            "",
+            f"USINA: {it['usina']}" + (f" (cliente {it['cliente']})" if it.get("cliente") else ""),
+            f"EQUIPAMENTO: {it['equip']}" + (f" — {it['nequip']}" if it.get("nequip") else ""),
+            f"OCORRÊNCIA: {it['causa']}",
+            f"STATUS: {it['status']} (início {_oc_dmy(it['inicio'])})",
+        ]
+        if it.get("impacto"):
+            digest.append(f"IMPACTO: {it['impacto']}")
+        if it.get("fab"):
+            digest.append(f"FABRICANTE: {it['fab']}")
+        if it.get("chamado"):
+            digest.append(f"CHAMADO: {it['chamado']}")
+        if it.get("sn"):
+            digest.append(f"S/N / MAC: {it['sn']}")
+        if plano and (plano.get("acao") or plano.get("resp") or plano.get("prazo")):
+            digest.append("")
+            digest.append("PLANO DE AÇÃO (o que precisa ser executado):")
+            digest.append(f"- Ação: {plano.get('acao') or '(não preenchida)'}")
+            if plano.get("resp"):
+                digest.append(f"- Responsável: {plano['resp']}")
+            if plano.get("prazo"):
+                digest.append(f"- Prazo: {_oc_dmy(plano['prazo'])}")
+            digest.append(f"- Situação: {plano.get('sit')}")
+        else:
+            digest.append("")
+            digest.append("PLANO DE AÇÃO: ainda não preenchido.")
+        digest.append("")
+        digest.append("HISTÓRICO RECENTE (do mais antigo ao mais recente):")
+        for h in hist:
+            digest.append(f"- {_oc_dmy(h['d']) or 's/ data'}: {h['t'][:700]}")
+        if instrucao:
+            digest.append("")
+            digest.append(f"AJUSTE PEDIDO PELO SUPERVISOR PARA ESTE COMUNICADO: {instrucao}")
+        tema = f"Ação necessária — {it['usina']} — {it['equip']}{(' ' + it['nequip']) if it.get('nequip') else ''}"
+        prompt = _montar_prompt_comunicado_livre(tema, "\n".join(digest), tem_imagem=False)
+        texto, fonte = "", "ia"
+        try:
+            resp = _chamar_gemini_com_retry({
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1400,
+                                      "responseMimeType": "application/json",
+                                      "thinkingConfig": {"thinkingBudget": 0}},
+            }, timeout=30)
+            cand = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            cand = re.sub(r"^```json\s*|\s*```$", "", cand)
+            texto = (json.loads(cand).get("texto") or "").strip()
+        except Exception as e:
+            log.error(f"[ocorrencias/comunicado] IA falhou, usando modelo fixo: {e}")
+        if not texto:
+            texto, fonte = _oc_comunicado_fallback(it, plano), "modelo"
+        return jsonify({"ok": True, "texto": texto, "fonte": fonte, "gruposSugeridos": grupos,
+                        "temPlano": bool(plano and plano.get("acao"))}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
 # ── Importação única do histórico (355 ocorrências do arquivo do Fred) ──────
 @app.route("/ocorrencias/importar", methods=["POST", "OPTIONS"])
 def oc_importar():
