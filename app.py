@@ -794,6 +794,11 @@ _USINAS_BASES_AMBIGUAS = {
     'Aparecida do Taboado': ['Aparecida do Taboado I', 'Aparecida do Taboado II'],
 }
 _BASES_AMBIGUAS_NORM = {_norm_usina(_base): _nomes for _base, _nomes in _USINAS_BASES_AMBIGUAS.items()}
+# clientes que podem vir como prefixo "Cliente - Usina" na UFV da planilha
+_CLIENTES_PREFIXO_NORM = {_norm_usina(_c) for _c in (
+    {_i["cliente"] for _i in CATALOGO_USINAS.values()} |
+    {"2C", "2C Energia", "GD Energy", "Alves Lima", "Sal Energia", "Athon", "Renogrid", "Thopen", "Qair", "Faro Energy"}
+)}
 
 
 def resolver_usinas_chamado(texto_bruto):
@@ -814,6 +819,16 @@ def resolver_usinas_chamado(texto_bruto):
     s = _SUFIXOS_USINA.sub("", s).strip()
     s = _PREFIXOS_USINA.sub("", s).strip()
     s = s.rstrip(".,:-|").strip()
+
+    # A planilha do SharePoint traz a UFV no formato "Cliente - Usina"
+    # (ex.: "Thopen - Nova Londrina"). O prefixo de cliente impedia o casamento
+    # (achado 15/10/2026, chamado 80015957 sumindo do painel): tira o prefixo
+    # SÓ quando o trecho antes do hífen é um cliente conhecido — assim nomes
+    # com hífen legítimo ("Matão II - Topázio") não são mexidos.
+    _m_cli = re.match(r"^\s*(.+?)\s*[-–]\s*(.+)$", s)
+    if _m_cli and _norm_usina(_m_cli.group(1)) in _CLIENTES_PREFIXO_NORM:
+        s = _m_cli.group(2).strip()
+        texto_bruto = s
     s_norm = _norm_usina(s)
 
     if s_norm in _BASES_AMBIGUAS_NORM:
