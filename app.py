@@ -3722,7 +3722,7 @@ def health():
     # try/except isolado: se a Solplanet estiver fora do ar, o /health
     # continua respondendo normalmente (não derruba o monitor de uptime).
     try:
-        _fv_energias_processar_ciclo()
+        _fv_energias_ciclo_exclusivo("health")
     except Exception as e:
         log.error(f"[FV Energias] Erro no ciclo automático via /health: {e}")
 
@@ -18714,86 +18714,144 @@ def _fv_energias_detectar_desbalanceamento_potencia(potencia_por_inversor):
     return []
 
 
-# Detecção de inversor SEM GERAR (adicionado 17/10/2026). O status
-# "online" da Solplanet (istate/pstate) só diz que o inversor COMUNICA com
-# o dongle — um inversor em erro (ex.: 35 Utility Loss) continua "online"
-# e a ronda mostrava "Em Geração" enquanto ele ficou 4 dias parado. Aqui a
-# comparação é por potência instantânea contra os irmãos, a cada ciclo.
-FV_ENERGIAS_REFERENCIA_MIN_KW = 3.0     # só compara quando o melhor inversor passa disso (sol suficiente)
-FV_ENERGIAS_SEM_GERAR_MAX_KW = 0.3      # abaixo disso (ou < 10% do melhor) = "sem gerar"
+# ── Monitoramento POR INVERSOR (reescrito 17/10/2026) ─────────────────
+# Motivo: o status "online" da Solplanet (istate/pstate) só diz que o
+# inversor COMUNICA com o dongle. Um inversor em erro (ex.: 35 Utility
+# Loss) continua "online" — a ronda mostrava "Em Geração" e o INV03 ficou
+# dias parado sem alerta. Agora cada ciclo lê getLastTsDataPro (potência,
+# código de erro `er`, aviso `wn0`, estado `stu`, energia do dia `etd` e
+# horário da leitura `tim`) e alerta por: erro, aviso, sem gerar, dado
+# parado e geração do dia abaixo dos irmãos.
+FV_ENERGIAS_REFERENCIA_MIN_KW = 3.0      # só compara potência quando o melhor inversor passa disso
+FV_ENERGIAS_SEM_GERAR_MAX_KW = 0.3       # abaixo disso (ou < 10% do melhor) = "sem gerar"
 FV_ENERGIAS_SEM_GERAR_FRACAO = 0.10
-FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN = 10  # persistência antes de alertar (evita falso positivo)
-FV_ENERGIAS_TRAVA_SEM_GERAR = "fv_energias:sem_gerar_desde"
+FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN = 10
+FV_ENERGIAS_AVISO_CONFIRMACAO_MIN = 10
+FV_ENERGIAS_DADO_VELHO_MIN = 15          # leitura mais velha que isso = inversor parou de reportar
+FV_ENERGIAS_GERACAO_DIA_HORA_MIN = 10    # só compara energia do dia depois dessa hora
+FV_ENERGIAS_GERACAO_DIA_REF_MIN_KWH = 15.0
+FV_ENERGIAS_GERACAO_DIA_LIMIAR = 0.85    # < 85% do melhor inversor = alerta
+FV_ENERGIAS_TRAVA_PERSISTENCIA = "fv_energias:sem_gerar_desde"
+FV_ENERGIAS_TRAVA_ASSINATURA = "fv_energias:ultima_assinatura_problema"
+FV_ENERGIAS_CODIGOS_ERRO = {
+    35: "Utility Loss (perda de rede/AC no inversor)",
+}
 
 
-def _fv_energias_detectar_sem_gerar(potencia_por_inversor):
-    """Retorna {sn: descricao} dos inversores que NÃO geram enquanto o(s)
-    irmão(s) geram. Inversor ausente na resposta da API também conta."""
-    referencia = max(
-        [v for v in potencia_por_inversor.values() if v is not None] or [0]
+def _fv_energias_ler_detalhes():
+    """{sn: {kw, etd_kwh, er, wn, estado, tim}} via getLastTsDataPro."""
+    resp = _fv_energias_chamar_api(
+        "/pro/getLastTsDataPro",
+        {"token": FV_ENERGIAS_TOKEN, "isnos": ",".join(FV_ENERGIAS_APELIDO_INVERSOR.keys())},
     )
-    if referencia < FV_ENERGIAS_REFERENCIA_MIN_KW:
-        return {}
-    melhor_sn = max(
-        (sn for sn, v in potencia_por_inversor.items() if v is not None),
-        key=lambda sn: potencia_por_inversor[sn],
-    )
-    melhor_apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(melhor_sn, melhor_sn)
-    suspeitos = {}
-    for sn, apelido in FV_ENERGIAS_APELIDO_INVERSOR.items():
-        v = potencia_por_inversor.get(sn)
-        if v is None:
-            suspeitos[sn] = (
-                f"{apelido} ({sn}) sem leitura de potência enquanto {melhor_apelido} "
-                f"opera a {referencia:.1f} kW"
-            )
-        elif v < FV_ENERGIAS_SEM_GERAR_MAX_KW or v < referencia * FV_ENERGIAS_SEM_GERAR_FRACAO:
-            suspeitos[sn] = (
-                f"{apelido} ({sn}) SEM GERAR ({v:.1f} kW) enquanto {melhor_apelido} "
-                f"opera a {referencia:.1f} kW — possível erro/proteção no inversor "
-                f"(comunicação pode estar normal)"
-            )
-    return suspeitos
+    if resp.get("status") != 200:
+        raise RuntimeError(f"Solplanet getLastTsDataPro erro: {resp}")
 
-
-def _fv_energias_checar_sem_gerar(agora):
-    """Aplica a persistência: só vira alerta depois de
-    FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN minutos seguidos na condição.
-    Estado ({sn: iso_primeira_vez}) fica em UMA trava (1 leitura/ciclo,
-    escrita só quando muda). Falha de consulta não gera alerta aqui —
-    o alerta de comunicação já cobre isso."""
-    try:
-        potencias = _fv_energias_buscar_potencia_por_inversor()
-        suspeitos = _fv_energias_detectar_sem_gerar(potencias)
-    except Exception as e:
-        log.error(f"[FV Energias] Erro ao checar inversor sem gerar: {e}")
-        return []
-
-    try:
-        bruto = _ler_trava(FV_ENERGIAS_TRAVA_SEM_GERAR) or ""
-        estado = json.loads(bruto) if bruto else {}
-        if not isinstance(estado, dict):
-            estado = {}
-    except Exception:
-        estado = {}
-
-    novo_estado = {sn: estado.get(sn) or agora.isoformat() for sn in suspeitos}
-    confirmados = []
-    for sn, desc in suspeitos.items():
+    def _num(x, div=1.0):
         try:
-            desde = datetime.fromisoformat(novo_estado[sn])
-            minutos = (agora - desde).total_seconds() / 60
+            return float(x) / div
+        except (TypeError, ValueError):
+            return None
+
+    detalhes = {}
+    for item in (resp.get("data") or []):
+        sn = item.get("sn")
+        if not sn:
+            continue
+        try:
+            tim = datetime.strptime(item.get("tim"), "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            tim = None
+        er = _num(item.get("er"))
+        wn = _num(item.get("wn0"))
+        detalhes[sn] = {
+            "kw": _num(item.get("pac"), 1000.0),       # W -> kW
+            "etd_kwh": _num(item.get("etd"), 10.0),    # unidade de 0,1 kWh
+            "er": int(er) if er is not None else None,
+            "wn": int(wn) if wn is not None else None,
+            "estado": item.get("stu"),
+            "tim": tim,
+        }
+    return detalhes
+
+
+def _fv_energias_problemas_por_inversor(detalhes, agora):
+    """{chave: (texto, minutos_de_persistencia_exigidos)}. A CHAVE é estável
+    entre ciclos (não carrega números que mudam), pra a assinatura do alerta
+    não mudar a cada 5min e gerar spam."""
+    out = {}
+    naive = agora.replace(tzinfo=None)
+    kws = {sn: d["kw"] for sn, d in detalhes.items() if d.get("kw") is not None}
+    referencia = max(kws.values()) if kws else 0.0
+    melhor_sn = max(kws, key=kws.get) if kws else None
+    melhor_ap = FV_ENERGIAS_APELIDO_INVERSOR.get(melhor_sn, melhor_sn) if melhor_sn else "—"
+
+    for sn, ap in FV_ENERGIAS_APELIDO_INVERSOR.items():
+        nome = f"{ap} ({sn})"
+        d = detalhes.get(sn)
+        if d is None:
+            if referencia >= FV_ENERGIAS_REFERENCIA_MIN_KW:
+                out[f"ausente:{sn}"] = (
+                    f"{nome} sem leitura na Solplanet enquanto {melhor_ap} opera a {referencia:.1f} kW",
+                    FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN,
+                )
+            continue
+
+        er = d.get("er")
+        if er:
+            desc = FV_ENERGIAS_CODIGOS_ERRO.get(er, "consulte o app Solplanet")
+            out[f"erro:{sn}:{er}"] = (f"{nome} com ERRO código {er} — {desc}", 0)
+        if d.get("wn"):
+            out[f"aviso:{sn}:{d['wn']}"] = (
+                f"{nome} com AVISO código {d['wn']}", FV_ENERGIAS_AVISO_CONFIRMACAO_MIN)
+
+        tim = d.get("tim")
+        if tim is not None:
+            idade = (naive - tim).total_seconds() / 60
+            if idade > FV_ENERGIAS_DADO_VELHO_MIN:
+                out[f"dado_velho:{sn}"] = (
+                    f"{nome} sem enviar dados há {idade:.0f} min (última leitura {tim:%H:%M})", 0)
+
+        v = d.get("kw")
+        if (referencia >= FV_ENERGIAS_REFERENCIA_MIN_KW and v is not None
+                and (v < FV_ENERGIAS_SEM_GERAR_MAX_KW or v < referencia * FV_ENERGIAS_SEM_GERAR_FRACAO)):
+            extra = f" (erro {er})" if er else ""
+            out[f"sem_gerar:{sn}"] = (
+                f"{nome} SEM GERAR ({v:.1f} kW) enquanto {melhor_ap} opera a {referencia:.1f} kW"
+                f"{extra} — o inversor pode estar comunicando normalmente",
+                FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN,
+            )
+
+    # Geração acumulada do dia — pega perda de produção mesmo que o inversor já tenha voltado
+    if agora.hour >= FV_ENERGIAS_GERACAO_DIA_HORA_MIN:
+        etds = {sn: d["etd_kwh"] for sn, d in detalhes.items() if d.get("etd_kwh") is not None}
+        if etds:
+            melhor_e_sn = max(etds, key=etds.get)
+            melhor_e = etds[melhor_e_sn]
+            if melhor_e >= FV_ENERGIAS_GERACAO_DIA_REF_MIN_KWH:
+                mel_ap = FV_ENERGIAS_APELIDO_INVERSOR.get(melhor_e_sn, melhor_e_sn)
+                for sn, e in etds.items():
+                    if e < melhor_e * FV_ENERGIAS_GERACAO_DIA_LIMIAR:
+                        ap = FV_ENERGIAS_APELIDO_INVERSOR.get(sn, sn)
+                        out[f"geracao_dia:{sn}"] = (
+                            f"{ap} ({sn}) com geração do dia abaixo dos demais: {e:.1f} kWh vs "
+                            f"{mel_ap} {melhor_e:.1f} kWh ({(1 - e / melhor_e) * 100:.0f}% a menos)", 0)
+    return out
+
+
+def _fv_energias_aplicar_persistencia(candidatos, agora, estado):
+    """candidatos {chave: (texto, min)}; estado {chave: iso da 1ª vez vista}.
+    Retorna ({chave: texto} confirmados, novo_estado)."""
+    novo_estado = {k: (estado.get(k) or agora.isoformat()) for k in candidatos}
+    confirmados = {}
+    for chave, (texto, minimo) in candidatos.items():
+        try:
+            minutos = (agora - datetime.fromisoformat(novo_estado[chave])).total_seconds() / 60
         except Exception:
             minutos = 0
-        if minutos >= FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN:
-            confirmados.append(desc)
-
-    if novo_estado != estado:
-        try:
-            _gravar_trava(FV_ENERGIAS_TRAVA_SEM_GERAR, json.dumps(novo_estado) if novo_estado else "")
-        except Exception as e:
-            log.error(f"[FV Energias] Erro ao gravar estado sem_gerar: {e}")
-    return confirmados
+        if minutos >= minimo:
+            confirmados[chave] = texto
+    return confirmados, novo_estado
 
 
 def _fv_energias_traduzir_erro(e):
@@ -18812,59 +18870,88 @@ def _fv_energias_traduzir_erro(e):
 
 
 def _fv_energias_verificar_alertas():
-    """Roda a cada checagem (5min), só dentro da janela diurna. Só envia
-    mensagem quando o conjunto de problemas MUDA em relação à última
-    checagem (novo problema surgiu, problema diferente, ou tudo
-    normalizou) — evita spam repetindo o mesmo alerta a cada 5min
-    enquanto o problema persiste.
+    """Roda a cada ciclo (~5min), só na janela diurna. Só envia mensagem
+    quando o CONJUNTO de problemas muda (assinatura por chaves estáveis) —
+    sem spam enquanto o mesmo problema persiste, e avisa quando normaliza.
 
-    Offline/sem comunicação é checado em TODA chamada (a cada 5min).
-    Desbalanceamento de potência só é checado nos horários pré-
-    estabelecidos da ronda (08h/12h/15h/17h) — não a cada 5min."""
+    Cobre: comunicação (offline), erro/aviso do inversor (com código),
+    inversor sem gerar, dado parado, geração do dia abaixo dos irmãos,
+    falha de consulta à Solplanet e desbalanceamento (nos horários de ronda)."""
     agora = agora_br()
     if not (FV_ENERGIAS_HORA_INICIO_MONITORAMENTO <= agora.hour < FV_ENERGIAS_HORA_FIM_MONITORAMENTO):
         return {"ok": True, "alertou": False, "motivo": "fora da janela de monitoramento diurno"}
 
-    problemas_atuais = []
+    problemas = {}  # chave estável -> texto
+
+    try:
+        travas = _ler_travas([FV_ENERGIAS_TRAVA_PERSISTENCIA, FV_ENERGIAS_TRAVA_ASSINATURA])
+    except Exception as e:
+        log.error(f"[FV Energias] Erro ao ler travas: {e}")
+        travas = {}
+    try:
+        bruto = travas.get(FV_ENERGIAS_TRAVA_PERSISTENCIA) or ""
+        estado = json.loads(bruto) if bruto else {}
+        if not isinstance(estado, dict):
+            estado = {}
+    except Exception:
+        estado = {}
+
+    # 1) Comunicação (istate/pstate)
     try:
         dados = _fv_energias_buscar_dados()
         for inv in dados["inversores"]:
             apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"])
             if not inv["online"]:
-                problemas_atuais.append(f"{apelido} ({inv['sn']}) está OFFLINE / sem comunicação")
+                problemas[f"offline:{inv['sn']}"] = f"{apelido} ({inv['sn']}) está OFFLINE / sem comunicação"
     except Exception as e:
-        # Falha ao consultar a própria API da Solplanet já é, por si só,
-        # um sinal de perda de comunicação com a usina. Log técnico
-        # completo fica só no servidor; a mensagem do grupo é em
-        # linguagem simples (ver _fv_energias_traduzir_erro).
         log.error(f"[FV Energias] Erro tecnico ao consultar Solplanet: {e}")
-        problemas_atuais.append(
+        problemas["api_falha"] = (
             f"Não conseguimos ler os dados da usina agora — {_fv_energias_traduzir_erro(e)}. "
             "Não é uma falha na usina, é só uma instabilidade temporária de consulta; "
             "o sistema vai tentar de novo automaticamente."
         )
 
-    # Inversor comunicando mas sem gerar (ex.: erro 35 Utility Loss) — a cada ciclo
-    problemas_atuais.extend(_fv_energias_checar_sem_gerar(agora))
+    # 2) Leitura por inversor (erro, aviso, sem gerar, dado parado, geração do dia)
+    detalhes = None
+    try:
+        detalhes = _fv_energias_ler_detalhes()
+    except Exception as e:
+        log.error(f"[FV Energias] Erro ao ler detalhes por inversor: {e}")
+        problemas.setdefault(
+            "api_falha",
+            "Não consegui ler potência/erros dos inversores na Solplanet agora — tentando de novo automaticamente.",
+        )
 
+    candidatos = _fv_energias_problemas_por_inversor(detalhes, agora) if detalhes else {}
+    confirmados, novo_estado = _fv_energias_aplicar_persistencia(candidatos, agora, estado)
+    problemas.update(confirmados)
+
+    # 3) Desbalanceamento de potência — só nos horários de ronda (08/12/15/17h)
     hora_atual = agora.strftime("%H")
-    if hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
+    if detalhes and hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
         try:
-            potencias = _fv_energias_buscar_potencia_por_inversor()
-            problemas_atuais.extend(_fv_energias_detectar_desbalanceamento_potencia(potencias))
+            potencias = {sn: d["kw"] for sn, d in detalhes.items() if d.get("kw") is not None}
+            for t in _fv_energias_detectar_desbalanceamento_potencia(potencias):
+                problemas["desbalanceamento"] = t
         except Exception as e:
             log.error(f"[FV Energias] Erro ao checar desbalanceamento de potencia: {e}")
 
-    assinatura_atual = "|".join(sorted(problemas_atuais))
-    assinatura_anterior = _ler_trava("fv_energias:ultima_assinatura_problema") or ""
+    # persistência: grava só se mudou
+    if novo_estado != estado:
+        try:
+            _gravar_trava(FV_ENERGIAS_TRAVA_PERSISTENCIA, json.dumps(novo_estado) if novo_estado else "")
+        except Exception as e:
+            log.error(f"[FV Energias] Erro ao gravar estado de persistencia: {e}")
 
+    assinatura_atual = "|".join(sorted(problemas.keys()))
+    assinatura_anterior = travas.get(FV_ENERGIAS_TRAVA_ASSINATURA) or ""
     if assinatura_atual == assinatura_anterior:
         return {"ok": True, "alertou": False, "motivo": "sem mudanca de estado"}
 
-    if problemas_atuais:
+    if problemas:
         texto = (
             "🚨 *FV Energias Renováveis — ALERTA*\n\n"
-            + "\n".join(f"⚠️ {p}" for p in problemas_atuais)
+            + "\n".join(f"⚠️ {problemas[k]}" for k in sorted(problemas))
             + f"\n\nDetectado às {agora_br().strftime('%H:%M')}"
         )
     else:
@@ -18884,12 +18971,10 @@ def _fv_energias_verificar_alertas():
             timeout=20,
         )
         if r.ok:
-            # Só marca como "avisado" DEPOIS de confirmar o envio — se
-            # gravasse antes e o envio falhasse, o sistema achava que já
-            # tinha avisado e nunca mais tentava reenviar (bug real que
-            # causou o alerta de "normalizado" nunca chegar).
-            _gravar_trava("fv_energias:ultima_assinatura_problema", assinatura_atual)
-        return {"ok": r.ok, "alertou": True, "problemas": problemas_atuais}
+            # Só marca como "avisado" DEPOIS de confirmar o envio — se o envio
+            # falhar, tenta de novo no próximo ciclo.
+            _gravar_trava(FV_ENERGIAS_TRAVA_ASSINATURA, assinatura_atual)
+        return {"ok": r.ok, "alertou": True, "problemas": list(problemas.values())}
     except Exception as e:
         return {"ok": False, "alertou": True, "error": str(e)}
 
@@ -18975,7 +19060,10 @@ def _fv_energias_buscar_dados():
     }
 
 
-def _fv_energias_montar_texto_ronda(dados, hora_label):
+def _fv_energias_montar_texto_ronda(dados, hora_label, detalhes=None):
+    detalhes = detalhes or {}
+    kws = [d["kw"] for d in detalhes.values() if d.get("kw") is not None]
+    referencia = max(kws) if kws else 0.0
     inversores_ordenados = sorted(
         dados["inversores"],
         key=lambda inv: FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"]),
@@ -18983,9 +19071,26 @@ def _fv_energias_montar_texto_ronda(dados, hora_label):
     linhas_inv = []
     for inv in inversores_ordenados:
         apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(inv["sn"], inv["sn"])
-        emoji = "✅" if inv["online"] else "⚠️"
-        estado = "Em Geração" if inv["online"] else "Offline/Atenção"
-        linhas_inv.append(f"{emoji} {apelido} — {estado}")
+        d = detalhes.get(inv["sn"])
+        if not inv["online"]:
+            emoji, estado = "🔴", "OFFLINE / sem comunicação"
+        elif d is None:
+            emoji, estado = "⚠️", "comunicando, mas sem leitura de potência"
+        elif d.get("er"):
+            emoji, estado = "🔴", f"ERRO {d['er']}"
+        elif (d.get("kw") is not None and referencia >= FV_ENERGIAS_REFERENCIA_MIN_KW
+              and (d["kw"] < FV_ENERGIAS_SEM_GERAR_MAX_KW or d["kw"] < referencia * FV_ENERGIAS_SEM_GERAR_FRACAO)):
+            emoji, estado = "🔴", "SEM GERAR"
+        elif d.get("wn"):
+            emoji, estado = "⚠️", f"em geração, com aviso {d['wn']}"
+        else:
+            emoji, estado = "✅", "Em geração"
+        extra = ""
+        if d and d.get("kw") is not None:
+            extra = f" — {d['kw']:.1f} kW"
+            if d.get("etd_kwh") is not None:
+                extra += f" · {d['etd_kwh']:.1f} kWh hoje"
+        linhas_inv.append(f"{emoji} {apelido} — {estado}{extra}")
     inversores_txt = "\n".join(linhas_inv) if linhas_inv else "Sem dados de inversores."
 
     geracao = dados.get("geracao_hoje_kwh")
@@ -19010,7 +19115,12 @@ def _fv_energias_enviar_ronda(hora_label):
     except Exception as e:
         return {"ok": False, "error": f"Erro ao buscar dados da Solplanet: {e}"}
 
-    texto = _fv_energias_montar_texto_ronda(dados, hora_label)
+    try:
+        detalhes = _fv_energias_ler_detalhes()
+    except Exception as e:
+        log.error(f"[FV Energias] Ronda sem detalhes por inversor: {e}")
+        detalhes = None
+    texto = _fv_energias_montar_texto_ronda(dados, hora_label, detalhes)
     try:
         r = requests.post(
             f"{WPP_SERVER_URL}/api/enviar-mensagem",
@@ -19363,6 +19473,88 @@ def _fv_energias_processar_ciclo():
         "alerta": resultado_alerta,
         "snapshot": resultado_snapshot,
     }
+
+
+# ── Execução confiável do ciclo (17/10/2026) ───────────────────────────
+# Antes o ciclo só rodava quando o UptimeRobot batia em /health — se o
+# monitor parasse, a usina ficava sem vigilância sem ninguém saber. Agora
+# há um loop próprio no servidor (a cada 60s, executa se o último ciclo
+# tem >= 4min) e o /health continua como gatilho redundante. Um lock de
+# arquivo garante que só 1 processo/worker rode por vez (sem alerta duplicado).
+FV_ENERGIAS_LOCK_PATH = "/tmp/fv_energias_ciclo.lock"
+FV_ENERGIAS_ULTIMO_CICLO_PATH = "/tmp/fv_energias_ultimo_ciclo.txt"
+FV_ENERGIAS_INTERVALO_MIN_SEG = 240
+_fv_energias_loop_iniciado = False
+
+
+def _fv_energias_ciclo_exclusivo(origem):
+    import fcntl
+    try:
+        with open(FV_ENERGIAS_LOCK_PATH, "a+") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return None  # outro processo já está rodando o ciclo
+            try:
+                try:
+                    with open(FV_ENERGIAS_ULTIMO_CICLO_PATH) as f:
+                        ultimo = float(f.read().strip() or 0)
+                except Exception:
+                    ultimo = 0.0
+                if time.time() - ultimo < FV_ENERGIAS_INTERVALO_MIN_SEG:
+                    return None
+                resultado = _fv_energias_processar_ciclo()
+                with open(FV_ENERGIAS_ULTIMO_CICLO_PATH, "w") as f:
+                    f.write(str(time.time()))
+                return resultado
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+    except Exception as e:
+        log.error(f"[FV Energias] Erro no ciclo exclusivo ({origem}): {e}")
+        return None
+
+
+def _fv_energias_loop():
+    time.sleep(20)
+    while True:
+        try:
+            _fv_energias_ciclo_exclusivo("loop")
+        except Exception as e:
+            log.error(f"[FV Energias] Erro no loop proprio: {e}")
+        time.sleep(60)
+
+
+def _fv_energias_garantir_loop():
+    """Inicia o loop 1x por processo (import e/ou 1ª requisição — cobre o caso
+    de o gunicorn usar preload/fork, em que threads criadas no import somem)."""
+    global _fv_energias_loop_iniciado
+    if _fv_energias_loop_iniciado or os.environ.get("FV_ENERGIAS_LOOP", "1") == "0":
+        return
+    _fv_energias_loop_iniciado = True
+    threading.Thread(target=_fv_energias_loop, name="fv-energias-loop", daemon=True).start()
+
+
+_fv_energias_garantir_loop()
+app.before_request(_fv_energias_garantir_loop)
+
+
+@app.route("/fv-energias/saude", methods=["GET"])
+def fv_energias_saude():
+    """Pro UptimeRobot: 503 se o monitoramento da FV Energias parou (último
+    ciclo > 15min, em horário diurno). Fora da janela diurna sempre 200."""
+    agora = agora_br()
+    try:
+        with open(FV_ENERGIAS_ULTIMO_CICLO_PATH) as f:
+            idade_min = (time.time() - float(f.read().strip())) / 60
+    except Exception:
+        idade_min = None
+    diurno = FV_ENERGIAS_HORA_INICIO_MONITORAMENTO <= agora.hour < FV_ENERGIAS_HORA_FIM_MONITORAMENTO
+    parado = diurno and (idade_min is None or idade_min > 15)
+    return jsonify({
+        "ok": not parado,
+        "ultimo_ciclo_min_atras": None if idade_min is None else round(idade_min, 1),
+        "janela_diurna": diurno,
+    }), (503 if parado else 200)
 
 
 @app.route("/fv-energias/ronda-check", methods=["GET", "POST"])
