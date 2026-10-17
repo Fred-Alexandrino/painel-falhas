@@ -18714,6 +18714,88 @@ def _fv_energias_detectar_desbalanceamento_potencia(potencia_por_inversor):
     return []
 
 
+# Detecção de inversor SEM GERAR (adicionado 17/10/2026). O status
+# "online" da Solplanet (istate/pstate) só diz que o inversor COMUNICA com
+# o dongle — um inversor em erro (ex.: 35 Utility Loss) continua "online"
+# e a ronda mostrava "Em Geração" enquanto ele ficou 4 dias parado. Aqui a
+# comparação é por potência instantânea contra os irmãos, a cada ciclo.
+FV_ENERGIAS_REFERENCIA_MIN_KW = 3.0     # só compara quando o melhor inversor passa disso (sol suficiente)
+FV_ENERGIAS_SEM_GERAR_MAX_KW = 0.3      # abaixo disso (ou < 10% do melhor) = "sem gerar"
+FV_ENERGIAS_SEM_GERAR_FRACAO = 0.10
+FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN = 10  # persistência antes de alertar (evita falso positivo)
+FV_ENERGIAS_TRAVA_SEM_GERAR = "fv_energias:sem_gerar_desde"
+
+
+def _fv_energias_detectar_sem_gerar(potencia_por_inversor):
+    """Retorna {sn: descricao} dos inversores que NÃO geram enquanto o(s)
+    irmão(s) geram. Inversor ausente na resposta da API também conta."""
+    referencia = max(
+        [v for v in potencia_por_inversor.values() if v is not None] or [0]
+    )
+    if referencia < FV_ENERGIAS_REFERENCIA_MIN_KW:
+        return {}
+    melhor_sn = max(
+        (sn for sn, v in potencia_por_inversor.items() if v is not None),
+        key=lambda sn: potencia_por_inversor[sn],
+    )
+    melhor_apelido = FV_ENERGIAS_APELIDO_INVERSOR.get(melhor_sn, melhor_sn)
+    suspeitos = {}
+    for sn, apelido in FV_ENERGIAS_APELIDO_INVERSOR.items():
+        v = potencia_por_inversor.get(sn)
+        if v is None:
+            suspeitos[sn] = (
+                f"{apelido} ({sn}) sem leitura de potência enquanto {melhor_apelido} "
+                f"opera a {referencia:.1f} kW"
+            )
+        elif v < FV_ENERGIAS_SEM_GERAR_MAX_KW or v < referencia * FV_ENERGIAS_SEM_GERAR_FRACAO:
+            suspeitos[sn] = (
+                f"{apelido} ({sn}) SEM GERAR ({v:.1f} kW) enquanto {melhor_apelido} "
+                f"opera a {referencia:.1f} kW — possível erro/proteção no inversor "
+                f"(comunicação pode estar normal)"
+            )
+    return suspeitos
+
+
+def _fv_energias_checar_sem_gerar(agora):
+    """Aplica a persistência: só vira alerta depois de
+    FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN minutos seguidos na condição.
+    Estado ({sn: iso_primeira_vez}) fica em UMA trava (1 leitura/ciclo,
+    escrita só quando muda). Falha de consulta não gera alerta aqui —
+    o alerta de comunicação já cobre isso."""
+    try:
+        potencias = _fv_energias_buscar_potencia_por_inversor()
+        suspeitos = _fv_energias_detectar_sem_gerar(potencias)
+    except Exception as e:
+        log.error(f"[FV Energias] Erro ao checar inversor sem gerar: {e}")
+        return []
+
+    try:
+        bruto = _ler_trava(FV_ENERGIAS_TRAVA_SEM_GERAR) or ""
+        estado = json.loads(bruto) if bruto else {}
+        if not isinstance(estado, dict):
+            estado = {}
+    except Exception:
+        estado = {}
+
+    novo_estado = {sn: estado.get(sn) or agora.isoformat() for sn in suspeitos}
+    confirmados = []
+    for sn, desc in suspeitos.items():
+        try:
+            desde = datetime.fromisoformat(novo_estado[sn])
+            minutos = (agora - desde).total_seconds() / 60
+        except Exception:
+            minutos = 0
+        if minutos >= FV_ENERGIAS_SEM_GERAR_CONFIRMACAO_MIN:
+            confirmados.append(desc)
+
+    if novo_estado != estado:
+        try:
+            _gravar_trava(FV_ENERGIAS_TRAVA_SEM_GERAR, json.dumps(novo_estado) if novo_estado else "")
+        except Exception as e:
+            log.error(f"[FV Energias] Erro ao gravar estado sem_gerar: {e}")
+    return confirmados
+
+
 def _fv_energias_traduzir_erro(e):
     """Traduz exceções técnicas (timeout, conexão, etc.) pra uma frase em
     português simples, sem jargão de programação — a mensagem crua do
@@ -18761,6 +18843,9 @@ def _fv_energias_verificar_alertas():
             "Não é uma falha na usina, é só uma instabilidade temporária de consulta; "
             "o sistema vai tentar de novo automaticamente."
         )
+
+    # Inversor comunicando mas sem gerar (ex.: erro 35 Utility Loss) — a cada ciclo
+    problemas_atuais.extend(_fv_energias_checar_sem_gerar(agora))
 
     hora_atual = agora.strftime("%H")
     if hora_atual in FV_ENERGIAS_HORARIOS_RONDA and agora.minute < FV_ENERGIAS_JANELA_MINUTOS:
