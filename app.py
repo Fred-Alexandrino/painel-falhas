@@ -592,15 +592,15 @@ CATALOGO_USINAS = {
     },
     "Pharmas II": {
         "cliente": "Thopen",
-        "aliases": ["pharmas ii", "pharmas 2"],
+        "aliases": ["pharmas ii", "pharmas 2", "pharma ii", "pharma 2"],
     },
     "Pharmas III": {
         "cliente": "Thopen",
-        "aliases": ["pharmas iii", "pharmas 3"],
+        "aliases": ["pharmas iii", "pharmas 3", "pharma iii", "pharma 3"],
     },
     "Pharmas IV": {
         "cliente": "Thopen",
-        "aliases": ["pharmas iv", "pharmas 4"],
+        "aliases": ["pharmas iv", "pharmas 4", "pharma iv", "pharma 4"],
     },
     "Santo Antonio da Platina": {
         "cliente": "Thopen",
@@ -794,11 +794,6 @@ _USINAS_BASES_AMBIGUAS = {
     'Aparecida do Taboado': ['Aparecida do Taboado I', 'Aparecida do Taboado II'],
 }
 _BASES_AMBIGUAS_NORM = {_norm_usina(_base): _nomes for _base, _nomes in _USINAS_BASES_AMBIGUAS.items()}
-# clientes que podem vir como prefixo "Cliente - Usina" na UFV da planilha
-_CLIENTES_PREFIXO_NORM = {_norm_usina(_c) for _c in (
-    {_i["cliente"] for _i in CATALOGO_USINAS.values()} |
-    {"2C", "2C Energia", "GD Energy", "Alves Lima", "Sal Energia", "Athon", "Renogrid", "Thopen", "Qair", "Faro Energy"}
-)}
 
 
 def resolver_usinas_chamado(texto_bruto):
@@ -819,16 +814,6 @@ def resolver_usinas_chamado(texto_bruto):
     s = _SUFIXOS_USINA.sub("", s).strip()
     s = _PREFIXOS_USINA.sub("", s).strip()
     s = s.rstrip(".,:-|").strip()
-
-    # A planilha do SharePoint traz a UFV no formato "Cliente - Usina"
-    # (ex.: "Thopen - Nova Londrina"). O prefixo de cliente impedia o casamento
-    # (achado 15/10/2026, chamado 80015957 sumindo do painel): tira o prefixo
-    # SÓ quando o trecho antes do hífen é um cliente conhecido — assim nomes
-    # com hífen legítimo ("Matão II - Topázio") não são mexidos.
-    _m_cli = re.match(r"^\s*(.+?)\s*[-–]\s*(.+)$", s)
-    if _m_cli and _norm_usina(_m_cli.group(1)) in _CLIENTES_PREFIXO_NORM:
-        s = _m_cli.group(2).strip()
-        texto_bruto = s
     s_norm = _norm_usina(s)
 
     if s_norm in _BASES_AMBIGUAS_NORM:
@@ -4591,6 +4576,256 @@ def sobreaviso_tabela():
                     "tipo": blocos[i].get("tipo"), "label": _sobreaviso_fmt_bloco(blocos[i])} for i in idxs],
         "linhas": linhas,
     }), 200
+
+
+# ── Comunicados de sobreaviso reorganizados pelo MAPEAMENTO do Fred (17/10/2026) ──
+# Um comunicado por "cluster do Fred": grupos de cobertura da escala que dividem a
+# mesma equipe (código de cluster do dashboard) de uma usina do mapeamento oficial
+# viram UMA mensagem só (ex.: Valdir Félix — Santo Antônio da Platina + Pharmas +
+# Taguaí + Bernardino de Campos; Ceilândia + Sítio dos Nogueiras; Céu Azul + Assis
+# Chateaubriand). Grupos sem nenhuma equipe do mapeamento do Fred não aparecem
+# (escopo "minhas", padrão). Usinas de outros supervisores no mesmo cluster entram
+# na mesma mensagem.
+_SOBREAVISO_TOKEN_FIM = re.compile(r"^(?:[ivx]+|\d+[a-z]?|e)$")
+
+
+def _sobreaviso_base_nome(nome):
+    """Nome normalizado sem parênteses e sem numeração final (I, II, 1, 2, 'e')."""
+    s = re.sub(r"\([^)]*\)", " ", nome or "")
+    s = re.sub(r"[^a-z0-9]+", " ", _norm_usina(s)).strip()
+    toks = s.split()
+    while toks and _SOBREAVISO_TOKEN_FIM.match(toks[-1]):
+        toks.pop()
+    return " ".join(toks)
+
+
+def _sobreaviso_juntar_nomes(nomes):
+    nomes = [n for n in nomes if n]
+    if len(nomes) <= 1:
+        return "".join(nomes)
+    return ", ".join(nomes[:-1]) + " e " + nomes[-1]
+
+
+def _sobreaviso_frase_periodo(bloco):
+    tipo = (bloco.get("tipo") or "").lower()
+    if "feriado" in tipo and "fim de semana" in tipo:
+        return "este final de semana e feriado"
+    if "feriado" in tipo:
+        return "este feriado"
+    return "este final de semana"
+
+
+def _sobreaviso_montar_texto_comunicado(titulo, bloco, partes):
+    conjuntos = {tuple(sorted(p["pessoas"])) for p in partes}
+    todas_duplas = all(p.get("por_bloco") == 2 for p in partes)
+    if len(conjuntos) == 1:
+        pessoas = partes[0]["pessoas"]
+        dupla_txt = " (dupla de sobreaviso)" if todas_duplas else ""
+        bloco_pessoas = f"De sobreaviso: {' + '.join(pessoas) if pessoas else 'sem cobertura definida'}"
+    else:
+        dupla_txt = ""
+        linhas = [f"• {p['rotulo']}: {' + '.join(p['pessoas']) if p['pessoas'] else 'sem cobertura definida'}" for p in partes]
+        bloco_pessoas = "De sobreaviso:\n" + "\n".join(linhas)
+    sups = bloco.get("supervisores") or []
+    frase = _sobreaviso_frase_periodo(bloco)
+    if len(sups) >= 2:
+        rodape = f"A dupla de supervisores {_sobreaviso_juntar_nomes(sups)} estará de sobreaviso {frase}."
+    elif len(sups) == 1:
+        rodape = f"O supervisor {sups[0]} estará de sobreaviso {frase}."
+    else:
+        rodape = ""
+    texto = (f"📋 Escala de Sobreaviso — {titulo}\n"
+             f"Período: {_sobreaviso_fmt_bloco(bloco)}{dupla_txt}\n\n"
+             f"{bloco_pessoas}")
+    if rodape:
+        texto += f"\n\n{rodape}"
+    return texto
+
+
+def _sobreaviso_comunicados(estado, bloco_idx, escopo="minhas", overrides=None):
+    """Lista de comunicados do bloco. overrides = {nome_do_grupo: [pessoas]}."""
+    import hashlib
+    overrides = overrides or {}
+    blocos = estado.get("blocos", [])
+    bloco = blocos[bloco_idx]
+    grupos = estado.get("grupos", [])
+    usinas_por_cluster = _sobreaviso_montar_usinas_por_cluster(estado.get("usinas", []))
+
+    mapa_cluster_ufvs = {}
+    for u in MAPEAMENTO_UFVS:
+        mapa_cluster_ufvs.setdefault(u["cluster"], []).append(u)
+    fred_equipes = set(mapa_cluster_ufvs)
+
+    infos = []
+    for gi, g in enumerate(grupos):
+        us = _sobreaviso_usinas_do_grupo(g, usinas_por_cluster)
+        equipes = {u["equipe"] for u in us if u.get("equipe")}
+        infos.append({"idx": gi, "g": g, "us": us, "equipes": equipes, "eq_fred": equipes & fred_equipes})
+
+    parent = list(range(len(infos)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    por_equipe = {}
+    for inf in infos:
+        for e in inf["eq_fred"]:
+            por_equipe.setdefault(e, []).append(inf["idx"])
+    for lst in por_equipe.values():
+        for outro in lst[1:]:
+            parent[find(outro)] = find(lst[0])
+
+    comps = {}
+    for inf in infos:
+        if inf["eq_fred"]:
+            comps.setdefault(("m", find(inf["idx"])), []).append(inf)
+        elif escopo == "todas":
+            comps[("s", inf["idx"])] = [inf]
+
+    resultado = []
+    for chave, comp in sorted(comps.items(), key=lambda kv: kv[1][0]["idx"]):
+        comp.sort(key=lambda i: i["idx"])
+        # ── usinas do comunicado (união, sem repetir)
+        usinas, vistas = [], set()
+        for inf in comp:
+            for u in inf["us"]:
+                if u["usina"] in vistas:
+                    continue
+                vistas.add(u["usina"])
+                usinas.append(dict(u))
+        # ── partes (um grupo de cobertura da escala cada) e rótulos
+        partes = []
+        for inf in comp:
+            g = inf["g"]
+            rotulo = " + ".join(g.get("clusters", [])) or g.get("nome", "")
+            if len(inf["us"]) == 1:
+                nome_u = inf["us"][0]["usina"]
+                rn, un = _sobreaviso_base_nome(rotulo), _sobreaviso_base_nome(nome_u)
+                if rn and un.startswith(rn) and len(un) > len(rn):
+                    rotulo = re.sub(r"\s*\([^)]*\)", "", nome_u).strip()
+            escala_g = g.get("escala", [])
+            base = list(escala_g[bloco_idx]) if bloco_idx < len(escala_g) and escala_g[bloco_idx] else []
+            pessoas = list(overrides.get(g.get("nome"), base))
+            partes.append({"grupo": g.get("nome"), "rotulo": rotulo, "pessoas": pessoas,
+                           "por_bloco": g.get("por_bloco", 1),
+                           "pool": [{"nome": p.get("t"), "horas": p.get("h")} for p in g.get("pool", []) if p.get("t")]})
+        # ── título: rótulos + usinas do Fred não citadas (ou ausentes da escala)
+        rotulos = []
+        for p in partes:
+            if p["rotulo"] not in rotulos:
+                rotulos.append(p["rotulo"])
+        titulo_norm = " ".join(_sobreaviso_base_nome(r) for r in rotulos) + " " + " ".join(re.sub(r"[^a-z0-9]+", " ", _norm_usina(r)) for r in rotulos)
+        suplementos = []
+        for u in usinas:
+            if u.get("supervisor") != "Fred Alexandrino":
+                continue
+            base = _sobreaviso_base_nome(u["usina"])
+            if base and base not in titulo_norm:
+                nome_exib = re.sub(r"\s*\([^)]*\)", "", u["usina"]).strip()
+                if "(" in u["usina"] and u.get("cliente"):
+                    nome_exib = f"{nome_exib} - {u['cliente']}"
+                if nome_exib not in suplementos:
+                    suplementos.append(nome_exib)
+        # ── usinas do mapeamento do Fred que a escala nem lista (ex.: Assis Chateaubriand)
+        presentes_canon = {canonizar_usina(u["usina"]) for u in usinas}
+        bases_escala = [_sobreaviso_base_nome(u["usina"]) for u in usinas]
+        for e in sorted(set().union(*[i["eq_fred"] for i in comp])):
+            for mu in mapa_cluster_ufvs.get(e, []):
+                if mu["usina"] in presentes_canon:
+                    continue
+                base = _sobreaviso_base_nome(mu["usina"])
+                if base in titulo_norm or any(b and (base == b or base.startswith(b + " ") or b.startswith(base + " ")) for b in bases_escala):
+                    continue
+                usinas.append({"usina": mu["usina"], "equipe": e, "cliente": mu.get("cliente"),
+                               "uf": None, "supervisor": "Fred Alexandrino", "adicionada": True})
+                if mu["usina"] not in suplementos:
+                    suplementos.append(mu["usina"])
+        titulo = " + ".join(rotulos + suplementos)
+        equipes = sorted({u["equipe"] for u in usinas if u.get("equipe")})
+        eq_destino = sorted(set(equipes) & fred_equipes) or equipes
+        clientes = []
+        for u in usinas:
+            if u.get("cliente") and u["cliente"] not in clientes:
+                clientes.append(u["cliente"])
+        sups = []
+        for inf in comp:
+            for s in inf["g"].get("supervisores", []):
+                if s not in sups:
+                    sups.append(s)
+        ident = hashlib.md5("|".join(sorted(p["grupo"] or "" for p in partes)).encode("utf-8")).hexdigest()[:10]
+        resultado.append({
+            "id": ident, "nome": titulo, "titulo": titulo, "clusters": rotulos + suplementos,
+            "equipes": equipes, "equipes_destino": eq_destino, "usinas": usinas, "clientes": clientes,
+            "supervisores": sups, "partes": partes,
+            "dupla": all(p["por_bloco"] == 2 for p in partes),
+            "minhas": bool(chave[0] == "m"),
+            "texto": _sobreaviso_montar_texto_comunicado(titulo, bloco, partes),
+        })
+    return resultado
+
+
+@app.route("/sobreaviso-comunicados", methods=["GET"])
+def sobreaviso_comunicados():
+    """Comunicados do período organizados pelo mapeamento do Fred.
+    ?bloco=N (padrão: bloco sugerido) &escopo=minhas|todas (padrão: minhas)."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    if not blocos:
+        return jsonify({"ok": False, "error": "A escala carregada não tem blocos."}), 400
+    bloco_idx = request.args.get("bloco", type=int)
+    if bloco_idx is None:
+        bloco_idx = _sobreaviso_indice_bloco_sugerido(blocos)
+    if bloco_idx < 0 or bloco_idx >= len(blocos):
+        return jsonify({"ok": False, "error": f"bloco {bloco_idx} fora do intervalo (0 a {len(blocos) - 1})"}), 400
+    escopo = "todas" if request.args.get("escopo") == "todas" else "minhas"
+    bloco = blocos[bloco_idx]
+    return jsonify({
+        "ok": True,
+        "bloco": {"idx": bloco_idx, "inicio": bloco["inicio"], "fim": bloco["fim"], "tipo": bloco["tipo"],
+                   "label": _sobreaviso_fmt_bloco(bloco), "supervisores": bloco.get("supervisores", [])},
+        "gerado": (estado.get("meta") or {}).get("gerado"),
+        "grupos": _sobreaviso_comunicados(estado, bloco_idx, escopo),
+    }), 200
+
+
+@app.route("/sobreaviso-comunicados-ajustar", methods=["POST"])
+def sobreaviso_comunicados_ajustar():
+    """Recalcula o texto de UM comunicado com técnicos escolhidos à mão entre os
+    candidatos do rodízio de cada parte. Body: {"bloco": N, "id": "...",
+    "ajustes": {"<nome do grupo da escala>": ["Nome1", "Nome2"?]}}. Não persiste."""
+    payload = _sobreaviso_carregar_estado()
+    if not payload:
+        return jsonify({"ok": False, "error": "Nenhuma escala de sobreaviso carregada ainda. Envie o arquivo primeiro."}), 404
+    estado = payload["estado"]
+    blocos = estado.get("blocos", [])
+    dados = request.get_json(force=True, silent=True) or {}
+    bloco_idx = dados.get("bloco")
+    ident = (dados.get("id") or "").strip()
+    ajustes = dados.get("ajustes") or {}
+    if bloco_idx is None or not (0 <= bloco_idx < len(blocos)):
+        return jsonify({"ok": False, "error": f"bloco inválido (0 a {len(blocos) - 1})"}), 400
+    com = next((c for c in _sobreaviso_comunicados(estado, bloco_idx, "todas") if c["id"] == ident), None)
+    if not com:
+        return jsonify({"ok": False, "error": "comunicado não encontrado na escala atual"}), 404
+    por_grupo = {p["grupo"]: p for p in com["partes"]}
+    for nome_g, pessoas in ajustes.items():
+        p = por_grupo.get(nome_g)
+        if not p:
+            return jsonify({"ok": False, "error": f"grupo '{nome_g}' não faz parte desse comunicado"}), 404
+        pool = {x["nome"] for x in p["pool"]}
+        invalidos = [x for x in pessoas if x not in pool]
+        if invalidos:
+            return jsonify({"ok": False, "error": f"{', '.join(invalidos)} não está no rodízio de {p['rotulo']}. Candidatos: {', '.join(sorted(pool))}"}), 400
+        if len(pessoas) != p["por_bloco"]:
+            return jsonify({"ok": False, "error": f"{p['rotulo']} precisa de {p['por_bloco']} pessoa(s), você informou {len(pessoas)}"}), 400
+    novo = next(c for c in _sobreaviso_comunicados(estado, bloco_idx, "todas", overrides=ajustes) if c["id"] == ident)
+    return jsonify({"ok": True, "texto": novo["texto"], "partes": novo["partes"]}), 200
 
 
 def _sobreaviso_montar_indice_grupo_por_cluster(grupos):
