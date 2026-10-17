@@ -20133,6 +20133,30 @@ def deploy_backend():
                 git_erro += " | stderr: " + _se.replace(GITHUB_DEPLOY_TOKEN or "@@", "***")[-600:]
                 log.error(f"[deploy-backend] git commit/push falhou mesmo apos retry (restart segue mesmo assim): {git_erro}")
 
+        # Fallback (17/10/2026): o push via git da VM passou a falhar ("could not read Username" /
+        # hung up). A Contents API funciona (e e o mesmo caminho do /deploy/index-html), entao,
+        # se o git falhar, publica o app.py por ela pra o GitHub nunca ficar atras do servidor.
+        git_push_ok = git_erro is None
+        api_erro = None
+        if not git_push_ok:
+            try:
+                _h = {"Authorization": f"token {GITHUB_DEPLOY_TOKEN}", "Accept": "application/vnd.github+json"}
+                _u = f"https://api.github.com/repos/{GITHUB_DEPLOY_REPO_BACKEND}/contents/app.py"
+                _r = requests.get(_u, headers=_h, params={"ref": "main"}, timeout=25)
+                _r.raise_for_status()
+                _sha = _r.json()["sha"]
+                _p = requests.put(_u, headers=_h, timeout=60, json={
+                    "message": f"Deploy automatico via /deploy/backend (API, {ts})",
+                    "content": base64.b64encode(novo_conteudo.encode("utf-8")).decode("ascii"),
+                    "sha": _sha, "branch": "main"})
+                _p.raise_for_status()
+                git_push_ok = True
+                api_erro = None
+                git_erro = None
+            except Exception as e_api:
+                api_erro = str(e_api).replace(GITHUB_DEPLOY_TOKEN or "@@", "***")[:300]
+                log.error(f"[deploy-backend] fallback via API tambem falhou: {api_erro}")
+
         # reinicia o servico DEPOIS de responder, pra a resposta HTTP nao morrer no meio
         def _reiniciar():
             time.sleep(1)
@@ -20146,8 +20170,8 @@ def deploy_backend():
         return jsonify({
             "status": "ok",
             "backup_local": backup_path,
-            "git_push_ok": git_erro is None,
-            "git_erro": git_erro,
+            "git_push_ok": git_push_ok,
+            "git_erro": git_erro, "api_erro": api_erro,
             "aviso": "servico reiniciando em instantes",
         }), 200
 
