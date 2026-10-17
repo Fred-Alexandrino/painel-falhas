@@ -20111,7 +20111,8 @@ def deploy_backend():
                     ["git", *git_env, "commit", "-m", f"Deploy automatico via /deploy/backend ({ts})"],
                     cwd=APP_DIR, check=True, timeout=15,
                 )
-            subprocess.run(["git", "push", remote, "HEAD:main"], cwd=APP_DIR, check=True, timeout=30)
+            subprocess.run(["git", "push", remote, "HEAD:main"], cwd=APP_DIR, check=True, timeout=30,
+                           capture_output=True, text=True)
 
         try:
             _git_commit_e_push()
@@ -20125,7 +20126,11 @@ def deploy_backend():
                 )
                 _git_commit_e_push()
             except subprocess.CalledProcessError as e:
-                git_erro = str(e)
+                git_erro = str(e).replace(GITHUB_DEPLOY_TOKEN or "@@", "***")
+                _se = (getattr(e, "stderr", None) or "")
+                if isinstance(_se, bytes):
+                    _se = _se.decode("utf-8", "replace")
+                git_erro += " | stderr: " + _se.replace(GITHUB_DEPLOY_TOKEN or "@@", "***")[-600:]
                 log.error(f"[deploy-backend] git commit/push falhou mesmo apos retry (restart segue mesmo assim): {git_erro}")
 
         # reinicia o servico DEPOIS de responder, pra a resposta HTTP nao morrer no meio
