@@ -5838,8 +5838,143 @@ def _auditoria_completa_core(desde_horas_descoberta=24, limite_recheck_ao_vivo=4
                                                               origem=origem)
     resultado_validacao_relatorios = _validar_integridade_relatorios_core(aplicar=True)
     resultado_lacunas = _auditoria_lacunas_core()
+    try:
+        resultado_normalizacao = _normalizar_usinas_existentes_core(aplicar=True)
+    except Exception as e:
+        log.error(f"[NormalizarUsinas] Falha na auditoria completa: {e}")
+        resultado_normalizacao = {"ok": False, "erro": str(e)}
     return {"descoberta": resultado_descoberta, "consistencia": resultado_consistencia,
-            "validacao_relatorios": resultado_validacao_relatorios, "lacunas": resultado_lacunas}
+            "validacao_relatorios": resultado_validacao_relatorios, "lacunas": resultado_lacunas,
+            "normalizacao_usinas": resultado_normalizacao}
+
+
+# ── Reenquadramento de registros já gravados (19/10/2026) ─────────────────────
+# Causa: a usina/cliente de uma atividade só era decidida na CRIAÇÃO e depois
+# só revista pelo rodízio de OSs ABERTAS. Registros Finalizados/Cancelados
+# ficavam com o nome cru de antes de uma mudança de catálogo (ex.: OS
+# 14112/14113, "2C - União 1 - PI", criadas antes de União I entrar no
+# catálogo em 02/10) — fora do mapeamento, sem cluster, invisíveis nos painéis.
+# Aqui toda atividade cuja usina gravada NÃO é um nome oficial é re-resolvida
+# por canonizar_usina() e corrigida, sem tocar em OS de outro supervisor
+# (canonizar devolve None) nem em bases ambíguas (ex.: "Nova Londrina").
+def _normalizar_usinas_existentes_core(aplicar=True, limite=60):
+    if _escopo_atual():
+        return {"ok": True, "pulado": "escopo de supervisora"}
+    try:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+    except Exception as e:
+        log.error(f"[NormalizarUsinas] Erro ao ler Painel de Atividades: {e}")
+        return {"ok": False, "erro": str(e)}
+    bases_amb = {_norm_usina(b) for b in _USINAS_BASES_AMBIGUAS}
+    oficiais = set(CATALOGO_USINAS.keys())
+    corrigidas, ignoradas = [], 0
+    for i, row in enumerate(todos[1:], start=2):
+        if len(corrigidas) >= limite:
+            break
+        usina_atual = (row[2] if len(row) > 2 else "").strip()
+        if not usina_atual or usina_atual in oficiais:
+            continue
+        if _norm_usina(usina_atual) in bases_amb:
+            ignoradas += 1
+            continue
+        oficial = canonizar_usina(_extrair_nome_usina_fracttal(usina_atual)) or canonizar_usina(usina_atual)
+        if not oficial or oficial == usina_atual:
+            continue
+        cliente_ok = inferir_cliente(oficial)
+        item = {"linha": i, "numeroOS": (row[13] if len(row) > 13 else "").strip(),
+                "de": usina_atual, "para": oficial, "cliente": cliente_ok}
+        if aplicar:
+            try:
+                _aplicar_update_campo_atividade(ws, i, row, "usina", oficial, "normalizacao-automatica")
+                if cliente_ok and (row[1] if len(row) > 1 else "").strip() != cliente_ok:
+                    _aplicar_update_campo_atividade(ws, i, row, "cliente", cliente_ok, "normalizacao-automatica")
+            except Exception as e:
+                log.error(f"[NormalizarUsinas] Erro na linha {i}: {e}")
+                item["erro"] = str(e)[:80]
+        corrigidas.append(item)
+    log.info(f"[NormalizarUsinas] corrigidas={len(corrigidas)} ignoradas_ambiguas={ignoradas} aplicar={aplicar}")
+    return {"ok": True, "corrigidas": corrigidas, "ignoradas_ambiguas": ignoradas}
+
+
+# ── Sincronização sob demanda de UMA OS (19/10/2026) ─────────────────────────
+# Causa: a busca de OS do dashboard só olhava o que já estava carregado; se a
+# OS tinha acabado de nascer na Fracttal (descoberta roda a cada poucos
+# minutos) a resposta era "não encontrada", sem dizer se era atraso, usina
+# fora do mapeamento ou OS de outro supervisor. Agora a busca pede a OS direto
+# à Fracttal, cria a atividade se estiver no escopo e devolve o MOTIVO exato
+# quando não entra.
+_os_busca_lock = threading.Lock()
+
+
+def _sincronizar_os_por_folio(folio):
+    folio = re.sub(r"\s+", "", str(folio or ""))
+    if not re.fullmatch(r"\d{3,9}", folio):
+        return {"ok": False, "status": "folio_invalido", "erro": "Informe só o número da OS."}, 400
+
+    with _os_busca_lock:
+        ws = get_atividades_sheet()
+        todos = ws.get_all_values()
+        for row in todos[1:]:
+            numeros = [x.strip() for x in (row[13] if len(row) > 13 else "").split("/")]
+            if folio in numeros:
+                return {"ok": True, "status": "ja_existe", "id": row[0] if row else ""}, 200
+
+        token = _fracttal_get_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        resp = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{folio}", headers=headers, timeout=25)
+        if resp.status_code == 404:
+            return {"ok": True, "status": "nao_encontrada_na_fracttal"}, 200
+        resp.raise_for_status()
+        body = resp.json()
+        tasks = body.get("data") or []
+        if isinstance(tasks, dict):
+            tasks = [tasks]
+        for t in tasks:
+            if not (t.get("wo_folio") or "").strip():
+                t["wo_folio"] = folio
+        if not tasks:
+            return {"ok": True, "status": "nao_encontrada_na_fracttal"}, 200
+
+        mapeado = _fracttal_mapear_grupo(tasks)
+        if not mapeado:
+            return {"ok": True, "status": "fora_do_escopo",
+                    "motivo": "OS de outro cliente/supervisor (fora do seu escopo)."}, 200
+        if mapeado.get("_revisao_manual"):
+            return {"ok": True, "status": "revisao_manual", "motivo": mapeado["motivo"]}, 200
+
+        alerta = mapeado.pop("_alerta", None)
+        mapeado["editor"] = "fracttal-busca"
+        novo_id = _criar_atividade_interna(ws=ws, todos=todos, enviar_notificacao=False, **mapeado)
+        if alerta:
+            _aplicar_update_campo_atividade(ws, len(todos), todos[-1], "historico", alerta,
+                                             "fracttal-busca", append=True)
+        log.info(f"[OS-sob-demanda] OS {folio} criada id={novo_id} usina={mapeado.get('usina')}")
+        return {"ok": True, "status": "criada", "id": novo_id, "usina": mapeado.get("usina"),
+                "cliente": mapeado.get("cliente")}, 200
+
+
+@app.route("/os-sincronizar/<folio>", methods=["POST"])
+def os_sincronizar(folio):
+    try:
+        corpo, http = _sincronizar_os_por_folio(folio)
+        return jsonify(corpo), http
+    except requests.exceptions.HTTPError as e:
+        st = e.response.status_code if e.response is not None else 502
+        return jsonify({"ok": False, "status": "erro_fracttal", "erro": f"Fracttal respondeu {st}"}), 502
+    except Exception as e:
+        log.error(f"[OS-sob-demanda] Erro na OS {folio}: {e}")
+        return jsonify({"ok": False, "status": "erro", "erro": str(e)[:200]}), 500
+
+
+@app.route("/normalizar-usinas-existentes", methods=["POST", "GET"])
+def normalizar_usinas_existentes():
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
+        if secret != WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    aplicar = request.args.get("apply", "false").lower() == "true"
+    return jsonify(_normalizar_usinas_existentes_core(aplicar=aplicar)), 200
 
 
 def _auditoria_lacunas_core(ot_status="1", pagina_limit=100, max_paginas=40):
@@ -5985,8 +6120,8 @@ def _verificar_e_disparar_auditoria_completa_se_necessario():
         return {"disparado": False, "erro": str(e)}
 
 
-def _verificar_e_disparar_descoberta_rapida_se_necessario(intervalo_minutos=30):
-    """DESCOBERTA RÁPIDA — roda automaticamente a cada 30 min via piggyback
+def _verificar_e_disparar_descoberta_rapida_se_necessario(intervalo_minutos=10):
+    """DESCOBERTA RÁPIDA — roda automaticamente a cada 10 min (era 30 até 19/10/2026) via piggyback
     no /sync-fracttal (mesmo gatilho confiável dos 5 min já usado pra
     atualização de status). Sem botão manual — existe só pra reduzir o
     gap de latência entre uma OS nova nascer na Fracttal e ela aparecer
@@ -6514,11 +6649,42 @@ def _fracttal_listar_pagina(since=None, until=None, ot_status=None, start=0, lim
     return body.get("data", []) or [], body.get("total", 0)
 
 
-def _fracttal_listar_ots_recentes(desde_horas=3):
-    """Consulta OTs criadas/atualizadas nas últimas `desde_horas` horas (usado pelo cron de 2h em 2h)."""
+def _fracttal_listar_ots_recentes(desde_horas=3, max_paginas=30):
+    """Consulta OTs criadas nas últimas `desde_horas` horas, PAGINANDO até o fim.
+
+    Correção estrutural (19/10/2026): antes lia só a 1ª página (100 LINHAS DE
+    TAREFA, não 100 OSs). Uma OS com várias tarefas (preventiva com dezenas de
+    equipamentos) ocupa dezenas de linhas; se a janela tinha mais de 100
+    linhas, as OSs além da 1ª página nunca eram vistas por essa descoberta
+    (a janela é relativa a "agora" e só recuperável pela auditoria de
+    lacunas, 3x/dia). Agora segue `start` até `total`. Erro na 1ª página
+    propaga (o chamador já trata); erro em página posterior devolve o que já
+    foi lido e registra — nunca perde silenciosamente a página 1."""
     since = (datetime.utcnow() - timedelta(hours=desde_horas)).strftime("%Y-%m-%dT%H:%M:%S-00:00")
-    ots, _total = _fracttal_listar_pagina(since=since, start=0, limit=100)
-    return ots
+    todas, start = [], 0
+    for _ in range(max_paginas):
+        ots, total = None, 0
+        for tent in range(4):  # a Fracttal limita (429) quando varreduras rodam juntas
+            try:
+                ots, total = _fracttal_listar_pagina(since=since, start=start, limit=100)
+                break
+            except Exception as e:
+                if "429" in str(e) and tent < 3:
+                    time.sleep(10 * (tent + 1))
+                    continue
+                if start == 0:
+                    raise
+                log.error(f"[Descoberta] Erro na página start={start} (janela {desde_horas}h); seguindo com o já lido: {e}")
+                break
+        if ots is None:
+            break
+        todas.extend(ots)
+        start += 100
+        if not ots or start >= total:
+            break
+    else:
+        log.error(f"[Descoberta] Janela {desde_horas}h passou de {max_paginas} páginas — truncada (lacunas cobre o resto)")
+    return todas
 
 
 _FRACTTAL_PRIORIDADE_MAP = {
