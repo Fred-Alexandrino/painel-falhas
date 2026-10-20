@@ -12991,9 +12991,11 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
     if (!nums.length) { say('Não encontrei cases na lista (filtro “Open”?).', false); return; }
     const clean = t => t.replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?WhatsApp Oficial do Suporte[\s\S]*$/, '').replace(/ATENÇÃO: Todas as orientações[^\n]*\n?/, '').replace(/\n[ \t]*(\n[ \t]*)+/g, '\n').trim();
     const parse = t => {
-      const i = t.indexOf('Related Comments:'); let j = t.lastIndexOf('Related Documents');
+      let i = t.indexOf('Related Comments:'); let j = t.lastIndexOf('Related Documents');
+      const ea = t.indexOf('ADD ATTACHMENT');
+      if (i < 0) i = j >= 0 ? j : (ea >= 0 ? ea : t.length);
       let tail = j >= 0 ? t.slice(j + 17) : '';
-      const com = t.slice(i + 17, j >= 0 ? j : undefined).replace(/ADD ATTACHMENT[\s\S]*$/, '');
+      const com = (t.indexOf('Related Comments:') >= 0 ? t.slice(i + 17, j >= 0 ? j : undefined) : '').replace(/ADD ATTACHMENT[\s\S]*$/, '');
       const head = t.slice(0, i);
       const g = l => { const m = head.match(new RegExp(l + ':\\n([^\\n]*)')); return m ? m[1].trim() : ''; };
       const d = head.match(/Description:\n([\s\S]*?)\nCase Type:/);
@@ -13012,10 +13014,10 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
       for (let w = 0; w < 40; w++) {
         await sleep(400);
         let root = subjEl(); if (!root) continue;
-        for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/Related Comments:/.test(root.innerText) && /ADD COMMENT/.test(root.innerText)) break; }
+        for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/ADD COMMENT/.test(root.innerText) && /Subject:/.test(root.innerText)) break; }
         t = root.innerText.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n');
-        const st = (t.match(/Case #?(\d{7})/) || [])[1];
-        if (/Related Comments:/.test(t) && (!st || st === n) && (subjEl().textContent !== antes || antes === '' || w > 6)) return { ...base[n], ...parse(t) };
+        const st = (t.match(/^\s*(?:×\s*)?Case #(\d{7})/m) || [])[1];
+        if (/ADD COMMENT/.test(t) && /Subject:/.test(t) && (!st || st === n) && (subjEl().textContent !== antes || antes === '' || w > 6)) return { ...base[n], ...parse(t) };
       }
       return null;
     };
