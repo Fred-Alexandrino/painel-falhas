@@ -12697,7 +12697,7 @@ SOLAREDGE_HEADERS = [
     "Case", "Assunto", "Categoria", "SubCategoria", "SiteID", "Site", "SerialInversor", "RMA",
     "EnvioETA", "Rastreio", "Status", "Criado", "Tipo", "CodigoErro", "Severidade", "Descricao",
     "Comentarios", "Documentos", "AcaoNecessaria", "SituacaoSite", "UltimoComentarioEm",
-    "AtualizadoEm", "StatusInterno", "NotaGrid", "Equipamento",
+    "AtualizadoEm", "StatusInterno", "NotaGrid", "Equipamento", "TestesCampo",
 ]
 _SE_CAMPOS = {
     "subject": "Assunto", "category": "Categoria", "subCategory": "SubCategoria", "siteId": "SiteID",
@@ -12705,7 +12705,7 @@ _SE_CAMPOS = {
     "tracking": "Rastreio", "status": "Status", "created": "Criado", "type": "Tipo",
     "errorCode": "CodigoErro", "severity": "Severidade", "description": "Descricao",
 }
-_SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000}
+_SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000}
 _SE_STATUS_INTERNO = ["Testes em campo", "Aguardando retorno do Fabricante", "Standby",
                       "Aguardando peça/RMA", "Resolvido - acompanhar"]
 
@@ -12759,6 +12759,7 @@ def _se_item(row):
         "acao": d["AcaoNecessaria"], "situacaoSite": d["SituacaoSite"] or "Aberto",
         "ultimoComentarioEm": d["UltimoComentarioEm"], "atualizadoEm": d["AtualizadoEm"],
         "statusInterno": d["StatusInterno"], "notaGrid": d["NotaGrid"],
+        "testesCampo": _se_json(d["TestesCampo"]),
         "quemAge": _se_quem_age(d["Status"]),
     }
 
@@ -12867,6 +12868,54 @@ def solaredge_importar():
             pass
         return jsonify({"ok": True, "novos": len(novos), "atualizados": len(atualizar) - sumidos,
                         "naoConstamMais": sumidos}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/solaredge-chamados/teste-campo", methods=["POST"])
+def solaredge_teste_campo():
+    """Registro dos testes feitos em campo (OS da Grid) para um case.
+    acao: add | enviado (marca como já respondido no site) | del.
+    Fica em coluna própria: importações do site não apagam."""
+    try:
+        corpo = request.get_json(silent=True) or {}
+        num = re.sub(r"\D", "", str(corpo.get("case", "")))
+        acao = corpo.get("acao") or "add"
+        ws = _se_aba()
+        idx = _se_carregar_linhas(ws)
+        if num not in idx:
+            return jsonify({"ok": False, "error": "Case não encontrado."}), 404
+        r, row = idx[num]
+        d = dict(zip(SOLAREDGE_HEADERS, row))
+        if _escopo_atual() and not _se_item(row)["usina"]:
+            return jsonify({"ok": False, "error": "Case fora do seu escopo."}), 403
+        lista = _se_json(d["TestesCampo"])
+        if acao == "add":
+            os_num = re.sub(r"\D", "", str(corpo.get("os", "")))[:12]
+            resultado = str(corpo.get("resultado") or "").strip()[:3000]
+            if not os_num and not resultado:
+                return jsonify({"ok": False, "error": "Informe o nº da OS ou o resultado do teste."}), 400
+            lista.append({
+                "id": uuid.uuid4().hex[:8], "registradoEm": _oc_agora(),
+                "data": str(corpo.get("data") or "").strip()[:20], "os": os_num,
+                "equipamento": str(corpo.get("equipamento") or "").strip()[:30],
+                "resultado": resultado, "enviado": False,
+            })
+        else:
+            tid = str(corpo.get("id") or "")
+            if acao == "enviado":
+                for t in lista:
+                    if t.get("id") == tid:
+                        t["enviado"] = bool(corpo.get("valor", True))
+            elif acao == "del":
+                lista = [t for t in lista if t.get("id") != tid]
+            else:
+                return jsonify({"ok": False, "error": "Ação inválida."}), 400
+        d["TestesCampo"] = json.dumps(lista, ensure_ascii=False)[:_SE_LIMITES["TestesCampo"]]
+        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
+                                    value_input_option="RAW"))
+        return jsonify({"ok": True, "testesCampo": lista}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
