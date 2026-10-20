@@ -12707,7 +12707,7 @@ _SE_CAMPOS = {
 }
 _SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000, "OSVinculadas": 8000}
 _SE_STATUS_INTERNO = ["Testes em campo", "Aguardando retorno do Fabricante", "Standby",
-                      "Aguardando peça/RMA", "Resolvido - acompanhar"]
+                      "Aguardando peça/RMA", "Resolvido - acompanhar", "Concluído (confirmado pela Grid)"]
 
 
 def _se_aba():
