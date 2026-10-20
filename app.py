@@ -12782,6 +12782,14 @@ def solaredge_listar():
             if esc and not it["usina"]:
                 continue  # supervisora só vê o que casa com as usinas do escopo dela
             itens.append(it)
+        try:  # grupo de WhatsApp da usina (mapeamento + _Sistema), p/ disparar o comunicado ao técnico
+            _mg = _mapa_grupo_usina()
+            for it in itens:
+                gid = _mg.get(it["usina"], "") if it["usina"] else ""
+                it["grupoId"] = gid
+                it["grupoNome"] = (_NOMES_GRUPOS_CONHECIDOS.get(gid.replace("@g.us", "")) or "") if gid else ""
+        except Exception:
+            pass
         travas = _ler_travas(["solaredge_ultima_importacao"])
         return jsonify({"ok": True, "itens": itens, "total": len(itens),
                         "ultimaImportacao": travas["solaredge_ultima_importacao"],
