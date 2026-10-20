@@ -537,6 +537,15 @@ CATALOGO_USINAS = {
         "cliente": "2C Energia",
         "aliases": ["ipixuna do para i", "ipixuna do para 1", "ipixuna do para", "ipixuna do pará", "2c-ipx100", "2c ipixuna 1", "2c ipixuna i", "2c ipixuna"],
     },
+    # Thopen Ipixuna I/II voltam ao catálogo (Fred, 20/10/2026): PA Norte 03, junto de Ipixuna do Pará I (2C).
+    "Ipixuna I": {
+        "cliente": "Thopen",
+        "aliases": ["ipixuna i", "ipixuna 1", "ipixuna 1a", "ipixuna ia", "thpn-ipx100", "thpn ipixuna 1", "thopen ipixuna 1"],
+    },
+    "Ipixuna II": {
+        "cliente": "Thopen",
+        "aliases": ["ipixuna ii", "ipixuna 2", "ipixuna 1b", "ipixuna ib", "thpn-ipx200", "thpn ipixuna 2", "thopen ipixuna 2"],
+    },
     "Tupi Paulista I": {
         "cliente": "2C Energia",
         "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
@@ -792,6 +801,7 @@ _USINAS_BASES_AMBIGUAS = {
     'Guatambu': ['Guatambu I', 'Guatambu II', 'Guatambu III', 'Guatambu IV'],
     'Ceilândia': ['Ceilândia I', 'Ceilândia II'],
     'Aparecida do Taboado': ['Aparecida do Taboado I', 'Aparecida do Taboado II'],
+    'Ipixuna': ['Ipixuna I', 'Ipixuna II'],
 }
 _BASES_AMBIGUAS_NORM = {_norm_usina(_base): _nomes for _base, _nomes in _USINAS_BASES_AMBIGUAS.items()}
 
@@ -6845,6 +6855,10 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Ailton Leal', "funcao": 'Técnico', "membros": ['Antônio Neto (Eletricista)'], "alternativo": ''},
     {"usina": 'Ipixuna do Pará I', "cliente": '2C Energia', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
      "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Ipixuna I', "cliente": 'Thopen', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
+     "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Ipixuna II', "cliente": 'Thopen', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
+     "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Tupi Paulista I', "cliente": '2C Energia', "cluster": 'SP Oeste 01', "cidade_uf": 'Tupi Paulista/SP',
      "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": ''},
     {"usina": 'Alto Paraná I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
@@ -6949,7 +6963,7 @@ GRUPOS_EQUIPE_UFVS = [
     {"id": "120363431215102670@g.us", "nome": "Equipe Ceilandia I e II/Sitio Nogueiras",
      "usinas": ["Ceilândia I", "Ceilândia II", "Sítio dos Nogueiras"]},
     {"id": "120363431601050989@g.us", "nome": "Equipe Ipixuna - 2C",
-     "usinas": ["Ipixuna do Pará I"]},
+     "usinas": ["Ipixuna do Pará I", "Ipixuna I", "Ipixuna II"]},
     {"id": "120363430888041572@g.us", "nome": "Equipe União 2C",
      "usinas": ["União I", "União II"]},
     {"id": "120363430482583512@g.us", "nome": "Equipe Tupi Paulista",
@@ -13461,7 +13475,7 @@ def listar_resumos():
 # usinas; o texto no banco é preservado, mas a LISTAGEM omite as linhas.
 _RESUMO_USINAS_FORA_RE = re.compile(
     r"salvales|sun\s?power|cascavel|carosa|hortina|vitesse|sal\s+energia|"
-    r"\bjunco\b|demerval|thopen\s+ipixuna|ipixuna\s+1\s+e\s+2",
+    r"\bjunco\b|demerval",
     re.IGNORECASE,
 )
 
