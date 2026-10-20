@@ -546,6 +546,31 @@ CATALOGO_USINAS = {
         "cliente": "Thopen",
         "aliases": ["ipixuna ii", "ipixuna 2", "ipixuna 1b", "ipixuna ib", "thpn-ipx200", "thpn ipixuna 2", "thopen ipixuna 2"],
     },
+    # Athon — Pará (Fred, 20/10/2026): PA Norte 01/02 e PA Leste 01; Responsável O&M = Vitor Valadares.
+    "Santa Maria do Pará 100": {
+        "cliente": "Athon",
+        "aliases": ["santa maria do para 100", "santa maria do para 1", "santa maria do para", "santa maria do pará", "santa maria", "athn-smp100", "smp100"],
+    },
+    "Capitão Poço 100": {
+        "cliente": "Athon",
+        "aliases": ["capitao poco 100", "capitao poco 1", "capitao poco", "capitão poço 1", "capitão poço", "athn-cpp100", "cpp100"],
+    },
+    "Mãe do Rio 100": {
+        "cliente": "Athon",
+        "aliases": ["mae do rio 100", "mae do rio 1", "mae do rio", "mãe do rio 1", "mãe do rio", "athn-mro100", "mro100"],
+    },
+    "Jacundá 100": {
+        "cliente": "Athon",
+        "aliases": ["jacunda 100", "jacunda 1", "jacunda", "jacundá 1", "jacundá", "athn-jcd100", "jcd100"],
+    },
+    "Marabá 100": {
+        "cliente": "Athon",
+        "aliases": ["maraba 100", "maraba 1", "maraba i", "marabá 1", "marabá i", "athn-mab100", "mab100"],
+    },
+    "Marabá 200": {
+        "cliente": "Athon",
+        "aliases": ["maraba 200", "maraba 2", "maraba ii", "marabá 2", "marabá ii", "athn-mab200", "mab200"],
+    },
     "Tupi Paulista I": {
         "cliente": "2C Energia",
         "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
@@ -802,6 +827,7 @@ _USINAS_BASES_AMBIGUAS = {
     'Ceilândia': ['Ceilândia I', 'Ceilândia II'],
     'Aparecida do Taboado': ['Aparecida do Taboado I', 'Aparecida do Taboado II'],
     'Ipixuna': ['Ipixuna I', 'Ipixuna II'],
+    'Marabá': ['Marabá 100', 'Marabá 200'],
 }
 _BASES_AMBIGUAS_NORM = {_norm_usina(_base): _nomes for _base, _nomes in _USINAS_BASES_AMBIGUAS.items()}
 
@@ -6859,6 +6885,18 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Ipixuna II', "cliente": 'Thopen', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
      "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Santa Maria do Pará 100', "cliente": 'Athon', "cluster": 'PA Norte 01', "cidade_uf": 'Santa Maria do Pará/PA',
+     "responsavel": 'Gilson Souza', "funcao": 'Técnico', "membros": ['Manuel Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Capitão Poço 100', "cliente": 'Athon', "cluster": 'PA Norte 01', "cidade_uf": 'Capitão Poço/PA',
+     "responsavel": 'Gilson Souza', "funcao": 'Técnico', "membros": ['Manuel Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Mãe do Rio 100', "cliente": 'Athon', "cluster": 'PA Norte 02', "cidade_uf": 'Mãe do Rio/PA',
+     "responsavel": 'Frank Melo', "funcao": 'Técnico', "membros": ['Azinaldo Santos (Mantenedor)'], "alternativo": ''},
+    {"usina": 'Jacundá 100', "cliente": 'Athon', "cluster": 'PA Leste 01', "cidade_uf": 'Jacundá/PA',
+     "responsavel": 'James Chaves', "funcao": 'Técnico', "membros": ['Joilson Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Marabá 100', "cliente": 'Athon', "cluster": 'PA Leste 01', "cidade_uf": 'Marabá/PA',
+     "responsavel": 'James Chaves', "funcao": 'Técnico', "membros": ['Joilson Silva (Eletricista)'], "alternativo": ''},
+    {"usina": 'Marabá 200', "cliente": 'Athon', "cluster": 'PA Leste 01', "cidade_uf": 'Marabá/PA',
+     "responsavel": 'James Chaves', "funcao": 'Técnico', "membros": ['Joilson Silva (Eletricista)'], "alternativo": ''},
     {"usina": 'Tupi Paulista I', "cliente": '2C Energia', "cluster": 'SP Oeste 01', "cidade_uf": 'Tupi Paulista/SP',
      "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": ''},
     {"usina": 'Alto Paraná I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
