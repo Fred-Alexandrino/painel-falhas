@@ -12697,7 +12697,7 @@ SOLAREDGE_HEADERS = [
     "Case", "Assunto", "Categoria", "SubCategoria", "SiteID", "Site", "SerialInversor", "RMA",
     "EnvioETA", "Rastreio", "Status", "Criado", "Tipo", "CodigoErro", "Severidade", "Descricao",
     "Comentarios", "Documentos", "AcaoNecessaria", "SituacaoSite", "UltimoComentarioEm",
-    "AtualizadoEm", "StatusInterno", "NotaGrid", "Equipamento", "TestesCampo",
+    "AtualizadoEm", "StatusInterno", "NotaGrid", "Equipamento", "TestesCampo", "OSVinculadas",
 ]
 _SE_CAMPOS = {
     "subject": "Assunto", "category": "Categoria", "subCategory": "SubCategoria", "siteId": "SiteID",
@@ -12705,7 +12705,7 @@ _SE_CAMPOS = {
     "tracking": "Rastreio", "status": "Status", "created": "Criado", "type": "Tipo",
     "errorCode": "CodigoErro", "severity": "Severidade", "description": "Descricao",
 }
-_SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000}
+_SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000, "OSVinculadas": 8000}
 _SE_STATUS_INTERNO = ["Testes em campo", "Aguardando retorno do Fabricante", "Standby",
                       "Aguardando peça/RMA", "Resolvido - acompanhar"]
 
@@ -12759,7 +12759,7 @@ def _se_item(row):
         "acao": d["AcaoNecessaria"], "situacaoSite": d["SituacaoSite"] or "Aberto",
         "ultimoComentarioEm": d["UltimoComentarioEm"], "atualizadoEm": d["AtualizadoEm"],
         "statusInterno": d["StatusInterno"], "notaGrid": d["NotaGrid"],
-        "testesCampo": _se_json(d["TestesCampo"]),
+        "testesCampo": _se_json(d["TestesCampo"]), "osVinculadas": _se_json(d["OSVinculadas"]),
         "quemAge": _se_quem_age(d["Status"]),
     }
 
@@ -12895,6 +12895,11 @@ def solaredge_teste_campo():
             resultado = str(corpo.get("resultado") or "").strip()[:3000]
             if not os_num and not resultado:
                 return jsonify({"ok": False, "error": "Informe o nº da OS ou o resultado do teste."}), 400
+            if os_num:
+                vinc = _se_json(d["OSVinculadas"])
+                if not any(v.get("os") == os_num for v in vinc):
+                    vinc.append({"os": os_num, "finalidade": "Teste em campo", "nota": "", "vinculadoEm": _oc_agora()})
+                    d["OSVinculadas"] = json.dumps(vinc, ensure_ascii=False)[:_SE_LIMITES["OSVinculadas"]]
             lista.append({
                 "id": uuid.uuid4().hex[:8], "registradoEm": _oc_agora(),
                 "data": str(corpo.get("data") or "").strip()[:20], "os": os_num,
@@ -12916,6 +12921,44 @@ def solaredge_teste_campo():
         _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
                                     value_input_option="RAW"))
         return jsonify({"ok": True, "testesCampo": lista}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/solaredge-chamados/os-vinculada", methods=["POST"])
+def solaredge_os_vinculada():
+    """Vincula/desvincula uma ou mais OS (Fracttal) a um case SolarEdge.
+    acao: add (os pode ter vários números separados por vírgula/espaço) | del."""
+    try:
+        corpo = request.get_json(silent=True) or {}
+        num = re.sub(r"\D", "", str(corpo.get("case", "")))
+        acao = corpo.get("acao") or "add"
+        ws = _se_aba()
+        idx = _se_carregar_linhas(ws)
+        if num not in idx:
+            return jsonify({"ok": False, "error": "Case não encontrado."}), 404
+        r, row = idx[num]
+        d = dict(zip(SOLAREDGE_HEADERS, row))
+        if _escopo_atual() and not _se_item(row)["usina"]:
+            return jsonify({"ok": False, "error": "Case fora do seu escopo."}), 403
+        lista = _se_json(d["OSVinculadas"])
+        nums = [x for x in re.findall(r"\d{3,12}", str(corpo.get("os", "")))]
+        if not nums:
+            return jsonify({"ok": False, "error": "Informe o nº da OS."}), 400
+        if acao == "add":
+            for n in nums:
+                if not any(v.get("os") == n for v in lista):
+                    lista.append({"os": n, "finalidade": str(corpo.get("finalidade") or "").strip()[:80],
+                                  "nota": str(corpo.get("nota") or "").strip()[:500], "vinculadoEm": _oc_agora()})
+        elif acao == "del":
+            lista = [v for v in lista if v.get("os") not in nums]
+        else:
+            return jsonify({"ok": False, "error": "Ação inválida."}), 400
+        d["OSVinculadas"] = json.dumps(lista, ensure_ascii=False)[:_SE_LIMITES["OSVinculadas"]]
+        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
+                                    value_input_option="RAW"))
+        return jsonify({"ok": True, "osVinculadas": lista}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
