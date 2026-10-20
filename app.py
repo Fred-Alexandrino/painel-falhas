@@ -12707,7 +12707,7 @@ _SE_CAMPOS = {
 }
 _SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000, "OSVinculadas": 8000}
 _SE_STATUS_INTERNO = ["Testes em campo", "Aguardando retorno do Fabricante", "Standby",
-                      "Aguardando peça/RMA", "Resolvido - acompanhar", "Concluído (confirmado pela Grid)"]
+                      "Aguardando peça/RMA", "Resolvido - acompanhar", "Aguardando coleta SolarEdge", "Concluído (confirmado pela Grid)"]
 
 
 def _se_aba():
@@ -12747,6 +12747,8 @@ def _se_item(row):
     usina = canonizar_usina(site) if site else None
     if not usina:
         usina = canonizar_usina(d["Assunto"]) or None
+    if not usina:
+        usina = canonizar_usina((d["Descricao"] or "")[:400]) or None
     return {
         "case": d["Case"].strip(), "assunto": d["Assunto"], "categoria": d["Categoria"],
         "subCategoria": d["SubCategoria"], "siteId": d["SiteID"], "site": site,
@@ -12755,7 +12757,7 @@ def _se_item(row):
         "rma": d["RMA"], "envioEta": d["EnvioETA"], "rastreio": d["Rastreio"], "status": d["Status"],
         "criado": d["Criado"], "tipo": d["Tipo"], "codigoErro": d["CodigoErro"],
         "severidade": d["Severidade"], "descricao": d["Descricao"],
-        "comentarios": _se_json(d["Comentarios"]), "documentos": _se_json(d["Documentos"]),
+        "comentarios": _se_json(d["Comentarios"]), "documentos": list(dict.fromkeys(_se_json(d["Documentos"]))),
         "acao": d["AcaoNecessaria"], "situacaoSite": d["SituacaoSite"] or "Aberto",
         "ultimoComentarioEm": d["UltimoComentarioEm"], "atualizadoEm": d["AtualizadoEm"],
         "statusInterno": d["StatusInterno"], "notaGrid": d["NotaGrid"],
@@ -12828,7 +12830,12 @@ def solaredge_importar():
                 datas = [x.get("data", "") for x in c["comments"] if isinstance(x, dict)]
                 base["UltimoComentarioEm"] = max(datas) if datas else ""
             if "documents" in c and isinstance(c["documents"], list):
-                base["Documentos"] = json.dumps(c["documents"], ensure_ascii=False)
+                _vistos = []
+                for _dn in c["documents"]:
+                    _dn = str(_dn).strip()
+                    if _dn and _dn not in _vistos:
+                        _vistos.append(_dn)  # mesmo nome repetido no case conta como 1
+                base["Documentos"] = json.dumps(_vistos, ensure_ascii=False)
             if "action" in c and c["action"] is not None:
                 base["AcaoNecessaria"] = str(c["action"]).strip()
             if "statusInterno" in c and c["statusInterno"] is not None and not base["StatusInterno"]:
@@ -13015,7 +13022,7 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
           const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
           ok = { ...base[n], description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
             rma: j.rma || base[n].rma, eta: uniq(sn.map(s => s.shipping_eta)) || base[n].eta, tracking: uniq(sn.map(s => s.tracking_number)) || base[n].tracking,
-            status: j.status || base[n].status, comments, documents: (j.documents || []).map(d => d.name).filter(Boolean) };
+            status: j.status || base[n].status, comments, documents: [...new Set((j.documents || []).map(d => d.name).filter(Boolean))] };
         } catch (e) { await sleep(800); }
       }
       if (ok) lido.push(ok); else faltam.push(n);
