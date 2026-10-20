@@ -12683,6 +12683,216 @@ def listar_chamados_fabricante():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════════
+# CHAMADOS SOLAREDGE (subpainel do Painel de Chamados) — adicionado 20/10/2026
+# Fonte da verdade = site SolarEdge Service Center (Support Cases). O sistema
+# guarda um espelho na aba "SolarEdgeCases" da planilha principal, alimentado
+# por POST /solaredge-chamados/importar (export .xlsx do site + comentários
+# lidos de dentro de cada case). Não depende da planilha ChamadosFabricante.
+# StatusInterno/NotaGrid são o controle da Grid (ex.: "Testes em campo") e
+# NUNCA são sobrescritos por uma importação.
+# ══════════════════════════════════════════════════════════════════════
+SOLAREDGE_SHEET_NAME = "SolarEdgeCases"
+SOLAREDGE_HEADERS = [
+    "Case", "Assunto", "Categoria", "SubCategoria", "SiteID", "Site", "SerialInversor", "RMA",
+    "EnvioETA", "Rastreio", "Status", "Criado", "Tipo", "CodigoErro", "Severidade", "Descricao",
+    "Comentarios", "Documentos", "AcaoNecessaria", "SituacaoSite", "UltimoComentarioEm",
+    "AtualizadoEm", "StatusInterno", "NotaGrid",
+]
+_SE_CAMPOS = {
+    "subject": "Assunto", "category": "Categoria", "subCategory": "SubCategoria", "siteId": "SiteID",
+    "siteName": "Site", "serial": "SerialInversor", "rma": "RMA", "eta": "EnvioETA",
+    "tracking": "Rastreio", "status": "Status", "created": "Criado", "type": "Tipo",
+    "errorCode": "CodigoErro", "severity": "Severidade", "description": "Descricao",
+}
+_SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000}
+_SE_STATUS_INTERNO = ["Testes em campo", "Aguardando retorno do Fabricante", "Standby",
+                      "Aguardando peça/RMA", "Resolvido - acompanhar"]
+
+
+def _se_aba():
+    return _oc_aba(SOLAREDGE_SHEET_NAME, SOLAREDGE_HEADERS, linhas=500)
+
+
+def _se_json(txt):
+    try:
+        v = json.loads(txt) if txt else []
+        return v if isinstance(v, list) else []
+    except Exception:
+        return []
+
+
+def _se_equipamento(assunto, serial=""):
+    a = assunto or ""
+    m = (re.search(r"[Ii]nvers[oa]r\s*(?:SE\d+K?\s*)?(\d+(?:\.\d+)?)", a)
+         or re.search(r"\bINV\s*0*(\d+(?:\.\d+)?)", a))
+    return f"INV{m.group(1)}" if m else ""
+
+
+def _se_quem_age(status):
+    s = (status or "").strip().lower()
+    if s == "feedback requested":
+        return "Grid"
+    if "waiting for return" in s:
+        return "Grid"
+    return "SolarEdge"
+
+
+def _se_item(row):
+    row = list(row) + [""] * (len(SOLAREDGE_HEADERS) - len(row))
+    d = dict(zip(SOLAREDGE_HEADERS, row[:len(SOLAREDGE_HEADERS)]))
+    site = d["Site"].strip()
+    usina = canonizar_usina(site) if site else None
+    if not usina:
+        usina = canonizar_usina(d["Assunto"]) or None
+    return {
+        "case": d["Case"].strip(), "assunto": d["Assunto"], "categoria": d["Categoria"],
+        "subCategoria": d["SubCategoria"], "siteId": d["SiteID"], "site": site,
+        "usina": usina or "", "cliente": (inferir_cliente(usina) if usina else ""),
+        "equipamento": _se_equipamento(d["Assunto"]), "serial": d["SerialInversor"],
+        "rma": d["RMA"], "envioEta": d["EnvioETA"], "rastreio": d["Rastreio"], "status": d["Status"],
+        "criado": d["Criado"], "tipo": d["Tipo"], "codigoErro": d["CodigoErro"],
+        "severidade": d["Severidade"], "descricao": d["Descricao"],
+        "comentarios": _se_json(d["Comentarios"]), "documentos": _se_json(d["Documentos"]),
+        "acao": d["AcaoNecessaria"], "situacaoSite": d["SituacaoSite"] or "Aberto",
+        "ultimoComentarioEm": d["UltimoComentarioEm"], "atualizadoEm": d["AtualizadoEm"],
+        "statusInterno": d["StatusInterno"], "notaGrid": d["NotaGrid"],
+        "quemAge": _se_quem_age(d["Status"]),
+    }
+
+
+@app.route("/solaredge-chamados", methods=["GET"])
+def solaredge_listar():
+    try:
+        ws = _se_aba()
+        todos = _oc_retry(lambda: ws.get_all_values())
+        esc = _escopo_atual()
+        itens = []
+        for row in todos[1:]:
+            if not any((c or "").strip() for c in row):
+                continue
+            it = _se_item(row)
+            if not it["case"]:
+                continue
+            if esc and not it["usina"]:
+                continue  # supervisora só vê o que casa com as usinas do escopo dela
+            itens.append(it)
+        travas = _ler_travas(["solaredge_ultima_importacao"])
+        return jsonify({"ok": True, "itens": itens, "total": len(itens),
+                        "ultimaImportacao": travas["solaredge_ultima_importacao"],
+                        "statusInternoOpcoes": _SE_STATUS_INTERNO}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _se_carregar_linhas(ws):
+    todos = _oc_retry(lambda: ws.get_all_values())
+    idx = {}
+    for i, row in enumerate(todos[1:], start=2):
+        if row and (row[0] or "").strip():
+            idx[row[0].strip()] = (i, list(row) + [""] * (len(SOLAREDGE_HEADERS) - len(row)))
+    return idx
+
+
+@app.route("/solaredge-chamados/importar", methods=["POST"])
+def solaredge_importar():
+    """Upsert por nº do case. Só sobrescreve os campos enviados (um import só do
+    export não apaga comentários já lidos). snapshotCompleto=true marca como
+    'não consta mais no site' os cases que sumiram da lista de abertos."""
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Sem permissão para importar."}), 403
+    try:
+        corpo = request.get_json(silent=True) or {}
+        cases = corpo.get("cases") or []
+        completo = bool(corpo.get("snapshotCompleto"))
+        ws = _se_aba()
+        idx = _se_carregar_linhas(ws)
+        agora = _oc_agora()
+        enviados, atualizar, novos = set(), [], []
+        for c in cases:
+            num = re.sub(r"\D", "", str(c.get("case", "")))
+            if not num:
+                continue
+            enviados.add(num)
+            existente = idx.get(num)
+            base = dict(zip(SOLAREDGE_HEADERS, existente[1])) if existente else {h: "" for h in SOLAREDGE_HEADERS}
+            base["Case"] = num
+            for k, h in _SE_CAMPOS.items():
+                if k in c and c[k] is not None:
+                    base[h] = str(c[k]).strip()
+            if "comments" in c and isinstance(c["comments"], list):
+                base["Comentarios"] = json.dumps(c["comments"], ensure_ascii=False)
+                datas = [x.get("data", "") for x in c["comments"] if isinstance(x, dict)]
+                base["UltimoComentarioEm"] = max(datas) if datas else ""
+            if "documents" in c and isinstance(c["documents"], list):
+                base["Documentos"] = json.dumps(c["documents"], ensure_ascii=False)
+            if "action" in c and c["action"] is not None:
+                base["AcaoNecessaria"] = str(c["action"]).strip()
+            if "statusInterno" in c and c["statusInterno"] is not None and not base["StatusInterno"]:
+                base["StatusInterno"] = str(c["statusInterno"]).strip()  # semente: nunca sobrescreve o que já existe
+            base["SituacaoSite"] = "Aberto"
+            base["AtualizadoEm"] = agora
+            for h, lim in _SE_LIMITES.items():
+                if len(base[h]) > lim:
+                    base[h] = base[h][:lim]
+            linha = [base[h] for h in SOLAREDGE_HEADERS]
+            if existente:
+                atualizar.append((existente[0], linha))
+            else:
+                novos.append(linha)
+        sumidos = 0
+        if completo:
+            for num, (r, row) in idx.items():
+                if num in enviados:
+                    continue
+                d = dict(zip(SOLAREDGE_HEADERS, row))
+                if d["SituacaoSite"] != "Não consta mais no site":
+                    d["SituacaoSite"] = "Não consta mais no site"
+                    d["AtualizadoEm"] = agora
+                    atualizar.append((r, [d[h] for h in SOLAREDGE_HEADERS]))
+                    sumidos += 1
+        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        for i in range(0, len(atualizar), 80):
+            lote = [{"range": f"A{r}:{ult}{r}", "values": [lin]} for r, lin in atualizar[i:i + 80]]
+            _oc_retry(lambda lote=lote: ws.batch_update(lote, value_input_option="RAW"))
+        if novos:
+            _oc_retry(lambda: ws.append_rows(novos, value_input_option="RAW"))
+        try:
+            _gravar_trava("solaredge_ultima_importacao", agora)
+        except Exception:
+            pass
+        return jsonify({"ok": True, "novos": len(novos), "atualizados": len(atualizar) - sumidos,
+                        "naoConstamMais": sumidos}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/solaredge-chamados/interno", methods=["POST"])
+def solaredge_interno():
+    """Controle da Grid sobre o case (status interno + nota)."""
+    try:
+        corpo = request.get_json(silent=True) or {}
+        num = re.sub(r"\D", "", str(corpo.get("case", "")))
+        ws = _se_aba()
+        idx = _se_carregar_linhas(ws)
+        if num not in idx:
+            return jsonify({"ok": False, "error": "Case não encontrado."}), 404
+        r, row = idx[num]
+        d = dict(zip(SOLAREDGE_HEADERS, row))
+        if _escopo_atual() and not _se_item(row)["usina"]:
+            return jsonify({"ok": False, "error": "Case fora do seu escopo."}), 403
+        if "statusInterno" in corpo:
+            d["StatusInterno"] = str(corpo["statusInterno"] or "").strip()[:80]
+        if "notaGrid" in corpo:
+            d["NotaGrid"] = str(corpo["notaGrid"] or "").strip()[:_SE_LIMITES["NotaGrid"]]
+        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
+                                    value_input_option="RAW"))
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/reportar-status-sincronizacao-chamados", methods=["POST", "OPTIONS"])
 def reportar_status_sincronizacao_chamados():
     """Recebe um relatório de status do script local (Agendador de Tarefas
