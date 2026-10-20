@@ -12697,7 +12697,7 @@ SOLAREDGE_HEADERS = [
     "Case", "Assunto", "Categoria", "SubCategoria", "SiteID", "Site", "SerialInversor", "RMA",
     "EnvioETA", "Rastreio", "Status", "Criado", "Tipo", "CodigoErro", "Severidade", "Descricao",
     "Comentarios", "Documentos", "AcaoNecessaria", "SituacaoSite", "UltimoComentarioEm",
-    "AtualizadoEm", "StatusInterno", "NotaGrid",
+    "AtualizadoEm", "StatusInterno", "NotaGrid", "Equipamento",
 ]
 _SE_CAMPOS = {
     "subject": "Assunto", "category": "Categoria", "subCategory": "SubCategoria", "siteId": "SiteID",
@@ -12722,11 +12722,13 @@ def _se_json(txt):
         return []
 
 
-def _se_equipamento(assunto, serial=""):
-    a = assunto or ""
-    m = (re.search(r"[Ii]nvers[oa]r\s*(?:SE\d+K?\s*)?(\d+(?:\.\d+)?)", a)
-         or re.search(r"\bINV\s*0*(\d+(?:\.\d+)?)", a))
-    return f"INV{m.group(1)}" if m else ""
+def _se_equipamento(assunto, descricao=""):
+    for txt in (assunto or "", descricao or ""):
+        m = (re.search(r"[Ii]nvers[oa]r\s*(?:SE\d+K?\s*)?(\d+(?:\.\d+)?)(?![0-9A-Za-z])", txt)
+             or re.search(r"\bINV\s*0*(\d+(?:\.\d+)?)(?![0-9A-Za-z])", txt))
+        if m:
+            return f"INV{m.group(1)}"
+    return ""
 
 
 def _se_quem_age(status):
@@ -12749,7 +12751,7 @@ def _se_item(row):
         "case": d["Case"].strip(), "assunto": d["Assunto"], "categoria": d["Categoria"],
         "subCategoria": d["SubCategoria"], "siteId": d["SiteID"], "site": site,
         "usina": usina or "", "cliente": (inferir_cliente(usina) if usina else ""),
-        "equipamento": _se_equipamento(d["Assunto"]), "serial": d["SerialInversor"],
+        "equipamento": (d["Equipamento"].strip() or _se_equipamento(d["Assunto"], d["Descricao"])), "serial": d["SerialInversor"],
         "rma": d["RMA"], "envioEta": d["EnvioETA"], "rastreio": d["Rastreio"], "status": d["Status"],
         "criado": d["Criado"], "tipo": d["Tipo"], "codigoErro": d["CodigoErro"],
         "severidade": d["Severidade"], "descricao": d["Descricao"],
@@ -12830,6 +12832,8 @@ def solaredge_importar():
                 base["AcaoNecessaria"] = str(c["action"]).strip()
             if "statusInterno" in c and c["statusInterno"] is not None and not base["StatusInterno"]:
                 base["StatusInterno"] = str(c["statusInterno"]).strip()  # semente: nunca sobrescreve o que já existe
+            if c.get("equipment") and not base["Equipamento"]:
+                base["Equipamento"] = str(c["equipment"]).strip()[:20]  # semente: nunca sobrescreve
             base["SituacaoSite"] = "Aberto"
             base["AtualizadoEm"] = agora
             for h, lim in _SE_LIMITES.items():
@@ -12883,6 +12887,8 @@ def solaredge_interno():
             return jsonify({"ok": False, "error": "Case fora do seu escopo."}), 403
         if "statusInterno" in corpo:
             d["StatusInterno"] = str(corpo["statusInterno"] or "").strip()[:80]
+        if "equipamento" in corpo:
+            d["Equipamento"] = str(corpo["equipamento"] or "").strip()[:20]
         if "notaGrid" in corpo:
             d["NotaGrid"] = str(corpo["notaGrid"] or "").strip()[:_SE_LIMITES["NotaGrid"]]
         ult = chr(64 + len(SOLAREDGE_HEADERS))
