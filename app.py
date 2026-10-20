@@ -20806,9 +20806,72 @@ def _oc_aba(nome, headers, linhas=1000):
     return ws
 
 
+# ── Leitura em lote (cota do Google Sheets: 60 leituras/min por usuário) ────
+# As 4 abas de ocorrências são lidas JUNTAS numa única requisição
+# (values_batch_get) e mantidas num "snapshot" em memória (TTL curto). Antes,
+# cada gravação fazia de 3 a 6 leituras separadas e estourava a cota (erro
+# 429) quando o resto do sistema também estava lendo. O serviço roda com
+# 1 worker, então o snapshot é do processo inteiro; toda requisição POST de
+# /ocorrencias* força uma leitura fresca ANTES (os números de linha usados
+# nas gravações precisam estar certos, mesmo que alguém edite a planilha
+# na mão) e invalida o snapshot DEPOIS (ver os hooks logo abaixo).
+_OC_SNAP = {"t": 0.0, "d": None}
+_OC_SNAP_TTL = 20.0
+
+
+def _oc_retry(fn):
+    """Retry mais paciente que o padrão para leituras/gravações do painel."""
+    return _gspread_retry(fn, tentativas=5, esperas=(3, 8, 15, 25, 40))
+
+
+def _oc_snapshot(forcar=False):
+    agora = time.time()
+    if not forcar and _OC_SNAP["d"] is not None and agora - _OC_SNAP["t"] < _OC_SNAP_TTL:
+        return _OC_SNAP["d"]
+    with _OC_LOCK:
+        abas = [(OC_SHEET_NAME, OC_HEADERS, 1000), (OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000),
+                (OC_NOTAS_SHEET_NAME, OC_NOTAS_HEADERS, 1000), (OC_PLANO_SHEET_NAME, OC_PLANO_HEADERS, 1000)]
+        wss = [_oc_aba(n, h, l) for n, h, l in abas]
+        resp = _oc_retry(lambda: wss[0].spreadsheet.values_batch_get([f"'{n}'" for n, _, _ in abas]))
+        vr = resp.get("valueRanges", [])
+        d = {n: ((vr[i].get("values") if i < len(vr) else None) or []) for i, (n, _, _) in enumerate(abas)}
+        _OC_SNAP["d"], _OC_SNAP["t"] = d, time.time()
+        return d
+
+
+def _oc_snapshot_invalidar():
+    _OC_SNAP["d"] = None
+    _OC_SNAP["t"] = 0.0
+
+
+def _oc_rota_de_escrita():
+    return (request.method == "POST" and request.path.startswith("/ocorrencias")
+            and request.path != "/ocorrencias/comunicado/gerar")
+
+
+@app.before_request
+def _oc_antes_da_escrita():
+    if _oc_rota_de_escrita():
+        try:
+            _oc_snapshot(forcar=True)
+        except Exception as e:  # a própria rota vai relatar o erro ao tentar ler
+            log.error(f"[ocorrencias] leitura prévia falhou: {e}")
+
+
+@app.after_request
+def _oc_depois_da_escrita(resp):
+    if _oc_rota_de_escrita():
+        _oc_snapshot_invalidar()
+        _OC_CACHE["t"] = 0.0
+        _OC_CACHE["v"] = None
+    return resp
+
+
 def _oc_linhas(ws, n_cols):
     """[(número_da_linha_na_aba, [valores...]), ...] sem o cabeçalho."""
-    vals = _gspread_retry(lambda: ws.get_all_values())
+    vals = _oc_snapshot().get(ws.title)
+    if vals is None:
+        vals = _oc_retry(lambda: ws.get_all_values())
     saida = []
     for i, row in enumerate(vals[1:], start=2):
         row = list(row) + [""] * (n_cols - len(row))
@@ -20867,6 +20930,8 @@ def _oc_carregar(forcar=False):
     if not forcar and _OC_CACHE["v"] is not None and agora - _OC_CACHE["t"] < _OC_CACHE_TTL:
         return _OC_CACHE["v"]
     with _OC_LOCK:
+        if forcar:
+            _oc_snapshot(forcar=True)
         ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
         wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
         hist_por = {}
@@ -20975,6 +21040,9 @@ def _oc_validar_campos(dados, criando):
 
 def _oc_resposta_erro(e, codigo=500):
     log.error(f"[ocorrencias] {e}")
+    if "429" in str(e) or "Quota exceeded" in str(e):
+        return jsonify({"ok": False, "error": "O Google Sheets está limitando o número de leituras por minuto. "
+                        "Nada foi perdido — aguarde alguns segundos e tente de novo."}), 503
     return jsonify({"ok": False, "error": str(e)}), codigo
 
 
