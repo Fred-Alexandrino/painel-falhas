@@ -13003,24 +13003,28 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
       return { description: d ? d[1].trim() : '', type: g('Case Type'), errorCode: g('Error Code Number'), severity: g('Severity'), created: g('Created').slice(0, 16), comments: out, documents: docs };
     };
     const lido = [];
-    for (let k = 0; k < nums.length; k++) {
-      const n = nums[k]; say('Lendo case ' + n + ' (' + (k + 1) + '/' + nums.length + ')…');
-      const h = [...document.querySelectorAll('h4')].find(x => x.textContent.trim() === n); if (!h) continue;
+    const lerUm = async n => {
+      const h = [...document.querySelectorAll('h4')].find(x => x.textContent.trim() === n); if (!h) return null;
       const subjEl = () => document.getElementById('modal-case-subject');
       const antes = subjEl() ? subjEl().textContent : '';
       h.click();
       let t = '';
-      for (let w = 0; w < 24; w++) {
+      for (let w = 0; w < 40; w++) {
         await sleep(400);
         let root = subjEl(); if (!root) continue;
         for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/Related Comments:/.test(root.innerText) && /ADD COMMENT/.test(root.innerText)) break; }
         t = root.innerText.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n');
         const st = (t.match(/Case #?(\d{7})/) || [])[1];
-        if (/Related Comments:/.test(t) && (!st || st === n) && (subjEl().textContent !== antes || antes === '' || k === 0 || w > 6)) break;
+        if (/Related Comments:/.test(t) && (!st || st === n) && (subjEl().textContent !== antes || antes === '' || w > 6)) return { ...base[n], ...parse(t) };
       }
-      if (!/Related Comments:/.test(t)) continue;
-      lido.push({ ...base[n], ...parse(t) });
+      return null;
+    };
+    const faltam = [];
+    for (let k = 0; k < nums.length; k++) {
+      const n = nums[k]; say('Lendo case ' + n + ' (' + (k + 1) + '/' + nums.length + ')…');
+      const r = await lerUm(n); if (r) lido.push(r); else faltam.push(n);
     }
+    for (const n of faltam.slice()) { say('Tentando de novo o case ' + n + '…'); await sleep(1500); const r = await lerUm(n); if (r) { lido.push(r); faltam.splice(faltam.indexOf(n), 1); } }
     say('Enviando ' + lido.length + ' cases ao painel…');
     const comp = lido.length === nums.length;
     const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cases: lido, snapshotCompleto: comp }) });
