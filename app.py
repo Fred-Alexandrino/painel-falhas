@@ -537,40 +537,6 @@ CATALOGO_USINAS = {
         "cliente": "2C Energia",
         "aliases": ["ipixuna do para i", "ipixuna do para 1", "ipixuna do para", "ipixuna do pará", "2c-ipx100", "2c ipixuna 1", "2c ipixuna i", "2c ipixuna"],
     },
-    # Thopen Ipixuna I/II voltam ao catálogo (Fred, 20/10/2026): PA Norte 03, junto de Ipixuna do Pará I (2C).
-    "Ipixuna I": {
-        "cliente": "Thopen",
-        "aliases": ["ipixuna i", "ipixuna 1", "ipixuna 1a", "ipixuna ia", "thpn-ipx100", "thpn ipixuna 1", "thopen ipixuna 1"],
-    },
-    "Ipixuna II": {
-        "cliente": "Thopen",
-        "aliases": ["ipixuna ii", "ipixuna 2", "ipixuna 1b", "ipixuna ib", "thpn-ipx200", "thpn ipixuna 2", "thopen ipixuna 2"],
-    },
-    # Athon — Pará (Fred, 20/10/2026): PA Norte 01/02 e PA Leste 01; Responsável O&M = Vitor Valadares.
-    "Santa Maria do Pará 100": {
-        "cliente": "Athon",
-        "aliases": ["santa maria do para 100", "santa maria do para 1", "santa maria do para", "santa maria do pará", "santa maria", "athn-smp100", "smp100"],
-    },
-    "Capitão Poço 100": {
-        "cliente": "Athon",
-        "aliases": ["capitao poco 100", "capitao poco 1", "capitao poco", "capitão poço 1", "capitão poço", "athn-cpp100", "cpp100"],
-    },
-    "Mãe do Rio 100": {
-        "cliente": "Athon",
-        "aliases": ["mae do rio 100", "mae do rio 1", "mae do rio", "mãe do rio 1", "mãe do rio", "athn-mro100", "mro100"],
-    },
-    "Jacundá 100": {
-        "cliente": "Athon",
-        "aliases": ["jacunda 100", "jacunda 1", "jacunda", "jacundá 1", "jacundá", "athn-jcd100", "jcd100"],
-    },
-    "Marabá 100": {
-        "cliente": "Athon",
-        "aliases": ["maraba 100", "maraba 1", "maraba i", "marabá 1", "marabá i", "athn-mab100", "mab100"],
-    },
-    "Marabá 200": {
-        "cliente": "Athon",
-        "aliases": ["maraba 200", "maraba 2", "maraba ii", "marabá 2", "marabá ii", "athn-mab200", "mab200"],
-    },
     "Tupi Paulista I": {
         "cliente": "2C Energia",
         "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
@@ -826,8 +792,6 @@ _USINAS_BASES_AMBIGUAS = {
     'Guatambu': ['Guatambu I', 'Guatambu II', 'Guatambu III', 'Guatambu IV'],
     'Ceilândia': ['Ceilândia I', 'Ceilândia II'],
     'Aparecida do Taboado': ['Aparecida do Taboado I', 'Aparecida do Taboado II'],
-    'Ipixuna': ['Ipixuna I', 'Ipixuna II'],
-    'Marabá': ['Marabá 100', 'Marabá 200'],
 }
 _BASES_AMBIGUAS_NORM = {_norm_usina(_base): _nomes for _base, _nomes in _USINAS_BASES_AMBIGUAS.items()}
 
@@ -6881,22 +6845,6 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Ailton Leal', "funcao": 'Técnico', "membros": ['Antônio Neto (Eletricista)'], "alternativo": ''},
     {"usina": 'Ipixuna do Pará I', "cliente": '2C Energia', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
      "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Ipixuna I', "cliente": 'Thopen', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
-     "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Ipixuna II', "cliente": 'Thopen', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
-     "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    {"usina": 'Santa Maria do Pará 100', "cliente": 'Athon', "cluster": 'PA Norte 01', "cidade_uf": 'Santa Maria do Pará/PA',
-     "responsavel": 'Gilson Souza', "funcao": 'Técnico', "membros": ['Manuel Silva (Eletricista)'], "alternativo": ''},
-    {"usina": 'Capitão Poço 100', "cliente": 'Athon', "cluster": 'PA Norte 01', "cidade_uf": 'Capitão Poço/PA',
-     "responsavel": 'Gilson Souza', "funcao": 'Técnico', "membros": ['Manuel Silva (Eletricista)'], "alternativo": ''},
-    {"usina": 'Mãe do Rio 100', "cliente": 'Athon', "cluster": 'PA Norte 02', "cidade_uf": 'Mãe do Rio/PA',
-     "responsavel": 'Frank Melo', "funcao": 'Técnico', "membros": ['Azinaldo Santos (Mantenedor)'], "alternativo": ''},
-    {"usina": 'Jacundá 100', "cliente": 'Athon', "cluster": 'PA Leste 01', "cidade_uf": 'Jacundá/PA',
-     "responsavel": 'James Chaves', "funcao": 'Técnico', "membros": ['Joilson Silva (Eletricista)'], "alternativo": ''},
-    {"usina": 'Marabá 100', "cliente": 'Athon', "cluster": 'PA Leste 01', "cidade_uf": 'Marabá/PA',
-     "responsavel": 'James Chaves', "funcao": 'Técnico', "membros": ['Joilson Silva (Eletricista)'], "alternativo": ''},
-    {"usina": 'Marabá 200', "cliente": 'Athon', "cluster": 'PA Leste 01', "cidade_uf": 'Marabá/PA',
-     "responsavel": 'James Chaves', "funcao": 'Técnico', "membros": ['Joilson Silva (Eletricista)'], "alternativo": ''},
     {"usina": 'Tupi Paulista I', "cliente": '2C Energia', "cluster": 'SP Oeste 01', "cidade_uf": 'Tupi Paulista/SP',
      "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": ''},
     {"usina": 'Alto Paraná I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
@@ -7001,7 +6949,7 @@ GRUPOS_EQUIPE_UFVS = [
     {"id": "120363431215102670@g.us", "nome": "Equipe Ceilandia I e II/Sitio Nogueiras",
      "usinas": ["Ceilândia I", "Ceilândia II", "Sítio dos Nogueiras"]},
     {"id": "120363431601050989@g.us", "nome": "Equipe Ipixuna - 2C",
-     "usinas": ["Ipixuna do Pará I", "Ipixuna I", "Ipixuna II"]},
+     "usinas": ["Ipixuna do Pará I"]},
     {"id": "120363430888041572@g.us", "nome": "Equipe União 2C",
      "usinas": ["União I", "União II"]},
     {"id": "120363430482583512@g.us", "nome": "Equipe Tupi Paulista",
@@ -13513,7 +13461,7 @@ def listar_resumos():
 # usinas; o texto no banco é preservado, mas a LISTAGEM omite as linhas.
 _RESUMO_USINAS_FORA_RE = re.compile(
     r"salvales|sun\s?power|cascavel|carosa|hortina|vitesse|sal\s+energia|"
-    r"\bjunco\b|demerval",
+    r"\bjunco\b|demerval|thopen\s+ipixuna|ipixuna\s+1\s+e\s+2",
     re.IGNORECASE,
 )
 
