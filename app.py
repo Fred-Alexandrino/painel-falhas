@@ -1197,12 +1197,6 @@ def _sup_resolver_usina_tecnico(rep, escopo):
 def _definir_escopo_supervisora():
     h = (request.headers.get("X-Escopo") or "").strip().lower()
     g.escopo_sup = h if h in _SUP_MAPEAMENTO else None
-    # Supervisor de Campo (Vitor): somente leitura, sem nenhuma automação de WhatsApp.
-    if (request.headers.get("X-Visao") or "").strip().lower() == "vitor":
-        if request.method not in ("GET", "HEAD", "OPTIONS") and not request.path.startswith("/gerar-comunicado"):
-            return jsonify({"ok": False, "error": "Perfil somente leitura — sem envio por WhatsApp."}), 403
-        if re.search(r"disparar|enviar|alertar|notificar|testar-alerta|ronda-disparar", request.path):
-            return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
     if g.escopo_sup and request.path.startswith("/disparar-"):
         return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
 
@@ -11657,37 +11651,6 @@ def _pcm_nome_grupo(grupo_id):
             or "Grupo configurado")
 
 
-# ── Visão do Supervisor de Campo (Vitor Valadares, 20/10/2026) ─────────────
-# Usinas Athon (PA) e Thopen Ipixuna que o Vitor acompanha. NÃO fazem parte do
-# mapeamento oficial do Fred: só entram na Programação PCM quando o painel pede
-# a "visão do Vitor" (header X-Visao: vitor). Cluster = o que o próprio PCM informa.
-_PCM_VITOR_EXTRAS = {
-    "capitao poco 1": ("Gilson Souza", "Manuel Silva (Eletricista)"),
-    "santa maria do para 1": ("Gilson Souza", "Manuel Silva (Eletricista)"),
-    "mae do rio 1": ("Frank Melo", "Azinaldo Santos (Mantenedor)"),
-    "jacunda 1": ("James Chaves", "Joilson Silva (Eletricista)"),
-    "maraba 1": ("James Chaves", "Joilson Silva (Eletricista)"),
-    "maraba 2": ("James Chaves", "Joilson Silva (Eletricista)"),
-    "ipixuna 1 e 2": ("Wesllen", ""),
-}
-
-
-def _pcm_chave_vitor(usina_raw):
-    import unicodedata
-    nome = _pcm_nome_usina_exibicao(usina_raw)
-    nome = re.sub(r"\s+-\s+[A-Za-z]{2}$", "", nome).strip()
-    nome = unicodedata.normalize("NFD", nome)
-    nome = "".join(ch for ch in nome if unicodedata.category(ch) != "Mn").lower()
-    return re.sub(r"\s+", " ", nome).strip()
-
-
-def _pcm_visao_vitor():
-    try:
-        return request.headers.get("X-Visao", "").strip().lower() == "vitor"
-    except Exception:
-        return False
-
-
 @app.route("/programacao-pcm/semana", methods=["GET"])
 def programacao_pcm_semana():
     """
@@ -11755,11 +11718,8 @@ def programacao_pcm_semana():
                     "aposPlano": 0, "finalizadas": 0, "itens": []}
             for i, (chave, _nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
 
-    visao_vitor = _pcm_visao_vitor()
-    extras_vitor = {}  # cluster -> {"usinas": set, "tecnicos": set}
     for r in semana.get("rows", []):
-        extra_vitor = (_pcm_chave_vitor(r.get("usina")) in _PCM_VITOR_EXTRAS) if visao_vitor else False
-        if not (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes or extra_vitor):
+        if not (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes):
             continue
         # 13/10/2026: SEM filtro de mapeamento — o calendário espelha tudo que o
         # PCM programou pro Fred (mesmo total do portal do PCM). Usina fora do
@@ -11770,14 +11730,7 @@ def programacao_pcm_semana():
         chave_dia, _rot, data_dia = info_dia
         usina_raw = r.get("usina") or ""
         usina_canonica = canonizar_usina(_extrair_nome_usina_fracttal(usina_raw) or usina_raw) if usina_raw else None
-        if extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL:
-            usina_canonica = None  # usina fora do mapeamento oficial: não deixa o catálogo do Fred reinterpretar
         cluster = (mapa_cluster_pcm.get(usina_canonica) if usina_canonica else None) or r.get("cluster") or "(sem cluster)"
-        if extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL:
-            tec, mem = _PCM_VITOR_EXTRAS[_pcm_chave_vitor(usina_raw)]
-            ex = extras_vitor.setdefault(cluster, {"usinas": set(), "tecnicos": set()})
-            ex["usinas"].add(_pcm_nome_usina_exibicao(usina_raw))
-            ex["tecnicos"].add(tec)
         estado = _PCM_STATUS_NORMALIZADO.get(r.get("status"), r.get("status") or "")
         h_ini = r.get("h_ini") or ""
         duracao = r.get("duracao") or 0
@@ -11792,8 +11745,8 @@ def programacao_pcm_semana():
             "cliente": _pcm_cliente_mapeado(usina_canonica, r.get("cliente")),
             "usina": _pcm_nome_usina_exibicao(usina_raw),
             "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
-            "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else (_pcm_grupo_do_cluster(cluster, mapa_cluster_pcm, mapa_grupo)[0] if (extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL) else None)),
-            "foraMapeamento": ((usina_canonica not in _oficial_nomes) and not (extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL)),
+            "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else None),
+            "foraMapeamento": (usina_canonica not in _oficial_nomes),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
@@ -11873,17 +11826,6 @@ def programacao_pcm_semana():
                 "multi": len(por_grupo) > 1,
             })
 
-    # visão do Vitor: clusters do PCM (Athon/PA) que não existem no mapeamento oficial
-    if visao_vitor:
-        ja = {e["cluster"] for e in envios}
-        for nome, ex in sorted(extras_vitor.items()):
-            if nome in ja:
-                continue
-            envios.append({
-                "cluster": nome, "grupoId": None, "grupoNome": None,
-                "usinas": sorted(ex["usinas"]), "tecnicos": " / ".join(sorted(ex["tecnicos"])),
-                "multi": False,
-            })
     base.update({
         "total": sum(d["total"] for d in lista_dias),
         "dias": lista_dias,
@@ -13019,6 +12961,85 @@ def solaredge_os_vinculada():
         return jsonify({"ok": True, "osVinculadas": lista}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+_SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Center da SolarEdge.
+   Roda no navegador do Fred, já logado — nenhuma senha passa por aqui. */
+(async () => {
+  const API = 'https://api.168.138.232.237.sslip.io/solaredge-chamados/importar';
+  const old = document.getElementById('gridSyncBox'); if (old) old.remove();
+  const box = document.createElement('div'); box.id = 'gridSyncBox';
+  box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:16px;width:340px;background:#0f172a;color:#e5e7eb;border:1px solid #22d3ee;border-radius:10px;padding:12px 14px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.45)';
+  document.body.appendChild(box);
+  const say = (t, ok) => { box.innerHTML = '<b style="color:#22d3ee">Painel Grid ⇄ SolarEdge</b><br>' + t + (ok === undefined ? '' : '<br><a href="#" id="gridSyncX" style="color:#9ca3af">fechar</a>'); const x = document.getElementById('gridSyncX'); if (x) x.onclick = e => { e.preventDefault(); box.remove(); }; };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().replace(/^\.\s*/, '');
+  try {
+    if (!/solaredge\.com\/service\/support\/cases/.test(location.href)) { say('Abra a página <b>Service Center → Support Cases</b> (já logado) e clique de novo.', false); return; }
+    if (!window.jQuery || !jQuery('table.dataTable').length) { say('A lista de cases ainda não carregou. Aguarde a tabela aparecer e clique de novo.', false); return; }
+    const sel = document.querySelector('select[name=DataTables_Table_0_length]');
+    if (sel) { sel.value = '100'; jQuery(sel).trigger('change'); await sleep(1500); }
+    const dt = jQuery('table.dataTable').first().DataTable();
+    const hdr = [...document.querySelectorAll('table.dataTable thead th')].map(t => strip(t.textContent));
+    const base = {};
+    dt.rows().data().toArray().forEach(r => {
+      const a = [...r].map(strip), m = {}; hdr.forEach((h, i) => m[h] = a[i]);
+      const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
+      base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
+    });
+    const nums = Object.keys(base);
+    if (!nums.length) { say('Não encontrei cases na lista (filtro “Open”?).', false); return; }
+    const clean = t => t.replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?WhatsApp Oficial do Suporte[\s\S]*$/, '').replace(/ATENÇÃO: Todas as orientações[^\n]*\n?/, '').replace(/\n[ \t]*(\n[ \t]*)+/g, '\n').trim();
+    const parse = t => {
+      const i = t.indexOf('Related Comments:'); let j = t.lastIndexOf('Related Documents');
+      let tail = j >= 0 ? t.slice(j + 17) : '';
+      const com = t.slice(i + 17, j >= 0 ? j : undefined).replace(/ADD ATTACHMENT[\s\S]*$/, '');
+      const head = t.slice(0, i);
+      const g = l => { const m = head.match(new RegExp(l + ':\\n([^\\n]*)')); return m ? m[1].trim() : ''; };
+      const d = head.match(/Description:\n([\s\S]*?)\nCase Type:/);
+      const docs = [...new Set(tail.replace(/ADD ATTACHMENT[\s\S]*$/, '').split('\n').map(x => x.trim()).filter(Boolean))];
+      const out = []; let buf = []; const re = /^(\d{4}-\d\d-\d\d \d\d:\d\d):\d\d \| (.+)$/;
+      for (const ln of com.split('\n')) { const m = ln.match(re); if (m) { out.push({ data: m[1], autor: m[2].trim(), quem: /System Administrator/i.test(m[2]) ? 'Grid' : 'SolarEdge', texto: clean(buf.join('\n')) }); buf = []; } else buf.push(ln); }
+      return { description: d ? d[1].trim() : '', type: g('Case Type'), errorCode: g('Error Code Number'), severity: g('Severity'), created: g('Created').slice(0, 16), comments: out, documents: docs };
+    };
+    const lido = [];
+    for (let k = 0; k < nums.length; k++) {
+      const n = nums[k]; say('Lendo case ' + n + ' (' + (k + 1) + '/' + nums.length + ')…');
+      const h = [...document.querySelectorAll('h4')].find(x => x.textContent.trim() === n); if (!h) continue;
+      const subjEl = () => document.getElementById('modal-case-subject');
+      const antes = subjEl() ? subjEl().textContent : '';
+      h.click();
+      let t = '';
+      for (let w = 0; w < 24; w++) {
+        await sleep(400);
+        let root = subjEl(); if (!root) continue;
+        for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/Related Comments:/.test(root.innerText) && /ADD COMMENT/.test(root.innerText)) break; }
+        t = root.innerText.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n');
+        const st = (t.match(/Case #?(\d{7})/) || [])[1];
+        if (/Related Comments:/.test(t) && (!st || st === n) && (subjEl().textContent !== antes || antes === '' || k === 0 || w > 6)) break;
+      }
+      if (!/Related Comments:/.test(t)) continue;
+      lido.push({ ...base[n], ...parse(t) });
+    }
+    say('Enviando ' + lido.length + ' cases ao painel…');
+    const comp = lido.length === nums.length;
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cases: lido, snapshotCompleto: comp }) });
+    const j = await r.json(); if (!j.ok) throw new Error(j.error || 'erro no painel');
+    say('✅ Painel atualizado: <b>' + lido.length + '</b> cases lidos (' + j.novos + ' novos, ' + j.atualizados + ' atualizados' + (j.naoConstamMais ? ', ' + j.naoConstamMais + ' não constam mais no site' : '') + ').' + (comp ? '' : '<br>⚠ ' + (nums.length - lido.length) + ' case(s) não puderam ser lidos.'), true);
+  } catch (e) { say('❌ Falhou: ' + (e.message || e), false); }
+})();
+'''
+
+
+@app.route("/solaredge-sync.js", methods=["GET"])
+def solaredge_sync_js():
+    """Script de sincronização, carregado pelo favorito do Fred no Service Center da SolarEdge."""
+    from flask import make_response
+    resp = make_response(_SE_SYNC_JS)
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 @app.route("/solaredge-chamados/interno", methods=["POST"])
