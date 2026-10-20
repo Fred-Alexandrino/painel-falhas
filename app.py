@@ -13005,22 +13005,27 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
       return { description: d ? d[1].trim() : '', type: g('Case Type'), errorCode: g('Error Code Number'), severity: g('Severity'), created: g('Created').slice(0, 16), comments: out, documents: docs };
     };
     const lido = [];
+    const subjEl = () => document.getElementById('modal-case-subject');
+    const snap = n => {
+      let root = subjEl(); if (!root) return '';
+      for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/ADD COMMENT/.test(root.innerText) && /Subject:/.test(root.innerText)) break; }
+      return root.innerText.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n');
+    };
     const lerUm = async n => {
       const h = [...document.querySelectorAll('h4')].find(x => x.textContent.trim() === n); if (!h) return null;
-      const subjEl = () => document.getElementById('modal-case-subject');
-      const antes = subjEl() ? subjEl().textContent : '';
       h.click();
-      let t = '';
-      for (let w = 0; w < 40; w++) {
-        await sleep(400);
-        let root = subjEl(); if (!root) continue;
-        for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/ADD COMMENT/.test(root.innerText) && /Subject:/.test(root.innerText)) break; }
-        t = root.innerText.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n');
+      const t0 = Date.now(); let ant = '', iguais = 0, t = '';
+      while (Date.now() - t0 < 25000) {
+        await sleep(700);
+        t = snap(n);
         const st = (t.match(/^\s*(?:×\s*)?Case #(\d{7})/m) || [])[1];
-        if (/ADD COMMENT/.test(t) && /Subject:/.test(t) && (!st || st === n) && (subjEl().textContent !== antes || antes === '' || w > 6)) return { ...base[n], ...parse(t) };
+        if (st !== n || !/ADD COMMENT/.test(t) || !/Subject:/.test(t)) { iguais = 0; ant = ''; continue; }
+        if (t === ant) iguais++; else { iguais = 0; ant = t; }
+        if (iguais >= 3 && Date.now() - t0 > 3000) return { ...base[n], ...parse(t) };   /* texto estável por ~2s = carregou tudo */
       }
       return null;
     };
+    window.__gridSync = { lerUm, base, nums };
     const faltam = [];
     for (let k = 0; k < nums.length; k++) {
       const n = nums[k]; say('Lendo case ' + n + ' (' + (k + 1) + '/' + nums.length + ')…');
