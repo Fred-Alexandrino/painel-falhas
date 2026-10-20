@@ -12856,7 +12856,7 @@ def solaredge_importar():
                     d["AtualizadoEm"] = agora
                     atualizar.append((r, [d[h] for h in SOLAREDGE_HEADERS]))
                     sumidos += 1
-        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        ult = gspread.utils.rowcol_to_a1(1, len(SOLAREDGE_HEADERS))[:-1]
         for i in range(0, len(atualizar), 80):
             lote = [{"range": f"A{r}:{ult}{r}", "values": [lin]} for r, lin in atualizar[i:i + 80]]
             _oc_retry(lambda lote=lote: ws.batch_update(lote, value_input_option="RAW"))
@@ -12917,7 +12917,7 @@ def solaredge_teste_campo():
             else:
                 return jsonify({"ok": False, "error": "Ação inválida."}), 400
         d["TestesCampo"] = json.dumps(lista, ensure_ascii=False)[:_SE_LIMITES["TestesCampo"]]
-        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        ult = gspread.utils.rowcol_to_a1(1, len(SOLAREDGE_HEADERS))[:-1]
         _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
                                     value_input_option="RAW"))
         return jsonify({"ok": True, "testesCampo": lista}), 200
@@ -12955,7 +12955,7 @@ def solaredge_os_vinculada():
         else:
             return jsonify({"ok": False, "error": "Ação inválida."}), 400
         d["OSVinculadas"] = json.dumps(lista, ensure_ascii=False)[:_SE_LIMITES["OSVinculadas"]]
-        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        ult = gspread.utils.rowcol_to_a1(1, len(SOLAREDGE_HEADERS))[:-1]
         _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
                                     value_input_option="RAW"))
         return jsonify({"ok": True, "osVinculadas": lista}), 200
@@ -12983,7 +12983,7 @@ def solaredge_interno():
             d["Equipamento"] = str(corpo["equipamento"] or "").strip()[:20]
         if "notaGrid" in corpo:
             d["NotaGrid"] = str(corpo["notaGrid"] or "").strip()[:_SE_LIMITES["NotaGrid"]]
-        ult = chr(64 + len(SOLAREDGE_HEADERS))
+        ult = gspread.utils.rowcol_to_a1(1, len(SOLAREDGE_HEADERS))[:-1]
         _oc_retry(lambda: ws.update(f"A{r}:{ult}{r}", [[d[h] for h in SOLAREDGE_HEADERS]],
                                     value_input_option="RAW"))
         return jsonify({"ok": True}), 200
@@ -21105,7 +21105,7 @@ def _oc_aba(nome, headers, linhas=1000):
         if len(cab) < len(headers) and list(cab) == list(headers[:len(cab)]):
             if ws.col_count < len(headers):
                 _gspread_retry(lambda: ws.add_cols(len(headers) - ws.col_count))
-            _gspread_retry(lambda: ws.update(f"A1:{chr(64 + len(headers))}1", [list(headers)],
+            _gspread_retry(lambda: ws.update(f"A1:{gspread.utils.rowcol_to_a1(1, len(headers))}", [list(headers)],
                                              value_input_option="RAW"))
     except gspread.WorksheetNotFound:
         ws = _gspread_retry(lambda: ss.add_worksheet(title=nome, rows=linhas, cols=len(headers)))
