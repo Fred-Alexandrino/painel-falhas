@@ -12964,7 +12964,9 @@ def solaredge_os_vinculada():
 
 
 _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Center da SolarEdge.
-   Roda no navegador do Fred, já logado — nenhuma senha passa por aqui. */
+   Roda no navegador do Fred, já logado — nenhuma senha passa por aqui.
+   v3: lê os dados direto da API da própria página (sem depender do pop-up), e confere
+   que cada resposta é do case pedido. */
 (async () => {
   const API = 'https://api.168.138.232.237.sslip.io/solaredge-chamados/importar';
   const old = document.getElementById('gridSyncBox'); if (old) old.remove();
@@ -12974,9 +12976,18 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
   const say = (t, ok) => { box.innerHTML = '<b style="color:#22d3ee">Painel Grid ⇄ SolarEdge</b><br>' + t + (ok === undefined ? '' : '<br><a href="#" id="gridSyncX" style="color:#9ca3af">fechar</a>'); const x = document.getElementById('gridSyncX'); if (x) x.onclick = e => { e.preventDefault(); box.remove(); }; };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().replace(/^\.\s*/, '');
+  const htmlTxt = h => {
+    const d = new DOMParser().parseFromString(String(h || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr)>/gi, '\n'), 'text/html');
+    return (d.body.textContent || '').replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+  const clean = t => t.replace(/\n?= ?=[ =]*\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/^ATENÇÃO: Todas as orientações[^\n]*\n?/m, '').replace(/\n{3,}/g, '\n\n').trim();
+  const post = async id => {
+    const r = await fetch('/solaredge-support-center/getCaseAjax', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include', body: 'caseID=' + encodeURIComponent(id) });
+    if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
+  };
   try {
     if (!/solaredge\.com\/service\/support\/cases/.test(location.href)) { say('Abra a página <b>Service Center → Support Cases</b> (já logado) e clique de novo.', false); return; }
-    if (!window.jQuery || !jQuery('table.dataTable').length) { say('A lista de cases ainda não carregou. Aguarde a tabela aparecer e clique de novo.', false); return; }
+    if (!window.jQuery || !jQuery('table.dataTable').length || !document.querySelector('h4[data-case-id]')) { say('A lista de cases ainda não carregou. Aguarde a tabela aparecer e clique de novo.', false); return; }
     const sel = document.querySelector('select[name=DataTables_Table_0_length]');
     if (sel) { sel.value = '100'; jQuery(sel).trigger('change'); await sleep(1500); }
     const dt = jQuery('table.dataTable').first().DataTable();
@@ -12987,56 +12998,33 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
       const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
       base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
     });
+    const ids = {}; document.querySelectorAll('h4[data-case-id]').forEach(h => { ids[h.textContent.trim()] = h.getAttribute('data-case-id'); });
     const nums = Object.keys(base);
     if (!nums.length) { say('Não encontrei cases na lista (filtro “Open”?).', false); return; }
-    const clean = t => t.replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?WhatsApp Oficial do Suporte[\s\S]*$/, '').replace(/ATENÇÃO: Todas as orientações[^\n]*\n?/, '').replace(/\n[ \t]*(\n[ \t]*)+/g, '\n').trim();
-    const parse = t => {
-      let i = t.indexOf('Related Comments:'); let j = t.lastIndexOf('Related Documents');
-      const ea = t.indexOf('ADD ATTACHMENT');
-      if (i < 0) i = j >= 0 ? j : (ea >= 0 ? ea : t.length);
-      let tail = j >= 0 ? t.slice(j + 17) : '';
-      const com = (t.indexOf('Related Comments:') >= 0 ? t.slice(i + 17, j >= 0 ? j : undefined) : '').replace(/ADD ATTACHMENT[\s\S]*$/, '');
-      const head = t.slice(0, i);
-      const g = l => { const m = head.match(new RegExp(l + ':\\n([^\\n]*)')); return m ? m[1].trim() : ''; };
-      const d = head.match(/Description:\n([\s\S]*?)\nCase Type:/);
-      const docs = [...new Set(tail.replace(/ADD ATTACHMENT[\s\S]*$/, '').split('\n').map(x => x.trim()).filter(Boolean))];
-      const out = []; let buf = []; const re = /^(\d{4}-\d\d-\d\d \d\d:\d\d):\d\d \| (.+)$/;
-      for (const ln of com.split('\n')) { const m = ln.match(re); if (m) { out.push({ data: m[1], autor: m[2].trim(), quem: /System Administrator/i.test(m[2]) ? 'Grid' : 'SolarEdge', texto: clean(buf.join('\n')) }); buf = []; } else buf.push(ln); }
-      return { description: d ? d[1].trim() : '', type: g('Case Type'), errorCode: g('Error Code Number'), severity: g('Severity'), created: g('Created').slice(0, 16), comments: out, documents: docs };
-    };
-    const lido = [];
-    const subjEl = () => document.getElementById('modal-case-subject');
-    const snap = n => {
-      let root = subjEl(); if (!root) return '';
-      for (let s = 0; s < 12 && root.parentElement; s++) { root = root.parentElement; if (/ADD COMMENT/.test(root.innerText) && /Subject:/.test(root.innerText)) break; }
-      return root.innerText.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n');
-    };
-    const lerUm = async n => {
-      const h = [...document.querySelectorAll('h4')].find(x => x.textContent.trim() === n); if (!h) return null;
-      h.click();
-      const t0 = Date.now(); let ant = '', iguais = 0, t = '';
-      while (Date.now() - t0 < 25000) {
-        await sleep(700);
-        t = snap(n);
-        const st = (t.match(/^\s*(?:×\s*)?Case #(\d{7})/m) || [])[1];
-        if (st !== n || !/ADD COMMENT/.test(t) || !/Subject:/.test(t)) { iguais = 0; ant = ''; continue; }
-        if (t === ant) iguais++; else { iguais = 0; ant = t; }
-        if (iguais >= 3 && Date.now() - t0 > 3000) return { ...base[n], ...parse(t) };   /* texto estável por ~2s = carregou tudo */
-      }
-      return null;
-    };
-    window.__gridSync = { lerUm, base, nums };
-    const faltam = [];
+    const lido = [], faltam = [];
     for (let k = 0; k < nums.length; k++) {
       const n = nums[k]; say('Lendo case ' + n + ' (' + (k + 1) + '/' + nums.length + ')…');
-      const r = await lerUm(n); if (r) lido.push(r); else faltam.push(n);
+      let ok = null;
+      for (let tent = 0; tent < 3 && !ok; tent++) {
+        try {
+          if (!ids[n]) break;
+          const j = await post(ids[n]);
+          if (String(j.case_number) !== n) throw new Error('resposta de outro case (' + j.case_number + ')');
+          const sn = j.serialNumbers || [];
+          const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()))].join(' | ');
+          const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
+          ok = { ...base[n], description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
+            rma: j.rma || base[n].rma, eta: uniq(sn.map(s => s.shipping_eta)) || base[n].eta, tracking: uniq(sn.map(s => s.tracking_number)) || base[n].tracking,
+            status: j.status || base[n].status, comments, documents: (j.documents || []).map(d => d.name).filter(Boolean) };
+        } catch (e) { await sleep(800); }
+      }
+      if (ok) lido.push(ok); else faltam.push(n);
     }
-    for (const n of faltam.slice()) { say('Tentando de novo o case ' + n + '…'); await sleep(1500); const r = await lerUm(n); if (r) { lido.push(r); faltam.splice(faltam.indexOf(n), 1); } }
     say('Enviando ' + lido.length + ' cases ao painel…');
     const comp = lido.length === nums.length;
     const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cases: lido, snapshotCompleto: comp }) });
     const j = await r.json(); if (!j.ok) throw new Error(j.error || 'erro no painel');
-    say('✅ Painel atualizado: <b>' + lido.length + '</b> cases lidos (' + j.novos + ' novos, ' + j.atualizados + ' atualizados' + (j.naoConstamMais ? ', ' + j.naoConstamMais + ' não constam mais no site' : '') + ').' + (comp ? '' : '<br>⚠ ' + (nums.length - lido.length) + ' case(s) não puderam ser lidos.'), true);
+    say('✅ Painel atualizado: <b>' + lido.length + '</b> cases lidos (' + j.novos + ' novos, ' + j.atualizados + ' atualizados' + (j.naoConstamMais ? ', ' + j.naoConstamMais + ' não constam mais no site' : '') + ').' + (comp ? '' : '<br>⚠ Não consegui ler: ' + faltam.join(', ')), true);
   } catch (e) { say('❌ Falhou: ' + (e.message || e), false); }
 })();
 '''
