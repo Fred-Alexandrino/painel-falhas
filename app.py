@@ -1197,6 +1197,12 @@ def _sup_resolver_usina_tecnico(rep, escopo):
 def _definir_escopo_supervisora():
     h = (request.headers.get("X-Escopo") or "").strip().lower()
     g.escopo_sup = h if h in _SUP_MAPEAMENTO else None
+    # Supervisor de Campo (Vitor): somente leitura, sem nenhuma automação de WhatsApp.
+    if (request.headers.get("X-Visao") or "").strip().lower() == "vitor":
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not request.path.startswith("/gerar-comunicado"):
+            return jsonify({"ok": False, "error": "Perfil somente leitura — sem envio por WhatsApp."}), 403
+        if re.search(r"disparar|enviar|alertar|notificar|testar-alerta|ronda-disparar", request.path):
+            return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
     if g.escopo_sup and request.path.startswith("/disparar-"):
         return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
 
