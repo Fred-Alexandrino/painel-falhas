@@ -16832,11 +16832,30 @@ def gerar_texto_os_ia():
         return jsonify({"ok": False, "error": "Body inválido"}), 400
 
     prompt = _montar_prompt_os(body)
+
+    # Prints/fotos anexados no gerador de OS (21/10/2026): lista
+    # [{"mime": "image/jpeg", "data": "<base64>"}], já reduzida no navegador.
+    # Vão como inline_data pro Gemini ler junto com o texto.
+    imagens_validas = []
+    for img in (body.get("imagens") or [])[:6]:
+        try:
+            mime = (img.get("mime") or "image/jpeg").strip().lower()
+            dados = (img.get("data") or "").strip()
+            if "," in dados and dados.startswith("data:"):
+                dados = dados.split(",", 1)[1]
+            if mime in ("image/jpeg", "image/png", "image/webp") and 100 < len(dados) < 8_000_000:
+                imagens_validas.append({"inline_data": {"mime_type": mime, "data": dados}})
+        except Exception:
+            continue
+    if imagens_validas:
+        prompt += f"""
+
+PRINTS/FOTOS ANEXADOS ({len(imagens_validas)}): a solicitação veio acompanhada de imagem(ns) — normalmente prints de conversa de WhatsApp, telas do supervisório/monitoramento, alarmes de inversor, etiquetas de equipamento ou fotos de campo. Leia o conteúdo de cada imagem e use como parte da solicitação, com o mesmo peso do texto: extraia usina, equipamento (ex.: INV01, string, câmera), defeito, alarmes/códigos, valores e qualquer instrução explícita, aplicando todas as regras acima (inclusive a regra de fidelidade ao pedido e a de separação em múltiplas OS). Se o texto digitado estiver vazio ou "não informado", a solicitação é inteiramente o conteúdo das imagens. Não invente nada que não esteja legível nas imagens ou no texto."""
     diagnostico = request.args.get("diagnostico", "").lower() == "true"
     try:
         resp = _chamar_gemini_com_retry(
             {
-                "contents": [{"parts": [{"text": prompt}]}],
+                "contents": [{"parts": [{"text": prompt}] + imagens_validas}],
                 "generationConfig": {
                     "temperature": 0.3,
                     "maxOutputTokens": 4096,
@@ -16844,7 +16863,7 @@ def gerar_texto_os_ia():
                     "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
-            timeout=25,
+            timeout=(40 if imagens_validas else 25),
             usar_chave_teste=diagnostico,
         )
         data = resp.json()
@@ -16896,6 +16915,8 @@ def gerar_texto_os_ia():
         # não gasta chamada de IA extra, só persiste o que já foi gerado.
         try:
             entrada_usuario = (body.get("falha") or body.get("equipamento") or body.get("causa") or "").strip()
+            if imagens_validas:
+                entrada_usuario = (entrada_usuario + f" [+{len(imagens_validas)} print(s) anexado(s)]").strip()
             _salvar_os_elaborada(entrada_usuario, os_lista)
         except Exception as e_hist:
             log.error(f"[gerar-texto-os-ia] Falha ao salvar histórico de OS elaborada: {e_hist}")
