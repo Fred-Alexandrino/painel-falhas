@@ -1197,6 +1197,12 @@ def _sup_resolver_usina_tecnico(rep, escopo):
 def _definir_escopo_supervisora():
     h = (request.headers.get("X-Escopo") or "").strip().lower()
     g.escopo_sup = h if h in _SUP_MAPEAMENTO else None
+    # Supervisor de Campo (Vitor): somente leitura, sem nenhuma automação de WhatsApp.
+    if (request.headers.get("X-Visao") or "").strip().lower() == "vitor":
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not request.path.startswith("/gerar-comunicado"):
+            return jsonify({"ok": False, "error": "Perfil somente leitura — sem envio por WhatsApp."}), 403
+        if re.search(r"disparar|enviar|alertar|notificar|testar-alerta|ronda-disparar", request.path):
+            return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
     if g.escopo_sup and request.path.startswith("/disparar-"):
         return jsonify({"ok": False, "error": "Envio por WhatsApp não está habilitado neste perfil."}), 403
 
@@ -11651,6 +11657,37 @@ def _pcm_nome_grupo(grupo_id):
             or "Grupo configurado")
 
 
+# ── Visão do Supervisor de Campo (Vitor Valadares, 20/10/2026) ─────────────
+# Usinas Athon (PA) e Thopen Ipixuna que o Vitor acompanha. NÃO fazem parte do
+# mapeamento oficial do Fred: só entram na Programação PCM quando o painel pede
+# a "visão do Vitor" (header X-Visao: vitor). Cluster = o que o próprio PCM informa.
+_PCM_VITOR_EXTRAS = {
+    "capitao poco 1": ("Gilson Souza", "Manuel Silva (Eletricista)"),
+    "santa maria do para 1": ("Gilson Souza", "Manuel Silva (Eletricista)"),
+    "mae do rio 1": ("Frank Melo", "Azinaldo Santos (Mantenedor)"),
+    "jacunda 1": ("James Chaves", "Joilson Silva (Eletricista)"),
+    "maraba 1": ("James Chaves", "Joilson Silva (Eletricista)"),
+    "maraba 2": ("James Chaves", "Joilson Silva (Eletricista)"),
+    "ipixuna 1 e 2": ("Wesllen", ""),
+}
+
+
+def _pcm_chave_vitor(usina_raw):
+    import unicodedata
+    nome = _pcm_nome_usina_exibicao(usina_raw)
+    nome = re.sub(r"\s+-\s+[A-Za-z]{2}$", "", nome).strip()
+    nome = unicodedata.normalize("NFD", nome)
+    nome = "".join(ch for ch in nome if unicodedata.category(ch) != "Mn").lower()
+    return re.sub(r"\s+", " ", nome).strip()
+
+
+def _pcm_visao_vitor():
+    try:
+        return request.headers.get("X-Visao", "").strip().lower() == "vitor"
+    except Exception:
+        return False
+
+
 @app.route("/programacao-pcm/semana", methods=["GET"])
 def programacao_pcm_semana():
     """
@@ -11718,8 +11755,11 @@ def programacao_pcm_semana():
                     "aposPlano": 0, "finalizadas": 0, "itens": []}
             for i, (chave, _nome, rot) in enumerate(_PCM_DIAS_UTEIS)}
 
+    visao_vitor = _pcm_visao_vitor()
+    extras_vitor = {}  # cluster -> {"usinas": set, "tecnicos": set}
     for r in semana.get("rows", []):
-        if not (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes):
+        extra_vitor = (_pcm_chave_vitor(r.get("usina")) in _PCM_VITOR_EXTRAS) if visao_vitor else False
+        if not (r.get("responsavel") == _PCM_RESPONSAVEL or r.get("usina") in usinas_temp_nomes or extra_vitor):
             continue
         # 13/10/2026: SEM filtro de mapeamento — o calendário espelha tudo que o
         # PCM programou pro Fred (mesmo total do portal do PCM). Usina fora do
@@ -11730,7 +11770,14 @@ def programacao_pcm_semana():
         chave_dia, _rot, data_dia = info_dia
         usina_raw = r.get("usina") or ""
         usina_canonica = canonizar_usina(_extrair_nome_usina_fracttal(usina_raw) or usina_raw) if usina_raw else None
+        if extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL:
+            usina_canonica = None  # usina fora do mapeamento oficial: não deixa o catálogo do Fred reinterpretar
         cluster = (mapa_cluster_pcm.get(usina_canonica) if usina_canonica else None) or r.get("cluster") or "(sem cluster)"
+        if extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL:
+            tec, mem = _PCM_VITOR_EXTRAS[_pcm_chave_vitor(usina_raw)]
+            ex = extras_vitor.setdefault(cluster, {"usinas": set(), "tecnicos": set()})
+            ex["usinas"].add(_pcm_nome_usina_exibicao(usina_raw))
+            ex["tecnicos"].add(tec)
         estado = _PCM_STATUS_NORMALIZADO.get(r.get("status"), r.get("status") or "")
         h_ini = r.get("h_ini") or ""
         duracao = r.get("duracao") or 0
@@ -11745,8 +11792,8 @@ def programacao_pcm_semana():
             "cliente": _pcm_cliente_mapeado(usina_canonica, r.get("cliente")),
             "usina": _pcm_nome_usina_exibicao(usina_raw),
             "usinaCanonica": usina_canonica or _pcm_nome_usina_exibicao(usina_raw),
-            "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else None),
-            "foraMapeamento": (usina_canonica not in _oficial_nomes),
+            "grupo": (mapa_grupo.get(usina_canonica) if usina_canonica else (_pcm_grupo_do_cluster(cluster, mapa_cluster_pcm, mapa_grupo)[0] if (extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL) else None)),
+            "foraMapeamento": ((usina_canonica not in _oficial_nomes) and not (extra_vitor and r.get("responsavel") != _PCM_RESPONSAVEL)),
             "cluster": cluster,
             "tipo": r.get("tipo"),
             "tarefa": r.get("tarefa"),
@@ -11826,6 +11873,17 @@ def programacao_pcm_semana():
                 "multi": len(por_grupo) > 1,
             })
 
+    # visão do Vitor: clusters do PCM (Athon/PA) que não existem no mapeamento oficial
+    if visao_vitor:
+        ja = {e["cluster"] for e in envios}
+        for nome, ex in sorted(extras_vitor.items()):
+            if nome in ja:
+                continue
+            envios.append({
+                "cluster": nome, "grupoId": None, "grupoNome": None,
+                "usinas": sorted(ex["usinas"]), "tecnicos": " / ".join(sorted(ex["tecnicos"])),
+                "multi": False,
+            })
     base.update({
         "total": sum(d["total"] for d in lista_dias),
         "dias": lista_dias,
