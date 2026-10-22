@@ -12824,6 +12824,49 @@ def _se_item(row):
     }
 
 
+def _se_codigo_apresentacao(eq):
+    """Código do equipamento no formato da apresentação: INV5 -> INV05; decimais (INV3.8) e textos livres ficam como estão."""
+    eq = (eq or "").strip()
+    m = re.fullmatch(r"INV(\d+)", eq, re.I)
+    if m:
+        return "INV" + m.group(1).zfill(2)
+    return eq or "Equipamento não informado"
+
+
+def _se_rotulo_apresentacao(it):
+    """Status exibido na apresentação semanal: o status interno da Grid, se houver; senão, deriva do status no site."""
+    si = (it.get("statusInterno") or "").strip()
+    if si and not si.lower().startswith("conclu"):
+        return si
+    s = (it.get("status") or "").strip().lower()
+    if s == "feedback requested":
+        return "Aguardando retorno da Grid"
+    if "waiting for return" in s:
+        return "Aguardando coleta SolarEdge"
+    if s == "rma shipment processing":
+        return "RMA em envio para a usina"
+    return "Aguardando retorno do Fabricante"
+
+
+def _se_itens_para_relatorio():
+    """Chamados SolarEdge ABERTOS do subpainel (aba SolarEdgeCases), no formato dos itens de _chamados_fabricante_itens()."""
+    ws = _se_aba()
+    todos = _oc_retry(lambda: ws.get_all_values())
+    out = []
+    for row in todos[1:]:
+        if not any((c or "").strip() for c in row):
+            continue
+        it = _se_item(row)
+        if not it["case"] or (it["situacaoSite"] or "Aberto") != "Aberto":
+            continue
+        if (it["statusInterno"] or "").strip().lower().startswith("conclu"):
+            continue
+        cod = _se_codigo_apresentacao(it["equipamento"])
+        out.append({"Cliente": it["cliente"] or "", "UFV": it["usina"] or "Usina não informada", "Fabricante": "SolarEdge",
+                    "Ativo": "", "Identificação do Equipamento": cod, "Ticket/RMA": it["case"], "Status": _se_rotulo_apresentacao(it)})
+    return out
+
+
 @app.route("/solaredge-chamados", methods=["GET"])
 def solaredge_listar():
     try:
@@ -17495,6 +17538,13 @@ def gerar_relatorio_semanal_route():
                     canonico = canonizar_usina(ufv_bruta)
                     if canonico:
                         item["UFV"] = canonico
+            # 22/10/2026: chamados SolarEdge passam a vir do subpainel CHAMADOS SOLAREDGE (aba SolarEdgeCases),
+            # não mais da planilha (Singrid). Se a leitura falhar, mantém os da planilha.
+            try:
+                _se_rel = _se_itens_para_relatorio()
+                itens_chamados = [i for i in itens_chamados if not re.search(r"solar\s*edge", i.get("Fabricante") or "", re.I)] + _se_rel
+            except Exception as e:
+                log.error(f"[Relatorio Semanal] SolarEdge do subpainel indisponível, usando planilha: {e}")
             chamados_fabricante_por_usina = coletar_chamados_fabricante_por_usina(itens_chamados, cliente)
         except Exception as e:
             log.error(f"[Relatorio Semanal] Erro ao buscar Chamados com Fabricante: {e}")
