@@ -12827,6 +12827,10 @@ def _se_item(row):
 def _se_codigo_apresentacao(eq):
     """Código do equipamento no formato da apresentação: INV5 -> INV05; decimais (INV3.8) e textos livres ficam como estão."""
     eq = (eq or "").strip()
+    if re.search(r"otimizador", eq, re.I):
+        return "OTM"
+    if re.search(r"v[áa]rios", eq, re.I):
+        return "UFV"
     m = re.fullmatch(r"INV(\d+)", eq, re.I)
     if m:
         return "INV" + m.group(1).zfill(2)
@@ -17542,7 +17546,10 @@ def gerar_relatorio_semanal_route():
             # não mais da planilha (Singrid). Se a leitura falhar, mantém os da planilha.
             try:
                 _se_rel = _se_itens_para_relatorio()
-                itens_chamados = [i for i in itens_chamados if not re.search(r"solar\s*edge", i.get("Fabricante") or "", re.I)] + _se_rel
+                _se_nums = {x["Ticket/RMA"] for x in _se_rel}
+                itens_chamados = [i for i in itens_chamados
+                                  if not re.search(r"solar\s*edge", i.get("Fabricante") or "", re.I)
+                                  and re.sub(r"\D", "", str(i.get("Ticket/RMA") or "")) not in _se_nums] + _se_rel
             except Exception as e:
                 log.error(f"[Relatorio Semanal] SolarEdge do subpainel indisponível, usando planilha: {e}")
             chamados_fabricante_por_usina = coletar_chamados_fabricante_por_usina(itens_chamados, cliente)
