@@ -2287,25 +2287,36 @@ def get_localizacoes_sheet():
     return ws
 
 
+_atividades_header_ok = set()   # abas cujo cabeçalho já foi conferido neste processo (evita 1 leitura por chamada)
+
+
 def get_atividades_sheet():
-    gc = get_gc()
-    ss = gc.open_by_key(SHEET_ID)
-    _esc = _escopo_atual()
-    _nome_aba = _SUP_ABAS[_esc] if _esc else ATIVIDADES_SHEET_NAME  # supervisora: aba própria, separada da do Fred
-    try:
-        ws = ss.worksheet(_nome_aba)
-    except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=_nome_aba, rows=1000, cols=len(ATIVIDADES_HEADERS))
-        ws.append_row(ATIVIDADES_HEADERS)
+    # 23/10/2026: com retry em 429 (cota de leitura do Sheets). Antes, 3 leituras seguidas sem
+    # retry derrubavam /gerar-relatorio-semanal e o /atividades das supervisoras nos picos.
+    def _abrir():
+        gc = get_gc()
+        ss = gc.open_by_key(SHEET_ID)
+        _esc = _escopo_atual()
+        _nome_aba = _SUP_ABAS[_esc] if _esc else ATIVIDADES_SHEET_NAME  # supervisora: aba própria, separada da do Fred
+        try:
+            ws = ss.worksheet(_nome_aba)
+        except gspread.WorksheetNotFound:
+            ws = ss.add_worksheet(title=_nome_aba, rows=1000, cols=len(ATIVIDADES_HEADERS))
+            ws.append_row(ATIVIDADES_HEADERS)
+            _atividades_header_ok.add(_nome_aba)
+            return ws
+        if _nome_aba in _atividades_header_ok:
+            return ws
+        # migração incremental: garante que colunas novas (ex: Equipamento, NumeroOS) existam
+        header = ws.row_values(1)
+        if len(header) < len(ATIVIDADES_HEADERS):
+            if ws.col_count < len(ATIVIDADES_HEADERS):
+                ws.add_cols(len(ATIVIDADES_HEADERS) - ws.col_count)  # expande a grade antes de escrever
+            for i in range(len(header), len(ATIVIDADES_HEADERS)):
+                ws.update_cell(1, i + 1, ATIVIDADES_HEADERS[i])
+        _atividades_header_ok.add(_nome_aba)
         return ws
-    # migração incremental: garante que colunas novas (ex: Equipamento, NumeroOS) existam
-    header = ws.row_values(1)
-    if len(header) < len(ATIVIDADES_HEADERS):
-        if ws.col_count < len(ATIVIDADES_HEADERS):
-            ws.add_cols(len(ATIVIDADES_HEADERS) - ws.col_count)  # expande a grade antes de escrever
-        for i in range(len(header), len(ATIVIDADES_HEADERS)):
-            ws.update_cell(1, i + 1, ATIVIDADES_HEADERS[i])
-    return ws
+    return _gspread_retry(_abrir, tentativas=5, esperas=(4, 8, 15, 25, 30))
 
 def carregar_planilha(ws):
     """Lê uma aba inteira com retry automático em caso de 429 (cota de
