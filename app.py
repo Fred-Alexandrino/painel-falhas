@@ -12797,6 +12797,7 @@ SOLAREDGE_HEADERS = [
     "EnvioETA", "Rastreio", "Status", "Criado", "Tipo", "CodigoErro", "Severidade", "Descricao",
     "Comentarios", "Documentos", "AcaoNecessaria", "SituacaoSite", "UltimoComentarioEm",
     "AtualizadoEm", "StatusInterno", "NotaGrid", "Equipamento", "TestesCampo", "OSVinculadas",
+    "CaseGuid", "FechadoEm",
 ]
 _SE_CAMPOS = {
     "subject": "Assunto", "category": "Categoria", "subCategory": "SubCategoria", "siteId": "SiteID",
@@ -12804,7 +12805,7 @@ _SE_CAMPOS = {
     "tracking": "Rastreio", "status": "Status", "created": "Criado", "type": "Tipo",
     "errorCode": "CodigoErro", "severity": "Severidade", "description": "Descricao",
 }
-_SE_LIMITES = {"Descricao": 12000, "Comentarios": 40000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000, "OSVinculadas": 8000}
+_SE_LIMITES = {"Descricao": 12000, "Comentarios": 48000, "Documentos": 4000, "AcaoNecessaria": 4000, "NotaGrid": 4000, "TestesCampo": 20000, "OSVinculadas": 8000}
 _SE_STATUS_INTERNO = ["Testes em campo", "Aguardando retorno do Fabricante", "Standby",
                       "Aguardando peça/RMA", "Resolvido - acompanhar", "Aguardando coleta SolarEdge", "Concluído (confirmado pela Grid)"]
 
@@ -12861,7 +12862,7 @@ def _se_item(row):
         "ultimoComentarioEm": d["UltimoComentarioEm"], "atualizadoEm": d["AtualizadoEm"],
         "statusInterno": d["StatusInterno"], "notaGrid": d["NotaGrid"],
         "testesCampo": _se_json(d["TestesCampo"]), "osVinculadas": _se_json(d["OSVinculadas"]),
-        "quemAge": _se_quem_age(d["Status"]),
+        "quemAge": _se_quem_age(d["Status"]), "fechadoEm": d["FechadoEm"],
     }
 
 
@@ -12944,6 +12945,43 @@ def solaredge_listar():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/solaredge-chamados/cliente", methods=["GET"])
+def solaredge_listar_cliente():
+    """Visão do cliente (somente leitura): só cases do cliente informado, sem campos internos da Grid."""
+    try:
+        cliente = (request.args.get("cliente") or "").strip().lower()
+        if not cliente:
+            return jsonify({"ok": False, "error": "cliente obrigatório"}), 400
+        ws = _se_aba()
+        todos = _oc_retry(lambda: ws.get_all_values())
+        itens = []
+        for row in todos[1:]:
+            if not any((c or "").strip() for c in row):
+                continue
+            it = _se_item(row)
+            if not it["case"] or (it["cliente"] or "").strip().lower() != cliente:
+                continue
+            si = (it["statusInterno"] or "").strip()
+            itens.append({
+                "case": it["case"], "assunto": it["assunto"], "usina": it["usina"], "cliente": it["cliente"],
+                "equipamento": it["equipamento"], "serial": it["serial"], "status": it["status"],
+                "rma": it["rma"], "envioEta": it["envioEta"], "rastreio": it["rastreio"],
+                "criado": it["criado"], "tipo": it["tipo"], "categoria": it["categoria"],
+                "subCategoria": it["subCategoria"], "codigoErro": it["codigoErro"],
+                "descricao": it["descricao"], "comentarios": it["comentarios"], "documentos": it["documentos"],
+                "situacaoSite": it["situacaoSite"], "ultimoComentarioEm": it["ultimoComentarioEm"],
+                "fechadoEm": it["fechadoEm"] or (it["atualizadoEm"] if it["situacaoSite"] != "Aberto" else ""),
+                "atualizadoEm": it["atualizadoEm"],
+                "concluido": si.lower().startswith("conclu"),
+                "coletaPendente": si == "Aguardando coleta SolarEdge",
+                "osVinculadas": [{"os": v.get("os", ""), "finalidade": v.get("finalidade", ""),
+                                  "vinculadoEm": v.get("vinculadoEm", "")} for v in (it["osVinculadas"] or []) if isinstance(v, dict)],
+            })
+        return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _se_carregar_linhas(ws):
     todos = _oc_retry(lambda: ws.get_all_values())
     idx = {}
@@ -12951,6 +12989,29 @@ def _se_carregar_linhas(ws):
         if row and (row[0] or "").strip():
             idx[row[0].strip()] = (i, list(row) + [""] * (len(SOLAREDGE_HEADERS) - len(row)))
     return idx
+
+
+@app.route("/solaredge-chamados/reler", methods=["GET"])
+def solaredge_reler():
+    """Cases que saíram da lista de abertos há menos de 15 dias e têm GUID guardado: a extensão relê o desfecho."""
+    try:
+        ws = _se_aba()
+        todos = _oc_retry(lambda: ws.get_all_values())
+        lim = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
+        out = []
+        for row in todos[1:]:
+            if not any((c or "").strip() for c in row):
+                continue
+            row = list(row) + [""] * (len(SOLAREDGE_HEADERS) - len(row))
+            d = dict(zip(SOLAREDGE_HEADERS, row))
+            if d["SituacaoSite"] == "Aberto" or not d["CaseGuid"] or not d["Case"].strip():
+                continue
+            if (d["FechadoEm"] or d["AtualizadoEm"] or "9999")[:10] < lim:
+                continue
+            out.append({"case": d["Case"].strip(), "guid": d["CaseGuid"]})
+        return jsonify({"ok": True, "cases": out}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/solaredge-chamados/importar", methods=["POST"])
@@ -12996,7 +13057,15 @@ def solaredge_importar():
                 base["StatusInterno"] = str(c["statusInterno"]).strip()  # semente: nunca sobrescreve o que já existe
             if c.get("equipment") and not base["Equipamento"]:
                 base["Equipamento"] = str(c["equipment"]).strip()[:20]  # semente: nunca sobrescreve
-            base["SituacaoSite"] = "Aberto"
+            if c.get("guid"):
+                base["CaseGuid"] = str(c["guid"]).strip()
+            if c.get("fechado"):  # releitura de case que saiu da lista de abertos: guarda o desfecho
+                base["SituacaoSite"] = "Não consta mais no site"
+                if not base["FechadoEm"]:
+                    base["FechadoEm"] = agora
+            else:
+                base["SituacaoSite"] = "Aberto"
+                base["FechadoEm"] = ""
             base["AtualizadoEm"] = agora
             for h, lim in _SE_LIMITES.items():
                 if len(base[h]) > lim:
@@ -13014,6 +13083,7 @@ def solaredge_importar():
                 d = dict(zip(SOLAREDGE_HEADERS, row))
                 if d["SituacaoSite"] != "Não consta mais no site":
                     d["SituacaoSite"] = "Não consta mais no site"
+                    d["FechadoEm"] = d.get("FechadoEm") or agora
                     d["AtualizadoEm"] = agora
                     atualizar.append((r, [d[h] for h in SOLAREDGE_HEADERS]))
                     sumidos += 1
@@ -13146,6 +13216,14 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
     const r = await fetch('/solaredge-support-center/getCaseAjax', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include', body: 'caseID=' + encodeURIComponent(id) });
     if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
   };
+  const montar = (j, b, guid) => {
+    const sn = j.serialNumbers || [];
+    const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()))].join(' | ');
+    const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
+    return { ...b, guid, description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
+      rma: j.rma || b.rma, eta: uniq(sn.map(s => s.shipping_eta)) || b.eta, tracking: uniq(sn.map(s => s.tracking_number)) || b.tracking,
+      status: j.status || b.status, comments, documents: [...new Set((j.documents || []).map(d => d.name).filter(Boolean))] };
+  };
   try {
     if (!/solaredge\.com\/service\/support\/cases/.test(location.href)) { say('Abra a página <b>Service Center → Support Cases</b> (já logado) e clique de novo.', false); return; }
     if (!window.jQuery || !jQuery('table.dataTable').length || !document.querySelector('h4[data-case-id]')) { say('A lista de cases ainda não carregou. Aguarde a tabela aparecer e clique de novo.', false); return; }
@@ -13171,18 +13249,26 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
           if (!ids[n]) break;
           const j = await post(ids[n]);
           if (String(j.case_number) !== n) throw new Error('resposta de outro case (' + j.case_number + ')');
-          const sn = j.serialNumbers || [];
-          const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()))].join(' | ');
-          const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
-          ok = { ...base[n], description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
-            rma: j.rma || base[n].rma, eta: uniq(sn.map(s => s.shipping_eta)) || base[n].eta, tracking: uniq(sn.map(s => s.tracking_number)) || base[n].tracking,
-            status: j.status || base[n].status, comments, documents: [...new Set((j.documents || []).map(d => d.name).filter(Boolean))] };
+          ok = montar(j, base[n], ids[n]);
         } catch (e) { await sleep(800); }
       }
       if (ok) lido.push(ok); else faltam.push(n);
     }
+    let fechados = 0;
+    try {
+      const rr = await (await fetch(API.replace('/importar', '/reler'))).json();
+      const lista = (rr.cases || []).filter(x => !nums.includes(x.case));
+      for (let k = 0; k < lista.length; k++) {
+        say('Relendo desfecho do case ' + lista[k].case + ' (' + (k + 1) + '/' + lista.length + ')…');
+        try {
+          const j = await post(lista[k].guid);
+          if (String(j.case_number) !== lista[k].case) continue;
+          const o = montar(j, { case: lista[k].case }, lista[k].guid); o.fechado = true; lido.push(o); fechados++;
+        } catch (e) {}
+      }
+    } catch (e) {}
     say('Enviando ' + lido.length + ' cases ao painel…');
-    const comp = lido.length === nums.length;
+    const comp = (lido.length - fechados) === nums.length;
     const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cases: lido, snapshotCompleto: comp }) });
     const j = await r.json(); if (!j.ok) throw new Error(j.error || 'erro no painel');
     say('✅ Painel atualizado: <b>' + lido.length + '</b> cases lidos (' + j.novos + ' novos, ' + j.atualizados + ' atualizados' + (j.naoConstamMais ? ', ' + j.naoConstamMais + ' não constam mais no site' : '') + ').' + (comp ? '' : '<br>⚠ Não consegui ler: ' + faltam.join(', ')), true);
