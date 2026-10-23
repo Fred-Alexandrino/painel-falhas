@@ -1227,9 +1227,10 @@ def supervisoras_fracttal_ping():
 _sup_grupos_diag = {"estado": "ocioso"}
 
 
-def _sup_grupos_diag_worker(statuses):
+def _sup_grupos_diag_worker(statuses, buscar=None):
     """Diagnóstico read-only: pagina a Fracttal e conta OTs por grupo/usina, dizendo qual escopo reconhece cada um."""
     from collections import Counter
+    _achados = []
     try:
         res = {}
         for stt in statuses:
@@ -1250,6 +1251,13 @@ def _sup_grupos_diag_worker(statuses):
                     rep = tasks[0]
                     g = (rep.get("groups_1_description") or "").strip()
                     cont[g] += 1
+                    if buscar:
+                        _blob = json.dumps(rep, ensure_ascii=False).lower()
+                        if any(b in _blob for b in buscar):
+                            _achados.append({"status": stt, "folio": folio, "grupo": g,
+                                             "ativo": (rep.get("items_log_description") or "")[:80],
+                                             "desc": (rep.get("wo_description") or rep.get("description") or "")[:100],
+                                             "criada": str(rep.get("date_maintenance") or rep.get("creation_date") or "")[:19]})
                     ex.setdefault(g, (rep.get("items_log_description") or rep.get("parent_description") or "")[:60])
                 start += 100
                 _sup_grupos_diag.update({"estado": "rodando", "status": stt, "start": start, "total": total})
@@ -1268,6 +1276,8 @@ def _sup_grupos_diag_worker(statuses):
                         rec[esc] = u
                 linhas.append({"grupo": g, "os": n, "ativo_ex": ex[g], "reconhecido_por": rec})
             res[stt] = {"total": total, "grupos": linhas}
+        if buscar:
+            res = {"busca": _achados}
         _sup_grupos_diag.update({"estado": "pronto", "resultado": res})
         with open("/tmp/sup_grupos.json", "w", encoding="utf-8") as _f:
             json.dump({"estado": "pronto", "resultado": res}, _f, ensure_ascii=False)
@@ -1282,7 +1292,8 @@ def supervisoras_fracttal_grupos():
     if request.args.get("iniciar") and _sup_grupos_diag.get("estado") != "rodando":
         sts = [x for x in (request.args.get("status") or "1").split(",") if x]
         _sup_grupos_diag.clear(); _sup_grupos_diag["estado"] = "rodando"
-        threading.Thread(target=_sup_grupos_diag_worker, args=(sts,), daemon=True).start()
+        _busca = [x.strip().lower() for x in (request.args.get("buscar") or "").split(",") if x.strip()]
+        threading.Thread(target=_sup_grupos_diag_worker, args=(sts, _busca or None), daemon=True).start()
     if request.args.get("resultado") and os.path.exists("/tmp/sup_grupos.json"):
         with open("/tmp/sup_grupos.json", encoding="utf-8") as _f:
             return jsonify({"ok": True, **json.load(_f)}), 200
