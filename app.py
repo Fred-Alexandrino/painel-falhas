@@ -1240,7 +1240,7 @@ def _sup_grupos_diag_worker(statuses, buscar=None):
                 ots = None
                 for tent in range(6):
                     try:
-                        ots, total = _fracttal_listar_pagina(since="2026-01-01T00:00:00-00:00", ot_status=stt, start=start, limit=100)
+                        ots, total = _fracttal_listar_pagina(since=(_sup_grupos_diag.get("desde") or "2026-01-01T00:00:00-00:00"), ot_status=stt, start=start, limit=100)
                         break
                     except Exception as e:
                         if "429" in str(e) and tent < 5:
@@ -1276,6 +1276,9 @@ def _sup_grupos_diag_worker(statuses, buscar=None):
                         rec[esc] = u
                 linhas.append({"grupo": g, "os": n, "ativo_ex": ex[g], "reconhecido_por": rec})
             res[stt] = {"total": total, "grupos": linhas}
+            if buscar:
+                with open("/tmp/sup_busca.json", "w", encoding="utf-8") as _f:
+                    json.dump({"busca": _achados, "ate_status": stt}, _f, ensure_ascii=False)
         if buscar:
             res = {"busca": _achados}
         _sup_grupos_diag.update({"estado": "pronto", "resultado": res})
@@ -1292,8 +1295,14 @@ def supervisoras_fracttal_grupos():
     if request.args.get("iniciar") and _sup_grupos_diag.get("estado") != "rodando":
         sts = [x for x in (request.args.get("status") or "1").split(",") if x]
         _sup_grupos_diag.clear(); _sup_grupos_diag["estado"] = "rodando"
+        _d = (request.args.get("desde") or "").strip()
+        if _d:
+            _sup_grupos_diag["desde"] = _d + "T00:00:00-00:00"
         _busca = [x.strip().lower() for x in (request.args.get("buscar") or "").split(",") if x.strip()]
         threading.Thread(target=_sup_grupos_diag_worker, args=(sts, _busca or None), daemon=True).start()
+    if request.args.get("busca") and os.path.exists("/tmp/sup_busca.json"):
+        with open("/tmp/sup_busca.json", encoding="utf-8") as _f:
+            return jsonify({"ok": True, **json.load(_f)}), 200
     if request.args.get("resultado") and os.path.exists("/tmp/sup_grupos.json"):
         with open("/tmp/sup_grupos.json", encoding="utf-8") as _f:
             return jsonify({"ok": True, **json.load(_f)}), 200
