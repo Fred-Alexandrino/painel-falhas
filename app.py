@@ -21441,7 +21441,9 @@ def _oc_visiveis(itens):
 # dessas usinas — filtrado aqui no servidor. (Vitor tem uma lista grande e segue filtrado pelo painel dele.)
 _OC_VISAO_CAMPO_USINAS = {
     "samuel": {"colorado i", "colorado ii", "mandaguacu", "sarandi",
-               "coracao i", "coracao ii", "guatambu i", "guatambu ii", "guatambu iii", "guatambu iv"},
+               "coracao i", "coracao ii", "guatambu i", "guatambu ii", "guatambu iii", "guatambu iv",
+               "indaiatuba", "indaiatuba 1", "indaiatuba 2", "indaiatuba 3", "indaiatuba 4", "santa barbara 1", "santa barbara i",
+               "piracicaba 1", "piracicaba i", "caxambu 1", "caxambu i"},
 }
 
 
