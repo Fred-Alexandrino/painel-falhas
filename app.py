@@ -1203,12 +1203,18 @@ def _sup_resolver_usina_tecnico(rep, escopo):
             "motivo_revisao": motivo, "texto_usado": texto_usado, "tecnico_raw": tecnico_raw, "texto_ativo": texto_ativo}
 
 
+_VISOES_CAMPO = ("vitor", "samuel")
+
+
 @app.before_request
 def _definir_escopo_supervisora():
     h = (request.headers.get("X-Escopo") or "").strip().lower()
     g.escopo_sup = h if h in _SUP_MAPEAMENTO else None
     # Supervisor de Campo (Vitor): somente leitura, sem nenhuma automação de WhatsApp.
-    if (request.headers.get("X-Visao") or "").strip().lower() == "vitor":
+    _visao_campo = (request.headers.get("X-Visao") or "").strip().lower()
+    if _visao_campo in _VISOES_CAMPO:
+        if request.path.startswith(("/ocorrencias/anotacoes", "/ocorrencias/plano")):
+            return jsonify({"ok": False, "error": "Perfil de campo não acessa anotações/plano de ação."}), 403
         if request.method not in ("GET", "HEAD", "OPTIONS") and not request.path.startswith("/gerar-comunicado"):
             return jsonify({"ok": False, "error": "Perfil somente leitura — sem envio por WhatsApp."}), 403
         if re.search(r"disparar|enviar|alertar|notificar|testar-alerta|ronda-disparar", request.path):
@@ -21431,6 +21437,27 @@ def _oc_visiveis(itens):
     return saida
 
 
+# Supervisor de campo com lista própria de usinas (Samuel Lucena, 23/10/2026): vê só as ocorrências do painel do Fred
+# dessas usinas — filtrado aqui no servidor. (Vitor tem uma lista grande e segue filtrado pelo painel dele.)
+_OC_VISAO_CAMPO_USINAS = {
+    "samuel": {"colorado i", "colorado ii", "mandaguacu", "sarandi",
+               "coracao i", "coracao ii", "guatambu i", "guatambu ii", "guatambu iii", "guatambu iv"},
+}
+
+
+def _oc_filtrar_visao_campo(itens):
+    visao = (request.headers.get("X-Visao") or "").strip().lower()
+    nomes = _OC_VISAO_CAMPO_USINAS.get(visao)
+    if nomes is None:
+        return itens
+    def _ok(usina):
+        for parte in [usina] + re.split(r"\s+e\s+|/|,", str(usina or "")):
+            if _norm_usina(parte.strip()) in nomes:
+                return True
+        return False
+    return [dict(i, foraMapa=False) for i in itens if _ok(i.get("usina"))]
+
+
 def _oc_exigir_escopo(usina, cliente=""):
     esc = _escopo_atual()
     if esc and not _oc_dono(esc, usina, cliente):
@@ -21714,6 +21741,7 @@ def _oc_resposta_erro(e, codigo=500):
 def oc_listar():
     try:
         itens = _oc_visiveis(_oc_carregar(forcar=request.args.get("forcar") == "1"))
+        itens = _oc_filtrar_visao_campo(itens)
         return jsonify({"ok": True, "itens": itens, "total": len(itens), "hoje": _oc_hoje()}), 200
     except Exception as e:
         return _oc_resposta_erro(e)
