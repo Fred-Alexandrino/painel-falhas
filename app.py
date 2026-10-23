@@ -1174,12 +1174,22 @@ def _sup_tecnico_usinas(escopo):
     return _construir_tecnico_usinas(_SUP_MAPEAMENTO[escopo])
 
 
+_SUP_CODIGOS_ATIVO = {"daniel": {"APOL-IRM": "Iramaia II"}}
+
+
 def _sup_resolver_usina_tecnico(rep, escopo):
     """Versão da _fracttal_resolver_usina_tecnico pro catálogo da supervisora (mesmo formato de retorno)."""
     grupo_raw = rep.get("groups_1_description") or ""
     texto_ativo = rep.get("items_log_description") or rep.get("parent_description") or rep.get("item_code") or ""
     texto_usado = _extrair_nome_usina_fracttal(grupo_raw) or texto_ativo
     usina = _sup_canonizar(escopo, grupo_raw) or _sup_canonizar(escopo, texto_ativo)
+    # Código do ativo ({APOL-IRM200-...}) manda quando o grupo do Fracttal está trocado (ex.: OS 16341 no grupo Ibipeba com ativo de Iramaia).
+    for _cod, _nome in (_SUP_CODIGOS_ATIVO.get(escopo) or {}).items():
+        if re.search(r"\{\s*" + re.escape(_cod), texto_ativo or "", re.I):
+            _c = _sup_canonizar(escopo, _nome)
+            if _c:
+                usina = _c
+            break
     tecnico_raw = (rep.get("personnel_description") or rep.get("responsible") or rep.get("created_by") or "").strip()
     usinas_tec = _sup_tecnico_usinas(escopo).get(_normalizar_tecnico(tecnico_raw), [])
     alerta = motivo = None
