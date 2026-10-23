@@ -17575,6 +17575,9 @@ def converter_ocorrencia_em_atividade():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+_SUP_RELATORIO_CLIENTES_EXTRA = {"daniel": ("renogrid",)}
+
+
 @app.route("/gerar-relatorio-semanal", methods=["POST", "OPTIONS"])
 def gerar_relatorio_semanal_route():
     if request.method == "OPTIONS":
@@ -17588,6 +17591,12 @@ def gerar_relatorio_semanal_route():
         )
         if not cliente:
             return jsonify({"ok": False, "error": "cliente e obrigatorio"}), 400
+
+        # Reunião de cliente liberada fora do mapeamento da supervisora (Daniel → Renogrid, 23/10/2026): gera com os dados
+        # do painel do Fred (atividades, zeladoria, chamados), como se fosse o Fred.
+        _esc_rel = _escopo_atual()
+        if _esc_rel and cliente.strip().lower() in _SUP_RELATORIO_CLIENTES_EXTRA.get(_esc_rel, ()):
+            g.escopo_sup = None
 
         ws_atividades = get_atividades_sheet()
         todos_atividades = carregar_planilha(ws_atividades)
