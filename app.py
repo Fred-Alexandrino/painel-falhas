@@ -21167,6 +21167,37 @@ def deploy_index_html():
         return jsonify({"error": "falha inesperada", "detalhe": str(e)}), 500
 
 
+@app.route("/deploy/reiniciar-wpp", methods=["POST"])
+def deploy_reiniciar_wpp():
+    """Dispara o workflow 'Deploy Ponte WhatsApp VM2 (auto)' (git pull +
+    systemctl restart wppconnect) via GitHub Actions, para reiniciar o bridge
+    do WhatsApp sem precisar abrir o GitHub (ex.: pelo celular). Criado
+    07/11/2026 a pedido do Fred, quando o bridge ficou oscilando
+    (conectado/desconectado) e as mensagens deram timeout. Mesma auth do
+    /deploy/backend (X-Deploy-Secret). So dispara o workflow ja existente."""
+    secret = request.headers.get("X-Deploy-Secret", "")
+    if not DEPLOY_SECRET or secret != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    if not GITHUB_DEPLOY_TOKEN:
+        return jsonify({"error": "GITHUB_DEPLOY_TOKEN nao configurado no servidor"}), 500
+    try:
+        r = requests.post(
+            f"https://api.github.com/repos/{GITHUB_DEPLOY_REPO_BACKEND}/actions/workflows/deploy-vm2-auto.yml/dispatches",
+            headers={
+                "Authorization": f"Bearer {GITHUB_DEPLOY_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+            },
+            json={"ref": "main"},
+            timeout=20,
+        )
+        if r.status_code == 204:
+            return jsonify({"ok": True, "aviso": "workflow de reinicio da VM2 disparado"}), 200
+        return jsonify({"ok": False, "github_status": r.status_code, "detalhe": r.text[:300]}), 502
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/deploy/backend", methods=["POST"])
 def deploy_backend():
     """
