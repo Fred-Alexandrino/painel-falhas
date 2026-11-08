@@ -3775,7 +3775,7 @@ def health():
     # try/except isolado: se a Solplanet estiver fora do ar, o /health
     # continua respondendo normalmente (não derruba o monitor de uptime).
     try:
-        _fv_energias_ciclo_exclusivo("health")
+        threading.Thread(target=_fv_energias_ciclo_exclusivo, args=("health",), daemon=True).start()
     except Exception as e:
         log.error(f"[FV Energias] Erro no ciclo automático via /health: {e}")
 
@@ -19578,6 +19578,11 @@ FV_ENERGIAS_GERACAO_DIA_REF_MIN_KWH = 15.0
 FV_ENERGIAS_GERACAO_DIA_LIMIAR = 0.85    # < 85% do melhor inversor = alerta
 FV_ENERGIAS_TRAVA_PERSISTENCIA = "fv_energias:sem_gerar_desde"
 FV_ENERGIAS_TRAVA_ASSINATURA = "fv_energias:ultima_assinatura_problema"
+FV_ENERGIAS_TRAVA_ALERTA_INCERTO = "fv_energias:alerta_incerto_ate"
+FV_ENERGIAS_ALERTA_ESPERA_INCERTO_SEG = 600   # após timeout do bridge, espera antes de repetir o alerta
+FV_ENERGIAS_RONDA_MAX_INCERTO = 2             # no máx. 2 tentativas por horário quando o resultado é incerto
+FV_ENERGIAS_RONDA_ESPERA_INCERTO_SEG = 1800   # espera entre essas tentativas
+FV_ENERGIAS_ASSINATURA_LOCAL = "/tmp/fv_energias_assinatura.txt"
 FV_ENERGIAS_CODIGOS_ERRO = {
     35: "Utility Loss (perda de rede/AC no inversor)",
 }
@@ -19729,7 +19734,7 @@ def _fv_energias_verificar_alertas():
     problemas = {}  # chave estável -> texto
 
     try:
-        travas = _ler_travas([FV_ENERGIAS_TRAVA_PERSISTENCIA, FV_ENERGIAS_TRAVA_ASSINATURA])
+        travas = _ler_travas([FV_ENERGIAS_TRAVA_PERSISTENCIA, FV_ENERGIAS_TRAVA_ASSINATURA, FV_ENERGIAS_TRAVA_ALERTA_INCERTO])
     except Exception as e:
         log.error(f"[FV Energias] Erro ao ler travas: {e}")
         travas = {}
@@ -19789,7 +19794,11 @@ def _fv_energias_verificar_alertas():
             log.error(f"[FV Energias] Erro ao gravar estado de persistencia: {e}")
 
     assinatura_atual = "|".join(sorted(problemas.keys()))
-    assinatura_anterior = travas.get(FV_ENERGIAS_TRAVA_ASSINATURA) or ""
+    try:
+        with open(FV_ENERGIAS_ASSINATURA_LOCAL) as f:
+            assinatura_anterior = f.read()
+    except Exception:
+        assinatura_anterior = travas.get(FV_ENERGIAS_TRAVA_ASSINATURA) or ""
     if assinatura_atual == assinatura_anterior:
         return {"ok": True, "alertou": False, "motivo": "sem mudanca de estado"}
 
@@ -19806,22 +19815,33 @@ def _fv_energias_verificar_alertas():
             f"Verificado às {agora_br().strftime('%H:%M')}"
         )
 
-    if not WPP_SERVER_URL:
-        return {"ok": False, "alertou": True, "error": "WPP_SERVER_URL não configurado"}
+    # Último envio ficou "incerto" (timeout do bridge; a mensagem pode ter chegado): espera antes de repetir
     try:
-        r = requests.post(
-            f"{WPP_SERVER_URL}/api/enviar-mensagem",
-            json={"grupoId": FV_ENERGIAS_GRUPO_WHATSAPP, "texto": texto},
-            headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
-            timeout=20,
-        )
-        if r.ok:
-            # Só marca como "avisado" DEPOIS de confirmar o envio — se o envio
-            # falhar, tenta de novo no próximo ciclo.
+        incerto_ate = float(travas.get(FV_ENERGIAS_TRAVA_ALERTA_INCERTO) or 0)
+    except ValueError:
+        incerto_ate = 0.0
+    if time.time() < incerto_ate:
+        return {"ok": True, "alertou": False, "motivo": "aguardando apos envio incerto"}
+
+    status, detalhe = _fv_energias_enviar_whatsapp(texto)
+    if status in ("ok", "duplicado"):
+        # Só marca como "avisado" DEPOIS de confirmar o envio.
+        try:
+            with open(FV_ENERGIAS_ASSINATURA_LOCAL, "w") as f:
+                f.write(assinatura_atual)
+        except Exception as e:
+            log.error(f"[FV Energias] Erro ao gravar assinatura local: {e}")
+        try:
             _gravar_trava(FV_ENERGIAS_TRAVA_ASSINATURA, assinatura_atual)
-        return {"ok": r.ok, "alertou": True, "problemas": list(problemas.values())}
-    except Exception as e:
-        return {"ok": False, "alertou": True, "error": str(e)}
+        except Exception as e:
+            log.error(f"[FV Energias] Erro ao gravar assinatura: {e}")
+        return {"ok": True, "alertou": True, "problemas": list(problemas.values())}
+    if status == "incerto":
+        try:
+            _gravar_trava(FV_ENERGIAS_TRAVA_ALERTA_INCERTO, str(time.time() + FV_ENERGIAS_ALERTA_ESPERA_INCERTO_SEG))
+        except Exception as e:
+            log.error(f"[FV Energias] Erro ao gravar trava de envio incerto: {e}")
+    return {"ok": False, "alertou": True, "status": status, "error": detalhe}
 
 
 def _fv_energias_chamar_api(path, params):
@@ -19952,6 +19972,118 @@ def _fv_energias_montar_texto_ronda(dados, hora_label, detalhes=None):
     )
 
 
+# ── Envio ao WhatsApp sem duplicar (08/11/2026) ───────────────────────────
+# Problema: o bridge às vezes demora/trava, o backend dá timeout (a mensagem
+# frequentemente CHEGA mesmo assim) e, sem confirmação, o sistema repetia o
+# envio → mesma ronda "08h" às 8h, 9h e 10h, e pares idênticos no mesmo
+# minuto. Agora: (1) envio serializado e com reserva do texto antes de enviar
+# (texto idêntico em < 3min não sai de novo, nem entre workers); (2) timeout
+# vira estado "incerto" (não é falha), com repetição limitada e espaçada.
+FV_ENERGIAS_ENVIO_LOCK_PATH = "/tmp/fv_energias_envio.lock"
+FV_ENERGIAS_ENVIO_ULTIMO_PATH = "/tmp/fv_energias_ultimo_envio.json"
+FV_ENERGIAS_ENVIO_JANELA_SEG = 180
+FV_ENERGIAS_ENVIO_TIMEOUT_SEG = 45
+
+
+def _fv_energias_enviar_whatsapp(texto):
+    """Retorna (status, detalhe): 'ok' | 'duplicado' | 'incerto' | 'falha'.
+    'incerto' = timeout esperando o bridge; a mensagem PODE ter sido entregue."""
+    import fcntl
+    if not WPP_SERVER_URL:
+        return "falha", "WPP_SERVER_URL não configurado"
+    h = _fv_hashlib.sha256(texto.encode("utf-8")).hexdigest()
+    try:
+        lock = open(FV_ENERGIAS_ENVIO_LOCK_PATH, "a+")
+    except Exception:
+        lock = None
+    try:
+        if lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            with open(FV_ENERGIAS_ENVIO_ULTIMO_PATH) as f:
+                anterior = json.load(f)
+        except Exception:
+            anterior = None
+        if anterior and anterior.get("h") == h and time.time() - float(anterior.get("t", 0)) < FV_ENERGIAS_ENVIO_JANELA_SEG:
+            return "duplicado", "texto idêntico enviado há poucos segundos"
+
+        def _restaurar():
+            try:
+                if anterior is None:
+                    os.remove(FV_ENERGIAS_ENVIO_ULTIMO_PATH)
+                else:
+                    with open(FV_ENERGIAS_ENVIO_ULTIMO_PATH, "w") as f:
+                        json.dump(anterior, f)
+            except Exception:
+                pass
+
+        try:  # reserva ANTES de enviar
+            with open(FV_ENERGIAS_ENVIO_ULTIMO_PATH, "w") as f:
+                json.dump({"h": h, "t": time.time()}, f)
+        except Exception:
+            pass
+        try:
+            r = requests.post(
+                f"{WPP_SERVER_URL}/api/enviar-mensagem",
+                json={"grupoId": FV_ENERGIAS_GRUPO_WHATSAPP, "texto": texto},
+                headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
+                timeout=FV_ENERGIAS_ENVIO_TIMEOUT_SEG,
+            )
+        except requests.exceptions.Timeout as e:
+            return "incerto", f"timeout aguardando o bridge do WhatsApp ({e})"
+        except Exception as e:
+            _restaurar()
+            return "falha", str(e)
+        try:
+            confirmou = r.ok and bool(r.json().get("ok"))
+        except Exception:
+            confirmou = False
+        if confirmou:
+            return "ok", ""
+        _restaurar()
+        return "falha", r.text[:300]
+    finally:
+        if lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                lock.close()
+            except Exception:
+                pass
+
+
+def _fv_energias_arquivo_estado(chave):
+    return "/tmp/fv_energias_estado_" + "".join(c if c.isalnum() else "_" for c in chave) + ".txt"
+
+
+def _fv_energias_estado_ronda(chave):
+    """Estado do horário da ronda: '' | 'enviado' | 'incerto:<epoch>:<n>'.
+    Arquivo local primeiro (não depende do Sheets), trava como reserva."""
+    try:
+        with open(_fv_energias_arquivo_estado(chave)) as f:
+            v = f.read().strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    try:
+        return _ler_trava(chave) or ""
+    except Exception as e:
+        log.error(f"[FV Energias] Erro ao ler trava {chave}: {e}")
+        return ""
+
+
+def _fv_energias_gravar_estado_ronda(chave, valor):
+    try:
+        with open(_fv_energias_arquivo_estado(chave), "w") as f:
+            f.write(valor)
+    except Exception as e:
+        log.error(f"[FV Energias] Erro ao gravar estado local {chave}: {e}")
+    try:
+        _gravar_trava(chave, valor)
+    except Exception as e:
+        log.error(f"[FV Energias] Erro ao gravar trava {chave}: {e}")
+
+
 def _fv_energias_enviar_ronda(hora_label):
     if not WPP_SERVER_URL:
         return {"ok": False, "error": "WPP_SERVER_URL não configurado"}
@@ -19966,18 +20098,12 @@ def _fv_energias_enviar_ronda(hora_label):
         log.error(f"[FV Energias] Ronda sem detalhes por inversor: {e}")
         detalhes = None
     texto = _fv_energias_montar_texto_ronda(dados, hora_label, detalhes)
-    try:
-        r = requests.post(
-            f"{WPP_SERVER_URL}/api/enviar-mensagem",
-            json={"grupoId": FV_ENERGIAS_GRUPO_WHATSAPP, "texto": texto},
-            headers={"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {},
-            timeout=20,
-        )
-        if r.ok and r.json().get("ok"):
-            return {"ok": True, "dados": dados}
-        return {"ok": False, "error": r.text[:300]}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    status, detalhe = _fv_energias_enviar_whatsapp(texto)
+    if status == "ok":
+        return {"ok": True, "status": "ok", "dados": dados}
+    if status == "duplicado":
+        return {"ok": True, "status": "duplicado", "aviso": detalhe}
+    return {"ok": False, "status": status, "error": detalhe}
 
 
 def _fv_energias_buscar_curva_potencia(data_str):
@@ -20305,12 +20431,28 @@ def _fv_energias_processar_ciclo():
         atraso = agora - hora_agendada
         if timedelta(0) <= atraso <= timedelta(hours=LIMITE_ATRASO_HORAS):
             chave_trava = f"fv_energias:ronda:{hora_str}:{hoje_str}"
-            if _ler_trava(chave_trava) != "enviado":
-                ronda_resultado = _fv_energias_enviar_ronda(f"{hora_str}h")
-                if ronda_resultado.get("ok"):
-                    _gravar_trava(chave_trava, "enviado")
-                    ronda_disparada = True
-                break  # só uma tentativa de envio por ciclo, mesmo que haja mais de uma pendente
+            estado = _fv_energias_estado_ronda(chave_trava)
+            if estado == "enviado":
+                continue
+            n_incerto = 0
+            if estado.startswith("incerto:"):
+                try:
+                    _, ep, n = estado.split(":")
+                    ep, n_incerto = float(ep), int(n)
+                except Exception:
+                    ep, n_incerto = time.time(), 1
+                if n_incerto >= FV_ENERGIAS_RONDA_MAX_INCERTO or time.time() - ep < FV_ENERGIAS_RONDA_ESPERA_INCERTO_SEG:
+                    continue
+            # Título = horário real dos dados: "08h" só se saiu no horário (até 20min);
+            # se atrasou, mostra a hora em que foi gerada (ex.: "10h42").
+            label = f"{hora_str}h" if atraso <= timedelta(minutes=20) else agora.strftime("%Hh%M")
+            ronda_resultado = _fv_energias_enviar_ronda(label)
+            if ronda_resultado.get("ok"):
+                _fv_energias_gravar_estado_ronda(chave_trava, "enviado")
+                ronda_disparada = ronda_resultado.get("status") == "ok"
+            elif ronda_resultado.get("status") == "incerto":
+                _fv_energias_gravar_estado_ronda(chave_trava, f"incerto:{time.time()}:{n_incerto + 1}")
+            break  # só uma tentativa de envio por ciclo
 
     return {
         "ronda_disparada": ronda_disparada,
