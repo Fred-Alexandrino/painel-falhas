@@ -22622,26 +22622,45 @@ def _ajuda_temas(cliente, horas):
             "mensagens": n, "midias": midias, "grupos": dados["grupos"], "horas": horas}
 
 
-def _ajuda_contexto_sistemas(usina):
-    """Atividades abertas, ocorrências abertas e chamados da usina (compactos)."""
+_AJUDA_SUFIXO_UNIDADE = re.compile(r"\s+(?:I{1,3}|IV|V|\d+)$")
+
+
+def _ajuda_usinas_irmas(u):
+    """Usinas do mesmo complexo (ex.: Coração I e II): no Fracttal/painéis as OS e ocorrências muitas vezes ficam
+    registradas só na primeira unidade ("[Coração 1 e 2] ..."), então o cruzamento precisa olhar todas."""
+    base = _AJUDA_SUFIXO_UNIDADE.sub("", u["usina"]).strip()
+    irmas = [x["usina"] for x in MAPEAMENTO_UFVS
+             if x.get("cliente") == u.get("cliente") and _AJUDA_SUFIXO_UNIDADE.sub("", x["usina"]).strip() == base]
+    return irmas or [u["usina"]]
+
+
+def _ajuda_contexto_sistemas(usinas):
+    """Atividades abertas, ocorrências abertas e chamados das usinas (compactos), sem duplicar itens."""
     ctx = {"atividades": [], "ocorrencias": [], "chamados": []}
     avisos = []
+    alvos = {x for x in (canonizar_usina(n) for n in usinas) if x}
+    vistos = set()
     try:
-        ativ = _ia_consultar_atividades(usina=usina).get("atividades", [])
-        ctx["atividades"] = [a for a in ativ if not any(k in (a.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS)][:15]
+        for nome in usinas:
+            for a in _ia_consultar_atividades(usina=nome).get("atividades", []):
+                if a.get("id") in vistos or any(k in (a.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS):
+                    continue
+                vistos.add(a.get("id"))
+                ctx["atividades"].append(a)
+        ctx["atividades"] = ctx["atividades"][:18]
     except Exception as e:
         avisos.append(f"atividades indisponíveis ({str(e)[:80]})")
     try:
-        alvo = canonizar_usina(usina)
         for o in _oc_carregar():
-            if canonizar_usina(o.get("usina") or "") != alvo:
+            partes = [o.get("usina") or ""] + [x.strip() for x in re.split(r"\s+e\s+|/|,", o.get("usina") or "") if x.strip()]
+            if not any(canonizar_usina(x) in alvos for x in partes if x):
                 continue
             if any(k in (o.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS):
                 continue
             ctx["ocorrencias"].append({
-                "id": o.get("id"), "titulo": _ia_trunc(o.get("titulo"), 100), "status": o.get("status"), "criticidade": o.get("crit"),
-                "equipamento": f"{o.get('equip') or ''} {o.get('nequip') or ''}".strip(), "fabricante": o.get("fab"),
-                "chamado": o.get("chamado"), "os": o.get("os"), "inicio": o.get("inicio"),
+                "id": o.get("id"), "usina": o.get("usina"), "titulo": _ia_trunc(o.get("titulo"), 100), "status": o.get("status"),
+                "criticidade": o.get("crit"), "equipamento": f"{o.get('equip') or ''} {o.get('nequip') or ''}".strip(),
+                "fabricante": o.get("fab"), "chamado": o.get("chamado"), "os": o.get("os"), "inicio": o.get("inicio"),
                 "descricao": _ia_trunc(o.get("causa"), 220), "impacto": _ia_trunc(o.get("impacto"), 120),
                 "ultimas_entradas": [f"{h.get('d')}: {_ia_trunc(h.get('t'), 160)}" for h in (o.get("hist") or [])[-3:]],
             })
@@ -22649,8 +22668,15 @@ def _ajuda_contexto_sistemas(usina):
     except Exception as e:
         avisos.append(f"ocorrências indisponíveis ({str(e)[:80]})")
     try:
-        ch = _ia_consultar_chamados(usina=usina).get("chamados", [])
-        ctx["chamados"] = [c for c in ch if not any(k in (c.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS)][:12]
+        vistos_ch = set()
+        for nome in usinas:
+            for c in _ia_consultar_chamados(usina=nome).get("chamados", []):
+                chave = (c.get("ticket"), c.get("ativo"), c.get("ufv"))
+                if chave in vistos_ch or any(k in (c.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS):
+                    continue
+                vistos_ch.add(chave)
+                ctx["chamados"].append(c)
+        ctx["chamados"] = ctx["chamados"][:12]
     except Exception as e:
         avisos.append(f"chamados indisponíveis ({str(e)[:80]})")
     return ctx, avisos
@@ -22700,8 +22726,11 @@ def _ajuda_preparar(body):
     else:
         avisos.append("WPP_SERVER_URL não configurado — sem leitura de grupos.")
 
-    ctx, av2 = _ajuda_contexto_sistemas(u["usina"]) if u else ({"atividades": [], "ocorrencias": [], "chamados": []}, [])
+    irmas = _ajuda_usinas_irmas(u) if u else []
+    ctx, av2 = _ajuda_contexto_sistemas(irmas) if u else ({"atividades": [], "ocorrencias": [], "chamados": []}, [])
     avisos += av2
+    if len(irmas) > 1:
+        fontes["usinas_cruzadas"] = irmas
     fontes.update({"atividades": len(ctx["atividades"]), "ocorrencias": len(ctx["ocorrencias"]), "chamados": len(ctx["chamados"])})
 
     contrato = _AJUDA_CONTRATOS.get(_norm_usina(cliente), "Sem trechos contratuais carregados para este cliente: não cite cláusulas nem multas.")
@@ -22714,6 +22743,8 @@ def _ajuda_preparar(body):
         f"Tema/usina em foco: {tema or '—'} / {u['usina'] if u else '—'}\n"
         f"{equipe_info}\n\n"
         f"TRECHOS CONTRATUAIS CONHECIDOS:\n{contrato}\n\n{_AJUDA_POP_QUEDA_GERACAO}\n\n"
+        + (f"Atenção: OS, ocorrências e chamados abaixo incluem as usinas do mesmo complexo ({', '.join(irmas)}) — "
+           "muitas OS ficam registradas só na primeira unidade (ex.: '[Coração 1 e 2]'); o campo 'usina' de cada item mostra onde foi registrado.\n" if len(irmas) > 1 else "") +
         f"OS/atividades abertas da usina: {json.dumps(ctx['atividades'], ensure_ascii=False)}\n"
         f"Ocorrências abertas da usina: {json.dumps(ctx['ocorrencias'], ensure_ascii=False)}\n"
         f"Chamados com fabricante abertos: {json.dumps(ctx['chamados'], ensure_ascii=False)}\n\n"
