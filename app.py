@@ -22449,6 +22449,8 @@ def oc_importar():
 #     "analisar" (orienta sobre uma usina/tema).
 # ══════════════════════════════════════════════════════════════════════════════
 _AJUDA_STATUS_FECHADOS = ("conclu", "finaliz", "resolv", "cancel", "encerr")
+# Grupos de outras supervisoras (fora do mapeamento do Fred): nunca entram no botão Ajuda.
+_AJUDA_GRUPOS_EXCLUIR_TERMOS = ("camila viana", "danuth fernandes")
 _AJUDA_TEMAS_CACHE = {}  # (cliente, horas) -> (timestamp, resultado)
 _AJUDA_TEMAS_TTL = 600
 
@@ -22508,7 +22510,13 @@ def _ajuda_busca_wpp(grupo, horas=48, limit=400):
         if r.status_code == 401:
             return {"erro": "Servidor do WhatsApp recusou a chave (WEBHOOK_SECRET)."}
         r.raise_for_status()
-        return r.json()
+        dados = r.json()
+        def _fora(nome):
+            n = _norm_usina(nome)
+            return any(t in n for t in _AJUDA_GRUPOS_EXCLUIR_TERMOS)
+        dados["mensagens"] = [m for m in (dados.get("mensagens") or []) if not _fora(m.get("grupo") or "")]
+        dados["grupos"] = [g for g in (dados.get("grupos") or []) if not _fora(g.get("nome") or "")]
+        return dados
     except Exception as e:
         return {"erro": f"Falha ao ler o servidor do WhatsApp: {str(e)[:160]}"}
 
@@ -22595,8 +22603,21 @@ def _ajuda_temas(cliente, horas):
     # só aceita usinas do mapeamento
     validas = {u["usina"] for u in usinas}
     for t in r.get("temas") or []:
-        if t.get("usina") and t["usina"] not in validas:
-            t["usina"] = ""
+        bruto = (t.get("usina") or "").strip()
+        achadas = []
+        if bruto:
+            for parte in [bruto] + [p.strip() for p in re.split(r"\s+e\s+|/|,|;", bruto) if p.strip()]:
+                canon = canonizar_usina(parte)
+                if canon in validas and canon not in achadas:
+                    achadas.append(canon)
+            # "Coração I e II": o sufixo solto herda a base da primeira usina
+            if len(achadas) < 2:
+                base = re.sub(r"\s+(I|II|III|IV|V|\d)$", "", bruto.split(" e ")[0].strip())
+                for u in usinas:
+                    if _norm_usina(u["usina"]).startswith(_norm_usina(base)) and u["usina"] not in achadas and _norm_usina(base) and " e " in bruto:
+                        achadas.append(u["usina"])
+        t["usinas"] = achadas
+        t["usina"] = achadas[0] if achadas else ""
     return {"ok": True, "temas": r.get("temas") or [], "descartados": r.get("descartados_fora_do_mapeamento", 0),
             "mensagens": n, "midias": midias, "grupos": dados["grupos"], "horas": horas}
 
