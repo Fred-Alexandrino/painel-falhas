@@ -22550,11 +22550,11 @@ def _ajuda_json_da_resposta(data):
     return json.loads(texto)
 
 
-def _ajuda_gemini(system, usuario, max_tokens=4000):
+def _ajuda_gemini(system, usuario, max_tokens=4000, contents=None):
     """Modelo mais forte primeiro (uso raro, vale a qualidade); cai no fluxo padrão com retry/chave reserva."""
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": usuario}]}],
+        "contents": contents or [{"role": "user", "parts": [{"text": usuario}]}],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens, "responseMimeType": "application/json"},
     }
     try:
@@ -22656,7 +22656,7 @@ def _ajuda_contexto_sistemas(usina):
     return ctx, avisos
 
 
-def _ajuda_analisar(body):
+def _ajuda_preparar(body):
     usina_in = (body.get("usina") or "").strip()
     tema = (body.get("tema") or "").strip()
     pergunta = (body.get("pergunta") or "").strip()
@@ -22733,13 +22733,72 @@ def _ajuda_analisar(body):
         '"confianca": "alta"|"media"|"baixa"}\n'
         "Seja específico (equipamento, medição, foto, evidência) e curto. Não repita o que o contrato não diz; se o contrato for relevante e o trecho não estiver carregado, diga em 'lacunas'."
     )
-    r = _ajuda_gemini(_AJUDA_SYSTEM_BASE, usuario, max_tokens=5000)
-    return {"ok": True, "resultado": r, "fontes": fontes, "avisos": avisos, "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
+    return {"usuario": usuario, "fontes": fontes, "avisos": avisos}
+
+
+_AJUDA_PREP_CACHE = {}  # contexto reunido por alguns minutos (as conversas de acompanhamento não rebuscam tudo a cada mensagem)
+_AJUDA_PREP_TTL = 300
+
+
+def _ajuda_preparar_cache(body):
+    chave = json.dumps([body.get(k) for k in ("usina", "cliente", "tema", "pergunta", "mensagem_cliente", "horas")], ensure_ascii=False, default=str)
+    hit = _AJUDA_PREP_CACHE.get(chave)
+    if hit and time.time() - hit[0] < _AJUDA_PREP_TTL:
+        return hit[1]
+    p = _ajuda_preparar(body)
+    if not p.get("erro"):
+        if len(_AJUDA_PREP_CACHE) > 40:
+            _AJUDA_PREP_CACHE.clear()
+        _AJUDA_PREP_CACHE[chave] = (time.time(), p)
+    return p
+
+
+def _ajuda_analisar(body):
+    p = _ajuda_preparar_cache(body)
+    if p.get("erro"):
+        return p
+    r = _ajuda_gemini(_AJUDA_SYSTEM_BASE, p["usuario"], max_tokens=5000)
+    return {"ok": True, "resultado": r, "fontes": p["fontes"], "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
+
+
+_AJUDA_SYSTEM_CONVERSA = _AJUDA_SYSTEM_BASE + """
+Agora é uma CONVERSA de acompanhamento com o Fred sobre a mesma usina/tema. O que o Fred escrever nas mensagens dele são informações e pedidos dele: trate como fato que ele traz (complementa os dados dos sistemas e das conversas) e atualize a orientação com isso. Se o que ele disser contradizer os dados, aponte a divergência.
+Responda SOMENTE com JSON: {"resposta": str, "texto_para_copiar": str}.
+- "resposta": direta, curta e específica (equipamento, medição, evidência), em português do Brasil. Sem repetir a análise anterior inteira.
+- "texto_para_copiar": preencha SOMENTE se o Fred pediu um texto pronto (mensagem ao cliente, ao técnico, e-mail...). Cordial e profissional, sem emoji, sem adjetivos inventados, sem prometer prazo, valor ou causa não confirmados; use [preencher: ...] onde faltar dado. Caso contrário, "".
+Se faltar informação para orientar bem, diga o que falta em "resposta"."""
+
+
+def _ajuda_conversar(body):
+    mensagem = (body.get("mensagem") or "").strip()
+    if not mensagem:
+        return {"erro": "Escreva a mensagem."}
+    p = _ajuda_preparar_cache(body)
+    if p.get("erro"):
+        return p
+    contents = [{"role": "user", "parts": [{"text": p["usuario"]}]}]
+    anterior = (body.get("analise_anterior") or "").strip()[:7000]
+    contents.append({"role": "model", "parts": [{"text": anterior or "(sem análise anterior)"}]})
+    for t in (body.get("historico") or [])[-10:]:
+        role = t.get("role")
+        texto = (t.get("texto") or "").strip()[:3000]
+        if role in ("user", "model") and texto:
+            if contents[-1]["role"] == role:  # o Gemini exige alternância
+                contents[-1]["parts"][0]["text"] += "\n" + texto
+            else:
+                contents.append({"role": role, "parts": [{"text": texto}]})
+    if contents[-1]["role"] == "user":
+        contents[-1]["parts"][0]["text"] += "\n" + mensagem
+    else:
+        contents.append({"role": "user", "parts": [{"text": mensagem}]})
+    r = _ajuda_gemini(_AJUDA_SYSTEM_CONVERSA, "", max_tokens=3500, contents=contents)
+    return {"ok": True, "resposta": r.get("resposta", ""), "texto_para_copiar": r.get("texto_para_copiar", ""),
+            "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
 
 
 @app.route("/ajuda-cliente", methods=["POST", "OPTIONS"])
 def ajuda_cliente():
-    """Botão Ajuda: modo 'temas' (varre o grupo do cliente) ou 'analisar' (orienta sobre uma usina/tema)."""
+    """Botão Ajuda: modo 'temas' (varre o grupo do cliente), 'analisar' (orienta sobre uma usina/tema) ou 'conversar' (acompanhamento)."""
     if request.method == "OPTIONS":
         return ("", 204)
     if not GEMINI_API_KEY:
@@ -22760,6 +22819,11 @@ def ajuda_cliente():
             if r.get("erro"):
                 return jsonify({"ok": False, "error": r["erro"]}), 502
             _AJUDA_TEMAS_CACHE[chave] = (time.time(), r)
+            return jsonify(r), 200
+        if modo == "conversar":
+            r = _ajuda_conversar(body)
+            if r.get("erro"):
+                return jsonify({"ok": False, "error": r["erro"]}), 400
             return jsonify(r), 200
         r = _ajuda_analisar(body)
         if r.get("erro"):
