@@ -22733,7 +22733,9 @@ def _ajuda_preparar(body):
         '"confianca": "alta"|"media"|"baixa"}\n'
         "Seja específico (equipamento, medição, foto, evidência) e curto. Não repita o que o contrato não diz; se o contrato for relevante e o trecho não estiver carregado, diga em 'lacunas'."
     )
-    return {"usuario": usuario, "fontes": fontes, "avisos": avisos}
+    # a conversa de acompanhamento usa só os DADOS (sem o formato JSON da análise inicial)
+    dados = usuario.partition("Formato da resposta (JSON):")[0]
+    return {"usuario": usuario, "dados": dados, "fontes": fontes, "avisos": avisos}
 
 
 _AJUDA_PREP_CACHE = {}  # contexto reunido por alguns minutos (as conversas de acompanhamento não rebuscam tudo a cada mensagem)
@@ -22776,7 +22778,7 @@ def _ajuda_conversar(body):
     p = _ajuda_preparar_cache(body)
     if p.get("erro"):
         return p
-    contents = [{"role": "user", "parts": [{"text": p["usuario"]}]}]
+    contents = [{"role": "user", "parts": [{"text": p["dados"]}]}]
     anterior = (body.get("analise_anterior") or "").strip()[:7000]
     contents.append({"role": "model", "parts": [{"text": anterior or "(sem análise anterior)"}]})
     for t in (body.get("historico") or [])[-10:]:
@@ -22792,7 +22794,17 @@ def _ajuda_conversar(body):
     else:
         contents.append({"role": "user", "parts": [{"text": mensagem}]})
     r = _ajuda_gemini(_AJUDA_SYSTEM_CONVERSA, "", max_tokens=3500, contents=contents)
-    return {"ok": True, "resposta": r.get("resposta", ""), "texto_para_copiar": r.get("texto_para_copiar", ""),
+    if not isinstance(r, dict):
+        r = {"resposta": str(r)}
+    resposta = (r.get("resposta") or "").strip()
+    copia = (r.get("texto_para_copiar") or "").strip()
+    if not resposta and not copia:
+        # a IA fugiu do formato: aproveita o que veio em vez de mostrar "sem resposta"
+        log.warning(f"[ajuda] conversa sem 'resposta' — chaves recebidas: {list(r.keys())[:8]}")
+        resposta = "\n".join(f"{k}: {v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)}" for k, v in r.items() if v)[:3000]
+    if not resposta and not copia:
+        return {"erro": "A IA não conseguiu responder desta vez. Reformule ou tente de novo."}
+    return {"ok": True, "resposta": resposta, "texto_para_copiar": copia,
             "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
 
 
