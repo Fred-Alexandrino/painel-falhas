@@ -22433,6 +22433,7 @@ def oc_importar():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 #  BOTÃO AJUDA (10/11/2026) — orientação ao Fred quando ele não sabe como
 #  responder o cliente. Lê o grupo do cliente (ex.: Thopen) e o grupo da equipe
 #  da usina (via servidor do WhatsApp, GET /api/ajuda-mensagens), cruza com OS,
@@ -22794,6 +22795,43 @@ def _ajuda_analisar(body):
     return {"ok": True, "resultado": r, "fontes": p["fontes"], "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
 
 
+_AJUDA_SYSTEM_WEB = _AJUDA_SYSTEM_BASE.replace("Responda SOMENTE com JSON válido no formato pedido.", "") + """
+Você tem a BUSCA DO GOOGLE nesta resposta. Quando a pergunta for sobre um equipamento (modelo, manual, bornes, parâmetros, códigos de alarme, procedimentos), PESQUISE o manual/datasheet/nota técnica do fabricante e responda SOMENTE com o que encontrou, citando o documento e a seção/página quando houver. Se não achou o dado, diga claramente que não achou: NUNCA complete de memória números de bornes, ajustes, faixas ou códigos. Separe o que veio do manual do que é prática geral de campo. Responda em texto simples em português do Brasil (sem JSON), curto e específico, com o que fazer em passos quando fizer sentido, e termine com 'Não consegui confirmar:' listando as lacunas. Segurança: lembre LOTO/NR-10 quando houver medição."""
+
+
+def _ajuda_gemini_web(contents, max_tokens=3500):
+    """Resposta com busca do Google (grounding). Sem JSON (o Gemini não combina os dois). Devolve (texto, fontes)."""
+    payload = {
+        "system_instruction": {"parts": [{"text": _AJUDA_SYSTEM_WEB}]},
+        "contents": contents,
+        "tools": [{"google_search": {}}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens, "thinkingConfig": {"thinkingBudget": 1024}},
+    }
+    data = None
+    try:
+        r = requests.post(f"{GEMINI_URL_FALLBACK}?key={GEMINI_API_KEY}", json=payload, timeout=90)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        log.warning(f"[ajuda] busca web (modelo principal) falhou: {str(e)[:160]}")
+        try:
+            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+            data = _chamar_gemini_com_retry(payload, timeout=75).json()
+        except Exception as e2:
+            raise RuntimeError(f"A busca na web não respondeu agora ({str(e2)[:120]}). Tente de novo em instantes.")
+    cands = data.get("candidates") or []
+    if not cands:
+        raise RuntimeError("A busca não retornou resposta.")
+    texto = "".join(p.get("text", "") for p in (cands[0].get("content") or {}).get("parts") or []).strip()
+    fontes, vistos = [], set()
+    for ch in ((cands[0].get("groundingMetadata") or {}).get("groundingChunks") or []):
+        w = ch.get("web") or {}
+        if w.get("uri") and w["uri"] not in vistos:
+            vistos.add(w["uri"])
+            fontes.append({"titulo": (w.get("title") or w["uri"])[:120], "url": w["uri"]})
+    return texto, fontes[:8]
+
+
 _AJUDA_SYSTEM_CONVERSA = _AJUDA_SYSTEM_BASE + """
 Agora é uma CONVERSA de acompanhamento com o Fred sobre a mesma usina/tema. O que o Fred escrever nas mensagens dele são informações e pedidos dele: trate como fato que ele traz (complementa os dados dos sistemas e das conversas) e atualize a orientação com isso. Se o que ele disser contradizer os dados, aponte a divergência.
 Responda SOMENTE com JSON: {"resposta": str, "texto_para_copiar": str}.
@@ -22824,6 +22862,12 @@ def _ajuda_conversar(body):
         contents[-1]["parts"][0]["text"] += "\n" + mensagem
     else:
         contents.append({"role": "user", "parts": [{"text": mensagem}]})
+    if body.get("buscar_web"):
+        texto, fontes_web = _ajuda_gemini_web(contents)
+        if not texto:
+            return {"erro": "A busca não trouxe resposta. Reformule o pedido (cite marca e modelo do equipamento)."}
+        return {"ok": True, "resposta": texto, "texto_para_copiar": "", "fontes_web": fontes_web,
+                "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
     r = _ajuda_gemini(_AJUDA_SYSTEM_CONVERSA, "", max_tokens=3500, contents=contents)
     if not isinstance(r, dict):
         r = {"resposta": str(r)}
