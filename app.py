@@ -22379,7 +22379,10 @@ REGRA ABSOLUTA — FIDELIDADE AOS DADOS
 6. Não prometa prazo que não esteja nos dados. Se não houver prazo, diga que a data ainda não foi definida e sugira que o supervisor leve uma data proposta para confirmar internamente antes da reunião (em "lacunas").
 7. Notas marcadas como INTERNAS servem só para você entender o contexto. Não as repita como argumento e não revele conteúdo interno ao cliente.
 8. Não escreva números de telefone nem dados pessoais.
-9. Escreva em português do Brasil, frases curtas, no máximo 35 palavras por item, tom profissional e direto.
+9. Responsabilidade ("quem") só pode ser Cliente, Fabricante, Concessionária ou Terceiro quando o texto dos dados atribuir isso de forma explícita àquela parte. Sem atribuição explícita, escreva "não informado". Nunca sugira que o cliente execute serviço, pague ou autorize algo que os dados não digam.
+10. Em "perguntas_provaveis", a resposta só pode repetir fatos dos dados. Se responder exigir dedução, causa ou prazo que os dados não trazem, a resposta é "não consta no registro".
+11. Em "decisoes_a_alinhar", só entra decisão que os dados citem como necessária (ex.: peça a comprar, acesso, parada autorizada). Não crie decisão por dedução.
+12. Escreva em português do Brasil, frases curtas, no máximo 35 palavras por item, tom profissional e direto.
 
 O QUE PRODUZIR (JSON, exatamente nestas chaves)
 - "situacao": 1 a 2 frases com a situação hoje e a data do último fato do registro. Se o último fato tem mais de 14 dias, diga isso.
