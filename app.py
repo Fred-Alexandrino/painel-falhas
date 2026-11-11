@@ -12395,6 +12395,13 @@ def sincronizar_chamados():
     linhas recebidas — evita estourar a cota de escrita da API do
     Google (~60/min).
     """
+    # 12/11/2026: a planilha do SharePoint foi descontinuada; a fonte dos chamados é o Nexus
+    # (POST /chamados-nexus/importar). Esta rota só volta a gravar com CHAMADOS_PLANILHA_ATIVA=1.
+    if request.method != "OPTIONS" and os.environ.get("CHAMADOS_PLANILHA_ATIVA", "") != "1":
+        log.info("[Chamados] /sincronizar-chamados ignorado: planilha descontinuada (fonte = Nexus).")
+        return jsonify({"ok": True, "ignorado": True,
+                        "motivo": "planilha descontinuada; os chamados vêm do Nexus"}), 200
+
     if request.method == "OPTIONS":
         return ("", 204)
     if WEBHOOK_SECRET:
