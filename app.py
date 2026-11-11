@@ -12696,6 +12696,217 @@ def corrigir_ativo_chamado():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════════
+# CHAMADOS NEXUS — 12/11/2026. A planilha do SharePoint que alimentava o painel
+# foi descontinuada; a fonte passa a ser a tela Chamados > Garantias do Nexus
+# (OS do Fracttal com fornecedor/ticket). O Chrome do Fred lê a tela (script do
+# Tampermonkey) e o painel envia o snapshot para POST /chamados-nexus/importar.
+# Guardado na aba "ChamadosNexus" (1 linha por OS). O histórico antigo continua
+# na aba ChamadosFabricante, congelado; _chamados_fabricante_itens() junta as duas.
+# ══════════════════════════════════════════════════════════════════════
+CHAMADOS_NEXUS_SHEET_NAME = "ChamadosNexus"
+CHAMADOS_NEXUS_HEADERS = list(CHAMADOS_FABRICANTE_HEADERS) + ["OS Nexus", "AtualizadoEm"]
+_NEXUS_TOKENS_IGNORAR = {"ticket", "email", "forms", "novo", "rma"}
+_CH_NEXUS_CACHE = {"t": 0.0, "linhas": []}
+
+
+def _nexus_tokens(txt):
+    """Números/códigos de ticket de um texto livre ("SR 16221369 (RMA C3210241898)",
+    "RMA #27227", "01343/26") — para casar o mesmo chamado entre planilha e Nexus."""
+    return {t.lower() for t in re.findall(r"[A-Za-z0-9]{4,}", str(txt or ""))} - _NEXUS_TOKENS_IGNORAR
+
+
+def _nexus_equip(ativo_txt):
+    t = re.sub(r"\s+", " ", str(ativo_txt or "")).strip()
+    m = re.match(r"^((?:Inversor|Tracker|TCU|RSU|NCU|Cabine|Skid|Motor|Backtracking)\s*[\d.]+)", t, re.I)
+    return m.group(1) if m else t[:60]
+
+
+def _nexus_para_linha(r, agora):
+    """Converte uma linha da tabela do Nexus na linha da aba (mesmo formato do
+    CHAMADOS_FABRICANTE_HEADERS + OS Nexus + AtualizadoEm). None se não tiver OS."""
+    g = lambda k: str(r.get(k) or "").strip()
+    folio = re.sub(r"\D", "", g("folio"))
+    if not folio:
+        return None
+    ticket = g("ticket")
+    if ticket in ("—", "-"):
+        ticket = ""
+    status = g("status")
+    if status in ("—", "-"):
+        status = ""
+    situacao = g("situacao")
+    sem_ticket = situacao.lower().startswith("sem ticket")
+    m_dias = re.search(r"(\d+)\s*d\b", situacao)
+    dias = int(m_dias.group(1)) if m_dias else None
+    final = abertura = ""
+    m_fech = re.search(r"Fechado\s+(\d{1,2})/(\d{1,2})", situacao)
+    if m_fech:
+        d, mes = int(m_fech.group(1)), int(m_fech.group(2))
+        try:
+            dt = datetime(agora.year, mes, d)
+            if dt.date() > agora.date():
+                dt = datetime(agora.year - 1, mes, d)
+            final = dt.strftime("%d/%m/%Y")
+        except ValueError:
+            final = ""
+        status = "Concluído"
+    elif dias is not None and not sem_ticket:
+        abertura = (agora - timedelta(days=dias)).strftime("%d/%m/%Y")
+    if not status:
+        status = "Aguardando abertura do ticket" if sem_ticket else "Sem status no Nexus"
+    ativo_txt = re.sub(r"\s+", " ", g("ativo"))
+    d = {
+        "Ativo": g("tipo"), "UFV": g("usina"), "Cliente": g("cliente"), "Equipe": "",
+        "Supervisor": g("supervisor"), "OS de Abertura": folio, "Ticket/RMA": ticket,
+        "Fabricante": g("fornecedor"), "Identificação do Equipamento": _nexus_equip(ativo_txt),
+        "Data da abertura do chamado": abertura, "Data da Última Atualização": agora.strftime("%d/%m/%Y"),
+        "Motivo da abertura do chamado": ativo_txt, "Dias corridos": str(dias) if dias is not None else "",
+        "Data de finalização": final, "Status": status,
+        "Observações": f"Nexus · OS {folio} · {situacao}" + (f" · Responsável: {g('responsavel')}" if g("responsavel") else ""),
+        "N° da Solicitação de OS": folio,
+    }
+    linha = [str(d.get(h, "")) for h in CHAMADOS_FABRICANTE_HEADERS]
+    return linha + [folio, agora.strftime("%d/%m/%Y %H:%M:%S")]
+
+
+def _chamados_nexus_linhas(forcar=False):
+    """Linhas da aba ChamadosNexus (cache curto: a função de itens é chamada de vários lugares)."""
+    agora_t = time.time()
+    if not forcar and agora_t - _CH_NEXUS_CACHE["t"] < 20 and _CH_NEXUS_CACHE["t"]:
+        return _CH_NEXUS_CACHE["linhas"]
+    ws = _oc_aba(CHAMADOS_NEXUS_SHEET_NAME, CHAMADOS_NEXUS_HEADERS, linhas=600)
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    n = len(CHAMADOS_NEXUS_HEADERS)
+    linhas = []
+    for row in todos[1:]:
+        row = (row + [""] * n)[:n]
+        if row[n - 2].strip():
+            linhas.append(row)
+    _CH_NEXUS_CACHE["t"], _CH_NEXUS_CACHE["linhas"] = agora_t, linhas
+    return linhas
+
+
+def _chamados_mesclar_nexus(todos, linhas_nexus, notas):
+    """Junta o histórico antigo (aba ChamadosFabricante) com os chamados do Nexus.
+    - chamado ABERTO da planilha antiga que o Nexus já tem (mesmo ticket ou mesma OS) sai:
+      vale o do Nexus, e a nota do painel é herdada;
+    - chamado CONCLUÍDO da planilha antiga fica (causa/resolução ricas); o mesmo ticket
+      fechado no Nexus não é repetido;
+    - o que só existe na planilha antiga (sem OS) continua aparecendo como está.
+    Devolve (linhas, notas_herdadas por nº de OS)."""
+    n = len(CHAMADOS_FABRICANTE_HEADERS)
+    i_status = CHAMADOS_FABRICANTE_HEADERS.index("Status")
+    i_tk = CHAMADOS_FABRICANTE_HEADERS.index("Ticket/RMA")
+    i_os1 = CHAMADOS_FABRICANTE_HEADERS.index("OS de Abertura")
+    i_os2 = CHAMADOS_FABRICANTE_HEADERS.index("N° da Solicitação de OS")
+    i_ufv = CHAMADOS_FABRICANTE_HEADERS.index("UFV")
+    i_eq = CHAMADOS_FABRICANTE_HEADERS.index("Identificação do Equipamento")
+    nx = [(r[:n], r[n]) for r in linhas_nexus]
+    nx_tok = {}
+    nx_os = {}
+    for r, folio in nx:
+        nx_os[folio] = r
+        for t in _nexus_tokens(r[i_tk]):
+            nx_tok.setdefault(t, []).append(folio)
+    antigos, concl_tok, herdadas = [], set(), {}
+    for row in todos[1:]:
+        row = (row + [""] * n)[:n]
+        if not any(c.strip() for c in row):
+            continue
+        concluido = row[i_status].strip().lower().startswith("conclu")
+        if concluido:
+            concl_tok |= _nexus_tokens(row[i_tk])
+            antigos.append(row)
+            continue
+        achou = None
+        for t in _nexus_tokens(row[i_tk]):
+            if t in nx_tok:
+                achou = nx_tok[t][0]
+                break
+        if not achou:
+            for num in re.findall(r"\d{4,6}", row[i_os1] + " " + row[i_os2]):
+                if num in nx_os:
+                    achou = num
+                    break
+        if achou:
+            nota = notas.get(f"{row[i_tk]}|{row[i_ufv]}|{row[i_eq]}", "")
+            if nota and achou not in herdadas:
+                herdadas[achou] = nota
+            continue
+        antigos.append(row)
+    novos = []
+    for r, folio in nx:
+        if r[i_status].strip().lower().startswith("conclu") and (_nexus_tokens(r[i_tk]) & concl_tok):
+            continue
+        novos.append(r)
+    return [todos[0]] + antigos + novos, herdadas
+
+
+@app.route("/chamados-nexus/importar", methods=["POST", "OPTIONS"])
+def chamados_nexus_importar():
+    """Recebe o snapshot da tela Chamados > Garantias do Nexus: {rows:[{folio, ativo, usina,
+    fornecedor, geral, status, ticket, situacao, responsavel, cliente, tipo, supervisor}],
+    snapshotCompleto:true}. Upsert por nº da OS; com snapshotCompleto remove as OS que
+    sumiram (limite de segurança: nunca apaga mais de 40% de uma vez)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Sem permissão para importar."}), 403
+    try:
+        corpo = request.get_json(silent=True) or {}
+        rows = corpo.get("rows") or []
+        completo = bool(corpo.get("snapshotCompleto"))
+        if not isinstance(rows, list) or not rows:
+            return jsonify({"ok": False, "error": "nenhuma linha recebida"}), 400
+        agora = agora_br()
+        novas = {}
+        for r in rows:
+            if isinstance(r, dict):
+                linha = _nexus_para_linha(r, agora)
+                if linha:
+                    novas[linha[len(CHAMADOS_FABRICANTE_HEADERS)]] = linha
+        if not novas:
+            return jsonify({"ok": False, "error": "nenhuma linha com nº de OS"}), 400
+        n = len(CHAMADOS_NEXUS_HEADERS)
+        ws = _oc_aba(CHAMADOS_NEXUS_SHEET_NAME, CHAMADOS_NEXUS_HEADERS, linhas=600)
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        por_os = {}
+        for i, row in enumerate(todos[1:], start=2):
+            row = (row + [""] * n)[:n]
+            if row[n - 2].strip():
+                por_os[row[n - 2].strip()] = i
+        atualizar = [{"range": f"A{por_os[f]}:{gspread.utils.rowcol_to_a1(por_os[f], n)}", "values": [l]}
+                     for f, l in novas.items() if f in por_os]
+        criar = [l for f, l in novas.items() if f not in por_os]
+        if atualizar:
+            _gspread_retry(lambda: ws.batch_update(atualizar, value_input_option="RAW"))
+        if criar:
+            _gspread_retry(lambda: ws.append_rows(criar, value_input_option="RAW"))
+        removidas = bloqueadas = 0
+        if completo:
+            sumiram = sorted((i for f, i in por_os.items() if f not in novas), reverse=True)
+            if sumiram:
+                limite = max(20, round(len(por_os) * 0.4))
+                if len(sumiram) > limite:
+                    bloqueadas = len(sumiram)
+                    log.error(f"[ChamadosNexus] Remoção BLOQUEADA: {bloqueadas} linha(s) (limite {limite} de {len(por_os)}).")
+                else:
+                    for i in sumiram:
+                        _gspread_retry(lambda i=i: ws.delete_rows(i))
+                    removidas = len(sumiram)
+        _CH_NEXUS_CACHE["t"] = 0.0
+        try:
+            _gravar_trava("chamados_nexus_ultima_sincronizacao", agora.strftime("%d/%m/%Y %H:%M:%S"))
+        except Exception as e:
+            log.error(f"[ChamadosNexus] Falha ao gravar timestamp: {e}")
+        return jsonify({"ok": True, "total": len(novas), "criadas": len(criar), "atualizadas": len(atualizar),
+                        "removidas": removidas, "removidasBloqueadas": bloqueadas}), 200
+    except Exception as e:
+        log.error(f"[ChamadosNexus] Erro ao importar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _chamados_fabricante_itens():
     """Lê a aba ChamadosFabricante inteira + mescla as notas do dashboard
     (aba _Sistema). Reaproveitada tanto pelo endpoint GET /chamados-fabricante
@@ -12711,6 +12922,11 @@ def _chamados_fabricante_itens():
     ws = get_chamados_fabricante_sheet()
     todos = _gspread_retry(lambda: ws.get_all_values())
     notas = _mapa_notas_chamados()
+    notas_herdadas = {}
+    try:
+        todos, notas_herdadas = _chamados_mesclar_nexus(todos, _chamados_nexus_linhas(), notas)
+    except Exception as e:
+        log.error(f"[ChamadosNexus] Falha ao mesclar com o Nexus (seguindo só com a planilha antiga): {e}")
     itens = []
     for row in todos[1:]:
         if len(row) < len(CHAMADOS_FABRICANTE_HEADERS):
@@ -12729,7 +12945,7 @@ def _chamados_fabricante_itens():
         # chave_nota usa a UFV BRUTA (como sempre foi) — não a canônica —
         # pra não perder o vínculo com notas já salvas antes desta correção.
         chave_nota = f"{item.get('Ticket/RMA','')}|{ufv_bruta}|{item.get('Identificação do Equipamento','')}"
-        item["NotaDashboard"] = notas.get(chave_nota, "")
+        item["NotaDashboard"] = notas.get(chave_nota, "") or notas_herdadas.get(item.get("N° da Solicitação de OS", ""), "")
         # Corrige a UFV pra grafia oficial ANTES de devolver o item — sem
         # isso, nome malformado vindo direto da planilha do SharePoint
         # (ex.: "GD Energy - Guajiru" em vez de "Guajirú") aparecia
@@ -12778,9 +12994,10 @@ def listar_chamados_fabricante():
     try:
         itens = _chamados_fabricante_itens()
         travas = _ler_travas(["chamados_ultima_sincronizacao", "chamados_ultima_tentativa",
-                               "chamados_ultimo_status", "chamados_ultimo_erro"])
-        return jsonify({"ok": True, "itens": itens, "total": len(itens),
-                         "ultimaSincronizacao": travas["chamados_ultima_sincronizacao"],
+                               "chamados_ultimo_status", "chamados_ultimo_erro",
+                               "chamados_nexus_ultima_sincronizacao"])
+        return jsonify({"ok": True, "itens": itens, "total": len(itens), "fonte": "nexus",
+                         "ultimaSincronizacao": travas["chamados_nexus_ultima_sincronizacao"] or travas["chamados_ultima_sincronizacao"],
                          "ultimaTentativa": travas["chamados_ultima_tentativa"],
                          "ultimoStatus": travas["chamados_ultimo_status"],
                          "ultimoErro": travas["chamados_ultimo_erro"]}), 200
