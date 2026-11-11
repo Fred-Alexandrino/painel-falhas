@@ -22769,6 +22769,107 @@ def oc_reuniao_gerar():
         return _oc_resposta_erro(e)
 
 
+# ── Leitura de prints/anotações pela IA para atualizar a ocorrência (nada é gravado aqui) ──
+OC_IMAGEM_PROMPT = """Você é o assistente do Supervisor de O&M da Grid Co. (operação e manutenção de usinas solares). Ele enviou PRINTS (capturas de tela, fotos de conversa, de plataforma de fabricante, de chamado, de OS ou de monitoramento) e/ou uma observação escrita sobre UMA ocorrência. Sua tarefa é ler o material e propor a atualização dessa ocorrência.
+
+REGRAS ABSOLUTAS
+1. Use SOMENTE o que está legível nas imagens, na observação do supervisor e nos DADOS DA OCORRÊNCIA. Nada de conhecimento externo.
+2. Proibido inventar: datas, horários, nomes, números de OS, números de chamado, valores, causas, prazos ou conclusões. Se algo está ilegível, cortado ou ambíguo, diga isso em "alertas" e não use.
+3. Transcreva fielmente números (chamado, OS, protocolo, série, tensão, código de falha) exatamente como aparecem. Se houver dúvida em um dígito, não use o número e avise.
+4. Identifique de quem é cada mensagem/ação quando o print mostrar (nome do autor, fabricante, concessionária, cliente). Sem autor visível, não atribua.
+5. A data do fato é a que aparece no print ou na observação. Se não houver data visível, use a data de HOJE informada nos dados e registre isso em "alertas".
+6. Compare com o histórico: se o print contradiz ou repete algo já registrado, avise em "conflitos". Não repita no registro o que já consta no histórico com a mesma data.
+7. Não escreva telefones nem dados pessoais. Não use termos vagos; diga o que aconteceu, quem fez e o que aguarda.
+8. Português do Brasil, frases curtas, tom profissional e direto.
+9. Se as imagens não tiverem relação com a ocorrência, diga em "alertas" e deixe "registro.texto" vazio.
+
+O QUE PRODUZIR (JSON, exatamente estas chaves)
+- "leitura": lista de strings, cada uma uma informação objetiva lida no material (com o número da imagem, ex.: "Imagem 1: ...").
+- "registro": {"data": "dd/mm/aaaa", "texto": "texto do registro de histórico, 1 a 4 frases, pronto para entrar no histórico da ocorrência"}.
+- "sugestoes": {"chamado": "número do chamado do fabricante, somente se estiver legível, senão vazio", "status": "Em andamento | Pausado | Finalizado, somente se o material afirmar claramente (ex.: equipamento normalizado e fechado), senão vazio", "os": ["números de OS legíveis que ainda não constam nos dados"]}.
+- "alertas": lista de strings (ilegível, sem data, sem relação, informação incompleta).
+- "conflitos": lista de strings (divergências ou repetições em relação ao histórico).
+
+DADOS DA OCORRÊNCIA
+{dados}
+
+OBSERVAÇÃO DO SUPERVISOR
+{nota}
+
+Responda apenas com o JSON."""
+
+
+@app.route("/ocorrencias/imagem/analisar", methods=["POST", "OPTIONS"])
+def oc_imagem_analisar():
+    """Lê prints e/ou observação e PROPÕE a atualização da ocorrência; o supervisor confirma no painel."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    corpo = request.get_json(force=True, silent=True) or {}
+    oid = _oc_texto(corpo.get("id"))
+    nota = str(corpo.get("nota") or "").strip()[:3000]
+    imgs = [i for i in (corpo.get("imagens") or []) if isinstance(i, str) and i.startswith("data:image/")][:5]
+    if not imgs and not nota:
+        return jsonify({"ok": False, "error": "Envie ao menos um print ou escreva uma observação."}), 400
+    try:
+        it = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+        if not it:
+            return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+        dados = _oc_reuniao_dados(it)
+        prompt = OC_IMAGEM_PROMPT.replace("{dados}", dados).replace("{nota}", nota or "(sem observação escrita)")
+        partes = [{"text": prompt}]
+        total = 0
+        for k, d in enumerate(imgs, 1):
+            try:
+                cab, b64 = d.split(",", 1)
+                mime = cab[5:].split(";")[0] or "image/jpeg"
+            except ValueError:
+                continue
+            total += len(b64)
+            if total > 12_000_000:
+                return jsonify({"ok": False, "error": "As imagens ficaram grandes demais. Envie menos prints."}), 413
+            partes.append({"text": f"Imagem {k}:"})
+            partes.append({"inline_data": {"mime_type": mime, "data": b64}})
+        try:
+            resp = _chamar_gemini_com_retry({
+                "contents": [{"parts": partes}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 3000,
+                                      "responseMimeType": "application/json",
+                                      "thinkingConfig": {"thinkingBudget": 0}},
+            }, timeout=90)
+            cand = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            cand = re.sub(r"^```json\s*|\s*```$", "", cand)
+            res = json.loads(cand)
+            if not isinstance(res, dict):
+                raise ValueError("resposta fora do formato")
+        except Exception as e:
+            log.error(f"[ocorrencias/imagem] Gemini falhou: {e}")
+            return jsonify({"ok": False, "error": "A IA não respondeu agora. Nada foi alterado; tente de novo em instantes."}), 502
+        reg = res.get("registro") if isinstance(res.get("registro"), dict) else {}
+        data = str(reg.get("data") or "").strip()
+        m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", data)
+        data_iso = f"{m[3]}-{m[2]}-{m[1]}" if m else _oc_hoje()
+        sug = res.get("sugestoes") if isinstance(res.get("sugestoes"), dict) else {}
+        status = str(sug.get("status") or "").strip()
+        if status not in ("Em andamento", "Pausado", "Finalizado"):
+            status = ""
+        proposta = {
+            "leitura": [str(x) for x in (res.get("leitura") or []) if str(x).strip()],
+            "registro": {"data": data_iso, "texto": str(reg.get("texto") or "").strip()},
+            "sugestoes": {"chamado": str(sug.get("chamado") or "").strip()[:60], "status": status,
+                          "os": [str(x).strip() for x in (sug.get("os") or []) if str(x).strip()][:10]},
+            "alertas": [str(x) for x in (res.get("alertas") or []) if str(x).strip()],
+            "conflitos": [str(x) for x in (res.get("conflitos") or []) if str(x).strip()],
+        }
+        if m is None and proposta["registro"]["texto"]:
+            proposta["alertas"].append("O material não trazia data legível; foi usada a data de hoje.")
+        return jsonify({"ok": True, "id": oid, "proposta": proposta}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
 # ── Importação única do histórico (355 ocorrências do arquivo do Fred) ──────
 @app.route("/ocorrencias/importar", methods=["POST", "OPTIONS"])
 def oc_importar():
