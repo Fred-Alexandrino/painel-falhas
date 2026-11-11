@@ -12773,10 +12773,17 @@ def _nexus_para_linha(r, agora):
 def _chamados_nexus_linhas(forcar=False):
     """Linhas da aba ChamadosNexus (cache curto: a função de itens é chamada de vários lugares)."""
     agora_t = time.time()
-    if not forcar and agora_t - _CH_NEXUS_CACHE["t"] < 20 and _CH_NEXUS_CACHE["t"]:
+    # Cache de 5 min: só o importador muda esta aba (e ele zera o cache). Poupa a cota de leitura do Sheets.
+    if not forcar and agora_t - _CH_NEXUS_CACHE["t"] < 300 and _CH_NEXUS_CACHE["t"]:
         return _CH_NEXUS_CACHE["linhas"]
-    ws = _oc_aba(CHAMADOS_NEXUS_SHEET_NAME, CHAMADOS_NEXUS_HEADERS, linhas=600)
-    todos = _gspread_retry(lambda: ws.get_all_values())
+    try:
+        ws = _oc_aba(CHAMADOS_NEXUS_SHEET_NAME, CHAMADOS_NEXUS_HEADERS, linhas=600)
+        todos = _gspread_retry(lambda: ws.get_all_values())
+    except Exception as e:
+        if _CH_NEXUS_CACHE["linhas"]:
+            log.error(f"[ChamadosNexus] Leitura falhou ({e}); usando o último cache.")
+            return _CH_NEXUS_CACHE["linhas"]
+        raise
     n = len(CHAMADOS_NEXUS_HEADERS)
     linhas = []
     for row in todos[1:]:
