@@ -22367,6 +22367,173 @@ def oc_comunicado_gerar():
         return _oc_resposta_erro(e)
 
 
+# ── Preparo para reunião com o cliente (Gemini, restrito aos fatos do registro) ──
+OC_REUNIAO_PROMPT = """Você é o assistente de preparação de reunião do Supervisor de O&M da Grid Co., empresa que opera e mantém usinas solares (O&M). O supervisor vai se reunir com o CLIENTE (dono/gestor da usina) para tratar de UMA ocorrência. Sua tarefa é dizer, de forma objetiva, assertiva e completa, o que o supervisor deve argumentar nessa reunião.
+
+REGRA ABSOLUTA — FIDELIDADE AOS DADOS
+1. Use SOMENTE as informações da seção DADOS DA OCORRÊNCIA abaixo. Nada de conhecimento externo sobre a usina, o contrato, o fabricante ou o cliente.
+2. Proibido inventar: datas, prazos, nomes, números de OS, números de chamado, causas, responsabilidades contratuais, cláusulas, SLA, valores, quantidades ou promessas. Se algo não está nos dados, escreva exatamente "não consta no registro" e coloque o ponto em "lacunas".
+3. Todo item que você escrever em "argumentos", "o_que_foi_feito" e "pendencias" precisa ter o campo "base" citando a evidência: a data do registro (dd/mm/aaaa) ou o número da OS ou o campo da ocorrência (ex.: "histórico de 04/11/2026", "OS 17120", "chamado informado na ocorrência"). Sem evidência, o item não entra.
+4. Não use termos vagos ("em andamento", "estamos acompanhando", "tratativas em curso") sozinhos. Diga o que foi feito, por quem e quando, conforme os dados. Se os dados só dizem que está aguardando alguém, diga quem e desde quando.
+5. Não atribua culpa ao cliente nem ao fabricante sem que isso esteja escrito nos dados. Quando o dado mostrar que a dependência é de terceiro (fabricante, concessionária, cliente), diga isso de forma factual, citando a data.
+6. Não prometa prazo que não esteja nos dados. Se não houver prazo, diga que a data ainda não foi definida e sugira que o supervisor leve uma data proposta para confirmar internamente antes da reunião (em "lacunas").
+7. Notas marcadas como INTERNAS servem só para você entender o contexto. Não as repita como argumento e não revele conteúdo interno ao cliente.
+8. Não escreva números de telefone nem dados pessoais.
+9. Escreva em português do Brasil, frases curtas, no máximo 35 palavras por item, tom profissional e direto.
+
+O QUE PRODUZIR (JSON, exatamente nestas chaves)
+- "situacao": 1 a 2 frases com a situação hoje e a data do último fato do registro. Se o último fato tem mais de 14 dias, diga isso.
+- "o_que_foi_feito": lista de {"fato","data","base"} em ordem cronológica, só ações já realizadas (visitas, OS executadas, testes, chamados abertos, peças enviadas, respostas recebidas).
+- "argumentos": lista de {"ponto","base"} com os 3 a 6 pontos que o supervisor deve defender perante o cliente, do mais importante ao menos importante, cada um sustentado por fato dos dados (ex.: o que já foi feito e demonstra ação da Grid; o que depende de terceiro e desde quando; o impacto registrado na ocorrência).
+- "pendencias": lista de {"item","quem","base"}; "quem" é Grid, Cliente, Fabricante, Concessionária, Terceiro ou "não informado", conforme os dados.
+- "decisoes_a_alinhar": lista de {"decisao","base"} com o que precisa ser decidido ou autorizado na reunião (ex.: compra de peça, janela para parada, acesso), somente se decorrer dos dados.
+- "perguntas_provaveis": lista de {"pergunta","resposta","base"}: até 3 perguntas que o cliente provavelmente fará e a resposta curta, só com o que os dados permitem responder. Se os dados não permitem, a resposta é "não consta no registro".
+- "lacunas": lista de strings com o que falta no registro e que o supervisor deve confirmar antes da reunião.
+
+Se a ocorrência estiver Finalizada, ou se os dados forem insuficientes para argumentar, devolva "argumentos" vazio e explique em "situacao" e "lacunas".
+
+DADOS DA OCORRÊNCIA
+{dados}
+
+Responda apenas com o JSON."""
+
+_OC_REUNIAO_CACHE = {"t": 0, "os": {}}
+
+
+def _oc_reuniao_os(numeros):
+    """Dados das OS (Fracttal) citadas na ocorrência, lidos da aba de atividades (cache de 90 s)."""
+    if not numeros:
+        return []
+    agora = time.time()
+    if not _OC_REUNIAO_CACHE["os"] or agora - _OC_REUNIAO_CACHE["t"] > 90:
+        ws = get_atividades_sheet()
+        todos = _gspread_retry(lambda: ws.get_all_values())
+        mapa = {}
+        for row in todos[1:]:
+            row = row + [""] * (len(ATIV_HEADERS_JSON) - len(row))
+            d = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+            n = str(d.get("numeroOS", "")).strip()
+            if n:
+                mapa[n] = d
+        _OC_REUNIAO_CACHE["os"], _OC_REUNIAO_CACHE["t"] = mapa, agora
+    saida = []
+    for n in numeros:
+        d = _OC_REUNIAO_CACHE["os"].get(n)
+        if d:
+            saida.append({"os": n, "status": d.get("statusOS") or d.get("status"), "geral": d.get("statusGeralOS"),
+                          "pct": d.get("percentualOS"), "prazo": d.get("prazo"), "resp": d.get("responsavel"),
+                          "desc": (d.get("descricao") or "")[:160], "obs": (d.get("observacoesOS") or "")[:300]})
+        else:
+            saida.append({"os": n, "status": "não encontrada na base de OS"})
+    return saida
+
+
+def _oc_reuniao_dados(it):
+    """Texto com tudo que o Gemini pode usar (e que o supervisor pode conferir na tela)."""
+    L = [f"ID: {it['id']}", f"USINA: {it['usina']}" + (f" | CLIENTE: {it['cliente']}" if it.get("cliente") else ""),
+         f"EQUIPAMENTO: {it.get('equip') or 'não informado'}" + (f" — {it['nequip']}" if it.get("nequip") else ""),
+         f"TÍTULO: {it.get('titulo') or 'não informado'}", f"DESCRIÇÃO: {it.get('causa') or 'não informada'}",
+         f"STATUS: {it['status']} | CRITICIDADE: {it.get('crit') or 'não informada'}{' | GRAVE' if it.get('grave') else ''}",
+         f"ABERTA EM: {_oc_dmy(it.get('inicio')) or 'não informado'}", f"HOJE: {_oc_dmy(_oc_hoje())}"]
+    if it.get("impacto"):
+        L.append(f"IMPACTO: {it['impacto']}")
+    if it.get("fab"):
+        L.append(f"FABRICANTE: {it['fab']}")
+    L.append(f"CHAMADO DO FABRICANTE: {it.get('chamado') or 'não informado'}")
+    if it.get("sn"):
+        L.append(f"S/N: {it['sn']}")
+    L.append(f"RESPONSÁVEL NA GRID: {it.get('resp') or 'não informado'}")
+    hist = [h for h in (it.get("hist") or []) if h.get("t")]
+    L.append("")
+    L.append(f"HISTÓRICO COMPLETO ({len(hist)} registros, do mais antigo ao mais recente):")
+    for h in hist[-40:]:
+        L.append(f"- {_oc_dmy(h['d']) or 's/ data'}: {h['t'][:800]}")
+    nums = [n for n in re.split(r"[,;\s]+", it.get("os") or "") if n]
+    L.append("")
+    if nums:
+        L.append("OS VINCULADAS (situação atual no Fracttal):")
+        for o in _oc_reuniao_os(nums):
+            L.append("- OS " + o["os"] + ": " + "; ".join(f"{k}={v}" for k, v in o.items() if k != "os" and v))
+    else:
+        L.append("OS VINCULADAS: nenhuma OS vinculada à ocorrência.")
+    plano = _oc_plano_da(it["id"])
+    L.append("")
+    if plano and plano.get("acao"):
+        L.append(f"PLANO DE AÇÃO: {plano['acao']} | responsável: {plano.get('resp') or 'não informado'} | prazo: {_oc_dmy(plano.get('prazo')) or 'sem prazo'} | situação: {plano.get('sit')}")
+    else:
+        L.append("PLANO DE AÇÃO: não preenchido.")
+    try:
+        wn = _oc_aba(OC_NOTAS_SHEET_NAME, OC_NOTAS_HEADERS)
+        notas = [r for _, r in _oc_linhas(wn, len(OC_NOTAS_HEADERS)) if r[1] == it["id"]]
+    except Exception:
+        notas = []
+    for r in notas[-6:]:
+        L.append(f"NOTA INTERNA ({r[3][:10]}): {r[2][:500]}")
+    return "\n".join(L)
+
+
+def _oc_reuniao_validar(res, dados):
+    """Remove o que não tem base ou cita data que não existe nos dados (anti-invenção)."""
+    datas_ok = set(re.findall(r"\d{2}/\d{2}/\d{4}", dados))
+    def base_ok(b):
+        if not str(b or "").strip():
+            return False
+        for d in re.findall(r"\d{2}/\d{2}/\d{4}", str(b)):
+            if d not in datas_ok:
+                return False
+        return True
+    removidos = 0
+    for chave in ("o_que_foi_feito", "argumentos", "pendencias", "decisoes_a_alinhar", "perguntas_provaveis"):
+        lista = res.get(chave)
+        if not isinstance(lista, list):
+            res[chave] = []
+            continue
+        ok = [x for x in lista if isinstance(x, dict) and base_ok(x.get("base"))]
+        removidos += len(lista) - len(ok)
+        res[chave] = ok
+    res["lacunas"] = [str(x) for x in (res.get("lacunas") or []) if str(x).strip()]
+    res["situacao"] = str(res.get("situacao") or "").strip()
+    res["_removidos"] = removidos
+    return res
+
+
+@app.route("/ocorrencias/reuniao/gerar", methods=["POST", "OPTIONS"])
+def oc_reuniao_gerar():
+    """Argumentos para a reunião com o cliente sobre UMA ocorrência, só com os fatos do registro."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    oid = _oc_texto((request.get_json(force=True, silent=True) or {}).get("id"))
+    try:
+        it = next((x for x in _oc_carregar(forcar=True) if x["id"] == oid), None)
+        if not it:
+            return jsonify({"ok": False, "error": "Ocorrência não encontrada."}), 404
+        dados = _oc_reuniao_dados(it)
+        prompt = OC_REUNIAO_PROMPT.replace("{dados}", dados)
+        try:
+            resp = _chamar_gemini_com_retry({
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 3500,
+                                      "responseMimeType": "application/json",
+                                      "thinkingConfig": {"thinkingBudget": 0}},
+            }, timeout=60)
+            cand = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            cand = re.sub(r"^```json\s*|\s*```$", "", cand)
+            res = json.loads(cand)
+            if not isinstance(res, dict):
+                raise ValueError("resposta fora do formato")
+        except Exception as e:
+            log.error(f"[ocorrencias/reuniao] Gemini falhou: {e}")
+            return jsonify({"ok": False, "error": "A IA não respondeu agora. Nada foi inventado em seu lugar; tente de novo em instantes."}), 502
+        res = _oc_reuniao_validar(res, dados)
+        return jsonify({"ok": True, "id": oid, "preparo": res, "base": dados,
+                        "geradoEm": _oc_agora(), "ultimoRegistro": it.get("ult") or ""}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
 # ── Importação única do histórico (355 ocorrências do arquivo do Fred) ──────
 @app.route("/ocorrencias/importar", methods=["POST", "OPTIONS"])
 def oc_importar():
