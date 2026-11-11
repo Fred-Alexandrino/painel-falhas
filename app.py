@@ -12912,6 +12912,7 @@ def chamados_nexus_importar():
         _CH_NEXUS_CACHE["t"] = 0.0
         try:
             _gravar_trava("chamados_nexus_ultima_sincronizacao", agora.strftime("%d/%m/%Y %H:%M:%S"))
+            _gravar_trava("chamados_nexus_lido_em", str(corpo.get("lidoEm") or "")[:60])
         except Exception as e:
             log.error(f"[ChamadosNexus] Falha ao gravar timestamp: {e}")
         return jsonify({"ok": True, "total": len(novas), "criadas": len(criar), "atualizadas": len(atualizar),
@@ -13009,8 +13010,8 @@ def listar_chamados_fabricante():
         itens = _chamados_fabricante_itens()
         travas = _ler_travas(["chamados_ultima_sincronizacao", "chamados_ultima_tentativa",
                                "chamados_ultimo_status", "chamados_ultimo_erro",
-                               "chamados_nexus_ultima_sincronizacao"])
-        return jsonify({"ok": True, "itens": itens, "total": len(itens), "fonte": "nexus",
+                               "chamados_nexus_ultima_sincronizacao", "chamados_nexus_lido_em"])
+        return jsonify({"ok": True, "itens": itens, "total": len(itens), "fonte": "nexus", "nexusLidoEm": travas.get("chamados_nexus_lido_em", ""),
                          "ultimaSincronizacao": travas["chamados_nexus_ultima_sincronizacao"] or travas["chamados_ultima_sincronizacao"],
                          "ultimaTentativa": travas["chamados_ultima_tentativa"],
                          "ultimoStatus": travas["chamados_ultimo_status"],
