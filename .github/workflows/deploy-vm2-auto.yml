@@ -5,24 +5,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Limpar chaves de sessao corrompidas (Bad MAC) mantendo o login
+      - name: Deploy via SSH (git pull + restart)
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 147.15.66.241
           username: ubuntu
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
-          command_timeout: 6m
           script: |
             cd ~/wppconnect-server
-            TS=$(date -u +%Y%m%dT%H%M%SZ)
-            echo "antes: total=$(ls auth_info | wc -l) session=$(ls auth_info | grep -c '^session-') senderkey=$(ls auth_info | grep -c '^sender-key') creds=$(ls auth_info | grep -c '^creds')"
-            sudo systemctl stop wppconnect
-            cp -a auth_info ~/auth_info_backup_$TS
-            find auth_info -maxdepth 1 -type f \( -name 'session-*' -o -name 'sender-key-*' \) -delete
-            echo "depois: total=$(ls auth_info | wc -l) session=$(ls auth_info | grep -c '^session-') senderkey=$(ls auth_info | grep -c '^sender-key') creds=$(ls auth_info | grep -c '^creds') backup=auth_info_backup_$TS"
-            sudo systemctl start wppconnect
-            sleep 90
-            echo "BadMAC_80s=$(sudo journalctl -u wppconnect --since '-80s' --no-pager | grep -c 'Bad MAC')"
-            echo "FalhaDecrypt_80s=$(sudo journalctl -u wppconnect --since '-80s' --no-pager | grep -c 'Failed to decrypt')"
-            sudo journalctl -u wppconnect --since '-80s' --no-pager | grep -v 'at \|Bad MAC\|Session error' | tail -25
-            ls -la data/resumo-msgs.jsonl
+            git pull
+            sudo systemctl restart wppconnect
+            sleep 3
+            sudo systemctl status wppconnect --no-pager
