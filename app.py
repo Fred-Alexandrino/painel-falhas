@@ -23893,11 +23893,30 @@ def nexus_performance_importar():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def _np_canon(nome):
+def _np_canon(nome, cliente_nexus=None):
+    """Nome do Nexus -> usina do mapeamento. Se o Nexus informa o cliente e ele não bate
+    com o cliente do mapeamento, descarta (ex.: 'Ipixuna 1' da Thopen x 'Ipixuna do Pará I' da 2C)."""
     try:
-        return canonizar_usina(nome) if nome else None
+        c = canonizar_usina(nome) if nome else None
     except Exception:
         return None
+    if c and cliente_nexus:
+        a = _norm_usina(str(cliente_nexus)).replace(" ", "")
+        b = _norm_usina(inferir_cliente(c) or "").replace(" ", "")
+        if a and b and not (a.startswith(b[:4]) or b.startswith(a[:4])):
+            return None
+    return c
+
+
+def _np_canons(nome, cliente_nexus=None):
+    """'União 1 e 2' vale para União I e União II (valores do conjunto, marcados como agregados)."""
+    m = re.match(r"^(.*?)\s+(\d+|[IVX]+)\s+e\s+(\d+|[IVX]+)$", str(nome or "").strip(), re.I)
+    if m:
+        cs = [x for x in (_np_canon(m.group(1) + " " + m.group(2), cliente_nexus), _np_canon(m.group(1) + " " + m.group(3), cliente_nexus)) if x]
+        if len(set(cs)) == 2:
+            return cs, True
+    c = _np_canon(nome, cliente_nexus)
+    return ([c] if c else []), False
 
 
 @app.route("/nexus-performance", methods=["GET"])
@@ -23918,11 +23937,12 @@ def nexus_performance():
             return por[canon]
 
         for u in (m.get("gerencial") or {}).get("usinas") or []:
-            c = _np_canon(u.get("usina"))
-            if not c:
-                continue
+          cs, agreg = _np_canons(u.get("usina"), u.get("cliente"))
+          for c in cs:
             L = linha(c)
             L["nomesNexus"].append(u.get("usina"))
+            if agreg:
+                L["agregadoNexus"] = u.get("usina")
             L.update({"potMwp": u.get("pot_mwp"), "prodMwh": u.get("prod"), "p50Mwh": u.get("p50"),
                       "atingimento": u.get("atingimento"), "pr": u.get("pr"), "prMeta": u.get("pr_meta"),
                       "prMotivo": u.get("pr_motivo"), "ipoa": u.get("ipoa"), "ipoaPrev": u.get("ipoa_prev"),
@@ -23935,15 +23955,20 @@ def nexus_performance():
                 if c:
                     oss_por.setdefault(c, []).append(o)
         for u in (m.get("disponibilidade") or {}).get("usinas") or []:
-            c = _np_canon(u.get("usina")) or _np_canon(u.get("fracttal"))
-            if not c:
-                continue
+          cs, agreg = _np_canons(u.get("usina"), u.get("cliente"))
+          if not cs:
+              c0 = _np_canon(u.get("fracttal"), u.get("cliente"))
+              cs = [c0] if c0 else []
+          for c in cs:
             L = linha(c)
+            if agreg:
+                L["agregadoNexus"] = u.get("usina")
             L.update({"disp": u.get("disp"), "dispEquip": u.get("disp_equip"), "dispQueda": u.get("disp_queda"),
                       "hPerdidas": u.get("h_perdidas"), "hEquip": u.get("h_equip"), "hQueda": u.get("h_queda"),
                       "kwhPerdido": u.get("kwh"), "kwhEquip": u.get("kwh_equip"), "kwhQueda": u.get("kwh_queda"),
                       "nOs": u.get("n_os"), "potKwp": u.get("pot_kwp"), "inversoresAfetados": u.get("inversores") or []})
             L["oss"] = sorted(oss_por.get(c, []), key=lambda o: -(o.get("kwh") or 0))[:25]
+
         relig = []
         for r in ((d.get("relig") or {}).get("rows") or []):
             c = _np_canon(r.get("usina"))
