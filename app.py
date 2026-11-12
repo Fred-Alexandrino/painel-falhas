@@ -25125,22 +25125,24 @@ def _aud_ft_norm(campo, v):
     return re.sub(r"\s+", " ", v).strip()
 
 
-def _aud_ft_escopo(row, dias):
+def _aud_ft_escopo(row, dias=None):
+    """Escopo (pedido do Fred 12/11/2026): só OS das usinas do mapeamento dele que estão em aberto
+    (em processo / em revisão-verificação). Concluídas e canceladas ficam de fora; entra só quando a
+    Central ainda mostra aberta e a Fracttal já fechou (ou o contrário), porque aí o status diverge."""
     num = (row[ATIV_CAMPO_COL["numeroOS"] - 1] if len(row) >= ATIV_CAMPO_COL["numeroOS"] else "").strip()
     if not num or not re.fullmatch(r"\d+", num):
         return None
+    usina = row[ATIV_CAMPO_COL["usina"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["usina"] else ""
+    try:
+        if not usina or not (usina in CATALOGO_USINAS or usina_permitida(usina)):
+            return None
+    except Exception:
+        return None
     st = row[ATIV_CAMPO_COL["status"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["status"] else ""
     so = row[ATIV_CAMPO_COL["statusOS"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["statusOS"] else ""
-    if st not in ("Concluído", "Cancelado") or so not in ("Finalizada", "Cancelada"):
-        return num
-    if dias is None:
-        return num
-    dc = row[ATIV_CAMPO_COL["dataConclusao"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["dataConclusao"] else ""
-    try:
-        d = datetime.strptime(dc[:10], "%d/%m/%Y")
-        return num if (agora_br().replace(tzinfo=None) - d).days <= dias else None
-    except Exception:
-        return num  # concluída sem data: confere
+    if st in ("Concluído", "Cancelado") and so in ("Finalizada", "Cancelada"):
+        return None
+    return num
 
 
 def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="manual", rodar_descoberta=True, job=None):
