@@ -24870,6 +24870,88 @@ def vt_importar_manual():
         return _oc_resposta_erro(e)
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VM2 — LIMPAR CHAVES DE SESSÃO CORROMPIDAS ("Bad MAC") MANTENDO O LOGIN (12/11/2026)
+#  Sintoma: ponte "conectada", mas nenhuma mensagem é arquivada/encaminhada; o log
+#  mostra "Bad MAC" / "Failed to decrypt message". Reiniciar não resolve. Esta rota
+#  troca temporariamente o deploy-vm2-auto.yml por uma versão que para o serviço,
+#  faz cópia de auth_info, apaga só session-* e sender-key-* (mantém creds/pre-keys)
+#  e sobe de novo; dispara o workflow e restaura o arquivo original em seguida.
+# ══════════════════════════════════════════════════════════════════════════════
+_VM2_WF_PATH = ".github/workflows/deploy-vm2-auto.yml"
+_VM2_WF_LIMPEZA = """name: Deploy Ponte WhatsApp VM2 (auto)
+on:
+  workflow_dispatch: {}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Limpar chaves de sessao corrompidas (Bad MAC) mantendo o login
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          command_timeout: 6m
+          script: |
+            cd ~/wppconnect-server
+            TS=$(date -u +%Y%m%dT%H%M%SZ)
+            echo "antes: total=$(ls auth_info | wc -l) session=$(ls auth_info | grep -c '^session-') senderkey=$(ls auth_info | grep -c '^sender-key') creds=$(ls auth_info | grep -c '^creds')"
+            sudo systemctl stop wppconnect
+            cp -a auth_info ~/auth_info_backup_$TS
+            find auth_info -maxdepth 1 -type f \\( -name 'session-*' -o -name 'sender-key-*' \\) -delete
+            echo "depois: total=$(ls auth_info | wc -l) session=$(ls auth_info | grep -c '^session-') senderkey=$(ls auth_info | grep -c '^sender-key') creds=$(ls auth_info | grep -c '^creds') backup=auth_info_backup_$TS"
+            sudo systemctl start wppconnect
+            sleep 90
+            echo "BadMAC_80s=$(sudo journalctl -u wppconnect --since '-80s' --no-pager | grep -c 'Bad MAC')"
+            echo "FalhaDecrypt_80s=$(sudo journalctl -u wppconnect --since '-80s' --no-pager | grep -c 'Failed to decrypt')"
+            sudo journalctl -u wppconnect --since '-80s' --no-pager | grep -v 'at \\|Bad MAC\\|Session error' | tail -25
+            ls -la data/resumo-msgs.jsonl
+"""
+
+
+@app.route("/deploy/vm2-limpar-sessao", methods=["POST"])
+def deploy_vm2_limpar_sessao():
+    secret = request.headers.get("X-Deploy-Secret", "")
+    if not DEPLOY_SECRET or secret != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    if not GITHUB_DEPLOY_TOKEN:
+        return jsonify({"error": "GITHUB_DEPLOY_TOKEN nao configurado no servidor"}), 500
+    base = f"https://api.github.com/repos/{GITHUB_DEPLOY_REPO_BACKEND}"
+    h = {"Authorization": f"Bearer {GITHUB_DEPLOY_TOKEN}", "Accept": "application/vnd.github+json"}
+    try:
+        g = requests.get(f"{base}/contents/{_VM2_WF_PATH}", headers=h, params={"ref": "main"}, timeout=20)
+        g.raise_for_status()
+        original = g.json()
+        conteudo_original = original["content"]
+        p = requests.put(f"{base}/contents/{_VM2_WF_PATH}", headers=h, timeout=20, json={
+            "message": "VM2: limpeza temporária de chaves de sessão (Bad MAC) [skip ci]",
+            "content": base64.b64encode(_VM2_WF_LIMPEZA.encode("utf-8")).decode("ascii"),
+            "sha": original["sha"], "branch": "main"})
+        if p.status_code not in (200, 201):
+            return jsonify({"ok": False, "etapa": "trocar workflow", "status": p.status_code, "detalhe": p.text[:300]}), 502
+        novo_sha = p.json()["content"]["sha"]
+        time.sleep(3)
+        d = requests.post(f"{base}/actions/workflows/deploy-vm2-auto.yml/dispatches", headers=h,
+                          json={"ref": "main"}, timeout=20)
+
+        def _restaurar():
+            time.sleep(45)
+            try:
+                requests.put(f"{base}/contents/{_VM2_WF_PATH}", headers=h, timeout=20, json={
+                    "message": "VM2: restaura deploy-vm2-auto.yml original [skip ci]",
+                    "content": conteudo_original.replace("\n", ""), "sha": novo_sha, "branch": "main"})
+                log.info("[vm2-limpar] workflow original restaurado")
+            except Exception as e:
+                log.error(f"[vm2-limpar] falha ao restaurar workflow: {e}")
+        threading.Thread(target=_restaurar, daemon=True).start()
+        if d.status_code != 204:
+            return jsonify({"ok": False, "etapa": "disparar", "status": d.status_code, "detalhe": d.text[:300]}), 502
+        return jsonify({"ok": True, "aviso": "limpeza disparada; workflow original volta em ~45 s"}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:300]}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
