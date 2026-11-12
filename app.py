@@ -25325,7 +25325,8 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
             gravadas += len(lote)
         for i, st_novo in status_internos:
             try:
-                _gravar_status_interno(ws, i, st_novo)
+                time.sleep(2.5)  # cota de escrita do Sheets (60/min): _gravar_status_interno faz várias escritas
+                _gspread_retry(lambda i=i, st_novo=st_novo: _gravar_status_interno(ws, i, st_novo), tentativas=4, esperas=(20, 40, 60, 60))
             except Exception as e:
                 erros.append({"linha": i, "erro": f"status interno: {e}"[:200]})
 
