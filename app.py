@@ -24910,6 +24910,31 @@ jobs:
             ls -la data/resumo-msgs.jsonl
 """
 
+_VM2_WF_DIAG = """name: Deploy Ponte WhatsApp VM2 (auto)
+on:
+  workflow_dispatch: {}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnostico da ponte (sem conteudo de mensagens - repo publico)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            git branch --show-current; git log --oneline -1
+            echo "agora=$(date -u +%s)"
+            echo "ultimas_linhas_arquivo (t, grupo):"
+            tail -n 5 data/resumo-msgs.jsonl | python3 -c "import sys,json; [print(json.loads(l)['t'], json.loads(l)['g']) for l in sys.stdin if l.strip()]"
+            echo "linhas_desde_10min=$(python3 -c "import json,time; c=time.time()-600; print(sum(1 for l in open('data/resumo-msgs.jsonl') if l.strip() and json.loads(l)['t']>=c))")"
+            J="sudo journalctl -u wppconnect --since -30min --no-pager"
+            echo "BadMAC=$($J | grep -c 'Bad MAC') FalhaDecrypt=$($J | grep -c 'Failed to decrypt') TempoReal=$($J | grep -c 'Tempo real') Conectado=$($J | grep -ci 'conectado') Encerrada=$($J | grep -ci 'encerrad') resumoWarn=$($J | grep -c '\\[resumo\\]')"
+            $J | grep -i 'conect\\|encerrad\\|vigia\\|\\[resumo\\]\\|erro' | grep -v '^ ' | cut -c1-160 | tail -15
+"""
+
 
 @app.route("/deploy/vm2-limpar-sessao", methods=["POST"])
 def deploy_vm2_limpar_sessao():
@@ -24927,7 +24952,7 @@ def deploy_vm2_limpar_sessao():
         conteudo_original = original["content"]
         p = requests.put(f"{base}/contents/{_VM2_WF_PATH}", headers=h, timeout=20, json={
             "message": "VM2: limpeza temporária de chaves de sessão (Bad MAC) [skip ci]",
-            "content": base64.b64encode(_VM2_WF_LIMPEZA.encode("utf-8")).decode("ascii"),
+            "content": base64.b64encode((_VM2_WF_DIAG if request.args.get("modo") == "diagnostico" else _VM2_WF_LIMPEZA).encode("utf-8")).decode("ascii"),
             "sha": original["sha"], "branch": "main"})
         if p.status_code not in (200, 201):
             return jsonify({"ok": False, "etapa": "trocar workflow", "status": p.status_code, "detalhe": p.text[:300]}), 502
