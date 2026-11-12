@@ -24385,6 +24385,362 @@ def userscript_grid_performance():
     from flask import Response
     return Response(_USERSCRIPT_PERFORMANCE, mimetype="text/javascript; charset=utf-8")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VERIFICAR THOPEN COM CLAUDE (12/11/2026)
+#  Botão no Painel de Ocorrências. O servidor monta um pacote de DADOS (grupo
+#  "Thopen & GridCo. | Usinas FRED ALEXANDRINO", grupos das equipes das usinas
+#  Thopen, ocorrências e OS abertas) e grava no repositório privado
+#  resumos-whatsapp (thopen/entrada/<run>.md). O GitHub Action roda o Claude
+#  (assinatura do Fred, sem API paga), que devolve thopen/saida/<run>.json com
+#  PROPOSTAS. As propostas ficam na aba "OcPropostas" como "Pendente" e NADA é
+#  gravado nas ocorrências sem o Fred aprovar no painel (agregar ao histórico de
+#  uma ocorrência existente, criar nova conferindo os campos, ou descartar).
+# ══════════════════════════════════════════════════════════════════════════════
+VT_THOPEN_GRUPO_ID = "120363424804307945"
+VT_REPO = os.environ.get("VT_REPO", "Fred-Alexandrino/resumos-whatsapp")
+VT_PROP_SHEET = "OcPropostas"
+VT_PROP_HEADERS = ["PID", "Status", "Execução", "Criada em", "Usina", "Tipo", "Pedido", "Quem", "Quando",
+                   "Trecho", "Ocorrência sugerida", "Texto histórico", "Nova (JSON)", "Justificativa",
+                   "Confiança", "Decidida em", "Resultado"]
+VT_TIPOS = ("agregar", "nova", "informacao")
+_VT_LOCK = threading.Lock()
+_VT_EXEC = {"run": None, "inicio": 0.0, "status": "", "erro": "", "resumo": "", "nao_verificado": [],
+            "importadas": 0, "fim": 0.0}
+_VT_TIMEOUT = 25 * 60
+
+
+def _vt_gh(metodo, caminho, **kw):
+    if not GITHUB_DEPLOY_TOKEN:
+        raise RuntimeError("GITHUB_DEPLOY_TOKEN não configurado no servidor")
+    h = {"Authorization": f"token {GITHUB_DEPLOY_TOKEN}", "Accept": "application/vnd.github+json"}
+    h.update(kw.pop("headers", {}))
+    return requests.request(metodo, f"https://api.github.com/repos/{VT_REPO}/contents/{caminho}",
+                            headers=h, timeout=30, **kw)
+
+
+def _vt_usinas_thopen():
+    return [u for u in MAPEAMENTO_UFVS if "thopen" in _norm_usina(u.get("cliente", ""))]
+
+
+def _vt_trunc(t, n):
+    t = re.sub(r"\s+", " ", str(t or "")).strip()
+    return t if len(t) <= n else t[:n - 1] + "…"
+
+
+def _vt_aba():
+    return _oc_aba(VT_PROP_SHEET, VT_PROP_HEADERS, 2000)
+
+
+def _vt_linhas():
+    ws = _vt_aba()
+    vals = _gspread_retry(lambda: ws.get_all_values())
+    out = []
+    for i, r in enumerate(vals[1:], start=2):
+        r = (r + [""] * len(VT_PROP_HEADERS))[:len(VT_PROP_HEADERS)]
+        if r[0].strip():
+            out.append((i, dict(zip(VT_PROP_HEADERS, r))))
+    return ws, out
+
+
+def _vt_proposta_json(d):
+    try:
+        nova = json.loads(d.get("Nova (JSON)") or "{}")
+    except Exception:
+        nova = {}
+    return {"pid": d["PID"], "status": d["Status"], "execucao": d["Execução"], "criada": d["Criada em"],
+            "usina": d["Usina"], "tipo": d["Tipo"], "pedido": d["Pedido"], "quem": d["Quem"],
+            "quando": d["Quando"], "trecho": d["Trecho"], "ocorrencia": d["Ocorrência sugerida"],
+            "texto": d["Texto histórico"], "nova": nova, "justificativa": d["Justificativa"],
+            "confianca": d["Confiança"], "decidida": d["Decidida em"], "resultado": d["Resultado"]}
+
+
+def _vt_montar_pacote(horas):
+    """Texto com os DADOS que o Claude vai analisar. Mensagens ficam dentro de <grupo>."""
+    usinas = _vt_usinas_thopen()
+    nomes = [u["usina"] for u in usinas]
+    alvos = set(nomes)
+    partes, avisos, contagem = [], [], {}
+
+    d = _ajuda_busca_wpp(VT_THOPEN_GRUPO_ID, horas=horas, limit=1200)
+    if d.get("erro"):
+        raise RuntimeError(f"Grupo Thopen: {d['erro']}")
+    txt, n, midias = _ajuda_texto_mensagens(d, max_chars=40000)
+    contagem.update({"mensagens_thopen": n, "midias_thopen": midias})
+    if n == 0:
+        avisos.append("Sem mensagens de texto no grupo Thopen no período.")
+
+    vistos, blocos_eq = set(), []
+    for u in usinas:
+        gid = (u.get("grupo") or "").replace("@g.us", "")
+        if not gid or gid in vistos:
+            continue
+        vistos.add(gid)
+        de = _ajuda_busca_wpp(gid, horas=horas, limit=300)
+        if de.get("erro"):
+            avisos.append(f"Grupo da equipe {u.get('grupo_nome') or gid}: {de['erro'][:120]}")
+            continue
+        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=6000)
+        if n_eq:
+            usinas_do_grupo = [x["usina"] for x in usinas if (x.get("grupo") or "").replace("@g.us", "") == gid]
+            nome_g = (de.get("grupos") or [{}])[0].get("nome") or u.get("grupo_nome") or gid
+            blocos_eq.append(f"<grupo nome=\"equipe: {nome_g} (usinas: {', '.join(usinas_do_grupo)})\">\n{t_eq}\n</grupo>")
+    contagem["grupos_equipe"] = len(blocos_eq)
+
+    ocs = []
+    limite_fim = (datetime.now(ZoneInfo("America/Sao_Paulo")) - timedelta(days=90)).strftime("%Y-%m-%d")
+    for o in _oc_visiveis(_oc_carregar(forcar=True)):
+        partes_u = [o.get("usina") or ""] + [x.strip() for x in re.split(r"\s+e\s+|/|,", o.get("usina") or "") if x.strip()]
+        eh_thopen = "thopen" in _norm_usina(o.get("cliente") or "") or any(canonizar_usina(x) in alvos for x in partes_u if x)
+        if not eh_thopen or o.get("foraMapa"):
+            continue
+        if o.get("status") == "Finalizado" and (o.get("fim") or "") < limite_fim:
+            continue
+        ocs.append({
+            "id": o["id"], "status": o["status"], "usina": o["usina"], "equipamento": o.get("equip"),
+            "ativo": o.get("nequip"), "titulo": _vt_trunc(o.get("titulo"), 120), "descricao": _vt_trunc(o.get("causa"), 300),
+            "fabricante": o.get("fab"), "chamado": o.get("chamado"), "sn": o.get("sn"), "os": o.get("os"),
+            "criticidade": o.get("crit"), "inicio": o.get("inicio"), "fim": o.get("fim"), "responsavel": o.get("resp"),
+            "historico_recente": [f"{h.get('d')}: {_vt_trunc(h.get('t'), 220)}" for h in (o.get("hist") or [])[-4:]],
+        })
+    contagem["ocorrencias"] = len(ocs)
+
+    ativs = []
+    try:
+        for a in _ia_consultar_atividades(cliente="Thopen").get("atividades", []):
+            if any(k in (a.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS):
+                continue
+            ativs.append(a)
+    except Exception as e:
+        avisos.append(f"OS/atividades indisponíveis ({str(e)[:80]})")
+    contagem["os_abertas"] = len(ativs)
+
+    pend = []
+    try:
+        _, linhas = _vt_linhas()
+        pend = [{"usina": x["Usina"], "pedido": _vt_trunc(x["Pedido"], 160), "ocorrencia": x["Ocorrência sugerida"]}
+                for _, x in linhas if x["Status"] == "Pendente"]
+    except Exception as e:
+        avisos.append(f"propostas pendentes indisponíveis ({str(e)[:80]})")
+
+    mapa = [{"usina": u["usina"], "cidade_uf": u.get("cidade_uf", ""), "responsavel_campo": u.get("responsavel", ""),
+             "grupo_equipe": u.get("grupo_nome", "")} for u in usinas]
+    agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+    partes.append(f"# Pacote de dados — verificação Thopen ({agora}, últimas {horas} h)\n")
+    partes.append("## Usinas Thopen do mapeamento do Fred (use o nome exato)\n" + json.dumps(mapa, ensure_ascii=False))
+    partes.append("## Ocorrências do Painel (abertas e finalizadas nos últimos 90 dias)\n" + json.dumps(ocs, ensure_ascii=False))
+    partes.append("## OS/atividades abertas (Fracttal)\n" + json.dumps(ativs[:120], ensure_ascii=False))
+    partes.append("## Propostas já pendentes de aprovação (não repetir)\n" + json.dumps(pend, ensure_ascii=False))
+    partes.append(f"## Grupo do cliente\n<grupo nome=\"Thopen & GridCo. | Usinas FRED ALEXANDRINO\">\n{txt or '(sem mensagens)'}\n</grupo>")
+    partes.append("## Grupos das equipes\n" + ("\n".join(blocos_eq) or "(sem mensagens)"))
+    if avisos:
+        partes.append("## Avisos da coleta\n" + "\n".join(f"- {a}" for a in avisos))
+    return "\n\n".join(partes), contagem, avisos
+
+
+def _vt_importar(run, dados):
+    props = dados.get("propostas") or []
+    validas = {u["usina"] for u in _vt_usinas_thopen()}
+    ids_oc = {o["id"] for o in _oc_carregar()}
+    ws, linhas = _vt_linhas()
+    chaves = {(x["Usina"], _norm_usina(x["Pedido"])[:80]) for _, x in linhas if x["Status"] == "Pendente"}
+    agora, novas = _oc_agora(), []
+    for p in props[:60]:
+        if not isinstance(p, dict):
+            continue
+        usina = canonizar_usina(str(p.get("usina") or "")) or ""
+        if usina not in validas:
+            continue  # só usinas Thopen do mapeamento do Fred
+        tipo = str(p.get("tipo") or "").strip().lower()
+        if tipo not in VT_TIPOS:
+            tipo = "informacao"
+        oc = str(p.get("ocorrencia") or "").strip().upper()
+        if oc and oc not in ids_oc:
+            oc = ""
+        if tipo == "agregar" and not oc:
+            tipo = "nova"
+        pedido = _vt_trunc(p.get("pedido"), 600)
+        if not pedido:
+            continue
+        chave = (usina, _norm_usina(pedido)[:80])
+        if chave in chaves:
+            continue
+        chaves.add(chave)
+        nova = p.get("nova") if isinstance(p.get("nova"), dict) else {}
+        nova = {k: _vt_trunc(nova.get(k), OC_LIMITES.get(k, 1500)) for k in
+                ("equip", "nequip", "fab", "chamado", "sn", "os", "crit", "titulo", "causa", "impacto", "resp")
+                if nova.get(k)}
+        novas.append(["P" + uuid.uuid4().hex[:8], "Pendente", run, agora, usina, tipo, pedido,
+                      _vt_trunc(p.get("quem"), 80), _vt_trunc(p.get("quando"), 40), _vt_trunc(p.get("trecho"), 500),
+                      oc, _vt_trunc(p.get("texto_historico"), 2000), json.dumps(nova, ensure_ascii=False),
+                      _vt_trunc(p.get("justificativa"), 400), _vt_trunc(p.get("confianca"), 10), "", ""])
+    if novas:
+        _gspread_retry(lambda: ws.append_rows(novas, value_input_option="RAW"))
+    return len(novas)
+
+
+def _vt_checar_resultado():
+    """Procura thopen/saida/<run>.json (ou .erro) no repositório e importa as propostas."""
+    run = _VT_EXEC["run"]
+    if not run or _VT_EXEC["status"] != "rodando":
+        return
+    r = _vt_gh("GET", f"thopen/saida/{run}.json", headers={"Accept": "application/vnd.github.raw"})
+    if r.status_code == 200:
+        try:
+            dados = json.loads(r.text)
+        except Exception as e:
+            _VT_EXEC.update(status="erro", erro=f"Resposta do Claude não é JSON válido ({str(e)[:80]})", fim=time.time())
+            return
+        n = _vt_importar(run, dados)
+        _VT_EXEC.update(status="concluido", importadas=n, resumo=_vt_trunc(dados.get("resumo"), 800),
+                        nao_verificado=[_vt_trunc(x, 200) for x in (dados.get("nao_verificado") or [])][:15],
+                        fim=time.time())
+        return
+    r2 = _vt_gh("GET", f"thopen/saida/{run}.erro", headers={"Accept": "application/vnd.github.raw"})
+    if r2.status_code == 200:
+        _VT_EXEC.update(status="erro", erro=_vt_trunc(r2.text, 300) or "falha no Claude", fim=time.time())
+        return
+    if time.time() - _VT_EXEC["inicio"] > _VT_TIMEOUT:
+        _VT_EXEC.update(status="erro", erro="O Claude não respondeu em 25 min (veja a aba Actions do repositório resumos-whatsapp).",
+                        fim=time.time())
+
+
+def _vt_estado():
+    e = dict(_VT_EXEC)
+    e["decorrido_s"] = int(time.time() - e["inicio"]) if e["inicio"] else 0
+    return e
+
+
+@app.route("/verificar-thopen/iniciar", methods=["POST", "OPTIONS"])
+def vt_iniciar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not _ajuda_visao_permitida():
+        return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
+    body = request.get_json(force=True, silent=True) or {}
+    horas = min(max(int(body.get("horas") or 48), 6), 336)
+    with _VT_LOCK:
+        if _VT_EXEC["status"] == "rodando" and time.time() - _VT_EXEC["inicio"] < _VT_TIMEOUT:
+            return jsonify({"ok": True, "jaRodando": True, "estado": _vt_estado()}), 200
+        try:
+            pacote, contagem, avisos = _vt_montar_pacote(horas)
+        except Exception as e:
+            log.error(f"[verificar-thopen] pacote: {e}")
+            return jsonify({"ok": False, "error": str(e)[:300]}), 502
+        run = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d-%H%M%S")
+        r = _vt_gh("PUT", f"thopen/entrada/{run}.md", json={
+            "message": f"Verificação Thopen {run}",
+            "content": base64.b64encode(pacote.encode("utf-8")).decode("ascii")})
+        if r.status_code not in (200, 201):
+            return jsonify({"ok": False, "error": f"GitHub recusou o envio ({r.status_code}): {r.text[:200]}"}), 502
+        _VT_EXEC.update(run=run, inicio=time.time(), status="rodando", erro="", resumo="", nao_verificado=[],
+                        importadas=0, fim=0.0, contagem=contagem, avisos=avisos, horas=horas)
+    return jsonify({"ok": True, "estado": _vt_estado()}), 200
+
+
+@app.route("/verificar-thopen/status", methods=["GET"])
+def vt_status():
+    if not _ajuda_visao_permitida():
+        return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
+    try:
+        with _VT_LOCK:
+            _vt_checar_resultado()
+    except Exception as e:
+        log.error(f"[verificar-thopen] status: {e}")
+        return jsonify({"ok": True, "estado": _vt_estado(), "aviso": str(e)[:200]}), 200
+    return jsonify({"ok": True, "estado": _vt_estado()}), 200
+
+
+@app.route("/ocorrencias/propostas", methods=["GET"])
+def vt_propostas():
+    if not _ajuda_visao_permitida():
+        return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
+    try:
+        _, linhas = _vt_linhas()
+        itens = [_vt_proposta_json(x) for _, x in linhas if x["Status"] == "Pendente"]
+        return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+@app.route("/ocorrencias/propostas/decidir", methods=["POST", "OPTIONS"])
+def vt_decidir():
+    """acao: agregar (ocorrencia, texto, data) | nova (campos, registro) | descartar."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not _ajuda_visao_permitida():
+        return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
+    dados = request.get_json(force=True, silent=True) or {}
+    pid = _oc_texto(dados.get("pid"))
+    acao = _oc_texto(dados.get("acao")).lower()
+    if acao not in ("agregar", "nova", "descartar"):
+        return jsonify({"ok": False, "error": "ação inválida"}), 400
+    try:
+        with _VT_LOCK:
+            wp, linhas = _vt_linhas()
+            achada = next(((n, x) for n, x in linhas if x["PID"] == pid), None)
+            if not achada:
+                return jsonify({"ok": False, "error": "Proposta não encontrada."}), 404
+            nlin, prop = achada
+            if prop["Status"] != "Pendente":
+                return jsonify({"ok": False, "error": f"Esta proposta já foi {prop['Status'].lower()}."}), 409
+            resultado, item = "", None
+            with _OC_LOCK:
+                if acao == "agregar":
+                    oid = _oc_texto(dados.get("ocorrencia")).upper()
+                    texto = _oc_texto(dados.get("texto"), OC_TEXTO_MAX)
+                    if not texto:
+                        raise ValueError("escreva o registro do histórico")
+                    data = _oc_data(dados.get("data"), "data") or _oc_hoje()
+                    wo = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+                    if not _oc_achar_linha(wo, len(OC_HEADERS), 0, oid)[0]:
+                        raise ValueError("ocorrência não encontrada")
+                    wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+                    _gspread_retry(lambda: wh.append_row(["H" + uuid.uuid4().hex[:8], oid, data, texto, _oc_agora()],
+                                                         value_input_option="RAW"))
+                    _oc_tocar(oid)
+                    resultado = f"histórico {oid}"
+                elif acao == "nova":
+                    campos = _oc_validar_campos(dados.get("campos") or {}, criando=True)
+                    _oc_exigir_escopo(campos.get("usina"), campos.get("cliente", ""))
+                    if campos["status"] == "Finalizado" and not campos.get("fim"):
+                        campos["fim"] = _oc_hoje()
+                    ws = _oc_aba(OC_SHEET_NAME, OC_HEADERS)
+                    oid = _oc_proximo_id(ws)
+                    agora = _oc_agora()
+                    linha = {h: "" for h in OC_HEADERS}
+                    linha["ID"] = oid
+                    for k, coluna in OC_CAMPOS.items():
+                        linha[coluna] = campos.get(k, "")
+                    linha["Criada em"] = agora
+                    linha["Atualizada em"] = agora
+                    _gspread_retry(lambda: ws.append_row([linha[h] for h in OC_HEADERS], value_input_option="RAW"))
+                    registro = _oc_texto(dados.get("registro"), OC_TEXTO_MAX)
+                    if registro:
+                        wh = _oc_aba(OC_HIST_SHEET_NAME, OC_HIST_HEADERS, 3000)
+                        _gspread_retry(lambda: wh.append_row(["H" + uuid.uuid4().hex[:8], oid, campos["inicio"], registro, agora],
+                                                             value_input_option="RAW"))
+                    resultado = f"criada {oid}"
+                else:
+                    oid = ""
+                    resultado = "descartada"
+                _oc_invalidar()
+            col_ini = chr(65 + VT_PROP_HEADERS.index("Decidida em"))
+            col_fim = chr(65 + VT_PROP_HEADERS.index("Resultado"))
+            col_st = chr(65 + VT_PROP_HEADERS.index("Status"))
+            _gspread_retry(lambda: wp.batch_update([
+                {"range": f"{col_st}{nlin}", "values": [["Descartada" if acao == "descartar" else "Aprovada"]]},
+                {"range": f"{col_ini}{nlin}:{col_fim}{nlin}", "values": [[_oc_agora(), resultado]]}],
+                value_input_option="RAW"))
+            if oid:
+                item = next((x for x in _oc_visiveis(_oc_carregar(forcar=True)) if x["id"] == oid), None)
+        return jsonify({"ok": True, "resultado": resultado, "item": item}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
