@@ -25200,6 +25200,7 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
     tarefas = {}
     erros, nao_encontradas = [], []
     paginas = 0
+    _vistos_tarefa = {}
     for st_ot in ("1", "2"):
         start = 0
         while paginas < 400:
@@ -25221,8 +25222,16 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
             paginas += 1
             for t in lote:
                 f = str(t.get("wo_folio") or "").strip()
-                if f:
-                    tarefas.setdefault(f, []).append(t)
+                if not f:
+                    continue
+                # a paginação da Fracttal repete tarefas entre páginas quando a lista muda durante a leitura:
+                # sem isso, OS de 1 tarefa aparecia com "2 Concluída" e "Múltiplas atividades" (falso divergente)
+                chave_t = t.get("id_work_orders_tasks") or t.get("id_task") or t.get("id") or json.dumps(t, sort_keys=True, default=str)
+                vistos_t = _vistos_tarefa.setdefault(f, set())
+                if chave_t in vistos_t:
+                    continue
+                vistos_t.add(chave_t)
+                tarefas.setdefault(f, []).append(t)
             start += len(lote)
             if not lote or start >= (total_ft or 0):
                 break
