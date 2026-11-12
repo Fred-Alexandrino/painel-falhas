@@ -12894,7 +12894,7 @@ def chamados_nexus_importar():
                      for f, l in novas.items() if f in por_os]
         criar = [l for f, l in novas.items() if f not in por_os]
         if atualizar:
-            _gspread_retry(lambda: ws.batch_update(atualizar, value_input_option="RAW"))
+            _gspread_retry(lambda: ws.batch_update([dict(x) for x in atualizar], value_input_option="RAW"))
         if criar:
             _gspread_retry(lambda: ws.append_rows(criar, value_input_option="RAW"))
         removidas = bloqueadas = 0
@@ -13328,7 +13328,7 @@ def solaredge_importar():
         ult = gspread.utils.rowcol_to_a1(1, len(SOLAREDGE_HEADERS))[:-1]
         for i in range(0, len(atualizar), 80):
             lote = [{"range": f"A{r}:{ult}{r}", "values": [lin]} for r, lin in atualizar[i:i + 80]]
-            _oc_retry(lambda lote=lote: ws.batch_update(lote, value_input_option="RAW"))
+            _oc_retry(lambda lote=lote: ws.batch_update([dict(x) for x in lote], value_input_option="RAW"))  # copia: o gspread prefixa o nome da aba no "range" in-place e, no retry, repetia o prefixo (erro "Unable to parse range")
         if novos:
             _oc_retry(lambda: ws.append_rows(novos, value_input_option="RAW"))
         try:
