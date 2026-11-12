@@ -5489,6 +5489,24 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
             ws.update(f"U{i}:W{i}", [[percentual_novo, status_geral_novo, detalhes_novo]])
             mudou = True
 
+        # 12/11/2026 (auditoria Fracttal x Central): a revalidação só atualizava estado, %, situação e
+        # responsável/usina — prazo, nome da OS, ativos, etiquetas e observações ficavam congelados no valor
+        # da criação (ex.: 337 prazos divergentes). Agora acompanham a Fracttal em toda revalidação.
+        try:
+            _esp = _fracttal_mapear_grupo(tasks)
+            _sync_campos = []
+            for _c in ("prazo", "descricao", "equipamento", "detalhesEquipamentosOS", "statusTarefaOS", "etiquetasOS", "observacoesOS"):
+                if _c not in _esp:
+                    continue
+                _novo = _esp.get(_c) or ""
+                _atual = row[ATIV_CAMPO_COL[_c] - 1] if len(row) >= ATIV_CAMPO_COL[_c] else ""
+                if _aud_ft_norm(_c, _atual) != _aud_ft_norm(_c, _novo):
+                    ws.update_cell(i, ATIV_CAMPO_COL[_c], _novo)
+                    _sync_campos.append(_AUD_FT_ROTULO.get(_c, _c))
+            if _sync_campos:
+                mudou = True
+        except Exception as _e:
+            log.error(f"[Fracttal] sync de campos da OS {numero_os}: {_e}")
         hist_atual = row[ATIV_COL_HISTORICO - 1] if len(row) >= ATIV_COL_HISTORICO else ""
         mudanca_resumo = ""  # versão curta do que mudou, pra caber em notificação (push/central) — 29/07/2026
         if mudou:
@@ -25103,10 +25121,10 @@ def _aud_ft_gravar(d):
 
 def _aud_ft_tasks(numero_os, headers):
     """Tarefas da OS na Fracttal; None = não existe/erro definitivo; levanta em erro temporário."""
-    for tentativa in range(4):
+    for tentativa in range(5):
         r = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
         if r.status_code == 429 or r.status_code >= 500:
-            time.sleep(2 + tentativa * 3)
+            time.sleep(5 + tentativa * 8)
             continue
         if r.status_code == 404:
             return None
@@ -25186,11 +25204,20 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
         start = 0
         while paginas < 400:
             prog(etapa=f"Lendo OS {'em processo' if st_ot == '1' else 'em revisão'} na Fracttal (página {paginas + 1})…")
-            try:
-                lote, total_ft = _fracttal_listar_pagina(ot_status=st_ot, start=start, limit=100)
-            except Exception as e:
-                erros.append({"numeroOS": "-", "erro": f"listagem Fracttal status {st_ot}: {e}"[:200]})
+            lote = None
+            for tent in range(5):
+                try:
+                    lote, total_ft = _fracttal_listar_pagina(ot_status=st_ot, start=start, limit=100)
+                    break
+                except Exception as e:
+                    if "429" in str(e) and tent < 4:
+                        time.sleep(6 + tent * 8)
+                        continue
+                    erros.append({"numeroOS": "-", "erro": f"listagem Fracttal status {st_ot}: {e}"[:200]})
+                    break
+            if lote is None:
                 break
+            time.sleep(0.6)
             paginas += 1
             for t in lote:
                 f = str(t.get("wo_folio") or "").strip()
@@ -25214,7 +25241,7 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
     prog(etapa=f"Conferindo uma a uma {len(nums)} OS que não estão abertas na Fracttal…", total=len(nums), feitas=0)
     feitas = [0]
     lock = threading.Lock()
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=5) as ex:
         for fut in as_completed([ex.submit(busca, n) for n in nums]):
             num, tasks, err = fut.result()
             with lock:
