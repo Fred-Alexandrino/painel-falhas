@@ -24457,6 +24457,7 @@ def userscript_grid_performance():
     return Response(_USERSCRIPT_PERFORMANCE, mimetype="text/javascript; charset=utf-8")
 
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VERIFICAR THOPEN COM CLAUDE (12/11/2026)
 #  Botão no Painel de Ocorrências. O servidor monta um pacote de DADOS (grupo
@@ -24479,6 +24480,26 @@ _VT_LOCK = threading.Lock()
 _VT_EXEC = {"run": None, "inicio": 0.0, "status": "", "erro": "", "resumo": "", "nao_verificado": [],
             "importadas": 0, "fim": 0.0}
 _VT_TIMEOUT = 25 * 60
+_VT_ESTADO_ARQ = os.path.join(APP_DIR, "verificar_thopen_estado.json")
+
+
+def _vt_upd(**kw):
+    """Atualiza o estado da última verificação e grava em disco (sobrevive a reinício do serviço)."""
+    _VT_EXEC.update(kw)
+    try:
+        tmp = _VT_ESTADO_ARQ + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_VT_EXEC, f, ensure_ascii=False)
+        os.replace(tmp, _VT_ESTADO_ARQ)
+    except Exception as e:
+        log.error(f"[verificar-thopen] estado: {e}")
+
+
+try:
+    with open(_VT_ESTADO_ARQ, encoding="utf-8") as _f:
+        _VT_EXEC.update(json.load(_f))
+except Exception:
+    pass
 
 
 def _vt_gh(metodo, caminho, **kw):
@@ -24578,10 +24599,18 @@ def _vt_montar_pacote(horas):
 
     ativs = []
     try:
-        for a in _ia_consultar_atividades(cliente="Thopen").get("atividades", []):
+        ws_at = get_atividades_sheet()
+        for row in _gspread_retry(lambda: ws_at.get_all_values())[1:]:
+            row = (row + [""] * len(ATIV_HEADERS_JSON))[:len(ATIV_HEADERS_JSON)]
+            a = dict(zip(ATIV_HEADERS_JSON, row))
+            if not (a.get("id") or "").strip() or canonizar_usina(a.get("usina", "")) not in alvos:
+                continue
             if any(k in (a.get("status") or "").lower() for k in _AJUDA_STATUS_FECHADOS):
                 continue
-            ativs.append(a)
+            ativs.append({"usina": a.get("usina"), "equipamento": a.get("equipamento"),
+                          "descricao": _vt_trunc(a.get("descricao"), 200), "responsavel": a.get("responsavel"),
+                          "status": a.get("status"), "numeroOS": a.get("numeroOS"), "statusOS": a.get("statusOS"),
+                          "prazo": a.get("prazo")})
     except Exception as e:
         avisos.append(f"OS/atividades indisponíveis ({str(e)[:80]})")
     contagem["os_abertas"] = len(ativs)
@@ -24660,19 +24689,19 @@ def _vt_checar_resultado():
         try:
             dados = json.loads(r.text)
         except Exception as e:
-            _VT_EXEC.update(status="erro", erro=f"Resposta do Claude não é JSON válido ({str(e)[:80]})", fim=time.time())
+            _vt_upd(status="erro", erro=f"Resposta do Claude não é JSON válido ({str(e)[:80]})", fim=time.time())
             return
         n = _vt_importar(run, dados)
-        _VT_EXEC.update(status="concluido", importadas=n, resumo=_vt_trunc(dados.get("resumo"), 800),
+        _vt_upd(status="concluido", importadas=n, resumo=_vt_trunc(dados.get("resumo"), 800),
                         nao_verificado=[_vt_trunc(x, 200) for x in (dados.get("nao_verificado") or [])][:15],
                         fim=time.time())
         return
     r2 = _vt_gh("GET", f"thopen/saida/{run}.erro", headers={"Accept": "application/vnd.github.raw"})
     if r2.status_code == 200:
-        _VT_EXEC.update(status="erro", erro=_vt_trunc(r2.text, 300) or "falha no Claude", fim=time.time())
+        _vt_upd(status="erro", erro=_vt_trunc(r2.text, 300) or "falha no Claude", fim=time.time())
         return
     if time.time() - _VT_EXEC["inicio"] > _VT_TIMEOUT:
-        _VT_EXEC.update(status="erro", erro="O Claude não respondeu em 25 min (veja a aba Actions do repositório resumos-whatsapp).",
+        _vt_upd(status="erro", erro="O Claude não respondeu em 25 min (veja a aba Actions do repositório resumos-whatsapp).",
                         fim=time.time())
 
 
@@ -24704,7 +24733,7 @@ def vt_iniciar():
             "content": base64.b64encode(pacote.encode("utf-8")).decode("ascii")})
         if r.status_code not in (200, 201):
             return jsonify({"ok": False, "error": f"GitHub recusou o envio ({r.status_code}): {r.text[:200]}"}), 502
-        _VT_EXEC.update(run=run, inicio=time.time(), status="rodando", erro="", resumo="", nao_verificado=[],
+        _vt_upd(run=run, inicio=time.time(), status="rodando", erro="", resumo="", nao_verificado=[],
                         importadas=0, fim=0.0, contagem=contagem, avisos=avisos, horas=horas)
     return jsonify({"ok": True, "estado": _vt_estado()}), 200
 
@@ -24808,6 +24837,35 @@ def vt_decidir():
         return jsonify({"ok": True, "resultado": resultado, "item": item}), 200
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
+
+@app.route("/verificar-thopen/importar", methods=["POST", "OPTIONS"])
+def vt_importar_manual():
+    """Recuperação: importa as propostas de uma execução já concluída no repositório (ex.: o serviço reiniciou no meio)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not _ajuda_visao_permitida():
+        return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
+    run = re.sub(r"[^0-9\-]", "", str((request.get_json(force=True, silent=True) or {}).get("run") or ""))[:20]
+    if not run:
+        return jsonify({"ok": False, "error": "informe run"}), 400
+    try:
+        with _VT_LOCK:
+            _, linhas = _vt_linhas()
+            if any(x["Execução"] == run for _, x in linhas):
+                return jsonify({"ok": False, "error": "Esta execução já foi importada."}), 409
+            r = _vt_gh("GET", f"thopen/saida/{run}.json", headers={"Accept": "application/vnd.github.raw"})
+            if r.status_code != 200:
+                return jsonify({"ok": False, "error": f"Resultado não encontrado ({r.status_code})."}), 404
+            dados = json.loads(r.text)
+            n = _vt_importar(run, dados)
+            _vt_upd(run=run, status="concluido", importadas=n, erro="", resumo=_vt_trunc(dados.get("resumo"), 800),
+                    nao_verificado=[_vt_trunc(x, 200) for x in (dados.get("nao_verificado") or [])][:15],
+                    inicio=_VT_EXEC.get("inicio") or time.time(), fim=time.time())
+        return jsonify({"ok": True, "importadas": n}), 200
     except Exception as e:
         return _oc_resposta_erro(e)
 
