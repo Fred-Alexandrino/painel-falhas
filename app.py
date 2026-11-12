@@ -25143,7 +25143,7 @@ def _aud_ft_escopo(row, dias):
         return num  # concluída sem data: confere
 
 
-def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=60, origem="manual", rodar_descoberta=True, job=None):
+def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="manual", rodar_descoberta=True, job=None):
     job = job or {}
     t0 = time.time()
 
@@ -25175,14 +25175,32 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=60, origem="ma
             vistos.setdefault(num, []).append(i)
     duplicadas = [{"numeroOS": n, "linhas": ls} for n, ls in vistos.items() if len(ls) > 1]
     total = len(alvo)
-    prog(etapa=f"Conferindo {total} OS na Fracttal…", total=total, feitas=0)
 
-    token = _fracttal_get_token()
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    # 1) Em lote: todas as OS EM PROCESSO e EM REVISÃO da Fracttal (paginado, 100 tarefas por chamada).
     tarefas = {}
     erros, nao_encontradas = [], []
-    feitas = [0]
-    lock = threading.Lock()
+    paginas = 0
+    for st_ot in ("1", "2"):
+        start = 0
+        while paginas < 400:
+            prog(etapa=f"Lendo OS {'em processo' if st_ot == '1' else 'em revisão'} na Fracttal (página {paginas + 1})…")
+            try:
+                lote, total_ft = _fracttal_listar_pagina(ot_status=st_ot, start=start, limit=100)
+            except Exception as e:
+                erros.append({"numeroOS": "-", "erro": f"listagem Fracttal status {st_ot}: {e}"[:200]})
+                break
+            paginas += 1
+            for t in lote:
+                f = str(t.get("wo_folio") or "").strip()
+                if f:
+                    tarefas.setdefault(f, []).append(t)
+            start += len(lote)
+            if not lote or start >= (total_ft or 0):
+                break
+    abertas_ft = set(tarefas.keys())
+    # 2) Individual: OS que a Central tem e não vieram no lote (fechadas na Fracttal, ou concluídas recentes).
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
     def busca(num):
         try:
@@ -25190,19 +25208,22 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=60, origem="ma
         except Exception as e:
             return num, None, str(e)
 
-    nums = list(dict.fromkeys(n for _, _, n in alvo))
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    nums = [n for n in dict.fromkeys(n for _, _, n in alvo) if n not in abertas_ft]
+    prog(etapa=f"Conferindo uma a uma {len(nums)} OS que não estão abertas na Fracttal…", total=len(nums), feitas=0)
+    feitas = [0]
+    lock = threading.Lock()
+    with ThreadPoolExecutor(max_workers=8) as ex:
         for fut in as_completed([ex.submit(busca, n) for n in nums]):
             num, tasks, err = fut.result()
             with lock:
                 feitas[0] += 1
                 if err:
                     erros.append({"numeroOS": num, "erro": err[:200]})
-                elif tasks is None or not tasks:
+                elif not tasks:
                     nao_encontradas.append(num)
                 else:
                     tarefas[num] = tasks
-                if feitas[0] % 40 == 0:
+                if feitas[0] % 25 == 0:
                     prog(feitas=feitas[0])
     prog(etapa="Comparando campo a campo…", feitas=len(nums))
 
@@ -25292,7 +25313,7 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=60, origem="ma
     resultado = {
         "ok": True, "origem": origem, "aplicado": bool(aplicar),
         "inicio": job.get("inicio"), "fim": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "segundos": round(time.time() - t0),
-        "conferidas": len(tarefas), "escopo": total, "osComDivergencia": os_div, "divergencias": divergencias[:4000],
+        "conferidas": len({n for _, _, n in alvo if n in tarefas}), "escopo": total, "paginasLote": paginas, "osComDivergencia": os_div, "divergencias": divergencias[:4000],
         "porCampo": por_campo, "naoEncontradas": nao_encontradas, "erros": erros[:200], "revisaoManual": revisao_manual[:300],
         "duplicadas": duplicadas, "celulasGravadas": gravadas,
         "descoberta": {"criadas": len((descoberta or {}).get("criadas") or [])} if isinstance(descoberta, dict) else None,
@@ -25317,7 +25338,7 @@ def auditoria_fracttal_iniciar():
         except Exception:
             pass
     aplicar = corpo.get("aplicar", True) is not False
-    dias = corpo.get("diasConcluidas", 60)
+    dias = corpo.get("diasConcluidas", 15)
     job = {"rodando": True, "inicio": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "etapa": "Iniciando…",
            "aplicar": aplicar, "atualizadoEm": agora_br().strftime("%d/%m/%Y %H:%M:%S")}
     _aud_ft_gravar(job)
