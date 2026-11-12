@@ -5472,6 +5472,11 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
         _res_usina = _fracttal_resolver_usina_tecnico(tasks[0])
         usina_novo = _res_usina["usina"] or ""
         cliente_novo = _res_usina["cliente"] or ""
+        if _res_usina.get("fora_mapeamento"):
+            try:
+                _os_fora_mapa_marcar(numero_os, _res_usina, origem="revalidação")
+            except Exception as _e:
+                log.error(f"[Fracttal] marcar fora do mapa {numero_os}: {_e}")
 
         mudou = False
         if status_novo and status_novo != status_os_atual:
@@ -6373,6 +6378,8 @@ def listar_atividades():
             if not row[0].strip():
                 continue
             item = dict(zip(ATIV_HEADERS_JSON, row[:len(ATIV_HEADERS_JSON)]))
+            if (item.get("numeroOS") or "").strip() in _os_fora_mapa_set():
+                continue  # OS de outro cliente/supervisor (marcada pela auditoria Fracttal, 12/11/2026)
             # Correção 31/07/2026: se a atividade foi criada enquanto a
             # usina estava sob supervisão temporária e o Fred já devolveu
             # essa usina (removeu de /supervisao-temporaria), ela não deve
@@ -7499,9 +7506,32 @@ def _fracttal_resolver_usina_tecnico(representante):
         else:
             motivo_revisao = f"Grupo/ativo (\"{texto_usado}\") não reconhecido e OT sem técnico responsável informado."
 
+    # 12/11/2026 (pedido do Fred): o CLIENTE que a Fracttal informa no grupo ("Thopen - Ipixuna 1 e 2 - PA")
+    # é decisivo. O técnico Wesllen Castro atende Ipixuna do Pará I (2C, do mapeamento) e também Ipixuna 1 e 2
+    # (Thopen, fora do mapeamento): OS da Thopen entravam como Ipixuna do Pará I. Regra:
+    #  - usina deduzida de cliente diferente do informado -> fora do mapeamento (nunca entra no painel);
+    #  - grupo informado com cliente, mas o nome não é nenhuma usina do mapeamento -> fora do mapeamento.
+    _pg = [p.strip() for p in (representante.get("groups_1_description") or "").split(" - ") if p.strip()]
+    cliente_fracttal = _pg[0] if len(_pg) >= 2 else ""
+    fora_mapeamento = False
+    if cliente_fracttal:
+        _cf = _norm_usina(cliente_fracttal)
+        if usina:
+            _ce = _norm_usina(inferir_cliente(usina) or "")
+            _temp = usina in {_it["usina"] for _it in _usinas_temporarias()}
+            if _ce and _cf and _cf not in _ce and _ce not in _cf and not _temp:
+                motivo_revisao = (f"A Fracttal informa o cliente \"{cliente_fracttal}\" (grupo \"{representante.get('groups_1_description')}\"), "
+                                  f"mas \"{usina}\" é de \"{inferir_cliente(usina)}\": OS de outro cliente, fora do mapeamento.")
+                usina, alerta, fora_mapeamento = None, None, True
+        elif texto_grupo:
+            motivo_revisao = (f"OS do cliente \"{cliente_fracttal}\", usina \"{texto_grupo}\" (grupo da Fracttal), "
+                              f"que não é uma usina do seu mapeamento.")
+            fora_mapeamento = True
     cliente = inferir_cliente(usina) if usina else None
     return {"usina": usina, "cliente": cliente, "alerta": alerta, "motivo_revisao": motivo_revisao,
-            "texto_usado": texto_usado, "tecnico_raw": tecnico_raw, "texto_ativo": texto_ativo}
+            "texto_usado": texto_usado, "tecnico_raw": tecnico_raw, "texto_ativo": texto_ativo,
+            "fora_mapeamento": fora_mapeamento, "cliente_fracttal": cliente_fracttal,
+            "grupo_fracttal": (representante.get("groups_1_description") or "").strip()}
 
 
 def _fracttal_mapear_grupo(tasks):
@@ -7522,6 +7552,8 @@ def _fracttal_mapear_grupo(tasks):
     texto_usado, tecnico_raw, texto_ativo = _res["texto_usado"], _res["tecnico_raw"], _res["texto_ativo"]
 
     if not usina:
+        if _res.get("fora_mapeamento"):
+            return None  # OS de outro cliente/supervisor: não entra no painel (12/11/2026)
         return {"_revisao_manual": True, "motivo": _res["motivo_revisao"], "wo_folio": representante.get("wo_folio", "?")}
 
     prioridade_raw = (representante.get("priorities_description") or "").strip().upper()
@@ -25083,6 +25115,52 @@ def deploy_vm2_limpar_sessao():
         return jsonify({"ok": False, "error": str(e)[:300]}), 500
 
 
+# ── OS fora do mapeamento (12/11/2026) ─────────────────────────────────────
+# OS que estão na planilha mas são de outro cliente/supervisor segundo a Fracttal (cliente do grupo).
+# A linha não é apagada (histórico preservado); só deixa de aparecer em /atividades.
+OS_FORA_MAPA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "os_fora_mapeamento.json")
+_OS_FORA_CACHE = {"t": 0.0, "d": {}}
+
+
+def _os_fora_mapa_ler():
+    if time.time() - _OS_FORA_CACHE["t"] < 30:
+        return _OS_FORA_CACHE["d"]
+    try:
+        with open(OS_FORA_MAPA_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        d = {}
+    _OS_FORA_CACHE.update(t=time.time(), d=d)
+    return d
+
+
+def _os_fora_mapa_set():
+    return set(_os_fora_mapa_ler().keys())
+
+
+def _os_fora_mapa_marcar(numero_os, res, origem=""):
+    numero_os = str(numero_os).strip()
+    if not numero_os:
+        return
+    _OS_FORA_CACHE["t"] = 0.0
+    d = dict(_os_fora_mapa_ler())
+    if numero_os in d:
+        return
+    d[numero_os] = {"cliente": res.get("cliente_fracttal", ""), "grupo": res.get("grupo_fracttal", ""),
+                    "motivo": res.get("motivo_revisao", ""), "origem": origem,
+                    "em": agora_br().strftime("%d/%m/%Y %H:%M")}
+    tmp = OS_FORA_MAPA_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, OS_FORA_MAPA_PATH)
+    _OS_FORA_CACHE.update(t=time.time(), d=d)
+
+
+@app.route("/os-fora-mapeamento", methods=["GET"])
+def os_fora_mapeamento_listar():
+    return jsonify({"ok": True, "itens": _os_fora_mapa_ler()}), 200
+
+
 # ══════════════════════════════════════════════════════════════════════
 # AUDITORIA FRACTTAL x CENTRAL O&M — campo a campo (12/11/2026)
 # Pedido do Fred: bater status, estados, nomenclaturas, ativos e usinas entre a
@@ -25148,7 +25226,7 @@ def _aud_ft_escopo(row, dias=None):
     (em processo / em revisão-verificação). Concluídas e canceladas ficam de fora; entra só quando a
     Central ainda mostra aberta e a Fracttal já fechou (ou o contrário), porque aí o status diverge."""
     num = (row[ATIV_CAMPO_COL["numeroOS"] - 1] if len(row) >= ATIV_CAMPO_COL["numeroOS"] else "").strip()
-    if not num or not re.fullmatch(r"\d+", num):
+    if not num or not re.fullmatch(r"\d+", num) or num in _os_fora_mapa_set():
         return None
     usina = row[ATIV_CAMPO_COL["usina"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["usina"] else ""
     try:
@@ -25265,7 +25343,7 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
                     prog(feitas=feitas[0])
     prog(etapa="Comparando campo a campo…", feitas=len(nums))
 
-    divergencias, updates, revisao_manual = [], [], []
+    divergencias, updates, revisao_manual, fora_mapa = [], [], [], []
     agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
     col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
     status_internos = []
@@ -25275,6 +25353,15 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
             continue
         try:
             esp = _fracttal_mapear_grupo(tasks)
+            if esp is None:
+                _rf = _fracttal_resolver_usina_tecnico(tasks[0])
+                if _rf.get("fora_mapeamento"):
+                    fora_mapa.append({"numeroOS": num, "usinaCentral": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+                                      "clienteFracttal": _rf.get("cliente_fracttal", ""), "grupoFracttal": _rf.get("grupo_fracttal", ""),
+                                      "motivo": _rf.get("motivo_revisao", "")})
+                    if aplicar:
+                        _os_fora_mapa_marcar(num, _rf, origem=f"auditoria ({origem})")
+                continue
         except Exception as e:
             erros.append({"numeroOS": num, "erro": f"mapeamento: {e}"[:200]})
             continue
@@ -25354,7 +25441,7 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
         "inicio": job.get("inicio"), "fim": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "segundos": round(time.time() - t0),
         "conferidas": len({n for _, _, n in alvo if n in tarefas}), "escopo": total, "paginasLote": paginas, "osComDivergencia": os_div, "divergencias": divergencias[:4000],
         "porCampo": por_campo, "naoEncontradas": nao_encontradas, "erros": erros[:200], "revisaoManual": revisao_manual[:300],
-        "duplicadas": duplicadas, "celulasGravadas": gravadas,
+        "duplicadas": duplicadas, "celulasGravadas": gravadas, "foraMapeamento": fora_mapa,
         "descoberta": {"criadas": len((descoberta or {}).get("criadas") or [])} if isinstance(descoberta, dict) else None,
         "diasConcluidas": dias_concluidas,
     }
