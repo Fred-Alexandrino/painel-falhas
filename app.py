@@ -24458,6 +24458,7 @@ def userscript_grid_performance():
 
 
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VERIFICAR THOPEN COM CLAUDE (12/11/2026)
 #  Botão no Painel de Ocorrências. O servidor monta um pacote de DADOS (grupo
@@ -24480,6 +24481,9 @@ _VT_LOCK = threading.Lock()
 _VT_EXEC = {"run": None, "inicio": 0.0, "status": "", "erro": "", "resumo": "", "nao_verificado": [],
             "importadas": 0, "fim": 0.0}
 _VT_TIMEOUT = 25 * 60
+VT_HORAS_CONTEXTO = 5 * 24
+# Grupos extras de operação de uma usina (id -> usinas), lidos só como contexto.
+VT_GRUPOS_CONTEXTO = {"120363429682178805": ["Coração I", "Coração II"]}  # Operação UFV Coração
 _VT_ESTADO_ARQ = os.path.join(APP_DIR, "verificar_thopen_estado.json")
 
 
@@ -24554,11 +24558,19 @@ def _vt_montar_pacote(horas):
     alvos = set(nomes)
     partes, avisos, contagem = [], [], {}
 
-    d = _ajuda_busca_wpp(VT_THOPEN_GRUPO_ID, horas=horas, limit=1200)
+    # Período analisado + contexto anterior (os assuntos começam antes da janela e muitas
+    # mensagens não citam a usina: "o relé", "a usina 1"). Só o período gera propostas.
+    horas_ctx = min(horas + VT_HORAS_CONTEXTO, 720)
+    d = _ajuda_busca_wpp(VT_THOPEN_GRUPO_ID, horas=horas_ctx, limit=1500)
     if d.get("erro"):
         raise RuntimeError(f"Grupo Thopen: {d['erro']}")
-    txt, n, midias = _ajuda_texto_mensagens(d, max_chars=40000)
-    contagem.update({"mensagens_thopen": n, "midias_thopen": midias})
+    corte = time.time() - horas * 3600
+    msgs = d.get("mensagens") or []
+    d_ctx = dict(d, mensagens=[m for m in msgs if (m.get("t") or 0) < corte])
+    d_per = dict(d, mensagens=[m for m in msgs if (m.get("t") or 0) >= corte])
+    txt_ctx, n_ctx, _ = _ajuda_texto_mensagens(d_ctx, max_chars=30000)
+    txt, n, midias = _ajuda_texto_mensagens(d_per, max_chars=40000)
+    contagem.update({"mensagens_thopen": n, "midias_thopen": midias, "mensagens_contexto": n_ctx})
     if n == 0:
         avisos.append("Sem mensagens de texto no grupo Thopen no período.")
 
@@ -24568,15 +24580,24 @@ def _vt_montar_pacote(horas):
         if not gid or gid in vistos:
             continue
         vistos.add(gid)
-        de = _ajuda_busca_wpp(gid, horas=horas, limit=300)
+        de = _ajuda_busca_wpp(gid, horas=horas_ctx, limit=400)
         if de.get("erro"):
             avisos.append(f"Grupo da equipe {u.get('grupo_nome') or gid}: {de['erro'][:120]}")
             continue
-        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=6000)
+        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=9000)
         if n_eq:
             usinas_do_grupo = [x["usina"] for x in usinas if (x.get("grupo") or "").replace("@g.us", "") == gid]
             nome_g = (de.get("grupos") or [{}])[0].get("nome") or u.get("grupo_nome") or gid
             blocos_eq.append(f"<grupo nome=\"equipe: {nome_g} (usinas: {', '.join(usinas_do_grupo)})\">\n{t_eq}\n</grupo>")
+    # Grupos de operação por usina (fora do mapeamento de equipes), só como contexto
+    for gid, usinas_g in VT_GRUPOS_CONTEXTO.items():
+        de = _ajuda_busca_wpp(gid, horas=horas_ctx, limit=300)
+        if de.get("erro"):
+            continue
+        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=7000)
+        if n_eq:
+            nome_g = (de.get("grupos") or [{}])[0].get("nome") or gid
+            blocos_eq.append(f"<grupo nome=\"operação: {nome_g} (usinas: {', '.join(usinas_g)})\">\n{t_eq}\n</grupo>")
     contagem["grupos_equipe"] = len(blocos_eq)
 
     ocs = []
@@ -24623,16 +24644,22 @@ def _vt_montar_pacote(horas):
     except Exception as e:
         avisos.append(f"propostas pendentes indisponíveis ({str(e)[:80]})")
 
+    bases = {}
+    for u in usinas:
+        bases.setdefault(_AJUDA_SUFIXO_UNIDADE.sub("", u["usina"]).strip(), []).append(u["usina"])
+    complexos = {b: v for b, v in bases.items() if len(v) > 1}
     mapa = [{"usina": u["usina"], "cidade_uf": u.get("cidade_uf", ""), "responsavel_campo": u.get("responsavel", ""),
              "grupo_equipe": u.get("grupo_nome", "")} for u in usinas]
     agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
     partes.append(f"# Pacote de dados — verificação Thopen ({agora}, últimas {horas} h)\n")
     partes.append("## Usinas Thopen do mapeamento do Fred (use o nome exato)\n" + json.dumps(mapa, ensure_ascii=False))
+    partes.append("## Complexos com mais de uma unidade (\"usina 1\", \"usina menor\", \"cabine geral\" se referem a unidades do MESMO complexo)\n" + json.dumps(complexos, ensure_ascii=False))
     partes.append("## Ocorrências do Painel (abertas e finalizadas nos últimos 90 dias)\n" + json.dumps(ocs, ensure_ascii=False))
     partes.append("## OS/atividades abertas (Fracttal)\n" + json.dumps(ativs[:120], ensure_ascii=False))
     partes.append("## Propostas já pendentes de aprovação (não repetir)\n" + json.dumps(pend, ensure_ascii=False))
-    partes.append(f"## Grupo do cliente\n<grupo nome=\"Thopen & GridCo. | Usinas FRED ALEXANDRINO\">\n{txt or '(sem mensagens)'}\n</grupo>")
-    partes.append("## Grupos das equipes\n" + ("\n".join(blocos_eq) or "(sem mensagens)"))
+    partes.append(f"## Grupo do cliente — CONTEXTO ANTERIOR (últimos {VT_HORAS_CONTEXTO // 24} dias antes do período; use só para entender de qual usina/ativo cada assunto trata, NÃO gere propostas de pedidos que estão só aqui)\n<grupo nome=\"Thopen & GridCo. | Usinas FRED ALEXANDRINO — contexto\">\n{txt_ctx or '(sem mensagens)'}\n</grupo>")
+    partes.append(f"## Grupo do cliente — PERÍODO ANALISADO (últimas {horas} h; gere propostas daqui)\n<grupo nome=\"Thopen & GridCo. | Usinas FRED ALEXANDRINO\">\n{txt or '(sem mensagens)'}\n</grupo>")
+    partes.append(f"## Grupos das equipes (período + {VT_HORAS_CONTEXTO // 24} dias de contexto)\n" + ("\n".join(blocos_eq) or "(sem mensagens)"))
     if avisos:
         partes.append("## Avisos da coleta\n" + "\n".join(f"- {a}" for a in avisos))
     return "\n\n".join(partes), contagem, avisos
@@ -24648,9 +24675,11 @@ def _vt_importar(run, dados):
     for p in props[:60]:
         if not isinstance(p, dict):
             continue
-        usina = canonizar_usina(str(p.get("usina") or "")) or ""
-        if usina not in validas:
+        bruta = str(p.get("usina") or "").strip()
+        usina = canonizar_usina(bruta) or "" if bruta else ""
+        if bruta and usina not in validas:
             continue  # só usinas Thopen do mapeamento do Fred
+        # usina vazia = o Claude não achou evidência: entra como "a confirmar"
         tipo = str(p.get("tipo") or "").strip().lower()
         if tipo not in VT_TIPOS:
             tipo = "informacao"
@@ -24868,8 +24897,6 @@ def vt_importar_manual():
         return jsonify({"ok": True, "importadas": n}), 200
     except Exception as e:
         return _oc_resposta_erro(e)
-
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  VM2 — LIMPAR CHAVES DE SESSÃO CORROMPIDAS ("Bad MAC") MANTENDO O LOGIN (12/11/2026)
