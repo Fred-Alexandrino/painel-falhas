@@ -24002,6 +24002,120 @@ def nexus_performance():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+
+_USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
+// @name         Grid Performance → Painel
+// @namespace    gridco-fred
+// @version      1.0
+// @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
+// @match        https://app.gridco.com.br/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @connect      api.168.138.232.237.sslip.io
+// @run-at       document-idle
+// @noframes
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  const API = 'https://api.168.138.232.237.sslip.io/nexus-performance/importar';
+  const INTERVALO_MIN = 60;          // mês atual + tempo real + religamentos
+  const INTERVALO_ANTERIOR_H = 24;   // mês anterior (fechado): 1x por dia
+  if (location.pathname.startsWith('/entrar')) return;
+
+  function aviso(txt, erro) {
+    let el = document.getElementById('gp-aviso');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'gp-aviso';
+      el.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:99999;max-width:360px;padding:10px 14px;border-radius:10px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35);cursor:pointer;';
+      el.onclick = () => el.remove();
+      document.body.appendChild(el);
+    }
+    el.style.background = erro ? '#3b1212' : '#0f2a2e';
+    el.style.color = erro ? '#fca5a5' : '#a5f3fc';
+    el.style.border = '1px solid ' + (erro ? '#7f1d1d' : '#155e75');
+    el.textContent = 'Performance → Painel: ' + txt;
+    clearTimeout(el._t); el._t = setTimeout(() => el.remove(), erro ? 20000 : 6000);
+  }
+
+  const getJ = async u => { const r = await fetch(u, { credentials: 'include' }); if (!r.ok) throw new Error(u + ' HTTP ' + r.status); return r.json(); };
+
+  async function coletar(incluirAnterior) {
+    const hoje = new Date();
+    const ms = [[hoje.getFullYear(), hoje.getMonth() + 1]];
+    if (incluirAnterior) { const p = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1); ms.push([p.getFullYear(), p.getMonth() + 1]); }
+    const meses = {};
+    for (const [a, m] of ms) {
+      const chave = a + '-' + String(m).padStart(2, '0');
+      const [ger, disp] = await Promise.all([
+        getJ('/api/gerencial?mes=' + m + '&ano=' + a).catch(e => ({ erro: String(e) })),
+        getJ('/api/gerencial/disponibilidade?mes=' + chave).catch(e => ({ erro: String(e) })),
+      ]);
+      meses[chave] = { gerencial: ger, disponibilidade: disp };
+    }
+    let religamentos = null;
+    try {
+      const h = await (await fetch('/t/cos/religamentos?dias=30&ver=todos', { credentials: 'include' })).text();
+      const doc = new DOMParser().parseFromString(h, 'text/html');
+      const num = t => { const n = parseInt(String(t).replace(/\D/g, ''), 10); return isNaN(n) ? 0 : n; };
+      const rows = [...doc.querySelectorAll('main table tbody tr')].map(tr => {
+        const td = [...tr.children];
+        const dets = [...td[0].querySelectorAll('.det')].map(s => s.textContent.trim());
+        const nome = (td[0].querySelector('a,b') || td[0]).textContent.trim();
+        return { usina: nome, escopo: dets[0] || '', tipos: dets[1] || '', total: num(td[1].textContent), remotoResolveu: num(td[2].textContent),
+          remotoDepoisCampo: num(td[3].textContent), remotoAberta: num(td[4].textContent), soLocal: num(td[5].textContent),
+          ultimo: td[6] ? td[6].textContent.trim() : '', os: td[7] ? td[7].textContent.trim() : '' };
+      });
+      religamentos = { dias: 30, rows };
+    } catch (e) { religamentos = null; }
+    let tempoReal = null;
+    try { tempoReal = await getJ('/api/entrada/tempo-real'); } catch (e) {}
+    return { meses, religamentos, tempoReal, lidoEm: new Date().toISOString() };
+  }
+
+  function enviar(payload) {
+    return new Promise((ok, falha) => GM_xmlhttpRequest({
+      method: 'POST', url: API, headers: { 'Content-Type': 'application/json' }, data: JSON.stringify(payload), timeout: 120000,
+      onload: r => { try { const j = JSON.parse(r.responseText); j.ok ? ok(j) : falha(new Error(j.error || 'erro')); } catch (e) { falha(new Error('HTTP ' + r.status)); } },
+      onerror: () => falha(new Error('sem conexão com o painel')), ontimeout: () => falha(new Error('tempo esgotado')),
+    }));
+  }
+
+  async function rodar(forcar) {
+    const agora = Date.now();
+    const trava = GM_getValue('gpTrava', 0);
+    if (!forcar && agora - trava < 5 * 60000) return;          // outra aba já está enviando
+    const ult = GM_getValue('gpUltimo', 0), ultAnt = GM_getValue('gpUltimoAnterior', 0);
+    if (!forcar && agora - ult < INTERVALO_MIN * 60000) return;
+    GM_setValue('gpTrava', agora);
+    const anterior = forcar || agora - ultAnt > INTERVALO_ANTERIOR_H * 3600000;
+    try {
+      if (forcar) aviso('lendo o Nexus… (pode levar até 1 min)');
+      const p = await coletar(anterior);
+      const j = await enviar(p);
+      GM_setValue('gpUltimo', Date.now());
+      if (anterior) GM_setValue('gpUltimoAnterior', Date.now());
+      aviso('enviado ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : '') + ' às ' + (j.em || '').slice(-5));
+    } catch (e) {
+      aviso('falhou: ' + (e.message || e), true);
+    } finally { GM_setValue('gpTrava', 0); }
+  }
+
+  GM_registerMenuCommand('Enviar performance ao painel agora', () => rodar(true));
+  setTimeout(() => rodar(false), 8000);
+  setInterval(() => rodar(false), 10 * 60000);
+})();
+'''
+
+
+@app.route("/userscripts/grid-performance-painel.user.js", methods=["GET"])
+def userscript_grid_performance():
+    """Script do Tampermonkey (instalação: abrir esta URL no Chrome com o Tampermonkey)."""
+    from flask import Response
+    return Response(_USERSCRIPT_PERFORMANCE, mimetype="text/javascript; charset=utf-8")
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
