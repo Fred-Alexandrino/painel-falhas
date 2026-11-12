@@ -24459,6 +24459,7 @@ def userscript_grid_performance():
 
 
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VERIFICAR THOPEN COM CLAUDE (12/11/2026)
 #  Botão no Painel de Ocorrências. O servidor monta um pacote de DADOS (grupo
@@ -24499,11 +24500,16 @@ def _vt_upd(**kw):
         log.error(f"[verificar-thopen] estado: {e}")
 
 
-try:
-    with open(_VT_ESTADO_ARQ, encoding="utf-8") as _f:
-        _VT_EXEC.update(json.load(_f))
-except Exception:
-    pass
+def _vt_carregar_estado():
+    """O serviço roda com mais de um processo: o arquivo é a fonte da verdade do estado."""
+    try:
+        with open(_VT_ESTADO_ARQ, encoding="utf-8") as f:
+            _VT_EXEC.update(json.load(f))
+    except Exception:
+        pass
+
+
+_vt_carregar_estado()
 
 
 def _vt_gh(metodo, caminho, **kw):
@@ -24670,6 +24676,8 @@ def _vt_importar(run, dados):
     validas = {u["usina"] for u in _vt_usinas_thopen()}
     ids_oc = {o["id"] for o in _oc_carregar()}
     ws, linhas = _vt_linhas()
+    if any(x["Execução"] == run for _, x in linhas):
+        return sum(1 for _, x in linhas if x["Execução"] == run)  # outro processo já importou
     chaves = {(x["Usina"], _norm_usina(x["Pedido"])[:80]) for _, x in linhas if x["Status"] == "Pendente"}
     agora, novas = _oc_agora(), []
     for p in props[:60]:
@@ -24749,6 +24757,7 @@ def vt_iniciar():
     body = request.get_json(force=True, silent=True) or {}
     horas = min(max(int(body.get("horas") or 48), 6), 336)
     with _VT_LOCK:
+        _vt_carregar_estado()
         if _VT_EXEC["status"] == "rodando" and time.time() - _VT_EXEC["inicio"] < _VT_TIMEOUT:
             return jsonify({"ok": True, "jaRodando": True, "estado": _vt_estado()}), 200
         try:
@@ -24773,6 +24782,7 @@ def vt_status():
         return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
     try:
         with _VT_LOCK:
+            _vt_carregar_estado()
             _vt_checar_resultado()
     except Exception as e:
         log.error(f"[verificar-thopen] status: {e}")
