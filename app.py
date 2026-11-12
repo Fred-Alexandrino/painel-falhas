@@ -25330,7 +25330,13 @@ def auditoria_fracttal_iniciar():
         return jsonify({"ok": False, "error": "A auditoria é feita só pelo acesso principal."}), 403
     corpo = request.get_json(silent=True) or {}
     atual = _aud_ft_ler()
-    if atual.get("rodando"):
+    def _vivo(pid):
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except Exception:
+            return False
+    if atual.get("rodando") and not corpo.get("forcar") and (not atual.get("pid") or _vivo(atual.get("pid"))):
         try:
             ts = datetime.strptime(atual.get("atualizadoEm", ""), "%d/%m/%Y %H:%M:%S")
             if (agora_br().replace(tzinfo=None) - ts).total_seconds() < 600:
@@ -25339,7 +25345,7 @@ def auditoria_fracttal_iniciar():
             pass
     aplicar = corpo.get("aplicar", True) is not False
     dias = corpo.get("diasConcluidas", 15)
-    job = {"rodando": True, "inicio": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "etapa": "Iniciando…",
+    job = {"rodando": True, "pid": os.getpid(), "inicio": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "etapa": "Iniciando…",
            "aplicar": aplicar, "atualizadoEm": agora_br().strftime("%d/%m/%Y %H:%M:%S")}
     _aud_ft_gravar(job)
 
