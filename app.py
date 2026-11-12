@@ -24460,6 +24460,7 @@ def userscript_grid_performance():
 
 
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VERIFICAR THOPEN COM CLAUDE (12/11/2026)
 #  Botão no Painel de Ocorrências. O servidor monta um pacote de DADOS (grupo
@@ -24713,6 +24714,7 @@ def _vt_importar(run, dados):
                       _vt_trunc(p.get("justificativa"), 400), _vt_trunc(p.get("confianca"), 10), "", ""])
     if novas:
         _gspread_retry(lambda: ws.append_rows(novas, value_input_option="RAW"))
+    _VT_PROPS_CACHE["v"] = None
     return len(novas)
 
 
@@ -24742,9 +24744,51 @@ def _vt_checar_resultado():
                         fim=time.time())
 
 
-def _vt_estado():
+_VT_ACAO_CACHE = {"t": 0.0, "run": None, "v": None}
+_VT_PROPS_CACHE = {"t": 0.0, "v": None, "run": None}
+_VT_PASSOS = {"Instalar Claude Code": "Preparando o Claude", "Analisar pedidos pendentes": "Claude analisando os pedidos",
+              "Publicar resultado": "Publicando o resultado"}
+
+
+def _vt_acao_progresso():
+    """Etapa atual do GitHub Action desta verificação (fila, preparando, analisando, publicando)."""
+    run = _VT_EXEC.get("run")
+    if not run or not GITHUB_DEPLOY_TOKEN:
+        return None
+    if _VT_ACAO_CACHE["run"] == run and time.time() - _VT_ACAO_CACHE["t"] < 8:
+        return _VT_ACAO_CACHE["v"]
+    v = None
+    try:
+        h = {"Authorization": f"token {GITHUB_DEPLOY_TOKEN}", "Accept": "application/vnd.github+json"}
+        base = f"https://api.github.com/repos/{VT_REPO}/actions"
+        r = requests.get(f"{base}/workflows/thopen.yml/runs", headers=h, params={"per_page": 5}, timeout=10)
+        ini = datetime.fromtimestamp(_VT_EXEC.get("inicio") or 0, timezone.utc) - timedelta(seconds=30)
+        for wr in (r.json().get("workflow_runs") or []) if r.ok else []:
+            criado = datetime.fromisoformat(wr["created_at"].replace("Z", "+00:00"))
+            if criado < ini:
+                continue
+            v = {"status": wr.get("status"), "conclusao": wr.get("conclusion"), "url": wr.get("html_url"), "passos": [], "atual": ""}
+            j = requests.get(f"{base}/runs/{wr['id']}/jobs", headers=h, timeout=10)
+            for job in (j.json().get("jobs") or []) if j.ok else []:
+                for st in job.get("steps") or []:
+                    nome = _VT_PASSOS.get(st.get("name"))
+                    if not nome:
+                        continue
+                    v["passos"].append({"nome": nome, "status": st.get("status"), "conclusao": st.get("conclusion")})
+                    if st.get("status") == "in_progress":
+                        v["atual"] = nome
+            break
+    except Exception as e:
+        log.error(f"[verificar-thopen] progresso: {e}")
+    _VT_ACAO_CACHE.update(t=time.time(), run=run, v=v)
+    return v
+
+
+def _vt_estado(com_acao=False):
     e = dict(_VT_EXEC)
     e["decorrido_s"] = int(time.time() - e["inicio"]) if e["inicio"] else 0
+    if com_acao and e.get("status") == "rodando":
+        e["acao"] = _vt_acao_progresso()
     return e
 
 
@@ -24787,7 +24831,7 @@ def vt_status():
     except Exception as e:
         log.error(f"[verificar-thopen] status: {e}")
         return jsonify({"ok": True, "estado": _vt_estado(), "aviso": str(e)[:200]}), 200
-    return jsonify({"ok": True, "estado": _vt_estado()}), 200
+    return jsonify({"ok": True, "estado": _vt_estado(com_acao=True)}), 200
 
 
 @app.route("/ocorrencias/propostas", methods=["GET"])
@@ -24795,8 +24839,13 @@ def vt_propostas():
     if not _ajuda_visao_permitida():
         return jsonify({"ok": False, "error": "Disponível só na visão do Fred."}), 403
     try:
-        _, linhas = _vt_linhas()
-        itens = [_vt_proposta_json(x) for _, x in linhas if x["Status"] == "Pendente"]
+        hit = _VT_PROPS_CACHE.get("v")
+        if hit is not None and time.time() - _VT_PROPS_CACHE["t"] < 15 and _VT_PROPS_CACHE.get("run") == _VT_EXEC.get("run"):
+            itens = hit
+        else:
+            _, linhas = _vt_linhas()
+            itens = [_vt_proposta_json(x) for _, x in linhas if x["Status"] == "Pendente"]
+            _VT_PROPS_CACHE.update(t=time.time(), v=itens, run=_VT_EXEC.get("run"))
         return jsonify({"ok": True, "itens": itens, "total": len(itens)}), 200
     except Exception as e:
         return _oc_resposta_erro(e)
@@ -24864,6 +24913,7 @@ def vt_decidir():
                     oid = ""
                     resultado = "descartada"
                 _oc_invalidar()
+            _VT_PROPS_CACHE["v"] = None
             col_ini = chr(65 + VT_PROP_HEADERS.index("Decidida em"))
             col_fim = chr(65 + VT_PROP_HEADERS.index("Resultado"))
             col_st = chr(65 + VT_PROP_HEADERS.index("Status"))
