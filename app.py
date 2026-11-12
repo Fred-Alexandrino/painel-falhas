@@ -23805,6 +23805,178 @@ try:
 except Exception as e:
     log.error(f"[Push] Erro na carga inicial de subscriptions: {e}")
 
+
+# ══════════════════════════════════════════════════════════════════════
+# PERFORMANCE NEXUS — 12/11/2026. Fonte: torre Performance do Nexus
+# (app.gridco.com.br). O script do Tampermonkey "Grid Performance → Painel",
+# rodando no Chrome do Fred (logado no Nexus), lê as APIs internas
+#   /api/gerencial?mes=M&ano=A            (PR, meta de PR, produção x P50, atingimento)
+#   /api/gerencial/disponibilidade?mes=   (disponibilidade, horas e kWh perdidos, OS)
+#   /t/cos/religamentos?dias=30&ver=todos (religamento remoto x só local, por equipamento)
+#   /api/entrada/tempo-real               (strings faltando, trackers parados, sem comunicação)
+# e envia para POST /nexus-performance/importar. O snapshot fica em disco
+# (nexus_performance.json); GET /nexus-performance devolve só as usinas do
+# mapeamento oficial (canonizar_usina), já cruzadas.
+# ══════════════════════════════════════════════════════════════════════
+NEXUS_PERF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nexus_performance.json")
+_NEXUS_PERF_LOCK = threading.Lock()
+
+
+def _nexus_perf_ler():
+    try:
+        with open(NEXUS_PERF_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"meses": {}, "relig": None, "tempoReal": None}
+
+
+def _np_os_compacta(o):
+    return {k: o.get(k) for k in ("folio", "code", "desc", "ini", "fim", "aberta", "h_solar", "kwh",
+                                  "kwh_usina", "tipos", "usinas", "responsavel", "excl", "origem")}
+
+
+def _np_compactar_mes(m):
+    ger = m.get("gerencial") or {}
+    disp = m.get("disponibilidade") or {}
+    usd = []
+    for u in disp.get("usinas") or []:
+        c = {k: v for k, v in u.items() if k != "inversores"}
+        c["inversores"] = [i for i in (u.get("inversores") or []) if (i.get("disp") is not None and i.get("disp") < 100)]
+        usd.append(c)
+    oss = [_np_os_compacta(o) for o in (disp.get("oss") or []) if (o.get("h_solar") or 0) > 0 or (o.get("kwh") or 0) > 0]
+    return {
+        "gerencial": {"mes": ger.get("mes"), "portfolio": ger.get("portfolio"), "clientes": ger.get("clientes"),
+                      "grupos": ger.get("grupos"), "usinas": ger.get("usinas") or [], "erro": ger.get("erro")},
+        "disponibilidade": {"mes": disp.get("mes"), "periodo": disp.get("periodo"), "clientes": disp.get("clientes"),
+                            "usinas": usd, "oss": oss, "lacunas": disp.get("lacunas"), "fonte": disp.get("fonte")},
+    }
+
+
+@app.route("/nexus-performance/importar", methods=["POST", "OPTIONS"])
+def nexus_performance_importar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Sem permissão para importar."}), 403
+    try:
+        corpo = request.get_json(force=True, silent=True) or {}
+        with _NEXUS_PERF_LOCK:
+            d = _nexus_perf_ler()
+            d.setdefault("meses", {})
+            agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+            recebidos = []
+            for chave, m in (corpo.get("meses") or {}).items():
+                if not re.fullmatch(r"\d{4}-\d{2}", str(chave)) or not isinstance(m, dict):
+                    continue
+                c = _np_compactar_mes(m)
+                if not c["gerencial"]["usinas"] and not c["disponibilidade"]["usinas"]:
+                    continue  # leitura vazia/erro: não apaga o que já existe
+                c["lidoEm"] = agora
+                d["meses"][chave] = c
+                recebidos.append(chave)
+            rl = corpo.get("religamentos")
+            if isinstance(rl, dict) and isinstance(rl.get("rows"), list) and rl["rows"]:
+                d["relig"] = {"dias": rl.get("dias"), "rows": rl["rows"][:1500], "lidoEm": agora}
+            tr = corpo.get("tempoReal")
+            if isinstance(tr, dict) and tr.get("grupos"):
+                d["tempoReal"] = {"grupos": tr.get("grupos"), "etm_mes": tr.get("etm_mes"), "lidoEm": agora}
+            for k in sorted(d["meses"].keys())[:-14]:  # guarda no máximo 14 meses
+                d["meses"].pop(k, None)
+            d["ultimaImportacao"] = agora
+            tmp = NEXUS_PERF_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False)
+            os.replace(tmp, NEXUS_PERF_PATH)
+        return jsonify({"ok": True, "meses": recebidos, "religamentos": bool(d.get("relig")), "em": agora}), 200
+    except Exception as e:
+        log.error(f"[nexus-performance] importar: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _np_canon(nome):
+    try:
+        return canonizar_usina(nome) if nome else None
+    except Exception:
+        return None
+
+
+@app.route("/nexus-performance", methods=["GET"])
+def nexus_performance():
+    """Performance por usina do mapeamento, para o mês pedido (padrão: o mais recente)."""
+    try:
+        d = _nexus_perf_ler()
+        meses = sorted((d.get("meses") or {}).keys())
+        if not meses:
+            return jsonify({"ok": True, "vazio": True, "meses": [], "usinas": []}), 200
+        mes = request.args.get("mes") or meses[-1]
+        m = d["meses"].get(mes) or d["meses"][meses[-1]]
+        por = {}
+
+        def linha(canon):
+            if canon not in por:
+                por[canon] = {"usina": canon, "cliente": inferir_cliente(canon), "nomesNexus": []}
+            return por[canon]
+
+        for u in (m.get("gerencial") or {}).get("usinas") or []:
+            c = _np_canon(u.get("usina"))
+            if not c:
+                continue
+            L = linha(c)
+            L["nomesNexus"].append(u.get("usina"))
+            L.update({"potMwp": u.get("pot_mwp"), "prodMwh": u.get("prod"), "p50Mwh": u.get("p50"),
+                      "atingimento": u.get("atingimento"), "pr": u.get("pr"), "prMeta": u.get("pr_meta"),
+                      "prMotivo": u.get("pr_motivo"), "ipoa": u.get("ipoa"), "ipoaPrev": u.get("ipoa_prev"),
+                      "diasCob": u.get("dias_cob"), "diasMes": u.get("dias_mes"), "anomalia": u.get("anomalia_txt") or u.get("anomalia"),
+                      "fontePerf": u.get("src")})
+        oss_por = {}
+        for o in (m.get("disponibilidade") or {}).get("oss") or []:
+            for nu in (o.get("usinas") or []):
+                c = _np_canon(nu)
+                if c:
+                    oss_por.setdefault(c, []).append(o)
+        for u in (m.get("disponibilidade") or {}).get("usinas") or []:
+            c = _np_canon(u.get("usina")) or _np_canon(u.get("fracttal"))
+            if not c:
+                continue
+            L = linha(c)
+            L.update({"disp": u.get("disp"), "dispEquip": u.get("disp_equip"), "dispQueda": u.get("disp_queda"),
+                      "hPerdidas": u.get("h_perdidas"), "hEquip": u.get("h_equip"), "hQueda": u.get("h_queda"),
+                      "kwhPerdido": u.get("kwh"), "kwhEquip": u.get("kwh_equip"), "kwhQueda": u.get("kwh_queda"),
+                      "nOs": u.get("n_os"), "potKwp": u.get("pot_kwp"), "inversoresAfetados": u.get("inversores") or []})
+            L["oss"] = sorted(oss_por.get(c, []), key=lambda o: -(o.get("kwh") or 0))[:25]
+        relig = []
+        for r in ((d.get("relig") or {}).get("rows") or []):
+            c = _np_canon(r.get("usina"))
+            if not c:
+                continue
+            r = dict(r)
+            r["usinaCanon"] = c
+            r["cliente"] = inferir_cliente(c)
+            relig.append(r)
+            L = por.get(c)
+            if L is not None:
+                L["religRemotos"] = (L.get("religRemotos") or 0) + int(r.get("remotoResolveu") or 0)
+                L["religSoLocal"] = (L.get("religSoLocal") or 0) + int(r.get("soLocal") or 0)
+        tempo = []
+        for g in ((d.get("tempoReal") or {}).get("grupos") or []):
+            for u in g.get("usinas") or []:
+                c = _np_canon(u.get("usina"))
+                if c:
+                    tempo.append({"usina": c, "fonte": g.get("fonte"), "status": u.get("status"), "causa": u.get("causa"),
+                                  "stringsFaltando": u.get("strings_faltando"), "stringsEsp": u.get("str_esp"),
+                                  "trkParados": u.get("trk_parados"), "trkComOs": u.get("trk_com_os"),
+                                  "invOff": u.get("inv_off"), "ultimaLeitura": u.get("ultima_leitura")})
+        usinas = sorted(por.values(), key=lambda x: (x.get("cliente") or "", x["usina"]))
+        return jsonify({"ok": True, "mes": mes, "meses": meses, "lidoEm": m.get("lidoEm"),
+                        "ultimaImportacao": d.get("ultimaImportacao"),
+                        "religLidoEm": (d.get("relig") or {}).get("lidoEm"), "religDias": (d.get("relig") or {}).get("dias"),
+                        "tempoRealLidoEm": (d.get("tempoReal") or {}).get("lidoEm"),
+                        "usinas": usinas, "religamentos": relig, "tempoReal": tempo}), 200
+    except Exception as e:
+        log.error(f"[nexus-performance] {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
