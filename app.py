@@ -25495,6 +25495,94 @@ def auditoria_fracttal_status():
     return jsonify({"ok": True, "job": _aud_ft_ler()}), 200
 
 
+
+# ============================================================================
+# EVIDENCIAS DE OS (Nexus) — area temporaria de arquivos (12/11/2026)
+# O Claude envia as fotos/PDF de uma OS (POST, protegido pelo DEPLOY_SECRET) e
+# o script Tampermonkey do Nexus baixa por link aleatorio para anexar no
+# "Fazer OS". Os arquivos expiram em 2 h e ficam fora do repositorio.
+# ============================================================================
+_EVID_DIR = "/tmp/evidencias-os"
+_EVID_TTL_S = 2 * 3600
+_EVID_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+_EVID_NOME_RE = re.compile(r"^[A-Za-z0-9._+()-]{1,140}$")
+_EVID_MAX_BYTES = 25 * 1024 * 1024
+
+
+def _evid_limpar_expirados():
+    try:
+        agora = time.time()
+        if not os.path.isdir(_EVID_DIR):
+            return
+        for tk in os.listdir(_EVID_DIR):
+            d = os.path.join(_EVID_DIR, tk)
+            if os.path.isdir(d) and agora - os.path.getmtime(d) > _EVID_TTL_S:
+                for f in os.listdir(d):
+                    try:
+                        os.remove(os.path.join(d, f))
+                    except Exception:
+                        pass
+                try:
+                    os.rmdir(d)
+                except Exception:
+                    pass
+    except Exception as e:
+        logging.warning(f"[evidencias-os] limpeza falhou: {e}")
+
+
+@app.route("/evidencias-os/<token>/<nome>", methods=["POST", "PUT"])
+def evidencias_os_upload(token, nome):
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    if not _EVID_TOKEN_RE.match(token) or not _EVID_NOME_RE.match(nome):
+        return jsonify({"error": "token ou nome invalido"}), 400
+    dados = request.get_data()
+    if not dados or len(dados) > _EVID_MAX_BYTES:
+        return jsonify({"error": "arquivo vazio ou grande demais"}), 400
+    _evid_limpar_expirados()
+    d = os.path.join(_EVID_DIR, token)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, nome), "wb") as fh:
+        fh.write(dados)
+    os.utime(d, None)
+    return jsonify({"ok": True, "nome": nome, "bytes": len(dados)})
+
+
+@app.route("/evidencias-os/<token>/<nome>", methods=["GET"])
+def evidencias_os_baixar(token, nome):
+    if not _EVID_TOKEN_RE.match(token) or not _EVID_NOME_RE.match(nome):
+        return jsonify({"error": "nao encontrado"}), 404
+    d = os.path.join(_EVID_DIR, token)
+    caminho = os.path.join(d, nome)
+    if not os.path.isfile(caminho) or time.time() - os.path.getmtime(d) > _EVID_TTL_S:
+        return jsonify({"error": "nao encontrado ou expirado"}), 404
+    resp = send_file(caminho, as_attachment=False, download_name=nome, max_age=0)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/evidencias-os/<token>", methods=["DELETE"])
+def evidencias_os_apagar(token):
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    if not _EVID_TOKEN_RE.match(token):
+        return jsonify({"error": "token invalido"}), 400
+    d = os.path.join(_EVID_DIR, token)
+    n = 0
+    if os.path.isdir(d):
+        for f in os.listdir(d):
+            try:
+                os.remove(os.path.join(d, f)); n += 1
+            except Exception:
+                pass
+        try:
+            os.rmdir(d)
+        except Exception:
+            pass
+    return jsonify({"ok": True, "apagados": n})
+
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
