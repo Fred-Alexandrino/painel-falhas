@@ -5,7 +5,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH (git pull + restart)
+      - name: Diagnostico da ponte (sem conteudo de mensagens - repo publico)
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 147.15.66.241
@@ -13,7 +13,11 @@ jobs:
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
           script: |
             cd ~/wppconnect-server
-            git pull
-            sudo systemctl restart wppconnect
-            sleep 3
-            sudo systemctl status wppconnect --no-pager
+            git branch --show-current; git log --oneline -1
+            echo "agora=$(date -u +%s)"
+            echo "ultimas_linhas_arquivo (t, grupo):"
+            tail -n 5 data/resumo-msgs.jsonl | python3 -c "import sys,json; [print(json.loads(l)['t'], json.loads(l)['g']) for l in sys.stdin if l.strip()]"
+            echo "linhas_desde_10min=$(python3 -c "import json,time; c=time.time()-600; print(sum(1 for l in open('data/resumo-msgs.jsonl') if l.strip() and json.loads(l)['t']>=c))")"
+            J="sudo journalctl -u wppconnect --since -30min --no-pager"
+            echo "BadMAC=$($J | grep -c 'Bad MAC') FalhaDecrypt=$($J | grep -c 'Failed to decrypt') TempoReal=$($J | grep -c 'Tempo real') Conectado=$($J | grep -ci 'conectado') Encerrada=$($J | grep -ci 'encerrad') resumoWarn=$($J | grep -c '\[resumo\]')"
+            $J | grep -i 'conect\|encerrad\|vigia\|\[resumo\]\|erro' | grep -v '^ ' | cut -c1-160 | tail -15
