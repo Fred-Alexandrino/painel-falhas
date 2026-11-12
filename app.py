@@ -25064,6 +25064,284 @@ def deploy_vm2_limpar_sessao():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)[:300]}), 500
 
+
+# ══════════════════════════════════════════════════════════════════════
+# AUDITORIA FRACTTAL x CENTRAL O&M — campo a campo (12/11/2026)
+# Pedido do Fred: bater status, estados, nomenclaturas, ativos e usinas entre a
+# Fracttal (banco de dados = fonte da verdade) e o Painel de Atividades.
+# Para cada OS do escopo, lê as tarefas AO VIVO na Fracttal, monta o registro
+# esperado com a MESMA função da sincronização (_fracttal_mapear_grupo) e compara
+# campo a campo. Com aplicar=True corrige a planilha (em lote) e anota no histórico.
+# Roda em segundo plano (pode passar dos 160 s do gunicorn); o progresso fica em
+# disco (auditoria_fracttal.json) porque há 2 workers.
+# Não toca em: prioridade, anotações pessoais, visualizado, histórico (só acrescenta).
+# ══════════════════════════════════════════════════════════════════════
+AUD_FT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auditoria_fracttal.json")
+_AUD_FT_CAMPOS = ["cliente", "usina", "equipamento", "descricao", "responsavel", "prazo", "statusOS",
+                  "statusTarefaOS", "percentualOS", "statusGeralOS", "detalhesEquipamentosOS",
+                  "etiquetasOS", "observacoesOS"]
+_AUD_FT_ROTULO = {"cliente": "Cliente", "usina": "Usina", "equipamento": "Ativo/equipamento", "descricao": "Nome da OS (tarefa)",
+                  "responsavel": "Responsável", "prazo": "Prazo", "statusOS": "Estado da OS", "statusTarefaOS": "Status das tarefas",
+                  "percentualOS": "% concluído", "statusGeralOS": "Situação geral", "detalhesEquipamentosOS": "Ativos da OS",
+                  "etiquetasOS": "Etiquetas", "observacoesOS": "Observações", "status": "Status interno"}
+
+
+def _aud_ft_ler():
+    try:
+        with open(AUD_FT_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _aud_ft_gravar(d):
+    tmp = AUD_FT_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, AUD_FT_PATH)
+
+
+def _aud_ft_tasks(numero_os, headers):
+    """Tarefas da OS na Fracttal; None = não existe/erro definitivo; levanta em erro temporário."""
+    for tentativa in range(4):
+        r = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+        if r.status_code == 429 or r.status_code >= 500:
+            time.sleep(2 + tentativa * 3)
+            continue
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json().get("data") or []
+    raise RuntimeError(f"Fracttal indisponível para a OS {numero_os}")
+
+
+def _aud_ft_norm(campo, v):
+    v = "" if v is None else str(v)
+    if campo == "detalhesEquipamentosOS":
+        try:
+            return json.dumps(json.loads(v or "[]"), ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return v.strip()
+    return re.sub(r"\s+", " ", v).strip()
+
+
+def _aud_ft_escopo(row, dias):
+    num = (row[ATIV_CAMPO_COL["numeroOS"] - 1] if len(row) >= ATIV_CAMPO_COL["numeroOS"] else "").strip()
+    if not num or not re.fullmatch(r"\d+", num):
+        return None
+    st = row[ATIV_CAMPO_COL["status"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["status"] else ""
+    so = row[ATIV_CAMPO_COL["statusOS"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["statusOS"] else ""
+    if st not in ("Concluído", "Cancelado") or so not in ("Finalizada", "Cancelada"):
+        return num
+    if dias is None:
+        return num
+    dc = row[ATIV_CAMPO_COL["dataConclusao"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["dataConclusao"] else ""
+    try:
+        d = datetime.strptime(dc[:10], "%d/%m/%Y")
+        return num if (agora_br().replace(tzinfo=None) - d).days <= dias else None
+    except Exception:
+        return num  # concluída sem data: confere
+
+
+def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=60, origem="manual", rodar_descoberta=True, job=None):
+    job = job or {}
+    t0 = time.time()
+
+    def prog(**kw):
+        job.update(kw)
+        job["atualizadoEm"] = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+        try:
+            _aud_ft_gravar(job)
+        except Exception:
+            pass
+
+    descoberta = None
+    if rodar_descoberta:
+        prog(etapa="Buscando OS novas na Fracttal (últimas 24 h)…")
+        try:
+            descoberta, _ = _sync_fracttal_core(desde_horas=24)
+        except Exception as e:
+            descoberta = {"erro": str(e)}
+
+    prog(etapa="Lendo o Painel de Atividades…")
+    ws = get_atividades_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    alvo = []
+    vistos = {}
+    for i, row in enumerate(todos[1:], start=2):
+        num = _aud_ft_escopo(row, dias_concluidas)
+        if num:
+            alvo.append((i, row, num))
+            vistos.setdefault(num, []).append(i)
+    duplicadas = [{"numeroOS": n, "linhas": ls} for n, ls in vistos.items() if len(ls) > 1]
+    total = len(alvo)
+    prog(etapa=f"Conferindo {total} OS na Fracttal…", total=total, feitas=0)
+
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    tarefas = {}
+    erros, nao_encontradas = [], []
+    feitas = [0]
+    lock = threading.Lock()
+
+    def busca(num):
+        try:
+            return num, _aud_ft_tasks(num, headers), None
+        except Exception as e:
+            return num, None, str(e)
+
+    nums = list(dict.fromkeys(n for _, _, n in alvo))
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for fut in as_completed([ex.submit(busca, n) for n in nums]):
+            num, tasks, err = fut.result()
+            with lock:
+                feitas[0] += 1
+                if err:
+                    erros.append({"numeroOS": num, "erro": err[:200]})
+                elif tasks is None or not tasks:
+                    nao_encontradas.append(num)
+                else:
+                    tarefas[num] = tasks
+                if feitas[0] % 40 == 0:
+                    prog(feitas=feitas[0])
+    prog(etapa="Comparando campo a campo…", feitas=len(nums))
+
+    divergencias, updates, revisao_manual = [], [], []
+    agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    status_internos = []
+    for i, row, num in alvo:
+        tasks = tarefas.get(num)
+        if not tasks:
+            continue
+        try:
+            esp = _fracttal_mapear_grupo(tasks)
+        except Exception as e:
+            erros.append({"numeroOS": num, "erro": f"mapeamento: {e}"[:200]})
+            continue
+        g = lambda c: (row[ATIV_CAMPO_COL[c] - 1] if len(row) >= ATIV_CAMPO_COL[c] else "")
+        usina_atual = g("usina").strip()
+        corrigidos = []
+        for campo in _AUD_FT_CAMPOS:
+            if esp.get("_revisao_manual") and campo in ("cliente", "usina"):
+                continue
+            if campo not in esp:
+                continue
+            novo = esp.get(campo)
+            if campo == "responsavel" and not (novo or "").strip():
+                continue
+            if campo in ("cliente", "usina") and not (novo or "").strip():
+                continue
+            atual = g(campo)
+            if _aud_ft_norm(campo, atual) == _aud_ft_norm(campo, novo):
+                continue
+            de, para = str(atual or ""), str(novo or "")
+            if campo == "detalhesEquipamentosOS":
+                try:
+                    de = " · ".join(f"{x.get('equipamento')} ({x.get('status')})" for x in json.loads(de or "[]"))
+                except Exception:
+                    pass
+                try:
+                    para = " · ".join(f"{x.get('equipamento')} ({x.get('status')})" for x in json.loads(para or "[]"))
+                except Exception:
+                    pass
+            divergencias.append({"numeroOS": num, "linha": i, "usina": esp.get("usina") or usina_atual, "campo": campo,
+                                 "rotulo": _AUD_FT_ROTULO.get(campo, campo), "central": de[:300], "fracttal": para[:300],
+                                 "corrigido": bool(aplicar)})
+            if aplicar:
+                updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[novo if novo is not None else ""]]})
+            corrigidos.append(_AUD_FT_ROTULO.get(campo, campo))
+        if esp.get("_revisao_manual"):
+            revisao_manual.append({"numeroOS": num, "usinaCentral": usina_atual, "motivo": esp.get("motivo", "")})
+        # status interno a partir do estado na Fracttal
+        st_atual = g("status").strip()
+        st_novo = _status_interno_esperado(esp.get("statusOS") or g("statusOS").strip(), st_atual)
+        if st_novo:
+            divergencias.append({"numeroOS": num, "linha": i, "usina": esp.get("usina") or usina_atual, "campo": "status",
+                                 "rotulo": "Status interno", "central": st_atual, "fracttal": st_novo, "corrigido": bool(aplicar)})
+            status_internos.append((i, st_novo))
+            corrigidos.append("Status interno")
+        if aplicar and corrigidos:
+            hist = g("historico")
+            entrada = f"{agora_txt} - 🔎 Auditoria Fracttal ({origem}): corrigido(s) {', '.join(corrigidos)} conforme a Fracttal."
+            updates.append({"range": f"{col_letra(ATIV_COL_HISTORICO)}{i}", "values": [[f"{hist}\n{entrada}".strip() if hist else entrada]]})
+
+    gravadas = 0
+    if aplicar and updates:
+        prog(etapa=f"Gravando {len(updates)} correções no Painel de Atividades…")
+        for k in range(0, len(updates), 200):
+            lote = updates[k:k + 200]
+            _gspread_retry(lambda lote=lote: ws.batch_update([dict(x) for x in lote], value_input_option="RAW"))
+            gravadas += len(lote)
+        for i, st_novo in status_internos:
+            try:
+                _gravar_status_interno(ws, i, st_novo)
+            except Exception as e:
+                erros.append({"linha": i, "erro": f"status interno: {e}"[:200]})
+
+    extras = {}
+    if aplicar:
+        try:
+            extras["validacao_relatorios"] = _validar_integridade_relatorios_core(aplicar=True)
+        except Exception as e:
+            extras["validacao_relatorios"] = {"erro": str(e)}
+    por_campo = {}
+    for d in divergencias:
+        por_campo[d["rotulo"]] = por_campo.get(d["rotulo"], 0) + 1
+    os_div = len({d["numeroOS"] for d in divergencias})
+    resultado = {
+        "ok": True, "origem": origem, "aplicado": bool(aplicar),
+        "inicio": job.get("inicio"), "fim": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "segundos": round(time.time() - t0),
+        "conferidas": len(tarefas), "escopo": total, "osComDivergencia": os_div, "divergencias": divergencias[:4000],
+        "porCampo": por_campo, "naoEncontradas": nao_encontradas, "erros": erros[:200], "revisaoManual": revisao_manual[:300],
+        "duplicadas": duplicadas, "celulasGravadas": gravadas,
+        "descoberta": {"criadas": len((descoberta or {}).get("criadas") or [])} if isinstance(descoberta, dict) else None,
+        "diasConcluidas": dias_concluidas,
+    }
+    return resultado
+
+
+@app.route("/auditoria-fracttal/iniciar", methods=["POST", "OPTIONS"])
+def auditoria_fracttal_iniciar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "A auditoria é feita só pelo acesso principal."}), 403
+    corpo = request.get_json(silent=True) or {}
+    atual = _aud_ft_ler()
+    if atual.get("rodando"):
+        try:
+            ts = datetime.strptime(atual.get("atualizadoEm", ""), "%d/%m/%Y %H:%M:%S")
+            if (agora_br().replace(tzinfo=None) - ts).total_seconds() < 600:
+                return jsonify({"ok": True, "jaRodando": True, "job": atual}), 200
+        except Exception:
+            pass
+    aplicar = corpo.get("aplicar", True) is not False
+    dias = corpo.get("diasConcluidas", 60)
+    job = {"rodando": True, "inicio": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "etapa": "Iniciando…",
+           "aplicar": aplicar, "atualizadoEm": agora_br().strftime("%d/%m/%Y %H:%M:%S")}
+    _aud_ft_gravar(job)
+
+    def roda():
+        try:
+            res = _auditoria_fracttal_campos_core(aplicar=aplicar, dias_concluidas=dias, origem=corpo.get("origem") or "botão Auditoria",
+                                                  rodar_descoberta=corpo.get("descoberta", True) is not False, job=job)
+            job.update({"rodando": False, "etapa": "Concluída", "resultado": res})
+        except Exception as e:
+            log.error(f"[AuditoriaFracttal] {e}")
+            job.update({"rodando": False, "etapa": "Erro", "erro": str(e)})
+        job["atualizadoEm"] = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+        _aud_ft_gravar(job)
+
+    threading.Thread(target=roda, daemon=True).start()
+    return jsonify({"ok": True, "iniciada": True, "job": job}), 200
+
+
+@app.route("/auditoria-fracttal/status", methods=["GET"])
+def auditoria_fracttal_status():
+    return jsonify({"ok": True, "job": _aud_ft_ler()}), 200
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
