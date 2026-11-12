@@ -24113,7 +24113,13 @@ def _np_compactar_mes(m):
         c["inversores"] = [i for i in (u.get("inversores") or []) if (i.get("disp") is not None and i.get("disp") < 100)]
         usd.append(c)
     oss = [_np_os_compacta(o) for o in (disp.get("oss") or []) if (o.get("h_solar") or 0) > 0 or (o.get("kwh") or 0) > 0]
+    falhas = m.get("falhas") if isinstance(m.get("falhas"), dict) else None
+    if falhas:
+        falhas = {"periodo": falhas.get("periodo"), "strings": (falhas.get("strings") or [])[:5000],
+                  "trackers": (falhas.get("trackers") or [])[:5000], "strings_os": (falhas.get("strings_os") or [])[:500]}
+    macro = m.get("macro") if isinstance(m.get("macro"), list) else None
     return {
+        "falhas": falhas, "macro": macro,
         "gerencial": {"mes": ger.get("mes"), "portfolio": ger.get("portfolio"), "clientes": ger.get("clientes"),
                       "grupos": ger.get("grupos"), "usinas": ger.get("usinas") or [], "erro": ger.get("erro")},
         "disponibilidade": {"mes": disp.get("mes"), "periodo": disp.get("periodo"), "clientes": disp.get("clientes"),
@@ -24141,6 +24147,11 @@ def nexus_performance_importar():
                 if not c["gerencial"]["usinas"] and not c["disponibilidade"]["usinas"]:
                     continue  # leitura vazia/erro: não apaga o que já existe
                 c["lidoEm"] = agora
+                ant = d["meses"].get(chave) or {}
+                if not c.get("falhas") and ant.get("falhas"):
+                    c["falhas"] = ant["falhas"]
+                if not c.get("macro") and ant.get("macro"):
+                    c["macro"] = ant["macro"]
                 d["meses"][chave] = c
                 recebidos.append(chave)
             rl = corpo.get("religamentos")
@@ -24238,6 +24249,46 @@ def nexus_performance():
                       "nOs": u.get("n_os"), "potKwp": u.get("pot_kwp"), "inversoresAfetados": u.get("inversores") or []})
             L["oss"] = sorted(oss_por.get(c, []), key=lambda o: -(o.get("kwh") or 0))[:25]
 
+        fa = m.get("falhas") or {}
+        for r in fa.get("strings") or []:
+            for c in _np_canons(r.get("usina"), r.get("cliente"))[0]:
+                L = por.get(c)
+                if L is None:
+                    continue
+                L["perdaStringsKwh"] = (L.get("perdaStringsKwh") or 0) + (r.get("perda_kwh") or 0)
+                inv = L.setdefault("_strInv", {})
+                k = r.get("inversor") or "?"
+                a = inv.setdefault(k, {"inversor": k, "strings": set(), "dias": set(), "perda_kwh": 0.0, "flags": set()})
+                for st in str(r.get("strings") or "").split(","):
+                    if st.strip():
+                        a["strings"].add(st.strip())
+                a["dias"].add(r.get("dia"))
+                a["perda_kwh"] += r.get("perda_kwh") or 0
+                for fl in r.get("flags") or []:
+                    a["flags"].add(str(fl))
+        for r in fa.get("trackers") or []:
+            for c in _np_canons(r.get("usina"), r.get("cliente"))[0]:
+                L = por.get(c)
+                if L is None:
+                    continue
+                L["perdaTrackersKwh"] = (L.get("perdaTrackersKwh") or 0) + (r.get("perda_kwh") or 0)
+                L.setdefault("trackers", []).append({k: r.get(k) for k in ("tracker", "inversor", "episodios", "perda_kwh", "h_sol", "cronico", "sem_com_desde")})
+        for o in fa.get("strings_os") or []:
+            for c in _np_canons(o.get("usina"), o.get("cliente"))[0]:
+                if c in por:
+                    por[c].setdefault("stringsOs", []).append({k: o.get(k) for k in ("os", "status", "inversor", "strings", "qtd", "data_evento")})
+        for L in por.values():
+            inv = L.pop("_strInv", None)
+            if inv:
+                L["strings"] = sorted([{"inversor": a["inversor"], "strings": sorted(a["strings"]), "dias": len(a["dias"]),
+                                        "perda_kwh": round(a["perda_kwh"], 1), "flags": sorted(a["flags"])} for a in inv.values()],
+                                      key=lambda x: -x["perda_kwh"])[:30]
+            if L.get("trackers"):
+                L["trackers"] = sorted(L["trackers"], key=lambda x: -(x.get("perda_kwh") or 0))[:30]
+        for u in m.get("macro") or []:
+            c = _np_canon(u.get("usina"))
+            if c in por:
+                por[c]["diagNexus"] = {k: u.get(k) for k in ("status", "causa", "sev", "strings_faltando", "str_esp", "inv_off", "qtd_inversores", "ultima_leitura")}
         relig = []
         for r in ((d.get("relig") or {}).get("rows") or []):
             c = _np_canon(r.get("usina"))
@@ -24262,6 +24313,7 @@ def nexus_performance():
                                   "invOff": u.get("inv_off"), "ultimaLeitura": u.get("ultima_leitura")})
         usinas = sorted(por.values(), key=lambda x: (x.get("cliente") or "", x["usina"]))
         return jsonify({"ok": True, "mes": mes, "meses": meses, "lidoEm": m.get("lidoEm"),
+                        "temFalhas": bool(fa.get("strings") or fa.get("trackers")), "periodoFalhas": fa.get("periodo"),
                         "ultimaImportacao": d.get("ultimaImportacao"),
                         "religLidoEm": (d.get("relig") or {}).get("lidoEm"), "religDias": (d.get("relig") or {}).get("dias"),
                         "tempoRealLidoEm": (d.get("tempoReal") or {}).get("lidoEm"),
@@ -24275,7 +24327,9 @@ def nexus_performance():
 _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @name         Grid Performance → Painel
 // @namespace    gridco-fred
-// @version      1.0
+// @version      1.1
+// @updateURL    https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
+// @downloadURL  https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
 // @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
 // @match        https://app.gridco.com.br/*
 // @grant        GM_xmlhttpRequest
@@ -24341,6 +24395,23 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
     } catch (e) { religamentos = null; }
     let tempoReal = null;
     try { tempoReal = await getJ('/api/entrada/tempo-real'); } catch (e) {}
+    // Strings e trackers (perdas do mês corrente, por inversor/string e por tracker) + diagnóstico macro
+    const atual = Object.keys(meses)[0];
+    try {
+      const f = await getJ('/api/painel/falhas');
+      const sr = ((f.strings || {}).rows || []).map(r => ({ usina: r.usina, cliente: r.cliente, inversor: r.inversor, strings: r.strings, qtd: r.qtd, dia: r.dia, perda_kwh: r.perda_kwh, dur_h: r.dur_h, flags: r.flags }));
+      const ta = {};
+      ((f.trackers || {}).rows || []).forEach(r => {
+        const k = r.usina + '|' + r.tracker;
+        const a = ta[k] = ta[k] || { usina: r.usina, cliente: r.cliente, tracker: r.tracker, inversor: r.inversor, episodios: 0, perda_kwh: 0, h_sol: 0, cronico: false, sem_com_desde: r.sem_com_desde || null };
+        a.episodios++; a.perda_kwh += r.perda_kwh || 0; a.h_sol += r.h_sol || 0; if (r.cronico) a.cronico = true;
+      });
+      meses[atual].falhas = { periodo: f.periodo, strings: sr, trackers: Object.values(ta), strings_os: f.strings_os || [] };
+    } catch (e) {}
+    try {
+      const mc = await getJ('/api/macro');
+      meses[atual].macro = (mc.usinas || []).map(u => ({ usina: u.usina, fonte: u.fonte, status: u.status, causa: u.causa, sev: u.sev, strings_faltando: u.strings_faltando, str_esp: u.str_esp, inv_off: u.inv_off, qtd_inversores: u.qtd_inversores, ultima_leitura: u.ultima_leitura }));
+    } catch (e) {}
     return { meses, religamentos, tempoReal, lidoEm: new Date().toISOString() };
   }
 
