@@ -4114,8 +4114,17 @@ def disparar_comunicado_cluster():
 
     mapa_cluster_usina = _mapa_cluster_usina()
     mapa_grupo_usina = _mapa_grupo_usina()
-    usinas_do_cluster = [u for u, c in mapa_cluster_usina.items() if c == cluster]
-    grupo_id = next((mapa_grupo_usina[u] for u in usinas_do_cluster if u in mapa_grupo_usina), None)
+    # Comunicado de UMA atividade (13/11/2026, caso Nova Londrina I): vai para o grupo da
+    # equipe da usina da atividade, não para o primeiro grupo encontrado no cluster
+    # (um cluster pode ter mais de uma equipe/grupo, ex.: PR Oeste 01).
+    usina = (dados.get("usina") or "").strip()
+    grupo_id = None
+    if usina:
+        canon = canonizar_usina(usina) if "canonizar_usina" in globals() else None
+        grupo_id = mapa_grupo_usina.get(usina) or (mapa_grupo_usina.get(canon) if canon else None)
+    if not grupo_id:
+        usinas_do_cluster = [u for u, c in mapa_cluster_usina.items() if c == cluster]
+        grupo_id = next((mapa_grupo_usina[u] for u in usinas_do_cluster if u in mapa_grupo_usina), None)
     if not grupo_id:
         return jsonify({"ok": False, "error": (f"Nenhum grupo de WhatsApp configurado pras usinas do cluster "
                         f"\"{cluster}\". Configure em _Sistema: \"grupo_usina:<Usina>\" = \"<id>@g.us\".")}), 400
@@ -4123,7 +4132,8 @@ def disparar_comunicado_cluster():
     try:
         ok, erro = _wpp_enviar_com_retry({"grupoId": grupo_id, "texto": texto}, "/api/enviar-mensagem")
         if ok:
-            return jsonify({"ok": True, "grupo": grupo_id}), 200
+            _gnome = next((g["nome"] for g in GRUPOS_EQUIPE_UFVS if g["id"] == grupo_id), "")
+            return jsonify({"ok": True, "grupo": grupo_id, "grupoNome": _gnome}), 200
         return jsonify({"ok": False, "error": erro}), 502
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
