@@ -25157,6 +25157,32 @@ def deploy_wpp_grupo_foto():
     except Exception as e:
         return jsonify({"erro": str(e)[:300]}), 502
 
+
+_WPP_PROXY_PERMITIDOS = {("GET", "/api/grupo-membros"), ("GET", "/api/contatos"), ("POST", "/api/contatos-sincronizar"),
+                         ("POST", "/api/grupo-gerenciar"), ("POST", "/api/enviar-mensagem"), ("POST", "/api/grupo-foto")}
+
+
+@app.route("/deploy/wpp-proxy", methods=["POST"])
+def deploy_wpp_proxy():
+    """Repassa à ponte (VM2) chamadas de gestão de grupo. Body: {metodo, caminho, params?, corpo?}."""
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    b = request.get_json(force=True, silent=True) or {}
+    metodo, caminho = str(b.get("metodo") or "GET").upper(), str(b.get("caminho") or "")
+    if (metodo, caminho) not in _WPP_PROXY_PERMITIDOS:
+        return jsonify({"error": "caminho não permitido"}), 400
+    try:
+        h = {"X-Webhook-Secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else {}
+        r = requests.request(metodo, f"{WPP_SERVER_URL}{caminho}", params=b.get("params") or None,
+                             json=b.get("corpo") if metodo == "POST" else None, headers=h, timeout=120)
+        try:
+            j = r.json()
+        except Exception:
+            j = {"erro": r.text[:300]}
+        return jsonify(j), r.status_code
+    except Exception as e:
+        return jsonify({"erro": str(e)[:300]}), 502
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
