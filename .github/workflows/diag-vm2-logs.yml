@@ -13,9 +13,8 @@ jobs:
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
           script: |
             cd ~/wppconnect-server
-            echo "== git"; git log -3 --format='%h %ci %s'; git status --short | head
-            echo "== baileys"; node -e "console.log(require('@whiskeysockets/baileys/package.json').version)" 2>&1
-            echo "== auth"; ls auth_info* 2>/dev/null | head -3; ls -1 auth_info*/ 2>/dev/null | wc -l; ls -la --time-style=full-iso auth_info*/creds.json 2>/dev/null
-            echo "== status"; sudo systemctl status wppconnect --no-pager | head -8
-            echo "== logs desde 10:00 (sem recebidas)"
-            sudo journalctl -u wppconnect --since "2026-11-13 13:00:00" --no-pager | grep -v -i "recebid\|📩\|encaminh" | tail -250
+            echo "== package.json diff"; git diff package.json
+            echo "== npm"; grep -n '"@whiskeysockets/baileys"' -A2 package-lock.json | head -5
+            echo "== versoes usadas pelo processo"; sudo journalctl -u wppconnect --since "2026-11-08" --no-pager | grep -i "version\|baileys v" | tail -5
+            echo "== eventos (sem chaves) desde 08/11"
+            sudo journalctl -u wppconnect --since "2026-11-08" --no-pager -o short-iso | grep -E "conectado|Conexão encerrada|enviar|Enviad|erro|Erro|❌|QR|Restore|logout|loggedOut|retry|Retry|stale|PreKey|prekey|No sessions|not-acceptable|SessionError|Started|Stopped" | grep -v "Buffer\|privKey\|rootKey\|chainKey" | tail -150
