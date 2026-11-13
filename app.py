@@ -16804,6 +16804,7 @@ _NOMES_GRUPOS_CONHECIDOS = {
     # Equipes das usinas novas (05/10/2026)
     "120363431215102670": "Equipe Ceilandia I e II/Sitio Nogueiras",
     "120363431601050989": "Equipe Ipixuna - 2C",
+    "120363414617683366": "Equipe Nova Ipixuna - 2C",   # Nova Ipixuna I (13/11/2026)
     "120363430888041572": "Equipe União 2C",
     "120363430482583512": "Equipe Tupi Paulista",
     "120363431235680039": "Equipe Alto Parana/Paranavaí",
