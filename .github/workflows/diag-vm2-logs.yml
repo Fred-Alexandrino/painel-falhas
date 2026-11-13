@@ -1,0 +1,21 @@
+name: Diag VM2 logs (somente leitura)
+on:
+  workflow_dispatch: {}
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Logs da ponte (somente leitura)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            echo "== git"; git log -3 --format='%h %ci %s'; git status --short | head
+            echo "== baileys"; node -e "console.log(require('@whiskeysockets/baileys/package.json').version)" 2>&1
+            echo "== auth"; ls auth_info* 2>/dev/null | head -3; ls -1 auth_info*/ 2>/dev/null | wc -l; ls -la --time-style=full-iso auth_info*/creds.json 2>/dev/null
+            echo "== status"; sudo systemctl status wppconnect --no-pager | head -8
+            echo "== logs desde 10:00 (sem recebidas)"
+            sudo journalctl -u wppconnect --since "2026-11-13 13:00:00" --no-pager | grep -v -i "recebid\|📩\|encaminh" | tail -250
