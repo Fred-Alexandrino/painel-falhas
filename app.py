@@ -21938,6 +21938,42 @@ def deploy_backend():
         except SyntaxError as e:
             return jsonify({"error": "erro de sintaxe no app.py novo, nada foi alterado", "detalhe": str(e)}), 400
 
+        # Proteção (13/11/2026): mais de uma sessão do Claude faz deploy. Duas vezes um
+        # app.py montado a partir de uma cópia antiga apagou rotas e funções que já
+        # estavam no ar (Atividades parou). Agora o deploy é recusado se o arquivo novo
+        # REMOVER rotas ou funções do arquivo em produção, ou se tiver nome de função
+        # duplicado (derruba o Flask). Para remover de propósito, mande o cabeçalho
+        # X-Deploy-Permitir-Remocao: sim. Antes de editar, baixe o app.py do HEAD do
+        # GitHub (Fred-Alexandrino/painel-falhas, main) — nunca de uma cópia local antiga.
+        try:
+            _arv_nova = ast.parse(novo_conteudo)
+            with open(APP_PY_PATH, "r", encoding="utf-8") as _f_atual:
+                _arv_atual = ast.parse(_f_atual.read())
+            def _nomes(arv):
+                return [n.name for n in arv.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            def _rotas(arv):
+                out = set()
+                for n in arv.body:
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        for d in n.decorator_list:
+                            if isinstance(d, ast.Call) and getattr(d.func, "attr", "") == "route" and d.args and isinstance(d.args[0], ast.Constant):
+                                out.add(str(d.args[0].value))
+                return out
+            _nomes_novos = _nomes(_arv_nova)
+            _dups = sorted({n for n in _nomes_novos if _nomes_novos.count(n) > 1})
+            if _dups:
+                return jsonify({"error": "funções duplicadas no app.py novo (o Flask não sobe); nada foi alterado", "duplicadas": _dups[:30]}), 400
+            if request.headers.get("X-Deploy-Permitir-Remocao", "").lower() != "sim":
+                _sem_rotas = sorted(_rotas(_arv_atual) - _rotas(_arv_nova))
+                _sem_funcs = sorted(set(_nomes(_arv_atual)) - set(_nomes_novos))
+                if _sem_rotas or _sem_funcs:
+                    return jsonify({
+                        "error": "o app.py novo REMOVE rotas/funções que estão em produção — provavelmente foi montado a partir de uma cópia antiga. Nada foi alterado. Baixe o app.py atual do GitHub (Fred-Alexandrino/painel-falhas, main), aplique sua mudança nele e mande de novo. Se a remoção for proposital, envie o cabeçalho X-Deploy-Permitir-Remocao: sim.",
+                        "rotas_removidas": _sem_rotas[:40], "funcoes_removidas": _sem_funcs[:60],
+                    }), 409
+        except Exception as _e_guarda:
+            logging.warning(f"[deploy] verificação de remoções falhou: {_e_guarda}")
+
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
         # backup local do app.py atual antes de sobrescrever
