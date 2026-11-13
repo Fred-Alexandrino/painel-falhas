@@ -18249,9 +18249,21 @@ def gerar_relatorio_semanal_route():
             log.error(f"[Relatorio Semanal] Erro ao buscar Chamados com Fabricante: {e}")
             chamados_fabricante_por_usina = None
 
-        buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
-                                    atividades_por_usina, desligamentos_por_usina, usinas_cliente,
-                                    zeladoria_status_por_usina, chamados_fabricante_por_usina)
+        # 13/11/2026: pontos da "Preparação para reunião" (Reuniões e relatórios) entram na apresentação
+        try:
+            pontos_debate = _reuniao_prep_pontos(cliente)
+        except Exception as e:
+            log.error(f"[Relatorio Semanal] preparação de reunião: {e}")
+            pontos_debate = []
+        try:
+            buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
+                                        atividades_por_usina, desligamentos_por_usina, usinas_cliente,
+                                        zeladoria_status_por_usina, chamados_fabricante_por_usina,
+                                        pontos_debate=pontos_debate)
+        except TypeError:
+            buf = gerar_relatorio_pptx(cliente, semana_num, data_label,
+                                        atividades_por_usina, desligamentos_por_usina, usinas_cliente,
+                                        zeladoria_status_por_usina, chamados_fabricante_por_usina)
 
         nome_arquivo = f"Apresentação {cliente} x Grid Co - O&M - Semana {semana_num}.pptx"
         return send_file(
@@ -25593,6 +25605,95 @@ def evidencias_os_apagar(token):
     return jsonify({"ok": True, "apagados": n})
 
 
+
+
+# ── Preparação para reunião (13/11/2026) ────────────────────────────────────
+# Anotações do Fred, por cliente, do que precisa ser debatido na reunião semanal.
+# Os pontos marcados "incluir" e ainda não "discutidos" entram na apresentação
+# (pauta + slide "PONTOS PARA DEBATE").
+REUNIAO_PREP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reuniao_preparacao.json")
+_REUNIAO_PREP_LOCK = threading.Lock()
+
+
+def _reuniao_prep_ler():
+    try:
+        with open(REUNIAO_PREP_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _reuniao_prep_gravar(d):
+    tmp = REUNIAO_PREP_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, REUNIAO_PREP_PATH)
+
+
+def _reuniao_prep_chave(cliente):
+    return _norm_usina(normalizar_cliente(cliente) if "normalizar_cliente" in globals() else (cliente or "")) or "geral"
+
+
+def _reuniao_prep_pontos(cliente):
+    itens = (_reuniao_prep_ler().get(_reuniao_prep_chave(cliente)) or {}).get("itens") or []
+    out = []
+    for it in itens:
+        if it.get("incluir", True) and not it.get("discutido"):
+            t = (it.get("texto") or "").strip()
+            if t:
+                out.append((f"{it['usina']}: " if it.get("usina") else "") + t)
+    return out
+
+
+@app.route("/reuniao-preparacao", methods=["GET", "POST", "OPTIONS"])
+def reuniao_preparacao():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if request.method == "GET":
+        cliente = request.args.get("cliente", "")
+        reg = _reuniao_prep_ler().get(_reuniao_prep_chave(cliente)) or {}
+        return jsonify({"ok": True, "cliente": cliente, "itens": reg.get("itens") or [], "atualizadoEm": reg.get("atualizadoEm", "")}), 200
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Sem permissão."}), 403
+    b = request.get_json(silent=True) or {}
+    cliente = (b.get("cliente") or "").strip()
+    if not cliente:
+        return jsonify({"ok": False, "error": "cliente obrigatório"}), 400
+    acao = b.get("acao")
+    item = b.get("item") or {}
+    with _REUNIAO_PREP_LOCK:
+        d = _reuniao_prep_ler()
+        k = _reuniao_prep_chave(cliente)
+        reg = d.setdefault(k, {"cliente": cliente, "itens": []})
+        itens = reg["itens"]
+        agora = agora_br().strftime("%d/%m/%Y %H:%M")
+        if acao == "add":
+            texto = (item.get("texto") or "").strip()[:2000]
+            if not texto:
+                return jsonify({"ok": False, "error": "texto vazio"}), 400
+            itens.append({"id": uuid.uuid4().hex[:10], "texto": texto, "usina": (item.get("usina") or "").strip()[:80],
+                          "incluir": True, "discutido": False, "criadoEm": agora})
+        elif acao in ("update", "delete"):
+            alvo = next((x for x in itens if x.get("id") == item.get("id")), None)
+            if not alvo:
+                return jsonify({"ok": False, "error": "ponto não encontrado"}), 404
+            if acao == "delete":
+                itens.remove(alvo)
+            else:
+                for c in ("texto", "usina"):
+                    if c in item:
+                        alvo[c] = str(item[c]).strip()[:2000 if c == "texto" else 80]
+                for c in ("incluir", "discutido"):
+                    if c in item:
+                        alvo[c] = bool(item[c])
+                if item.get("discutido"):
+                    alvo["discutidoEm"] = agora
+        else:
+            return jsonify({"ok": False, "error": "ação inválida"}), 400
+        reg["atualizadoEm"] = agora
+        _reuniao_prep_gravar(d)
+    return jsonify({"ok": True, "itens": reg["itens"]}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
