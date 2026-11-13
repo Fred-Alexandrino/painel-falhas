@@ -24527,7 +24527,7 @@ VT_REPO = os.environ.get("VT_REPO", "Fred-Alexandrino/resumos-whatsapp")
 VT_PROP_SHEET = "OcPropostas"
 VT_PROP_HEADERS = ["PID", "Status", "Execução", "Criada em", "Usina", "Tipo", "Pedido", "Quem", "Quando",
                    "Trecho", "Ocorrência sugerida", "Texto histórico", "Nova (JSON)", "Justificativa",
-                   "Confiança", "Decidida em", "Resultado"]
+                   "Confiança", "Decidida em", "Resultado", "Tratativas (JSON)"]
 VT_TIPOS = ("agregar", "nova", "informacao")
 _VT_LOCK = threading.Lock()
 _VT_EXEC = {"run": None, "inicio": 0.0, "status": "", "erro": "", "resumo": "", "nao_verificado": [],
@@ -24605,7 +24605,16 @@ def _vt_proposta_json(d):
             "usina": d["Usina"], "tipo": d["Tipo"], "pedido": d["Pedido"], "quem": d["Quem"],
             "quando": d["Quando"], "trecho": d["Trecho"], "ocorrencia": d["Ocorrência sugerida"],
             "texto": d["Texto histórico"], "nova": nova, "justificativa": d["Justificativa"],
-            "confianca": d["Confiança"], "decidida": d["Decidida em"], "resultado": d["Resultado"]}
+            "confianca": d["Confiança"], "decidida": d["Decidida em"], "resultado": d["Resultado"],
+            "tratativas": _vt_tratativas_json(d.get("Tratativas (JSON)"))}
+
+
+def _vt_tratativas_json(txt):
+    try:
+        v = json.loads(txt or "[]")
+        return v if isinstance(v, list) else []
+    except Exception:
+        return []
 
 
 def _vt_montar_pacote(horas):
@@ -24637,21 +24646,21 @@ def _vt_montar_pacote(horas):
         if not gid or gid in vistos:
             continue
         vistos.add(gid)
-        de = _ajuda_busca_wpp(gid, horas=horas_ctx, limit=400)
+        de = _ajuda_busca_wpp(gid, horas=horas_ctx, limit=1200)
         if de.get("erro"):
             avisos.append(f"Grupo da equipe {u.get('grupo_nome') or gid}: {de['erro'][:120]}")
             continue
-        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=9000)
+        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=24000)
         if n_eq:
             usinas_do_grupo = [x["usina"] for x in usinas if (x.get("grupo") or "").replace("@g.us", "") == gid]
             nome_g = (de.get("grupos") or [{}])[0].get("nome") or u.get("grupo_nome") or gid
             blocos_eq.append(f"<grupo nome=\"equipe: {nome_g} (usinas: {', '.join(usinas_do_grupo)})\">\n{t_eq}\n</grupo>")
     # Grupos de operação por usina (fora do mapeamento de equipes), só como contexto
     for gid, usinas_g in VT_GRUPOS_CONTEXTO.items():
-        de = _ajuda_busca_wpp(gid, horas=horas_ctx, limit=300)
+        de = _ajuda_busca_wpp(gid, horas=horas_ctx, limit=800)
         if de.get("erro"):
             continue
-        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=7000)
+        t_eq, n_eq, _ = _ajuda_texto_mensagens(de, max_chars=16000)
         if n_eq:
             nome_g = (de.get("grupos") or [{}])[0].get("nome") or gid
             blocos_eq.append(f"<grupo nome=\"operação: {nome_g} (usinas: {', '.join(usinas_g)})\">\n{t_eq}\n</grupo>")
@@ -24761,7 +24770,9 @@ def _vt_importar(run, dados):
         novas.append(["P" + uuid.uuid4().hex[:8], "Pendente", run, agora, usina, tipo, pedido,
                       _vt_trunc(p.get("quem"), 80), _vt_trunc(p.get("quando"), 40), _vt_trunc(p.get("trecho"), 500),
                       oc, _vt_trunc(p.get("texto_historico"), 2000), json.dumps(nova, ensure_ascii=False),
-                      _vt_trunc(p.get("justificativa"), 400), _vt_trunc(p.get("confianca"), 10), "", ""])
+                      _vt_trunc(p.get("justificativa"), 400), _vt_trunc(p.get("confianca"), 10), "", "",
+                      json.dumps([{k: _vt_trunc(t.get(k), 400 if k == "texto" else 120) for k in ("grupo", "quando", "quem", "texto")}
+                                  for t in (p.get("tratativas") or []) if isinstance(t, dict)][:6], ensure_ascii=False)])
     if novas:
         _gspread_retry(lambda: ws.append_rows(novas, value_input_option="RAW"))
     _VT_PROPS_CACHE["v"] = None
