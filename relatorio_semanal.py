@@ -931,7 +931,7 @@ def _renderizar_topico_usinas(prs, numero_topico, titulo_base, usinas_ordenadas,
 PAUTAS_GERAIS_FIXAS = ["ATIVIDADES DA SEMANA", "CHAMADOS COM FABRICANTE", "ZELADORIA"]
 
 
-def _renderizar_pautas_gerais(prs):
+def _renderizar_pautas_gerais(prs, extras=None):
     """Slide 2 — pauta fixa e universal (vale para todos os clientes,
     confirmado com Fred 23/07/2026), substitui a antiga 'Ata da reunião'
     com pauta variável por cliente.
@@ -957,7 +957,7 @@ def _renderizar_pautas_gerais(prs):
     if shp_corpo:
         tf = shp_corpo.text_frame
         tf.clear()
-        for i, topico in enumerate(PAUTAS_GERAIS_FIXAS):
+        for i, topico in enumerate(list(PAUTAS_GERAIS_FIXAS) + list(extras or [])):
             _add_paragrafo(tf, "titulo", [{"texto": f"{topico};", "bold": False}], first=(i == 0), start_at=i + 1)
     return ata
 
@@ -1916,7 +1916,7 @@ def _limpar_pacote_final(buf):
 
 def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
                           desligamentos_por_usina, usinas_cliente, zeladoria_status_por_usina=None,
-                          chamados_fabricante_por_usina=None):
+                          chamados_fabricante_por_usina=None, pontos_debate=None):
     """
     NOVA ESTRUTURA (confirmada com Fred 28/08/2026, a partir do relatório de
     referência Sal Energia Semana 36 — vale para TODOS os clientes),
@@ -1980,7 +1980,8 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
         _set_text_preservando_estilo(shp_titulo, f"O&M – {cliente}\nSemana {semana_num}")
 
     # --- Slide 2: Pautas Gerais — fixo, igual para todos os clientes -------
-    _renderizar_pautas_gerais(prs)
+    pontos_debate = [p for p in (pontos_debate or []) if str(p).strip()]
+    _renderizar_pautas_gerais(prs, ["PONTOS PARA DEBATE"] if pontos_debate else None)
 
     # --- Slides 3-4: ATIVIDADES DA SEMANA (tópico 1) — Desligamentos mesclados
     _renderizar_topico_usinas(prs, 1, "ATIVIDADES DA SEMANA", usinas_ordenadas, atividades_combinadas,
@@ -2000,6 +2001,14 @@ def gerar_relatorio_pptx(cliente, semana_num, data_label, atividades_por_usina,
             info = (zeladoria_status_por_usina or {}).get(usina)
             _add_paragrafo(tf, "item", _formatar_item_zeladoria(info), first=False, bullet_char="•")
     _renderizar_secao_placeholder(prs, 3, "ZELADORIA", _corpo_zeladoria)
+
+    # --- Slide 7: PONTOS PARA DEBATE (tópico 4) — anotações da "Preparação para
+    # reunião" da Central O&M (13/11/2026). Só entra quando há pontos.
+    if pontos_debate:
+        def _corpo_debate(tf):
+            for i, ponto in enumerate(pontos_debate):
+                _add_paragrafo(tf, "item", [{"texto": str(ponto).strip()}], first=(i == 0), bullet_char="•")
+        _renderizar_secao_placeholder(prs, 4, "PONTOS PARA DEBATE", _corpo_debate)
 
     # --- Reordena o deck: capa nova -> pautas nova -> conteúdo -> contato --
     xml_slides = prs.slides._sldIdLst
