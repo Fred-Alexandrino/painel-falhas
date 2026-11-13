@@ -13,8 +13,9 @@ jobs:
           key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
           script: |
             cd ~/wppconnect-server
-            echo "== package.json diff"; git diff package.json
-            echo "== npm"; grep -n '"@whiskeysockets/baileys"' -A2 package-lock.json | head -5
-            echo "== versoes usadas pelo processo"; sudo journalctl -u wppconnect --since "2026-11-08" --no-pager | grep -i "version\|baileys v" | tail -5
-            echo "== eventos (sem chaves) desde 08/11"
-            sudo journalctl -u wppconnect --since "2026-11-08" --no-pager -o short-iso | grep -E "conectado|Conexão encerrada|enviar|Enviad|erro|Erro|❌|QR|Restore|logout|loggedOut|retry|Retry|stale|PreKey|prekey|No sessions|not-acceptable|SessionError|Started|Stopped" | grep -v "Buffer\|privKey\|rootKey\|chainKey" | tail -150
+            ls SEM_RESTORE_AUTH 2>/dev/null || echo "flag removida"
+            echo "== desde a reconexão (17:00 UTC)"
+            sudo journalctl -u wppconnect --since "2026-11-13 17:00" --no-pager -o short-iso | grep -E "conectado|QR|Restore Auth|Reenvio|Backup Auth|enviad|Enviad" | grep -v "Buffer\|privKey\|rootKey" | tail -25
+            echo "== mensagens recebidas (linhas do arquivo de resumo hoje)"
+            f=$(ls -t ~/wppconnect-server/data/resumo-msgs.jsonl ~/wppconnect-server/resumo-msgs.jsonl 2>/dev/null | head -1); echo "$f"; [ -n "$f" ] && awk -v d=$(date -d "2026-11-13 20:00" +%s) -F'"t":' '{split($2,a,","); if (a[1]>=d) n++} END{print "recebidas apos 17h local:", n+0}' "$f"
+            echo "== erros de decifrar desde 20:00 UTC"; sudo journalctl -u wppconnect --since "2026-11-13 20:00" --no-pager -g "Bad MAC|No matching sessions|Failed to decrypt" | wc -l
