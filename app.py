@@ -537,6 +537,11 @@ CATALOGO_USINAS = {
         "cliente": "2C Energia",
         "aliases": ["ipixuna do para i", "ipixuna do para 1", "ipixuna do para", "ipixuna do pará", "2c-ipx100", "2c ipixuna 1", "2c ipixuna i", "2c ipixuna"],
     },
+    # Incluída pelo Fred em 13/11/2026 (UFV-116, 2C-NIP100, 6,5 MWp, solo tracker, cluster PA Leste 02).
+    "Nova Ipixuna I": {
+        "cliente": "2C Energia",
+        "aliases": ["nova ipixuna", "nova ipixuna i", "nova ipixuna 1", "2c-nip100", "2c nova ipixuna", "2c - nova ipixuna", "ufv-116", "ufv 116"],
+    },
     "Tupi Paulista I": {
         "cliente": "2C Energia",
         "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
@@ -6933,6 +6938,8 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Ailton Leal', "funcao": 'Técnico', "membros": ['Antônio Neto (Eletricista)'], "alternativo": ''},
     {"usina": 'Ipixuna do Pará I', "cliente": '2C Energia', "cluster": 'PA Norte 03', "cidade_uf": 'Ipixuna do Pará/PA',
      "responsavel": 'Wesllen', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    {"usina": 'Nova Ipixuna I', "cliente": '2C Energia', "cluster": 'PA Leste 02', "cidade_uf": 'Nova Ipixuna/PA',
+     "responsavel": 'Heitor Vidal Silva', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Tupi Paulista I', "cliente": '2C Energia', "cluster": 'SP Oeste 01', "cidade_uf": 'Tupi Paulista/SP',
      "responsavel": 'Carlos Godoi', "funcao": 'Técnico', "membros": ['João Salles (Eletricista)'], "alternativo": ''},
     {"usina": 'Alto Paraná I', "cliente": 'Thopen', "cluster": 'PR Oeste 01', "cidade_uf": 'Alto Paraná/PR',
@@ -7038,6 +7045,8 @@ GRUPOS_EQUIPE_UFVS = [
      "usinas": ["Ceilândia I", "Ceilândia II", "Sítio dos Nogueiras"]},
     {"id": "120363431601050989@g.us", "nome": "Equipe Ipixuna - 2C",
      "usinas": ["Ipixuna do Pará I"]},
+    {"id": "120363414617683366@g.us", "nome": "Equipe Nova Ipixuna - 2C",
+     "usinas": ["Nova Ipixuna I"]},
     {"id": "120363430888041572@g.us", "nome": "Equipe União 2C",
      "usinas": ["União I", "União II"]},
     {"id": "120363430482583512@g.us", "nome": "Equipe Tupi Paulista",
