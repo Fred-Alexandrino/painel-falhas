@@ -1,0 +1,25 @@
+name: Religar WhatsApp VM2 (QR novo)
+on:
+  workflow_dispatch: {}
+jobs:
+  religar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guarda sessão corrompida e reinicia pedindo QR novo
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            git pull
+            git log -1 --format='%h %s'
+            sudo systemctl stop wppconnect
+            TS=$(date +%Y%m%d_%H%M)
+            if [ -d auth_info ]; then mv auth_info "auth_info_corrompida_$TS"; echo "sessão antiga guardada em auth_info_corrompida_$TS"; fi
+            touch SEM_RESTORE_AUTH
+            sudo systemctl start wppconnect
+            sleep 25
+            curl -s localhost:${PORT:-3000}/health || true; echo
+            sudo journalctl -u wppconnect --since "-1 min" --no-pager | grep -E "Restore|QR|conectado|Conexão|SEM_RESTORE|Reenvio" | tail -15
