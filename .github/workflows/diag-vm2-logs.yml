@@ -1,0 +1,20 @@
+name: Diag VM2 logs (somente leitura)
+on:
+  workflow_dispatch: {}
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Logs da ponte (somente leitura)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 147.15.66.241
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM2_SSH_KEY }}
+          script: |
+            cd ~/wppconnect-server
+            echo "== package.json diff"; git diff package.json
+            echo "== npm"; grep -n '"@whiskeysockets/baileys"' -A2 package-lock.json | head -5
+            echo "== versoes usadas pelo processo"; sudo journalctl -u wppconnect --since "2026-11-08" --no-pager | grep -i "version\|baileys v" | tail -5
+            echo "== eventos (sem chaves) desde 08/11"
+            sudo journalctl -u wppconnect --since "2026-11-08" --no-pager -o short-iso | grep -E "conectado|Conexão encerrada|enviar|Enviad|erro|Erro|❌|QR|Restore|logout|loggedOut|retry|Retry|stale|PreKey|prekey|No sessions|not-acceptable|SessionError|Started|Stopped" | grep -v "Buffer\|privKey\|rootKey\|chainKey" | tail -150
