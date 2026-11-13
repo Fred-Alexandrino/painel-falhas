@@ -25138,6 +25138,562 @@ def deploy_vm2_limpar_sessao():
         return jsonify({"ok": False, "error": str(e)[:300]}), 500
 
 
+# ── OS fora do mapeamento (12/11/2026) ─────────────────────────────────────
+# OS que estão na planilha mas são de outro cliente/supervisor segundo a Fracttal (cliente do grupo).
+# A linha não é apagada (histórico preservado); só deixa de aparecer em /atividades.
+OS_FORA_MAPA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "os_fora_mapeamento.json")
+_OS_FORA_CACHE = {"t": 0.0, "d": {}}
+
+
+def _os_fora_mapa_ler():
+    if time.time() - _OS_FORA_CACHE["t"] < 30:
+        return _OS_FORA_CACHE["d"]
+    try:
+        with open(OS_FORA_MAPA_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        d = {}
+    _OS_FORA_CACHE.update(t=time.time(), d=d)
+    return d
+
+
+def _os_fora_mapa_set():
+    return set(_os_fora_mapa_ler().keys())
+
+
+def _os_fora_mapa_marcar(numero_os, res, origem=""):
+    numero_os = str(numero_os).strip()
+    if not numero_os:
+        return
+    _OS_FORA_CACHE["t"] = 0.0
+    d = dict(_os_fora_mapa_ler())
+    if numero_os in d:
+        return
+    d[numero_os] = {"cliente": res.get("cliente_fracttal", ""), "grupo": res.get("grupo_fracttal", ""),
+                    "motivo": res.get("motivo_revisao", ""), "origem": origem,
+                    "em": agora_br().strftime("%d/%m/%Y %H:%M")}
+    tmp = OS_FORA_MAPA_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, OS_FORA_MAPA_PATH)
+    _OS_FORA_CACHE.update(t=time.time(), d=d)
+
+
+@app.route("/os-fora-mapeamento", methods=["GET"])
+def os_fora_mapeamento_listar():
+    return jsonify({"ok": True, "itens": _os_fora_mapa_ler()}), 200
+
+
+# ══════════════════════════════════════════════════════════════════════
+# AUDITORIA FRACTTAL x CENTRAL O&M — campo a campo (12/11/2026)
+# Pedido do Fred: bater status, estados, nomenclaturas, ativos e usinas entre a
+# Fracttal (banco de dados = fonte da verdade) e o Painel de Atividades.
+# Para cada OS do escopo, lê as tarefas AO VIVO na Fracttal, monta o registro
+# esperado com a MESMA função da sincronização (_fracttal_mapear_grupo) e compara
+# campo a campo. Com aplicar=True corrige a planilha (em lote) e anota no histórico.
+# Roda em segundo plano (pode passar dos 160 s do gunicorn); o progresso fica em
+# disco (auditoria_fracttal.json) porque há 2 workers.
+# Não toca em: prioridade, anotações pessoais, visualizado, histórico (só acrescenta).
+# ══════════════════════════════════════════════════════════════════════
+AUD_FT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auditoria_fracttal.json")
+_AUD_FT_CAMPOS = ["cliente", "usina", "equipamento", "descricao", "responsavel", "prazo", "statusOS",
+                  "statusTarefaOS", "percentualOS", "statusGeralOS", "detalhesEquipamentosOS",
+                  "etiquetasOS", "observacoesOS"]
+_AUD_FT_ROTULO = {"cliente": "Cliente", "usina": "Usina", "equipamento": "Ativo/equipamento", "descricao": "Nome da OS (tarefa)",
+                  "responsavel": "Responsável", "prazo": "Prazo", "statusOS": "Estado da OS", "statusTarefaOS": "Status das tarefas",
+                  "percentualOS": "% concluído", "statusGeralOS": "Situação geral", "detalhesEquipamentosOS": "Ativos da OS",
+                  "etiquetasOS": "Etiquetas", "observacoesOS": "Observações", "status": "Status interno"}
+
+
+def _aud_ft_ler():
+    try:
+        with open(AUD_FT_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _aud_ft_gravar(d):
+    tmp = AUD_FT_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, AUD_FT_PATH)
+
+
+def _aud_ft_tasks(numero_os, headers):
+    """Tarefas da OS na Fracttal; None = não existe/erro definitivo; levanta em erro temporário."""
+    for tentativa in range(5):
+        r = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{numero_os}", headers=headers, timeout=20)
+        if r.status_code == 429 or r.status_code >= 500:
+            time.sleep(5 + tentativa * 8)
+            continue
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json().get("data") or []
+    raise RuntimeError(f"Fracttal indisponível para a OS {numero_os}")
+
+
+def _aud_ft_norm(campo, v):
+    v = "" if v is None else str(v)
+    if campo == "detalhesEquipamentosOS":
+        try:
+            return json.dumps(json.loads(v or "[]"), ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return v.strip()
+    return re.sub(r"\s+", " ", v).strip()
+
+
+def _aud_ft_escopo(row, dias=None):
+    """Escopo (pedido do Fred 12/11/2026): só OS das usinas do mapeamento dele que estão em aberto
+    (em processo / em revisão-verificação). Concluídas e canceladas ficam de fora; entra só quando a
+    Central ainda mostra aberta e a Fracttal já fechou (ou o contrário), porque aí o status diverge."""
+    num = (row[ATIV_CAMPO_COL["numeroOS"] - 1] if len(row) >= ATIV_CAMPO_COL["numeroOS"] else "").strip()
+    if not num or not re.fullmatch(r"\d+", num) or num in _os_fora_mapa_set():
+        return None
+    usina = row[ATIV_CAMPO_COL["usina"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["usina"] else ""
+    try:
+        if not usina or not (usina in CATALOGO_USINAS or usina_permitida(usina)):
+            return None
+    except Exception:
+        return None
+    st = row[ATIV_CAMPO_COL["status"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["status"] else ""
+    so = row[ATIV_CAMPO_COL["statusOS"] - 1].strip() if len(row) >= ATIV_CAMPO_COL["statusOS"] else ""
+    if st in ("Concluído", "Cancelado") and so in ("Finalizada", "Cancelada"):
+        return None
+    return num
+
+
+def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="manual", rodar_descoberta=True, job=None):
+    job = job or {}
+    t0 = time.time()
+
+    def prog(**kw):
+        job.update(kw)
+        job["atualizadoEm"] = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+        try:
+            _aud_ft_gravar(job)
+        except Exception:
+            pass
+
+    descoberta = None
+    if rodar_descoberta:
+        prog(etapa="Buscando OS novas na Fracttal (últimas 24 h)…")
+        try:
+            descoberta, _ = _sync_fracttal_core(desde_horas=24)
+        except Exception as e:
+            descoberta = {"erro": str(e)}
+
+    prog(etapa="Lendo o Painel de Atividades…")
+    ws = get_atividades_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    alvo = []
+    vistos = {}
+    for i, row in enumerate(todos[1:], start=2):
+        num = _aud_ft_escopo(row, dias_concluidas)
+        if num:
+            alvo.append((i, row, num))
+            vistos.setdefault(num, []).append(i)
+    duplicadas = [{"numeroOS": n, "linhas": ls} for n, ls in vistos.items() if len(ls) > 1]
+    total = len(alvo)
+
+    # 1) Em lote: todas as OS EM PROCESSO e EM REVISÃO da Fracttal (paginado, 100 tarefas por chamada).
+    tarefas = {}
+    erros, nao_encontradas = [], []
+    paginas = 0
+    _vistos_tarefa = {}
+    for st_ot in ("1", "2"):
+        start = 0
+        while paginas < 400:
+            prog(etapa=f"Lendo OS {'em processo' if st_ot == '1' else 'em revisão'} na Fracttal (página {paginas + 1})…")
+            lote = None
+            for tent in range(5):
+                try:
+                    lote, total_ft = _fracttal_listar_pagina(ot_status=st_ot, start=start, limit=100)
+                    break
+                except Exception as e:
+                    if "429" in str(e) and tent < 4:
+                        time.sleep(6 + tent * 8)
+                        continue
+                    erros.append({"numeroOS": "-", "erro": f"listagem Fracttal status {st_ot}: {e}"[:200]})
+                    break
+            if lote is None:
+                break
+            time.sleep(0.6)
+            paginas += 1
+            for t in lote:
+                f = str(t.get("wo_folio") or "").strip()
+                if not f:
+                    continue
+                # a paginação da Fracttal repete tarefas entre páginas quando a lista muda durante a leitura:
+                # sem isso, OS de 1 tarefa aparecia com "2 Concluída" e "Múltiplas atividades" (falso divergente)
+                chave_t = t.get("id_work_orders_tasks") or t.get("id_task") or t.get("id") or json.dumps(t, sort_keys=True, default=str)
+                vistos_t = _vistos_tarefa.setdefault(f, set())
+                if chave_t in vistos_t:
+                    continue
+                vistos_t.add(chave_t)
+                tarefas.setdefault(f, []).append(t)
+            start += len(lote)
+            if not lote or start >= (total_ft or 0):
+                break
+    abertas_ft = set(tarefas.keys())
+    # 2) Individual: OS que a Central tem e não vieram no lote (fechadas na Fracttal, ou concluídas recentes).
+    token = _fracttal_get_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    def busca(num):
+        try:
+            return num, _aud_ft_tasks(num, headers), None
+        except Exception as e:
+            return num, None, str(e)
+
+    nums = [n for n in dict.fromkeys(n for _, _, n in alvo) if n not in abertas_ft]
+    prog(etapa=f"Conferindo uma a uma {len(nums)} OS que não estão abertas na Fracttal…", total=len(nums), feitas=0)
+    feitas = [0]
+    lock = threading.Lock()
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for fut in as_completed([ex.submit(busca, n) for n in nums]):
+            num, tasks, err = fut.result()
+            with lock:
+                feitas[0] += 1
+                if err:
+                    erros.append({"numeroOS": num, "erro": err[:200]})
+                elif not tasks:
+                    nao_encontradas.append(num)
+                else:
+                    tarefas[num] = tasks
+                if feitas[0] % 25 == 0:
+                    prog(feitas=feitas[0])
+    prog(etapa="Comparando campo a campo…", feitas=len(nums))
+
+    divergencias, updates, revisao_manual, fora_mapa = [], [], [], []
+    agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    status_internos = []
+    for i, row, num in alvo:
+        tasks = tarefas.get(num)
+        if not tasks:
+            continue
+        try:
+            esp = _fracttal_mapear_grupo(tasks)
+            if esp is None:
+                _rf = _fracttal_resolver_usina_tecnico(tasks[0])
+                if _rf.get("fora_mapeamento"):
+                    fora_mapa.append({"numeroOS": num, "usinaCentral": row[ATIV_CAMPO_COL["usina"] - 1].strip(),
+                                      "clienteFracttal": _rf.get("cliente_fracttal", ""), "grupoFracttal": _rf.get("grupo_fracttal", ""),
+                                      "motivo": _rf.get("motivo_revisao", "")})
+                    if aplicar:
+                        _os_fora_mapa_marcar(num, _rf, origem=f"auditoria ({origem})")
+                continue
+        except Exception as e:
+            erros.append({"numeroOS": num, "erro": f"mapeamento: {e}"[:200]})
+            continue
+        g = lambda c: (row[ATIV_CAMPO_COL[c] - 1] if len(row) >= ATIV_CAMPO_COL[c] else "")
+        usina_atual = g("usina").strip()
+        corrigidos = []
+        for campo in _AUD_FT_CAMPOS:
+            if esp.get("_revisao_manual") and campo in ("cliente", "usina"):
+                continue
+            if campo not in esp:
+                continue
+            novo = esp.get(campo)
+            if campo == "responsavel" and not (novo or "").strip():
+                continue
+            if campo in ("cliente", "usina") and not (novo or "").strip():
+                continue
+            atual = g(campo)
+            if _aud_ft_norm(campo, atual) == _aud_ft_norm(campo, novo):
+                continue
+            de, para = str(atual or ""), str(novo or "")
+            if campo == "detalhesEquipamentosOS":
+                try:
+                    de = " · ".join(f"{x.get('equipamento')} ({x.get('status')})" for x in json.loads(de or "[]"))
+                except Exception:
+                    pass
+                try:
+                    para = " · ".join(f"{x.get('equipamento')} ({x.get('status')})" for x in json.loads(para or "[]"))
+                except Exception:
+                    pass
+            divergencias.append({"numeroOS": num, "linha": i, "usina": esp.get("usina") or usina_atual, "campo": campo,
+                                 "rotulo": _AUD_FT_ROTULO.get(campo, campo), "central": de[:300], "fracttal": para[:300],
+                                 "corrigido": bool(aplicar)})
+            if aplicar:
+                updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[novo if novo is not None else ""]]})
+            corrigidos.append(_AUD_FT_ROTULO.get(campo, campo))
+        if esp.get("_revisao_manual"):
+            revisao_manual.append({"numeroOS": num, "usinaCentral": usina_atual, "motivo": esp.get("motivo", "")})
+        # status interno a partir do estado na Fracttal
+        st_atual = g("status").strip()
+        st_novo = _status_interno_esperado(esp.get("statusOS") or g("statusOS").strip(), st_atual)
+        if st_novo:
+            divergencias.append({"numeroOS": num, "linha": i, "usina": esp.get("usina") or usina_atual, "campo": "status",
+                                 "rotulo": "Status interno", "central": st_atual, "fracttal": st_novo, "corrigido": bool(aplicar)})
+            status_internos.append((i, st_novo))
+            corrigidos.append("Status interno")
+        if aplicar and corrigidos:
+            hist = g("historico")
+            entrada = f"{agora_txt} - 🔎 Auditoria Fracttal ({origem}): corrigido(s) {', '.join(corrigidos)} conforme a Fracttal."
+            updates.append({"range": f"{col_letra(ATIV_COL_HISTORICO)}{i}", "values": [[f"{hist}\n{entrada}".strip() if hist else entrada]]})
+
+    gravadas = 0
+    if aplicar and updates:
+        prog(etapa=f"Gravando {len(updates)} correções no Painel de Atividades…")
+        for k in range(0, len(updates), 200):
+            lote = updates[k:k + 200]
+            _gspread_retry(lambda lote=lote: ws.batch_update([dict(x) for x in lote], value_input_option="RAW"))
+            gravadas += len(lote)
+        for i, st_novo in status_internos:
+            try:
+                time.sleep(2.5)  # cota de escrita do Sheets (60/min): _gravar_status_interno faz várias escritas
+                _gspread_retry(lambda i=i, st_novo=st_novo: _gravar_status_interno(ws, i, st_novo), tentativas=4, esperas=(20, 40, 60, 60))
+            except Exception as e:
+                erros.append({"linha": i, "erro": f"status interno: {e}"[:200]})
+
+    extras = {}
+    if aplicar:
+        try:
+            extras["validacao_relatorios"] = _validar_integridade_relatorios_core(aplicar=True)
+        except Exception as e:
+            extras["validacao_relatorios"] = {"erro": str(e)}
+    por_campo = {}
+    for d in divergencias:
+        por_campo[d["rotulo"]] = por_campo.get(d["rotulo"], 0) + 1
+    os_div = len({d["numeroOS"] for d in divergencias})
+    resultado = {
+        "ok": True, "origem": origem, "aplicado": bool(aplicar),
+        "inicio": job.get("inicio"), "fim": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "segundos": round(time.time() - t0),
+        "conferidas": len({n for _, _, n in alvo if n in tarefas}), "escopo": total, "paginasLote": paginas, "osComDivergencia": os_div, "divergencias": divergencias[:4000],
+        "porCampo": por_campo, "naoEncontradas": nao_encontradas, "erros": erros[:200], "revisaoManual": revisao_manual[:300],
+        "duplicadas": duplicadas, "celulasGravadas": gravadas, "foraMapeamento": fora_mapa,
+        "descoberta": {"criadas": len((descoberta or {}).get("criadas") or [])} if isinstance(descoberta, dict) else None,
+        "diasConcluidas": dias_concluidas,
+    }
+    return resultado
+
+
+@app.route("/auditoria-fracttal/iniciar", methods=["POST", "OPTIONS"])
+def auditoria_fracttal_iniciar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "A auditoria é feita só pelo acesso principal."}), 403
+    corpo = request.get_json(silent=True) or {}
+    atual = _aud_ft_ler()
+    def _vivo(pid):
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except Exception:
+            return False
+    if atual.get("rodando") and not corpo.get("forcar") and (not atual.get("pid") or _vivo(atual.get("pid"))):
+        try:
+            ts = datetime.strptime(atual.get("atualizadoEm", ""), "%d/%m/%Y %H:%M:%S")
+            if (agora_br().replace(tzinfo=None) - ts).total_seconds() < 600:
+                return jsonify({"ok": True, "jaRodando": True, "job": atual}), 200
+        except Exception:
+            pass
+    aplicar = corpo.get("aplicar", True) is not False
+    dias = corpo.get("diasConcluidas", 15)
+    job = {"rodando": True, "pid": os.getpid(), "inicio": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "etapa": "Iniciando…",
+           "aplicar": aplicar, "atualizadoEm": agora_br().strftime("%d/%m/%Y %H:%M:%S")}
+    _aud_ft_gravar(job)
+
+    def roda():
+        try:
+            res = _auditoria_fracttal_campos_core(aplicar=aplicar, dias_concluidas=dias, origem=corpo.get("origem") or "botão Auditoria",
+                                                  rodar_descoberta=corpo.get("descoberta", True) is not False, job=job)
+            job.update({"rodando": False, "etapa": "Concluída", "resultado": res})
+        except Exception as e:
+            log.error(f"[AuditoriaFracttal] {e}")
+            job.update({"rodando": False, "etapa": "Erro", "erro": str(e)})
+        job["atualizadoEm"] = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+        _aud_ft_gravar(job)
+
+    threading.Thread(target=roda, daemon=True).start()
+    return jsonify({"ok": True, "iniciada": True, "job": job}), 200
+
+
+@app.route("/auditoria-fracttal/status", methods=["GET"])
+def auditoria_fracttal_status():
+    return jsonify({"ok": True, "job": _aud_ft_ler()}), 200
+
+
+
+# ============================================================================
+# EVIDENCIAS DE OS (Nexus) — area temporaria de arquivos (12/11/2026)
+# O Claude envia as fotos/PDF de uma OS (POST, protegido pelo DEPLOY_SECRET) e
+# o script Tampermonkey do Nexus baixa por link aleatorio para anexar no
+# "Fazer OS". Os arquivos expiram em 2 h e ficam fora do repositorio.
+# ============================================================================
+_EVID_DIR = "/tmp/evidencias-os"
+_EVID_TTL_S = 2 * 3600
+_EVID_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+_EVID_NOME_RE = re.compile(r"^[A-Za-z0-9._+()-]{1,140}$")
+_EVID_MAX_BYTES = 25 * 1024 * 1024
+
+
+def _evid_limpar_expirados():
+    try:
+        agora = time.time()
+        if not os.path.isdir(_EVID_DIR):
+            return
+        for tk in os.listdir(_EVID_DIR):
+            d = os.path.join(_EVID_DIR, tk)
+            if os.path.isdir(d) and agora - os.path.getmtime(d) > _EVID_TTL_S:
+                for f in os.listdir(d):
+                    try:
+                        os.remove(os.path.join(d, f))
+                    except Exception:
+                        pass
+                try:
+                    os.rmdir(d)
+                except Exception:
+                    pass
+    except Exception as e:
+        logging.warning(f"[evidencias-os] limpeza falhou: {e}")
+
+
+@app.route("/evidencias-os/<token>/<nome>", methods=["POST", "PUT"])
+def evidencias_os_upload(token, nome):
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    if not _EVID_TOKEN_RE.match(token) or not _EVID_NOME_RE.match(nome):
+        return jsonify({"error": "token ou nome invalido"}), 400
+    dados = request.get_data()
+    if not dados or len(dados) > _EVID_MAX_BYTES:
+        return jsonify({"error": "arquivo vazio ou grande demais"}), 400
+    _evid_limpar_expirados()
+    d = os.path.join(_EVID_DIR, token)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, nome), "wb") as fh:
+        fh.write(dados)
+    os.utime(d, None)
+    return jsonify({"ok": True, "nome": nome, "bytes": len(dados)})
+
+
+@app.route("/evidencias-os/<token>/<nome>", methods=["GET"])
+def evidencias_os_baixar(token, nome):
+    if not _EVID_TOKEN_RE.match(token) or not _EVID_NOME_RE.match(nome):
+        return jsonify({"error": "nao encontrado"}), 404
+    d = os.path.join(_EVID_DIR, token)
+    caminho = os.path.join(d, nome)
+    if not os.path.isfile(caminho) or time.time() - os.path.getmtime(d) > _EVID_TTL_S:
+        return jsonify({"error": "nao encontrado ou expirado"}), 404
+    resp = send_file(caminho, as_attachment=False, download_name=nome, max_age=0)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/evidencias-os/<token>", methods=["DELETE"])
+def evidencias_os_apagar(token):
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    if not _EVID_TOKEN_RE.match(token):
+        return jsonify({"error": "token invalido"}), 400
+    d = os.path.join(_EVID_DIR, token)
+    n = 0
+    if os.path.isdir(d):
+        for f in os.listdir(d):
+            try:
+                os.remove(os.path.join(d, f)); n += 1
+            except Exception:
+                pass
+        try:
+            os.rmdir(d)
+        except Exception:
+            pass
+    return jsonify({"ok": True, "apagados": n})
+
+
+
+
+# ── Preparação para reunião (13/11/2026) ────────────────────────────────────
+# Anotações do Fred, por cliente, do que precisa ser debatido na reunião semanal.
+# Os pontos marcados "incluir" e ainda não "discutidos" entram na apresentação
+# (pauta + slide "PONTOS PARA DEBATE").
+REUNIAO_PREP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reuniao_preparacao.json")
+_REUNIAO_PREP_LOCK = threading.Lock()
+
+
+def _reuniao_prep_ler():
+    try:
+        with open(REUNIAO_PREP_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _reuniao_prep_gravar(d):
+    tmp = REUNIAO_PREP_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, REUNIAO_PREP_PATH)
+
+
+def _reuniao_prep_chave(cliente):
+    return _norm_usina(normalizar_cliente(cliente) if "normalizar_cliente" in globals() else (cliente or "")) or "geral"
+
+
+def _reuniao_prep_pontos(cliente):
+    itens = (_reuniao_prep_ler().get(_reuniao_prep_chave(cliente)) or {}).get("itens") or []
+    out = []
+    for it in itens:
+        if it.get("incluir", True) and not it.get("discutido"):
+            t = (it.get("texto") or "").strip()
+            if t:
+                out.append((f"{it['usina']}: " if it.get("usina") else "") + t)
+    return out
+
+
+@app.route("/reuniao-preparacao", methods=["GET", "POST", "OPTIONS"])
+def reuniao_preparacao():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if request.method == "GET":
+        cliente = request.args.get("cliente", "")
+        reg = _reuniao_prep_ler().get(_reuniao_prep_chave(cliente)) or {}
+        return jsonify({"ok": True, "cliente": cliente, "itens": reg.get("itens") or [], "atualizadoEm": reg.get("atualizadoEm", "")}), 200
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Sem permissão."}), 403
+    b = request.get_json(silent=True) or {}
+    cliente = (b.get("cliente") or "").strip()
+    if not cliente:
+        return jsonify({"ok": False, "error": "cliente obrigatório"}), 400
+    acao = b.get("acao")
+    item = b.get("item") or {}
+    with _REUNIAO_PREP_LOCK:
+        d = _reuniao_prep_ler()
+        k = _reuniao_prep_chave(cliente)
+        reg = d.setdefault(k, {"cliente": cliente, "itens": []})
+        itens = reg["itens"]
+        agora = agora_br().strftime("%d/%m/%Y %H:%M")
+        if acao == "add":
+            texto = (item.get("texto") or "").strip()[:2000]
+            if not texto:
+                return jsonify({"ok": False, "error": "texto vazio"}), 400
+            itens.append({"id": uuid.uuid4().hex[:10], "texto": texto, "usina": (item.get("usina") or "").strip()[:80],
+                          "incluir": True, "discutido": False, "criadoEm": agora})
+        elif acao in ("update", "delete"):
+            alvo = next((x for x in itens if x.get("id") == item.get("id")), None)
+            if not alvo:
+                return jsonify({"ok": False, "error": "ponto não encontrado"}), 404
+            if acao == "delete":
+                itens.remove(alvo)
+            else:
+                for c in ("texto", "usina"):
+                    if c in item:
+                        alvo[c] = str(item[c]).strip()[:2000 if c == "texto" else 80]
+                for c in ("incluir", "discutido"):
+                    if c in item:
+                        alvo[c] = bool(item[c])
+                if item.get("discutido"):
+                    alvo["discutidoEm"] = agora
+        else:
+            return jsonify({"ok": False, "error": "ação inválida"}), 400
+        reg["atualizadoEm"] = agora
+        _reuniao_prep_gravar(d)
+    return jsonify({"ok": True, "itens": reg["itens"]}), 200
 @app.route("/deploy/wpp-grupo-foto", methods=["POST"])
 def deploy_wpp_grupo_foto():
     """Repassa à ponte (VM2) a troca de foto de um grupo. Body: {grupo, imagem (base64 JPEG), verificar?}."""
