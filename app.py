@@ -25800,6 +25800,181 @@ def deploy_wpp_proxy():
 
 
 
+# =============================================================================
+# PROSA CAFÉ — app pessoal de receitas de café do Fred (Android)
+# Rotas isoladas: não tocam em planilhas nem em nenhuma outra função do painel.
+#   POST /prosa/receita        {url?, texto?} -> receita estruturada via Gemini
+#   GET  /prosa/app/versao     -> versão mais recente do APK publicada
+#   GET  /prosa/app/apk        -> download do APK mais recente
+#   POST /prosa/app/publicar   (X-Deploy-Secret) corpo = APK; ?versionCode=&versionName=&notas=
+# Usa _chamar_gemini_com_retry (chave principal + reserva em 429).
+# Limite próprio de chamadas para não pesar na cota do painel.
+# =============================================================================
+PROSA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prosa_app")
+_PROSA_LIMITE_HORA = 15
+_prosa_chamadas = []
+_prosa_lock = threading.Lock()
+
+def _prosa_dentro_do_limite():
+    agora = time.time()
+    with _prosa_lock:
+        while _prosa_chamadas and agora - _prosa_chamadas[0] > 3600:
+            _prosa_chamadas.pop(0)
+        if len(_prosa_chamadas) >= _PROSA_LIMITE_HORA:
+            return False
+        _prosa_chamadas.append(agora)
+        return True
+
+_PROSA_PROMPT = """Você extrai receitas de preparo de CAFÉ para o app "Prosa Café".
+Leia a fonte (texto, página ou vídeo) e devolva APENAS um JSON válido neste formato:
+{
+ "ok": true,
+ "motivo": null,
+ "titulo": "nome curto da receita (ex.: 'V60 do Fulano', 'Prensa clássica')",
+ "autor": "quem ensina a receita (pessoa/canal) ou null",
+ "metodo": "equipamento principal (ex.: V60, Prensa francesa, AeroPress, Chemex, Moka, Espresso, Kalita, Clever, Coador de pano)",
+ "familia": "coado | imersao | pressao | gelado | outro",
+ "descricao": "1 a 2 frases sobre a ideia da receita e o resultado na xícara",
+ "dose_g": número (gramas de café) ou null,
+ "agua_g": número (gramas/ml TOTAL de água do preparo) ou null,
+ "temperatura_c": número ou null,
+ "tempo_total": "texto curto, ex.: '3:30' ou '4 min'" ou null,
+ "moagem": {"descricao": "texto curto, ex.: 'média-fina, tipo sal refinado'", "nivel": 0-5 (0 extra fina, 1 fina, 2 média, 3 média-grossa, 4 grossa, 5 extra grossa) ou null, "referencias": [{"moedor": "nome", "ajuste": "ex.: 22 cliques"}]},
+ "ingredientes_extras": [{"nome": "ex.: leite, gelo, açúcar", "quantidade": número, "unidade": "g|ml|un|colher"}],
+ "utensilios": ["lista curta do que é preciso"],
+ "passos": [{"t_seg": segundos desde o início em que o passo começa ou null, "texto": "ação no imperativo, curta", "agua_g": gramas de água despejadas NESTE passo ou null, "dica": "observação curta ou null"}],
+ "campos_faltando": ["nomes dos campos que a fonte não informou"]
+}
+REGRAS:
+- Português do Brasil.
+- NUNCA invente números. Se a fonte não disser dose, água, temperatura, moagem ou tempos, use null e liste em campos_faltando.
+- agua_g de cada passo é só a água daquele despejo (não o acumulado). Não repita esses gramas dentro de "texto".
+- Inclua um passo de preparo inicial (ex.: escaldar filtro, moer) com t_seg null quando a fonte mencionar.
+- Se a fonte NÃO for uma receita de café, ou não houver informação suficiente para montar um preparo, devolva {"ok": false, "motivo": "explicação curta"}.
+"""
+
+def _prosa_extrair_json(resp):
+    data = resp.json()
+    partes = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+    txt = "".join(p.get("text", "") for p in partes).strip()
+    txt = re.sub(r"^```(?:json)?|```$", "", txt.strip(), flags=re.M).strip()
+    return json.loads(txt)
+
+def _prosa_payload(partes, video=False):
+    cfg = {"temperature": 0.1, "maxOutputTokens": 4096,
+           "responseMimeType": "application/json",
+           "thinkingConfig": {"thinkingBudget": 0}}
+    if video:
+        cfg["mediaResolution"] = "MEDIA_RESOLUTION_LOW"
+    return {"contents": [{"role": "user", "parts": partes}], "generationConfig": cfg}
+
+def _prosa_youtube_id(url):
+    m = re.search(r"(?:youtu\.be/|v=|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{11})", url or "")
+    return m.group(1) if m else None
+
+def _prosa_texto_da_pagina(url):
+    try:
+        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 14) ProsaCafe/1.1", "Accept-Language": "pt-BR,pt;q=0.9"})
+        html = r.text or ""
+    except Exception as e:
+        log.warning(f"[Prosa] falha ao baixar {url}: {e}")
+        return ""
+    yid = _prosa_youtube_id(url)
+    if yid:
+        titulo = re.search(r'"title":"(.*?)"', html)
+        desc = re.search(r'"shortDescription":"(.*?)","', html)
+        canal = re.search(r'"ownerChannelName":"(.*?)"', html)
+        def _d(m):
+            if not m: return ""
+            try: return json.loads('"' + m.group(1) + '"')
+            except Exception: return m.group(1)
+        return f"TÍTULO: {_d(titulo)}\nCANAL: {_d(canal)}\nDESCRIÇÃO DO VÍDEO:\n{_d(desc)}".strip()
+    html = re.sub(r"(?is)<(script|style|noscript|svg)[^>]*>.*?</\1>", " ", html)
+    texto = re.sub(r"(?s)<[^>]+>", " ", html)
+    texto = re.sub(r"&nbsp;", " ", texto)
+    texto = re.sub(r"\s+", " ", texto)
+    return texto[:20000]
+
+def _prosa_receita_completa(r):
+    return bool(r.get("ok")) and bool(r.get("passos")) and r.get("dose_g")
+
+@app.route("/prosa/receita", methods=["POST"])
+def prosa_receita():
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "motivo": "IA não configurada no servidor"}), 500
+    corpo = request.get_json(silent=True) or {}
+    url = (corpo.get("url") or "").strip()
+    texto = (corpo.get("texto") or "").strip()
+    if not url:
+        m = re.search(r"https?://\S+", texto)
+        if m:
+            url = m.group(0).rstrip(").,")
+    if not url and not texto:
+        return jsonify({"ok": False, "motivo": "Mande um link ou o texto da receita."}), 400
+    if not _prosa_dentro_do_limite():
+        return jsonify({"ok": False, "motivo": "Muitas receitas na última hora. Tente de novo mais tarde."}), 429
+    try:
+        fonte_txt = texto
+        if url:
+            pagina = _prosa_texto_da_pagina(url)
+            fonte_txt = (texto + "\n\n" + pagina).strip() if texto and texto != url else pagina
+        receita = None
+        if fonte_txt and len(fonte_txt) > 40:
+            resp = _chamar_gemini_com_retry(_prosa_payload([{"text": _PROSA_PROMPT + "\n\nFONTE:\n" + fonte_txt}]), timeout=45, tentativas=2)
+            receita = _prosa_extrair_json(resp)
+        yid = _prosa_youtube_id(url)
+        if yid and not (receita and _prosa_receita_completa(receita)):
+            partes = [{"file_data": {"file_uri": f"https://www.youtube.com/watch?v={yid}", "mime_type": "video/*"}},
+                      {"text": _PROSA_PROMPT + ("\n\nTexto da descrição (pode ajudar):\n" + fonte_txt[:4000] if fonte_txt else "")}]
+            resp = _chamar_gemini_com_retry(_prosa_payload(partes, video=True), timeout=75, tentativas=1)
+            receita = _prosa_extrair_json(resp)
+        if not receita:
+            return jsonify({"ok": False, "motivo": "Não consegui ler esse conteúdo. Cole o texto da receita."}), 422
+        receita["fonte"] = url or None
+        return jsonify(receita)
+    except Exception as e:
+        log.error(f"[Prosa] erro ao extrair receita: {e}")
+        return jsonify({"ok": False, "motivo": "A IA não respondeu agora. Tente de novo em instantes."}), 502
+
+@app.route("/prosa/app/versao", methods=["GET"])
+def prosa_app_versao():
+    try:
+        with open(os.path.join(PROSA_DIR, "versao.json"), encoding="utf-8") as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({"versionCode": 0})
+
+@app.route("/prosa/app/apk", methods=["GET"])
+def prosa_app_apk():
+    caminho = os.path.join(PROSA_DIR, "ProsaCafe.apk")
+    if not os.path.exists(caminho):
+        return jsonify({"ok": False}), 404
+    return send_file(caminho, mimetype="application/vnd.android.package-archive", as_attachment=True, download_name="ProsaCafe.apk")
+
+@app.route("/prosa/app/publicar", methods=["POST"])
+def prosa_app_publicar():
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "não autorizado"}), 403
+    dados = request.get_data()
+    if not dados or dados[:2] != b"PK":
+        return jsonify({"ok": False, "error": "corpo não é um APK"}), 400
+    try:
+        vc = int(request.args.get("versionCode", "0"))
+    except ValueError:
+        return jsonify({"ok": False, "error": "versionCode inválido"}), 400
+    os.makedirs(PROSA_DIR, exist_ok=True)
+    tmp = os.path.join(PROSA_DIR, "ProsaCafe.apk.tmp")
+    with open(tmp, "wb") as f:
+        f.write(dados)
+    os.replace(tmp, os.path.join(PROSA_DIR, "ProsaCafe.apk"))
+    info = {"versionCode": vc, "versionName": request.args.get("versionName", ""),
+            "notas": request.args.get("notas", ""), "tamanho": len(dados),
+            "publicadoEm": agora_br().isoformat()}
+    with open(os.path.join(PROSA_DIR, "versao.json"), "w", encoding="utf-8") as f:
+        json.dump(info, f, ensure_ascii=False)
+    return jsonify({"ok": True, **info})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
