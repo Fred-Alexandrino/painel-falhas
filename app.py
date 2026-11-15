@@ -25979,6 +25979,107 @@ def prosa_app_publicar():
     return jsonify({"ok": True, **info})
 
 
+# --- PROSA CAFÉ: receitas sincronizadas + versão web (iPhone) ---------------
+_PROSA_RECEITAS = os.path.join(PROSA_DIR, "receitas.json")
+_PROSA_WEB = os.path.join(PROSA_DIR, "web")
+_prosa_rec_lock = threading.Lock()
+_prosa_escritas = []
+
+def _prosa_ler_receitas():
+    try:
+        with open(_PROSA_RECEITAS, encoding="utf-8") as f:
+            v = json.load(f)
+            return v if isinstance(v, list) else []
+    except Exception:
+        return []
+
+def _prosa_gravar_receitas(lista):
+    os.makedirs(PROSA_DIR, exist_ok=True)
+    tmp = _PROSA_RECEITAS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(lista, f, ensure_ascii=False)
+    os.replace(tmp, _PROSA_RECEITAS)
+
+def _prosa_pode_escrever():
+    agora = time.time()
+    with _prosa_lock:
+        while _prosa_escritas and agora - _prosa_escritas[0] > 3600:
+            _prosa_escritas.pop(0)
+        if len(_prosa_escritas) >= 120:
+            return False
+        _prosa_escritas.append(agora)
+        return True
+
+@app.route("/prosa/receitas", methods=["GET"])
+def prosa_receitas_listar():
+    resp = jsonify(_prosa_ler_receitas())
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+@app.route("/prosa/receitas", methods=["POST"])
+def prosa_receitas_salvar():
+    corpo = request.get_json(silent=True) or {}
+    rec = corpo.get("receita") if isinstance(corpo.get("receita"), dict) else None
+    if not rec or not isinstance(rec.get("id"), str) or not re.match(r"^[A-Za-z0-9_-]{2,40}$", rec["id"]):
+        return jsonify({"ok": False, "error": "receita inválida"}), 400
+    if len(json.dumps(rec, ensure_ascii=False)) > 60000:
+        return jsonify({"ok": False, "error": "receita grande demais"}), 413
+    if not _prosa_pode_escrever():
+        return jsonify({"ok": False, "error": "limite de gravações por hora"}), 429
+    with _prosa_rec_lock:
+        lista = [r for r in _prosa_ler_receitas() if r.get("id") != rec["id"]]
+        lista.append(rec)
+        _prosa_gravar_receitas(lista)
+    return jsonify({"ok": True, "total": len(lista)})
+
+@app.route("/prosa/receitas/<rid>", methods=["DELETE"])
+def prosa_receitas_excluir(rid):
+    if not _prosa_pode_escrever():
+        return jsonify({"ok": False, "error": "limite de gravações por hora"}), 429
+    with _prosa_rec_lock:
+        lista = _prosa_ler_receitas()
+        nova = [r for r in lista if r.get("id") != rid]
+        _prosa_gravar_receitas(nova)
+    return jsonify({"ok": True, "removida": len(lista) != len(nova)})
+
+@app.route("/prosa/web/publicar", methods=["POST"])
+def prosa_web_publicar():
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "não autorizado"}), 403
+    nome = request.args.get("arquivo", "")
+    if not re.match(r"^[A-Za-z0-9._-]{1,60}$", nome) or nome.startswith("."):
+        return jsonify({"ok": False, "error": "nome inválido"}), 400
+    os.makedirs(_PROSA_WEB, exist_ok=True)
+    tmp = os.path.join(_PROSA_WEB, nome + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(request.get_data())
+    os.replace(tmp, os.path.join(_PROSA_WEB, nome))
+    return jsonify({"ok": True, "arquivo": nome})
+
+@app.route("/prosa", methods=["GET"])
+@app.route("/prosa/", methods=["GET"])
+def prosa_web_index():
+    caminho = os.path.join(_PROSA_WEB, "index.html")
+    if not os.path.exists(caminho):
+        return "Prosa Café ainda não publicado", 404
+    resp = send_file(caminho, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+@app.route("/prosa/<arq>", methods=["GET"])
+def prosa_web_arquivo(arq):
+    if not re.match(r"^[A-Za-z0-9._-]{1,60}$", arq) or arq.startswith("."):
+        return "", 404
+    caminho = os.path.join(_PROSA_WEB, arq)
+    if not os.path.isfile(caminho):
+        return "", 404
+    tipos = {".webmanifest": "application/manifest+json", ".js": "application/javascript", ".png": "image/png", ".html": "text/html", ".svg": "image/svg+xml"}
+    ext = os.path.splitext(arq)[1]
+    resp = send_file(caminho, mimetype=tipos.get(ext))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
