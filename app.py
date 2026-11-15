@@ -25849,6 +25849,7 @@ REGRAS:
 - Português do Brasil.
 - NUNCA invente números. Se a fonte não disser dose, água, temperatura, moagem ou tempos, use null e liste em campos_faltando.
 - agua_g de cada passo é só a água daquele despejo (não o acumulado). Não repita esses gramas dentro de "texto".
+- t_seg é o tempo do CRONÔMETRO DO PREPARO (0 = quando a água toca o café pela primeira vez), NUNCA o minuto/segundo do vídeo. Se a fonte não disser o tempo de um passo, use null.
 - Inclua um passo de preparo inicial (ex.: escaldar filtro, moer) com t_seg null quando a fonte mencionar.
 - Se a fonte NÃO for uma receita de café, ou não houver informação suficiente para montar um preparo, devolva {"ok": false, "motivo": "explicação curta"}.
 """
