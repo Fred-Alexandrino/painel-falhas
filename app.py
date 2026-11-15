@@ -25859,7 +25859,10 @@ def _prosa_extrair_json(resp):
     partes = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
     txt = "".join(p.get("text", "") for p in partes).strip()
     txt = re.sub(r"^```(?:json)?|```$", "", txt.strip(), flags=re.M).strip()
-    return json.loads(txt)
+    obj = json.loads(txt)
+    if isinstance(obj, list):
+        obj = next((o for o in obj if isinstance(o, dict)), {})
+    return obj if isinstance(obj, dict) else {}
 
 def _prosa_payload(partes, video=False):
     cfg = {"temperature": 0.1, "maxOutputTokens": 4096,
