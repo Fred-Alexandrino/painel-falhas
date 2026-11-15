@@ -25935,7 +25935,7 @@ def prosa_receita():
         return jsonify(receita)
     except Exception as e:
         log.error(f"[Prosa] erro ao extrair receita: {e}")
-        return jsonify({"ok": False, "motivo": "A IA não respondeu agora. Tente de novo em instantes."}), 502
+        return jsonify({"ok": False, "motivo": "A IA não respondeu agora. Tente de novo em instantes.", "detalhe": str(e)[:400]}), 502
 
 @app.route("/prosa/app/versao", methods=["GET"])
 def prosa_app_versao():
