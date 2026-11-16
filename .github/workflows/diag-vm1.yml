@@ -12,13 +12,9 @@ jobs:
           key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
           command_timeout: 5m
           script: |
-            echo "== unidade"; systemctl list-units --type=service --no-pager | grep -i -E "painel|gunicorn|flask" 
-            for u in $(systemctl list-units --type=service --no-pager --plain | awk '{print $1}' | grep -i -E "painel|gunicorn"); do systemctl cat $u --no-pager | grep -E "ExecStart|Restart|Environment=" ; done
-            echo "== maquina"; uptime; free -m; nproc; df -h / | tail -1
-            echo "== processos"; ps -eo pid,etime,%cpu,%mem,rss,cmd --sort=-%cpu | head -12
-            echo "== timeouts/reinicios 3 dias"
-            for u in $(systemctl list-units --type=service --no-pager --plain | awk '{print $1}' | grep -i -E "painel|gunicorn"); do
-              sudo journalctl -u $u --since "-3 days" --no-pager -o short-iso | grep -E "WORKER TIMEOUT|Booting worker|Worker exiting|Started|Stopped|SIGKILL|Out of memory|MemoryError" | tail -40
-              echo "-- contagem WORKER TIMEOUT por dia"; sudo journalctl -u $u --since "-7 days" --no-pager -o short-iso -g "WORKER TIMEOUT" | cut -c1-10 | sort | uniq -c
-            done
-            echo "== nginx lentos (ultimas 2h, >20s)"; sudo awk '$NF+0>20' /var/log/nginx/access.log 2>/dev/null | tail -30
+            echo "== caddy"; systemctl is-active caddy; ls /var/log/caddy/ 2>/dev/null
+            echo "== erros caddy 13:00-13:35 UTC"; sudo journalctl -u caddy --since "2026-11-16 13:00" --until "2026-11-16 13:40" --no-pager | grep -iE "error|abort|timeout|refused|EOF|reset" | cut -c1-260 | tail -40
+            echo "== acessos Android 13:10-13:35 (se houver log de acesso)"
+            for f in /var/log/caddy/*.log; do sudo grep -h "Android" "$f" 2>/dev/null | grep -E "2026-11-16T13:(1|2|3)|\"ts\":179483" | tail -5 | cut -c1-300; done
+            echo "== gunicorn 13:10-13:35"; sudo journalctl -u painel-falhas --since "2026-11-16 13:10" --until "2026-11-16 13:40" --no-pager | grep -E "WORKER TIMEOUT|Booting|exiting|Traceback|Error" | tail -20
+            echo "== caddyfile"; sudo cat /etc/caddy/Caddyfile 2>/dev/null | head -30
