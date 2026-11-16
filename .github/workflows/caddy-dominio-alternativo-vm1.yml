@@ -1,0 +1,29 @@
+name: Caddy dominio alternativo VM1
+on:
+  workflow_dispatch: {}
+jobs:
+  caddy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            F=/etc/caddy/Caddyfile
+            sudo cp $F /home/ubuntu/Caddyfile.bak_$(date +%Y%m%d_%H%M)
+            # Endereços alternativos para o mesmo backend (16/11/2026): o 5G do Fred recusa
+            # o sslip.io com ERR_SSL_PROTOCOL_ERROR. O endereço antigo continua funcionando.
+            if ! sudo grep -q "nip.io" $F; then
+              printf '\napi.168-138-232-237.nip.io {\n    reverse_proxy 127.0.0.1:5000\n}\n\napi-168-138-232-237.traefik.me {\n    reverse_proxy 127.0.0.1:5000\n}\n' | sudo tee -a $F >/dev/null
+            fi
+            sudo caddy validate --config $F --adapter caddyfile
+            sudo systemctl reload caddy
+            sleep 25
+            for h in api.168.138.232.237.sslip.io api.168-138-232-237.nip.io api-168-138-232-237.traefik.me; do
+              curl -s -m 20 -o /dev/null -w "$h %{http_code}\n" --resolve $h:443:127.0.0.1 https://$h/health || echo "$h falhou"
+            done
+            sudo journalctl -u caddy --since "-1 min" --no-pager | grep -iE "certificate obtained|error|rate" | cut -c1-220 | tail -8
