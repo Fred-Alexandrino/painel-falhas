@@ -25931,8 +25931,70 @@ def _prosa_texto_da_pagina(url):
 def _prosa_receita_completa(r):
     return bool(r.get("ok")) and bool(r.get("passos")) and r.get("dose_g")
 
+
+# --- PROSA CAFÉ: senha de editor (criar/editar/apagar/IA) ---------------------
+# Quem só tem o link vê e usa as receitas; escrever exige X-Prosa-Key.
+# Guardamos só o hash (sha256) em prosa_app/editor.hash. Troca via /prosa/admin/chave.
+_PROSA_HASH = os.path.join(PROSA_DIR, "editor.hash")
+_prosa_falhas = {}
+
+def _prosa_ip():
+    xf = request.headers.get("X-Forwarded-For", "")
+    return (xf.split(",")[0].strip() if xf else (request.remote_addr or "?"))
+
+def _prosa_sha(txt):
+    import hashlib as _h
+    return _h.sha256(("prosa-cafe|" + txt).encode("utf-8")).hexdigest()
+
+def _prosa_editor_ok():
+    """True se o cabeçalho X-Prosa-Key bate com a senha de editor. Sem senha cadastrada = ninguém escreve."""
+    import hmac as _hm
+    chave = request.headers.get("X-Prosa-Key", "")
+    ip = _prosa_ip()
+    agora = time.time()
+    with _prosa_lock:
+        tent = [t for t in _prosa_falhas.get(ip, []) if agora - t < 3600]
+        _prosa_falhas[ip] = tent
+        if len(tent) >= 10:
+            return False
+    try:
+        with open(_PROSA_HASH, "r", encoding="utf-8") as f:
+            esperado = f.read().strip()
+    except Exception:
+        return False
+    if chave and esperado and _hm.compare_digest(_prosa_sha(chave), esperado):
+        return True
+    with _prosa_lock:
+        _prosa_falhas.setdefault(ip, []).append(agora)
+    return False
+
+def _prosa_negado():
+    return jsonify({"ok": False, "error": "somente o editor", "motivo": "Somente o editor pode fazer isso. Desbloqueie com a senha de editor."}), 403
+
+@app.route("/prosa/editor", methods=["POST"])
+def prosa_editor_verificar():
+    if not _prosa_editor_ok():
+        return _prosa_negado()
+    return jsonify({"ok": True})
+
+@app.route("/prosa/admin/chave", methods=["POST"])
+def prosa_admin_chave():
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "não autorizado"}), 403
+    nova = (request.get_json(silent=True) or {}).get("chave", "")
+    if not isinstance(nova, str) or len(nova.strip()) < 6:
+        return jsonify({"ok": False, "error": "chave curta demais (mínimo 6)"}), 400
+    os.makedirs(PROSA_DIR, exist_ok=True)
+    tmp = _PROSA_HASH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(_prosa_sha(nova.strip()))
+    os.replace(tmp, _PROSA_HASH)
+    return jsonify({"ok": True})
+
 @app.route("/prosa/receita", methods=["POST"])
 def prosa_receita():
+    if not _prosa_editor_ok():
+        return _prosa_negado()
     if not GEMINI_API_KEY:
         return jsonify({"ok": False, "motivo": "IA não configurada no servidor"}), 500
     corpo = request.get_json(silent=True) or {}
@@ -26047,6 +26109,8 @@ def prosa_receitas_listar():
 
 @app.route("/prosa/receitas", methods=["POST"])
 def prosa_receitas_salvar():
+    if not _prosa_editor_ok():
+        return _prosa_negado()
     corpo = request.get_json(silent=True) or {}
     rec = corpo.get("receita") if isinstance(corpo.get("receita"), dict) else None
     if not rec or not isinstance(rec.get("id"), str) or not re.match(r"^[A-Za-z0-9_-]{2,40}$", rec["id"]):
@@ -26063,6 +26127,8 @@ def prosa_receitas_salvar():
 
 @app.route("/prosa/receitas/<rid>", methods=["DELETE"])
 def prosa_receitas_excluir(rid):
+    if not _prosa_editor_ok():
+        return _prosa_negado()
     if not _prosa_pode_escrever():
         return jsonify({"ok": False, "error": "limite de gravações por hora"}), 429
     with _prosa_rec_lock:
