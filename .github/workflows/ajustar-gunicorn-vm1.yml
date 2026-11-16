@@ -1,0 +1,26 @@
+name: Ajustar gunicorn VM1 (threads)
+on:
+  workflow_dispatch: {}
+jobs:
+  ajustar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            U=/etc/systemd/system/painel-falhas.service
+            sudo cp $U /home/ubuntu/painel-falhas.service.bak_$(date +%Y%m%d_%H%M)
+            # 2 processos x 8 threads: um pedido demorado (sincronização, relatório) não trava mais os outros painéis
+            sudo sed -i 's#^ExecStart=.*gunicorn .*#ExecStart=/home/ubuntu/painel-falhas/venv/bin/gunicorn -w 2 -k gthread --threads 8 -b 127.0.0.1:5000 --timeout 220 app:app#' $U
+            grep ExecStart $U
+            sudo systemctl daemon-reload
+            sudo systemctl restart painel-falhas
+            sleep 20
+            systemctl is-active painel-falhas
+            curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:5000/health || true
+            sudo journalctl -u painel-falhas --since "-1 min" --no-pager | grep -E "Booting|gthread|Error|Traceback" | tail -8
