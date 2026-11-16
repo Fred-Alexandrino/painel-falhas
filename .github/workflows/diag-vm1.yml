@@ -1,0 +1,24 @@
+name: Diag VM1 (somente leitura)
+on:
+  workflow_dispatch: {}
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 168.138.232.237
+          username: ubuntu
+          key: ${{ secrets.ORACLE_VM1_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            echo "== unidade"; systemctl list-units --type=service --no-pager | grep -i -E "painel|gunicorn|flask" 
+            for u in $(systemctl list-units --type=service --no-pager --plain | awk '{print $1}' | grep -i -E "painel|gunicorn"); do systemctl cat $u --no-pager | grep -E "ExecStart|Restart|Environment=" ; done
+            echo "== maquina"; uptime; free -m; nproc; df -h / | tail -1
+            echo "== processos"; ps -eo pid,etime,%cpu,%mem,rss,cmd --sort=-%cpu | head -12
+            echo "== timeouts/reinicios 3 dias"
+            for u in $(systemctl list-units --type=service --no-pager --plain | awk '{print $1}' | grep -i -E "painel|gunicorn"); do
+              sudo journalctl -u $u --since "-3 days" --no-pager -o short-iso | grep -E "WORKER TIMEOUT|Booting worker|Worker exiting|Started|Stopped|SIGKILL|Out of memory|MemoryError" | tail -40
+              echo "-- contagem WORKER TIMEOUT por dia"; sudo journalctl -u $u --since "-7 days" --no-pager -o short-iso -g "WORKER TIMEOUT" | cut -c1-10 | sort | uniq -c
+            done
+            echo "== nginx lentos (ultimas 2h, >20s)"; sudo awk '$NF+0>20' /var/log/nginx/access.log 2>/dev/null | tail -30
