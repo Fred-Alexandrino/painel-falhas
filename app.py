@@ -22352,6 +22352,35 @@ def _oc_antes_da_escrita():
 
 
 @app.after_request
+def _comprimir_gzip(resp):
+    """16/11/2026: /atividades tinha 5,4 MB sem compressão; no celular passava do tempo
+    limite e o painel ficava em "Erro ao carregar atividades". Comprime em gzip as
+    respostas JSON/texto acima de 2 KB quando o navegador aceita (todos aceitam)."""
+    try:
+        if resp.direct_passthrough or not (200 <= resp.status_code < 300):
+            return resp
+        if "gzip" not in (request.headers.get("Accept-Encoding") or "").lower():
+            return resp
+        if resp.headers.get("Content-Encoding"):
+            return resp
+        _ct = resp.mimetype or ""
+        if not (_ct.startswith("application/json") or _ct.startswith("text/")):
+            return resp
+        _dados = resp.get_data()
+        if len(_dados) < 2048:
+            return resp
+        import gzip as _gzip_mod
+        _comp = _gzip_mod.compress(_dados, compresslevel=5)
+        resp.set_data(_comp)
+        resp.headers["Content-Encoding"] = "gzip"
+        resp.headers["Content-Length"] = str(len(_comp))
+        resp.headers.add("Vary", "Accept-Encoding")
+    except Exception as _e_gz:
+        log.warning(f"[gzip] não comprimiu: {_e_gz}")
+    return resp
+
+
+@app.after_request
 def _oc_depois_da_escrita(resp):
     if _oc_rota_de_escrita():
         _oc_snapshot_invalidar()
