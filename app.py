@@ -24504,7 +24504,7 @@ def nexus_performance():
 _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @name         Grid Performance → Painel
 // @namespace    gridco-fred
-// @version      1.1
+// @version      1.2
 // @updateURL    https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
 // @downloadURL  https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
 // @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
@@ -24621,7 +24621,13 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
   }
 
   GM_registerMenuCommand('Enviar performance ao painel agora', () => rodar(true));
-  setTimeout(() => rodar(false), 8000);
+  // v1.2 (17/11/2026): a Central abre esta aba com #central-atualizar quando o Fred clica em "Atualizar do Nexus"
+  if (/central-atualizar/.test(location.hash)) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    rodar(true).then(() => { aviso('pronto: a Central O&M já recebeu os dados. Esta aba fecha sozinha.'); setTimeout(() => { try { window.close(); } catch (e) {} }, 5000); });
+  } else {
+    setTimeout(() => rodar(false), 8000);
+  }
   setInterval(() => rodar(false), 10 * 60000);
 })();
 '''
