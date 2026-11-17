@@ -7006,11 +7006,12 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     # ── Incluídas pelo Fred em 17/11/2026 (Thopen, em handover; técnico = responsável das OS no PCM) ──
     {"usina": 'Cambé', "cliente": 'Thopen', "cluster": 'PR Norte 03', "cidade_uf": 'Cambé/PR',
-     "responsavel": 'Rafael Zocarato', "funcao": '', "membros": [], "alternativo": ''},
+     "responsavel": 'Rafael Zocarato', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Sapopema', "cliente": 'Thopen', "cluster": 'PR Norte 03', "cidade_uf": 'Sapopema/PR',
-     "responsavel": 'Rafael Zocarato', "funcao": '', "membros": [], "alternativo": ''},
-    {"usina": 'Segredo', "cliente": 'Thopen', "cluster": 'PR Oeste 02', "cidade_uf": 'PR',
-     "responsavel": 'Pedro Henrique', "funcao": '', "membros": [], "alternativo": ''},
+     "responsavel": 'Rafael Zocarato', "funcao": 'Técnico', "membros": [], "alternativo": ''},
+    # Segredo: técnico ainda não definido (Pedro Henrique de Candido é o supervisor de campo, não o técnico)
+    {"usina": 'Segredo', "cliente": 'Thopen', "cluster": 'PR Oeste 02', "cidade_uf": 'Reserva do Iguaçu/PR',
+     "responsavel": '', "funcao": '', "membros": [], "alternativo": ''},
 ]
 
 # Variações de grafia/apelidos vistas na Fracttal → nome oficial na tabela acima.
@@ -7082,6 +7083,11 @@ GRUPOS_EQUIPE_UFVS = [
      "usinas": ["Colorado I", "Colorado II", "Mandaguaçu", "Sarandi"]},
     {"id": "120363414633259915@g.us", "nome": "Equipe Canarana/Rib.Casc",
      "usinas": ["Canarana I", "Canarana II", "Ribeirão Cascalheira"]},
+    # Usinas novas da Thopen (17/11/2026)
+    {"id": "120363415020728889@g.us", "nome": "Equipe Sapopema/Cambé",
+     "usinas": ["Sapopema", "Cambé"]},
+    {"id": "120363414813251905@g.us", "nome": "Equipe Segredo",
+     "usinas": ["Segredo"]},
 ]
 for _g in GRUPOS_EQUIPE_UFVS:
     for _u in MAPEAMENTO_UFVS:
@@ -10945,7 +10951,7 @@ def _mapa_coordenador_cluster():
     por_cluster = {}
     for u in MAPEAMENTO_UFVS:
         lista = por_cluster.setdefault(u["cluster"], [])
-        if u["responsavel"] not in lista:
+        if u["responsavel"] and u["responsavel"] not in lista:
             lista.append(u["responsavel"])  # cluster com 2+ responsáveis (ex.: PR Oeste 01) lista todos
     for cluster, nomes in por_cluster.items():
         mapa[cluster] = " / ".join(nomes)
@@ -16886,6 +16892,8 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363431215102670": "Equipe Ceilandia I e II/Sitio Nogueiras",
     "120363431601050989": "Equipe Ipixuna - 2C",
     "120363414617683366": "Equipe Nova Ipixuna - 2C",   # Nova Ipixuna I (13/11/2026)
+    "120363415020728889": "Equipe Sapopema/Cambé",      # Sapopema + Cambé (17/11/2026)
+    "120363414813251905": "Equipe Segredo",             # Segredo (17/11/2026)
     "120363430888041572": "Equipe União 2C",
     "120363430482583512": "Equipe Tupi Paulista",
     "120363431235680039": "Equipe Alto Parana/Paranavaí",
@@ -21745,6 +21753,10 @@ SUPERVISOR_CAMPO_UFV = {
     "União I": "Wesley Silva",
     "União II": "Wesley Silva",
     "Tupi Paulista I": "Samuel Lucena",
+    "Nova Ipixuna I": "Vitor Valadares",
+    "Cambé": "Pedro Candido",
+    "Sapopema": "Pedro Candido",
+    "Segredo": "Pedro Candido",
     "Aparecida do Taboado I": "Samuel Lucena",
     "Aparecida do Taboado II": "Samuel Lucena",
     "Alto Paraná I": "Pedro Candido",
@@ -21865,7 +21877,7 @@ def mapeamento_ufvs_auditoria():
         esperado = {}
         for u in MAPEAMENTO_UFVS:
             lista = esperado.setdefault(u["cluster"], [])
-            if u["responsavel"] not in lista:
+            if u["responsavel"] and u["responsavel"] not in lista:
                 lista.append(u["responsavel"])
         for cluster, resps in esperado.items():
             atual = coord_sistema.get(cluster, "")
