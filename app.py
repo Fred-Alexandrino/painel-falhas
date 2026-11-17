@@ -26690,15 +26690,16 @@ def gerar_pdf_relatorio_chamados_se(d):
         return [t, Spacer(1, 5)]
 
     def bullet(texto):
-        return Paragraph(f'<font name="{FB}" color="{_RSE_GREEN}">•</font>&nbsp;&nbsp;{e(texto)}',
-                         ParagraphStyle("bl", parent=st_p, leftIndent=16, firstLineIndent=-10, spaceAfter=4))
+        return Paragraph(e(texto), ParagraphStyle("bl", parent=st_p, leftIndent=14, bulletIndent=2, spaceAfter=4,
+                                                  bulletFontName=FB, bulletColor=green, bulletFontSize=11),
+                         bulletText="•")
 
     s = [NextPageTemplate("corpo"), PageBreak()]
     # 1. Resumo executivo
     s += [bar("Resumo executivo"), Spacer(1, 8)]
     for par in d.get("introducao") or []:
         s.append(Paragraph(e(par), st_p))
-    s += [Spacer(1, 4), kpis(d.get("kpis")), Spacer(1, 10)]
+    s += [KeepTogether([Spacer(1, 4), kpis(d.get("kpis")), Spacer(1, 10)])]
     if d.get("enquadramento"):
         s += [callout("POSIÇÃO —", d["enquadramento"])]
     s.append(Spacer(1, 16))
@@ -26707,23 +26708,24 @@ def gerar_pdf_relatorio_chamados_se(d):
     if vu:
         cab = d.get("porUsinaCab") or ["Usina", "Supervisor", "Total"]
         larguras = d.get("porUsinaLarguras") or [0.3, 0.3] + [0.4 / (len(cab) - 2)] * (len(cab) - 2)
-        s += [CondPageBreak(120), bar("Visão por usina"), Spacer(1, 8),
-              tabela(cab, vu, larguras, total=d.get("porUsinaTotal"), centro_desde=2), Spacer(1, 16)]
+        s += [KeepTogether([bar("Visão por usina"), Spacer(1, 8),
+                            tabela(cab, vu, larguras, total=d.get("porUsinaTotal"), centro_desde=2)]), Spacer(1, 16)]
     # 3+. Grupos de chamados
     for g in d.get("grupos") or []:
         itens = g.get("itens") or []
         if not itens:
             continue
-        blocos = [CondPageBreak(110), bar(f"{g.get('titulo')} ({len(itens)})"), Spacer(1, 6)]
+        blocos = [bar(f"{g.get('titulo')} ({len(itens)})"), Spacer(1, 6)]
         if g.get("descricao"):
             blocos.append(Paragraph(e(g["descricao"]), ParagraphStyle("gd", parent=st_m, spaceAfter=6)))
-        s += blocos
-        for it in itens:
+        s.append(KeepTogether(blocos + item_chamado(itens[0])))  # título sempre junto do 1º chamado
+        for it in itens[1:]:
             s.append(KeepTogether(item_chamado(it)))
         s.append(Spacer(1, 12))
     # Próximos passos
+    final = []
     if d.get("proximos"):
-        s += [CondPageBreak(100), bar("Próximos passos"), Spacer(1, 8)] + [bullet(x) for x in d["proximos"]] + [Spacer(1, 12)]
+        final += [bar("Próximos passos"), Spacer(1, 8)] + [bullet(x) for x in d["proximos"]] + [Spacer(1, 12)]
     # Fecho
     fecho = [Spacer(1, 6)]
     for par in d.get("conclusao") or []:
@@ -26736,7 +26738,9 @@ def gerar_pdf_relatorio_chamados_se(d):
     ass.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.75, navy), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                              ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
     fecho.append(ass)
-    s.append(KeepTogether(fecho))
+    # última seção + fecho + assinatura num bloco só: se não couber no fim da página, desce
+    # tudo junto para a próxima (nunca fica só a assinatura, nem o título sozinho embaixo)
+    s.append(KeepTogether(final + fecho))
     doc.build(s)
     return buf.getvalue()
 
