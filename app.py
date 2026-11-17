@@ -12265,8 +12265,15 @@ def listar_localizacoes():
     geocodificada (ver /localizacoes-atualizar-coords) mas continua
     aparecendo na Lista com o link do Google Maps."""
     try:
-        ws = get_localizacoes_sheet()
-        todos = ws.get_all_values()
+        return _ch_cache_servir("localizacoes:" + str(_escopo_atual() or ""), _listar_localizacoes_dados)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _listar_localizacoes_dados():
+    if True:
+        ws = _gspread_retry(get_localizacoes_sheet)
+        todos = _gspread_retry(lambda: ws.get_all_values())
         itens = []
         for row in todos[1:]:
             if len(row) < 2 or not row[1].strip():
@@ -12294,9 +12301,7 @@ def listar_localizacoes():
                 "lat": _num(lat),
                 "lng": _num(lng),
             })
-        return jsonify({"ok": True, "itens": itens}), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return {"ok": True, "itens": itens}
 
 
 @app.route("/localizacoes-atualizar-coords", methods=["POST", "OPTIONS"])
@@ -13437,7 +13442,7 @@ def _ch_cache_arquivo(chave):
 @app.after_request
 def _ch_cache_after(resp):
     try:
-        if request.method in ("POST", "PUT", "PATCH", "DELETE") and "chamado" in (request.path or "") and resp.status_code < 400:
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and any(k in (request.path or "") for k in ("chamado", "localiza")) and resp.status_code < 400:
             _ch_cache_invalida()
     except Exception:
         pass
