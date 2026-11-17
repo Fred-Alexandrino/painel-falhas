@@ -74,6 +74,7 @@ REGRAS_CENTRAL = """REGRAS DESTA CENTRAL (têm prioridade sobre as acima):
 - Não anuncie a cordialidade ("de forma cordial", "gentilmente", "cordialmente solicitamos"): a cordialidade vem do tom e das palavras.
 - E-mail: só "assunto" e "texto" (com a assinatura); não inclua endereços de e-mail.
 - Formatação igual à dos exemplos: usinas sempre em *negrito* no WhatsApp ("*UFV Nome*"), bullets "•", pedidos numerados.
+- Tipo técnico: a mensagem é postada no grupo de WhatsApp da equipe da usina e é DIRIGIDA AO SUPERVISOR DE CAMPO (o DESTINATÁRIO); o técnico responsável e a equipe também leem. Escreva para o supervisor de campo, citando o técnico pelo nome quando o pedido for para ele.
 - Técnico: termine exatamente com "Aguardo retorno."
 - WhatsApp (cliente, técnico e texto de envio de relatório): SEM assinatura. "Atenciosamente" e assinatura só no e-mail.
 - Use só as usinas, nomes e dados informados acima."""

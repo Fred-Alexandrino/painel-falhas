@@ -21699,14 +21699,73 @@ def _nome_conjunto(usinas):
 _CONJUNTO_DA_USINA = {u: _nome_conjunto(g) for g in USINAS_JUNTAS for u in g}
 
 
+# Supervisor de campo de cada usina = "Responsável O&M" do prontuário da usina no
+# Nexus (app.gridco.com.br/t/campo/usinas/<id>), lido em 17/11/2026. É para ele que
+# o Fred direciona a mensagem no grupo da equipe. Vai em /mapeamento-ufvs como
+# "supervisor_campo". Nova Ipixuna I ainda não está cadastrada no Nexus.
+SUPERVISOR_CAMPO_UFV = {
+    "Crateús": "Wesley Silva",
+    "Sete Lagoas": "Patrick Viana",
+    "Nova Xavantina I": "Vitor Valadares",
+    "Nova Xavantina II": "Vitor Valadares",
+    "Canarana I": "Vitor Valadares",
+    "Canarana II": "Vitor Valadares",
+    "Ribeirão Cascalheira": "Vitor Valadares",
+    "Colíder I": "Vitor Valadares",
+    "Colíder II": "Vitor Valadares",
+    "Araputanga": "Vitor Valadares",
+    "Poconé": "Vitor Valadares",
+    "Nobres": "Vitor Valadares",
+    "Diamantino": "Vitor Valadares",
+    "Ipixuna do Pará I": "Vitor Valadares",
+    "Ceilândia I": "Vitor Valadares",
+    "Ceilândia II": "Vitor Valadares",
+    "Sítio dos Nogueiras": "Vitor Valadares",
+    "Elias Fausto": "Bruno Pupo",
+    "União I": "Wesley Silva",
+    "União II": "Wesley Silva",
+    "Tupi Paulista I": "Samuel Lucena",
+    "Aparecida do Taboado I": "Samuel Lucena",
+    "Aparecida do Taboado II": "Samuel Lucena",
+    "Alto Paraná I": "Pedro Candido",
+    "Alto Paraná II": "Pedro Candido",
+    "Paranavaí": "Pedro Candido",
+    "Assis Chateaubriand": "Pedro Candido",
+    "Céu Azul": "Pedro Candido",
+    "Colorado I": "Pedro Candido",
+    "Colorado II": "Pedro Candido",
+    "Mandaguaçu": "Pedro Candido",
+    "Sarandi": "Pedro Candido",
+    "Nova Londrina I": "Pedro Candido",
+    "Nova Londrina II": "Pedro Candido",
+    "Cidade Gaúcha": "Pedro Candido",
+    "Pharmas II": "Pedro Candido",
+    "Pharmas III": "Pedro Candido",
+    "Pharmas IV": "Pedro Candido",
+    "Santo Antonio da Platina": "Pedro Candido",
+    "Coração I": "Pedro Candido",
+    "Coração II": "Pedro Candido",
+    "Guatambu I": "Pedro Candido",
+    "Guatambu II": "Pedro Candido",
+    "Guatambu III": "Pedro Candido",
+    "Guatambu IV": "Pedro Candido",
+}
+
+
 @app.route("/mapeamento-ufvs", methods=["GET"])
 def mapeamento_ufvs():
     """Mapeamento oficial de UFVs (cliente, cluster, equipe, responsáveis) —
     fonte única MAPEAMENTO_UFVS, definida em 29/09/2026 a partir da planilha
     do projeto, + edições feitas no painel (aba _Sistema, mapeamento_override)."""
     _map_override_sincronizar()
-    itens = [dict(u, conjunto=_CONJUNTO_DA_USINA[u["usina"]]) if u["usina"] in _CONJUNTO_DA_USINA else u
-             for u in MAPEAMENTO_UFVS]
+    itens = []
+    for u in MAPEAMENTO_UFVS:
+        extra = {}
+        if u["usina"] in _CONJUNTO_DA_USINA:
+            extra["conjunto"] = _CONJUNTO_DA_USINA[u["usina"]]
+        if u["usina"] in SUPERVISOR_CAMPO_UFV:
+            extra["supervisor_campo"] = SUPERVISOR_CAMPO_UFV[u["usina"]]
+        itens.append(dict(u, **extra) if extra else u)
     return jsonify({"ok": True, "total": len(MAPEAMENTO_UFVS), "itens": itens}), 200
 
 
