@@ -1,10 +1,14 @@
-{
-  "pares": {
-    "cluster_usina:Canarana I": "MT Leste 02",
-    "cluster_usina:Canarana II": "MT Leste 02",
-    "cluster_usina:Ribeirão Cascalheira": "MT Leste 02",
-    "grupo_usina:Canarana I": "120363414633259915@g.us",
-    "grupo_usina:Canarana II": "120363414633259915@g.us",
-    "grupo_usina:Ribeirão Cascalheira": "120363414633259915@g.us"
-  }
-}
+{"pares": {
+  "cluster_usina:Nova Ipixuna I": "PA Leste 02",
+  "cluster_usina:Cambé": "PR Norte 03",
+  "cluster_usina:Sapopema": "PR Norte 03",
+  "cluster_usina:Segredo": "PR Oeste 02",
+  "cluster_usina:Ceilândia I": "GO Leste 02",
+  "cluster_usina:Ceilândia II": "GO Leste 02",
+  "cluster_usina:Sítio dos Nogueiras": "GO Leste 02",
+  "coordenador_cluster:PA Leste 02": "Heitor Vidal Silva",
+  "coordenador_cluster:GO Leste 02": "Janderson Miranda",
+  "coordenador_cluster:PR Norte 03": "Rafael Zocarato",
+  "coordenador_cluster:PR Oeste 02": "Pedro Henrique",
+  "coordenador_cluster:SC Oeste 01": "Ademir Necker"
+}}
