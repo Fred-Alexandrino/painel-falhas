@@ -21675,13 +21675,39 @@ REGRAS OBRIGATÓRIAS:
 - MEMÓRIA/REGISTRO — REGRA CRÍTICA: você NÃO tem memória própria entre mensagens nem entre conversas. A ÚNICA forma de algo ficar disponível pra consultas futuras é chamando a ferramenta registrar_anotacao, que grava de verdade no Sketchbook (planilha). Se o Fred pedir pra anotar, registrar, guardar, salvar ou lembrar de algo, você DEVE chamar registrar_anotacao antes de confirmar — nunca diga "vou registrar" ou "ficará disponível pra consultas futuras" sem ter chamado essa ferramenta de fato. Depois de chamar, confirme com base no retorno real da ferramenta (ex: número da anotação), não com uma frase genérica."""
 
 
+# Usinas que ficam no MESMO LOCAL e são tratadas juntas (Fred, 17/11/2026 —
+# conferência com a intranet + Canarana I/II). Vai em cada item de
+# /mapeamento-ufvs como "conjunto" (ex.: "União I e II"); a Central de
+# Mensagens mostra o conjunto como um item só.
+USINAS_JUNTAS = [
+    ["Canarana I", "Canarana II"],
+    ["União I", "União II"],
+    ["Nova Londrina I", "Nova Londrina II"],
+    ["Pharmas II", "Pharmas III", "Pharmas IV"],
+    ["Coração I", "Coração II"],
+    ["Guatambu I", "Guatambu II", "Guatambu III", "Guatambu IV"],
+    ["Aparecida do Taboado I", "Aparecida do Taboado II"],
+]
+
+
+def _nome_conjunto(usinas):
+    base = usinas[0].rsplit(" ", 1)[0]
+    romanos = [u.rsplit(" ", 1)[1] for u in usinas]
+    return base + " " + (", ".join(romanos[:-1]) + " e " + romanos[-1])
+
+
+_CONJUNTO_DA_USINA = {u: _nome_conjunto(g) for g in USINAS_JUNTAS for u in g}
+
+
 @app.route("/mapeamento-ufvs", methods=["GET"])
 def mapeamento_ufvs():
     """Mapeamento oficial de UFVs (cliente, cluster, equipe, responsáveis) —
     fonte única MAPEAMENTO_UFVS, definida em 29/09/2026 a partir da planilha
     do projeto, + edições feitas no painel (aba _Sistema, mapeamento_override)."""
     _map_override_sincronizar()
-    return jsonify({"ok": True, "total": len(MAPEAMENTO_UFVS), "itens": MAPEAMENTO_UFVS}), 200
+    itens = [dict(u, conjunto=_CONJUNTO_DA_USINA[u["usina"]]) if u["usina"] in _CONJUNTO_DA_USINA else u
+             for u in MAPEAMENTO_UFVS]
+    return jsonify({"ok": True, "total": len(MAPEAMENTO_UFVS), "itens": itens}), 200
 
 
 @app.route("/mapeamento-ufvs/editar", methods=["POST", "OPTIONS"])

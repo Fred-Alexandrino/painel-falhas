@@ -100,6 +100,33 @@ INSTRUCAO_DIVIDIR = ("Divida em 2 mensagens: (1) diagnóstico/contexto; (2) opç
 
 _LIM_RASCUNHO = 12000
 _LIM_AJUSTE = 3000
+_MAX_PRINTS = 4
+_MAX_PRINT_B64 = 6 * 1024 * 1024  # ~4,5 MB por imagem (o front já reduz antes de enviar)
+_MIMES_PRINT = ("image/png", "image/jpeg", "image/webp")
+
+
+def prints_validos(body):
+    """Prints anexados (WhatsApp, telas etc.) que a IA deve ler. Devolve a lista
+    de partes inline_data do Gemini. Levanta ValueError se vier algo inválido."""
+    itens = body.get("prints") or []
+    if not isinstance(itens, list):
+        raise ValueError("prints em formato inválido")
+    if len(itens) > _MAX_PRINTS:
+        raise ValueError(f"no máximo {_MAX_PRINTS} prints por mensagem")
+    partes = []
+    for it in itens:
+        if not isinstance(it, dict):
+            raise ValueError("print em formato inválido")
+        b64 = re.sub(r"^data:[^,]+,", "", str(it.get("base64") or "")).strip()
+        mime = str(it.get("mimeType") or "image/jpeg").lower()
+        if not b64:
+            continue
+        if mime not in _MIMES_PRINT:
+            raise ValueError("print precisa ser imagem (PNG, JPG ou WEBP)")
+        if len(b64) > _MAX_PRINT_B64:
+            raise ValueError("print grande demais")
+        partes.append({"inline_data": {"mime_type": mime, "data": b64}})
+    return partes
 
 
 def _txt(v, lim=500):
@@ -119,8 +146,9 @@ def montar_contexto(body):
     msgs_atuais = [m for m in (atual.get("mensagens") or []) if isinstance(m, dict) and str(m.get("texto") or "").strip()]
     if dividir:
         ajuste = (ajuste + "\n" if ajuste else "") + INSTRUCAO_DIVIDIR
-    if not rascunho and not msgs_atuais:
-        raise ValueError("cole o rascunho/relato antes de gerar")
+    n_prints = len(body.get("prints") or [])
+    if not rascunho and not msgs_atuais and not n_prints:
+        raise ValueError("escreva o rascunho ou anexe um print antes de gerar")
     if (ajuste or dividir) and not msgs_atuais:
         raise ValueError("não há versão anterior para ajustar")
     if len(rascunho) > _LIM_RASCUNHO:
@@ -147,17 +175,21 @@ def montar_contexto(body):
                 tec += f" ({_txt(u.get('funcao'), 40)})"
             partes.append("técnico responsável " + tec)
         ufvs.append(", ".join(partes))
-    if not ufvs:
-        raise ValueError("selecione ao menos uma UFV do mapeamento")
+    cliente = _txt(body.get("cliente"), 60)
+    if not ufvs and not (tipo != "tecnico" and cliente):
+        raise ValueError("selecione o cliente" if tipo != "tecnico" else "selecione ao menos uma UFV do mapeamento")
 
     linhas = [
         f"TIPO: {tipo}",
         f"DESTINATÁRIO(S): {', '.join(destinatarios) if destinatarios else 'a confirmar'}",
-        "UFV(s): " + "; ".join(ufvs),
+        "UFV(s): " + ("; ".join(ufvs) if ufvs else f"não selecionadas (cliente {cliente}); use só as usinas citadas no rascunho/prints, como \"UFV <Nome>\""),
         f"DATA/HORA DE ENVIO: {_txt(body.get('dataHoraEnvio'), 20) or 'a confirmar'}",
         "RASCUNHO/RELATO:",
-        rascunho or "(ver versão atual abaixo)",
+        rascunho or ("(ver os prints anexados)" if n_prints else "(ver versão atual abaixo)"),
     ]
+    if n_prints:
+        linhas.append(f"PRINTS ANEXADOS: {n_prints} imagem(ns) logo abaixo deste texto. Leia o conteúdo e use só fatos que estejam "
+                      "visíveis neles ou no rascunho. Não mencione que a informação veio de print, WhatsApp, grupo ou conversa.")
     if ajuste:
         linhas.append(f"AJUSTE PEDIDO (se houver): {ajuste}  → devolver o texto COMPLETO corrigido")
         linhas.append("VERSÃO ATUAL (a ser corrigida, em JSON):")
@@ -214,10 +246,10 @@ def interpretar_resposta(texto_bruto, tipo):
     }
 
 
-def payload_gemini(contexto):
+def payload_gemini(contexto, prints=None):
     return {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT_11_5}]},
-        "contents": [{"role": "user", "parts": [{"text": contexto}]}],
+        "contents": [{"role": "user", "parts": [{"text": contexto}] + list(prints or [])}],
         "generationConfig": {
             "temperature": 0.3,
             "maxOutputTokens": 3000,
@@ -233,19 +265,21 @@ def registrar(app, chamar_gemini, log):
     @app.route("/comunicacao/gerar", methods=["POST", "OPTIONS"])
     def comunicacao_gerar():
         """Central de Mensagens: gera (ou ajusta/divide) as mensagens.
-        Body: {tipo, destinatarios[], ufvs[{ufv,cidadeUf,cliente,tecnico,funcao}],
+        Body: {tipo, cliente?, destinatarios[], ufvs[{ufv,cidadeUf,cliente,tecnico,funcao}] (opcional
+        fora do tipo técnico), prints?[{base64,mimeType}] (até 4),
         dataHoraEnvio:"dd/mm/aaaa HH:MM", rascunho, ajuste?, dividir?,
         versaoAtual?{mensagens[]}}. Resposta: {ok, introducao, mensagens[], observacoes[]}."""
         if request.method == "OPTIONS":
             return ("", 204)
         body = request.get_json(force=True, silent=True) or {}
         try:
+            prints = prints_validos(body)
             contexto = montar_contexto(body)
         except ValueError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         tipo = body.get("tipo")
         try:
-            resp = chamar_gemini(payload_gemini(contexto), timeout=45)
+            resp = chamar_gemini(payload_gemini(contexto, prints), timeout=60 if prints else 45)
             data = resp.json()
             cand = (data.get("candidates") or [{}])[0]
             partes = ((cand.get("content") or {}).get("parts") or [])

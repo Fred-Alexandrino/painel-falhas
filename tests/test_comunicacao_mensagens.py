@@ -62,7 +62,9 @@ class TestContexto(unittest.TestCase):
         for b, trecho in (
             (dict(BASE, tipo="sms"), "tipo inválido"),
             (dict(BASE, rascunho=""), "rascunho"),
-            (dict(BASE, ufvs=[]), "UFV"),
+            (dict(BASE, ufvs=[]), "cliente"),
+            (dict(BASE, tipo="tecnico", ufvs=[]), "UFV"),
+            (dict(BASE, rascunho=""), "rascunho"),
             (dict(BASE, ajuste="x"), "versão anterior"),
             (dict(BASE, rascunho="x" * 12001), "muito longo"),
         ):
@@ -74,6 +76,27 @@ class TestContexto(unittest.TestCase):
         p = cm.payload_gemini("ctx")
         self.assertEqual(p["system_instruction"]["parts"][0]["text"], cm.SYSTEM_PROMPT_11_5)
         self.assertEqual(p["generationConfig"]["responseMimeType"], "application/json")
+
+
+class TestClienteEPrints(unittest.TestCase):
+    def test_cliente_sem_ufv(self):
+        c = cm.montar_contexto(dict(BASE, ufvs=[], cliente="Thopen"))
+        self.assertIn("não selecionadas (cliente Thopen)", c)
+
+    def test_so_print_sem_rascunho(self):
+        b = dict(BASE, rascunho="", prints=[{"base64": "QUJD", "mimeType": "image/png"}])
+        c = cm.montar_contexto(b)
+        self.assertIn("PRINTS ANEXADOS: 1", c)
+        partes = cm.payload_gemini(c, cm.prints_validos(b))["contents"][0]["parts"]
+        self.assertEqual(partes[1], {"inline_data": {"mime_type": "image/png", "data": "QUJD"}})
+
+    def test_data_url_e_limites(self):
+        self.assertEqual(cm.prints_validos({"prints": [{"base64": "data:image/jpeg;base64,QUJD", "mimeType": "image/jpeg"}]})[0]["inline_data"]["data"], "QUJD")
+        for prints, trecho in (([{"base64": "QQ==", "mimeType": "application/pdf"}], "imagem"),
+                               ([{"base64": "QQ=="}] * 5, "no máximo")):
+            with self.assertRaises(ValueError) as e:
+                cm.prints_validos({"prints": prints})
+            self.assertIn(trecho, str(e.exception))
 
 
 class TestInterpretar(unittest.TestCase):
@@ -106,6 +129,11 @@ class TestEndpoint(unittest.TestCase):
         cm.registrar(self.app, fake, logging.getLogger("t"))
         self.c = self.app.test_client()
 
+    def test_gerar_com_print_vai_para_a_ia(self):
+        r = self.c.post("/comunicacao/gerar", json=dict(BASE, prints=[{"base64": "QUJD", "mimeType": "image/png"}]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(self.chamadas[-1]["contents"][0]["parts"]), 2)
+
     def test_gerar(self):
         r = self.c.post("/comunicacao/gerar", json=BASE)
         self.assertEqual(r.status_code, 200)
@@ -115,7 +143,7 @@ class TestEndpoint(unittest.TestCase):
         self.assertEqual(len(self.chamadas), 1)
 
     def test_400_sem_chamar_ia(self):
-        r = self.c.post("/comunicacao/gerar", json=dict(BASE, ufvs=[]))
+        r = self.c.post("/comunicacao/gerar", json=dict(BASE, tipo="tecnico", ufvs=[]))
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.chamadas, [])
 
