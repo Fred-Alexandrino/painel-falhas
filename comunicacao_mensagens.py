@@ -74,7 +74,8 @@ REGRAS_CENTRAL = """REGRAS DESTA CENTRAL (têm prioridade sobre as acima):
 - Não anuncie a cordialidade ("de forma cordial", "gentilmente", "cordialmente solicitamos"): a cordialidade vem do tom e das palavras.
 - E-mail: só "assunto" e "texto" (com a assinatura); não inclua endereços de e-mail.
 - Formatação igual à dos exemplos: usinas sempre em *negrito* no WhatsApp ("*UFV Nome*"), bullets "•", pedidos numerados.
-- Técnico: termine exatamente com "Aguardo retorno." e sem assinatura.
+- Técnico: termine exatamente com "Aguardo retorno."
+- WhatsApp (cliente, técnico e texto de envio de relatório): SEM assinatura. "Atenciosamente" e assinatura só no e-mail.
 - Use só as usinas, nomes e dados informados acima."""
 
 # Exemplos de referência (seções 3.8, 4.6 e 8.7 do padrão — "use como few-shot
