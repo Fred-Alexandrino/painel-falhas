@@ -26365,6 +26365,399 @@ def prosa_web_arquivo(arq):
     return resp
 
 
+# ── Relatório de Chamados SolarEdge (PDF) — 17/11/2026 ─────────────────────
+# Layout da skill de relatório (docs/PADRAO_COMUNICACAO_RELATORIOS_GRID.md,
+# seção 8 / Anexo C): capa azul-marinho de página inteira (desenhada direto no
+# canvas — sem imagem flutuante, então não sobra barra branca embaixo), barras
+# de seção numeradas automaticamente, callouts verdes, tabelas zebradas e
+# cabeçalho/rodapé nas páginas internas (numeração começa em 2).
+# O frontend (subpainel CHAMADOS SOLAREDGE) monta os dados e só pede o render.
+import io as _rse_io
+import os as _rse_os
+from xml.sax.saxutils import escape as _rse_esc
+
+_RSE_NAVY, _RSE_GREEN, _RSE_GREEN_LT = "#1C1F3B", "#8DC63F", "#EEF5DA"
+_RSE_ZEBRA, _RSE_LILAC, _RSE_RULE, _RSE_MUTED = "#F3F4F7", "#9A9DB8", "#D9DBE3", "#777777"
+_RSE_FONTES = None
+
+
+def _rse_fontes():
+    """Calibri (ou Carlito, métrica idêntica) igual à skill; cai para Liberation/Helvetica."""
+    global _RSE_FONTES
+    if _RSE_FONTES:
+        return _RSE_FONTES
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    cache = "/tmp/_rse_fontes"
+    candidatos = [
+        ("/usr/share/fonts/truetype/msttcorefonts/calibri.ttf", "/usr/share/fonts/truetype/msttcorefonts/calibrib.ttf"),
+        ("/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf", "/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf"),
+        (cache + "/Carlito-Regular.ttf", cache + "/Carlito-Bold.ttf"),
+    ]
+    if not any(_rse_os.path.isfile(a) and _rse_os.path.isfile(b) for a, b in candidatos):
+        try:  # Carlito (OFL) baixado uma vez e guardado no servidor
+            import urllib.request
+            _rse_os.makedirs(cache, exist_ok=True)
+            for nome in ("Carlito-Regular.ttf", "Carlito-Bold.ttf"):
+                destino = _rse_os.path.join(cache, nome)
+                if not _rse_os.path.isfile(destino):
+                    url = "https://github.com/google/fonts/raw/main/ofl/carlito/" + nome
+                    with urllib.request.urlopen(url, timeout=15) as r, open(destino + ".tmp", "wb") as f:
+                        f.write(r.read())
+                    _rse_os.replace(destino + ".tmp", destino)
+        except Exception:
+            pass
+    candidatos.append(("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                       "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"))
+    for reg, bold in candidatos:
+        if _rse_os.path.isfile(reg) and _rse_os.path.isfile(bold):
+            try:
+                pdfmetrics.registerFont(TTFont("RSE", reg))
+                pdfmetrics.registerFont(TTFont("RSE-B", bold))
+                pdfmetrics.registerFontFamily("RSE", normal="RSE", bold="RSE-B", italic="RSE", boldItalic="RSE-B")
+                _RSE_FONTES = ("RSE", "RSE-B", _rse_os.path.basename(reg))
+                return _RSE_FONTES
+            except Exception:
+                continue
+    _RSE_FONTES = ("Helvetica", "Helvetica-Bold", "Helvetica")
+    return _RSE_FONTES
+
+
+def _rse_logo(c, x, y, tam):
+    """Ícone Grid (arco + onda verdes) do Anexo C, com (x, y) = canto inferior esquerdo."""
+    from reportlab.lib.colors import HexColor
+    c.saveState()
+    c.translate(x, y + tam)
+    s = tam / 100.0
+    c.scale(s, -s)  # coordenadas do SVG (y para baixo)
+    c.setStrokeColor(HexColor(_RSE_GREEN))
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    c.setLineWidth(13)
+    p = c.beginPath()
+    p.arc(14, 14, 86, 86, startAng=-33.69, extent=-316.0)
+    c.drawPath(p, stroke=1, fill=0)
+    c.setLineWidth(11)
+    p = c.beginPath()
+    p.moveTo(30, 52)
+    p.curveTo(42, 40, 52, 62, 66, 50)
+    p.lineTo(84, 50)
+    c.drawPath(p, stroke=1, fill=0)
+    c.restoreState()
+
+
+def _rse_quebra(texto, fonte, tam, largura):
+    from reportlab.lib.utils import simpleSplit
+    return simpleSplit(texto or "", fonte, tam, largura)
+
+
+def _rse_capa(c, d):
+    from reportlab.lib.colors import HexColor, Color
+    FR, FB, _ = _rse_fontes()
+    W, H = c._pagesize
+    navy, green = HexColor(_RSE_NAVY), HexColor(_RSE_GREEN)
+    c.saveState()
+    # fundo de página inteira (um pouco além da borda: nenhuma faixa branca sobra no PDF)
+    c.setFillColor(navy)
+    c.rect(-2, -2, W + 4, H + 4, stroke=0, fill=1)
+    c.setFillColor(green)
+    c.rect(-2, -2, 16.3 + 2, H + 4, stroke=0, fill=1)
+    # arcos decorativos no canto inferior direito
+    cx, cy = W + 38.5, 57.6
+    c.setStrokeColor(Color(0x8D / 255, 0xC6 / 255, 0x3F / 255, alpha=0.10))
+    c.setLineWidth(33.6)
+    c.circle(cx, cy, 249.6, stroke=1, fill=0)
+    c.setStrokeColor(Color(1, 1, 1, alpha=0.04))
+    c.setLineWidth(19.2)
+    c.circle(cx, cy, 158.4, stroke=1, fill=0)
+
+    x = 75
+    larg = W - x - 65
+    # topo: ícone + Grid Co. / Operação & Manutenção
+    _rse_logo(c, x, H - 55 - 22.5, 22.5)
+    c.setFillColor(HexColor("#FFFFFF"))
+    c.setFont(FB, 17)
+    c.drawString(x + 28, H - 55 - 17, "Grid Co.")
+    c.setFillColor(green)
+    c.setFont(FR, 8.5)
+    c.drawString(x + 28, H - 55 - 31, "Operação & Manutenção")
+
+    y = H - 300
+    c.setFillColor(HexColor(_RSE_LILAC))
+    c.setFont(FB, 9)
+    c.drawString(x, y, d.get("rotuloCapa") or "RELATÓRIO DE CHAMADOS")
+    y -= 30
+    c.setFillColor(HexColor("#FFFFFF"))
+    for ln in _rse_quebra(d.get("tituloCapa") or "", FR, 22, larg):
+        c.setFont(FR, 22)
+        c.drawString(x, y, ln)
+        y -= 26
+    y -= 12
+    c.setFillColor(green)
+    for ln in _rse_quebra((d.get("destaqueCapa") or "").upper(), FB, 30, larg):
+        c.setFont(FB, 30)
+        c.drawString(x, y, ln)
+        y -= 34
+    y += 22
+    c.setStrokeColor(green)
+    c.setLineWidth(1.75)
+    c.line(x, y, x + larg, y)
+    y -= 34
+    c.setFillColor(HexColor(_RSE_LILAC))
+    for ln in _rse_quebra((d.get("subtituloCapa") or "").upper(), FR, 8.5, larg):
+        c.setFont(FR, 8.5)
+        c.drawString(x, y, ln)
+        y -= 12
+    y -= 10
+    c.setFillColor(HexColor("#FFFFFF"))
+    for ln in _rse_quebra(d.get("fraseResumo") or "", FB, 13, larg):
+        c.setFont(FB, 13)
+        c.drawString(x, y, ln)
+        y -= 17
+    y -= 6
+    c.setFillColor(green)
+    c.setFont(FR, 11)
+    c.drawString(x, y, d.get("dataCapa") or "")
+
+    campos = [("CLIENTE", d.get("cliente") or "—"), ("USINAS", d.get("usinasTexto") or "—"),
+              ("DATA DO RELATÓRIO", d.get("dataExtenso") or ""),
+              ("RESPONSÁVEL TÉCNICO", d.get("responsavelTecnico") or "Fred Alexandrino — Supervisor de O&M")]
+    yb = 150
+    for k, v in campos:
+        c.setFillColor(HexColor(_RSE_LILAC))
+        c.setFont(FB, 8)
+        c.drawString(x, yb, k)
+        c.setFillColor(HexColor("#FFFFFF"))
+        linhas = _rse_quebra(v, FR, 10, larg - 120)
+        for i, ln in enumerate(linhas):
+            c.setFont(FR, 10)
+            c.drawString(x + 120, yb - i * 13, ln)
+        yb -= 13 * max(1, len(linhas)) + 6
+    c.restoreState()
+
+
+def _rse_cab_rod(c, doc, d):
+    from reportlab.lib.colors import HexColor
+    FR, FB, _ = _rse_fontes()
+    W, H = c._pagesize
+    ml, mr = doc.leftMargin, W - doc.rightMargin
+    c.saveState()
+    yh = H - 36
+    _rse_logo(c, ml, yh - 1, 10)
+    c.setFillColor(HexColor("#555555"))
+    c.setFont(FR, 7.5)
+    c.drawString(ml + 15, yh + 1.5, d.get("cabecalho") or "")
+    c.setStrokeColor(HexColor(_RSE_RULE))
+    c.setLineWidth(0.5)
+    c.line(ml, yh - 5, mr, yh - 5)
+    yf = 30
+    c.line(ml, yf + 11, mr, yf + 11)
+    c.setFillColor(HexColor(_RSE_MUTED))
+    c.drawString(ml, yf, d.get("rodape") or "")
+    c.drawRightString(mr, yf, str(c.getPageNumber()))
+    c.restoreState()
+
+
+def gerar_pdf_relatorio_chamados_se(d):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_JUSTIFY, TA_RIGHT, TA_CENTER, TA_LEFT
+    from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table,
+                                    TableStyle, NextPageTemplate, PageBreak, KeepTogether, CondPageBreak)
+    FR, FB, _ = _rse_fontes()
+    navy = HexColor(_RSE_NAVY)
+    green = HexColor(_RSE_GREEN)
+    e = lambda t: _rse_esc(str(t if t is not None else "")).replace("\n", "<br/>")
+
+    st_p = ParagraphStyle("p", fontName=FR, fontSize=10.5, leading=14.5, alignment=TA_JUSTIFY, spaceAfter=6)
+    st_s = ParagraphStyle("s", fontName=FR, fontSize=9.5, leading=12.5)
+    st_m = ParagraphStyle("m", parent=st_s, fontSize=8.5, leading=11, textColor=HexColor(_RSE_MUTED))
+    st_bar = ParagraphStyle("bar", fontName=FB, fontSize=11.5, leading=14, textColor=HexColor("#FFFFFF"))
+    st_th = ParagraphStyle("th", fontName=FB, fontSize=9.5, leading=12, textColor=HexColor("#FFFFFF"))
+    st_td = ParagraphStyle("td", fontName=FR, fontSize=9.5, leading=12)
+    st_tdc = ParagraphStyle("tdc", parent=st_td, alignment=TA_CENTER)
+    st_thc = ParagraphStyle("thc", parent=st_th, alignment=TA_CENTER)
+
+    W, H = A4
+    ml = mr = 56.7
+    larg = W - ml - mr
+    buf = _rse_io.BytesIO()
+    doc = BaseDocTemplate(buf, pagesize=A4, leftMargin=ml, rightMargin=mr, topMargin=65, bottomMargin=60,
+                          title=d.get("tituloPdf") or "Relatório de Chamados SolarEdge",
+                          author="Grid Co. · O&M", creator="Central O&M — Grid Co.")
+    capa = PageTemplate(id="capa", frames=[Frame(0, 0, W, H, id="fc", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)],
+                        onPage=lambda c, dd: _rse_capa(c, d))
+    corpo = PageTemplate(id="corpo", frames=[Frame(ml, 60, larg, H - 65 - 60, id="fb", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)],
+                         onPage=lambda c, dd: _rse_cab_rod(c, dd, d))
+    doc.addPageTemplates([capa, corpo])
+
+    n_sec = [0]
+
+    def bar(titulo):
+        n_sec[0] += 1
+        t = Table([["", Paragraph(e(f"{n_sec[0]}. {titulo}".upper()), st_bar)]], colWidths=[5.5, larg - 5.5])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), green), ("BACKGROUND", (1, 0), (1, 0), navy),
+                               ("LEFTPADDING", (0, 0), (0, 0), 0), ("RIGHTPADDING", (0, 0), (0, 0), 0),
+                               ("LEFTPADDING", (1, 0), (1, 0), 9), ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        return t
+
+    def callout(rotulo, texto):
+        t = Table([["", Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">{e(rotulo)}</font> {e(texto)}',
+                                  ParagraphStyle("co", parent=st_p, fontSize=10, leading=13.5, spaceAfter=0))]],
+                  colWidths=[4, larg - 4])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), green), ("BACKGROUND", (1, 0), (1, 0), HexColor(_RSE_GREEN_LT)),
+                               ("LEFTPADDING", (0, 0), (0, 0), 0), ("RIGHTPADDING", (0, 0), (0, 0), 0),
+                               ("LEFTPADDING", (1, 0), (1, 0), 9), ("RIGHTPADDING", (1, 0), (1, 0), 8),
+                               ("TOPPADDING", (0, 0), (-1, -1), 5.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5.5)]))
+        return t
+
+    def kpis(lista):
+        lista = [k for k in (lista or []) if k]
+        if not lista:
+            return Spacer(1, 1)
+        cel = []
+        for k in lista:
+            cel.append([Paragraph(f'<font name="{FB}" size="20" color="{k.get("cor") or _RSE_NAVY}">{e(k.get("valor"))}</font>',
+                                  ParagraphStyle("kv", fontName=FB, fontSize=20, leading=22, alignment=TA_LEFT)),
+                        Paragraph(e(k.get("rotulo")), ParagraphStyle("kl", fontName=FR, fontSize=8.5, leading=10.5,
+                                                                     textColor=HexColor("#555555")))])
+        gap = 6
+        cw = (larg - gap * (len(cel) - 1)) / len(cel)
+        linha, larguras = [], []
+        for i, cc in enumerate(cel):
+            if i:
+                linha.append("")
+                larguras.append(gap)
+            linha.append(cc)
+            larguras.append(cw)
+        t = Table([linha], colWidths=larguras)
+        est = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]
+        for i in range(0, len(linha), 2):
+            est += [("BACKGROUND", (i, 0), (i, 0), HexColor(_RSE_ZEBRA)), ("LINEABOVE", (i, 0), (i, 0), 2.2,
+                    HexColor(lista[i // 2].get("cor") or _RSE_NAVY)), ("LEFTPADDING", (i, 0), (i, 0), 8)]
+        t.setStyle(TableStyle(est))
+        return t
+
+    def tabela(cab, linhas, larguras, total=None, centro_desde=1):
+        dados = [[Paragraph(e(h), st_thc if i >= centro_desde else st_th) for i, h in enumerate(cab)]]
+        for r in linhas:
+            dados.append([Paragraph(e(v), st_tdc if i >= centro_desde else st_td) for i, v in enumerate(r)])
+        if total:
+            dados.append([Paragraph(f'<font name="{FB}">{e(v)}</font>', st_tdc if i >= centro_desde else st_td)
+                          for i, v in enumerate(total)])
+        t = Table(dados, colWidths=[larg * f for f in larguras], repeatRows=1)
+        est = [("BACKGROUND", (0, 0), (-1, 0), navy), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+               ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+               ("LINEBELOW", (0, 1), (-1, -1), 0.4, HexColor(_RSE_RULE))]
+        for k in range(1, len(dados)):
+            if k % 2 == 0:
+                est.append(("BACKGROUND", (0, k), (-1, k), HexColor(_RSE_ZEBRA)))
+        if total:
+            est.append(("LINEABOVE", (0, len(dados) - 1), (-1, len(dados) - 1), 1, navy))
+        t.setStyle(TableStyle(est))
+        return t
+
+    def item_chamado(it):
+        cor = it.get("statusCor") or _RSE_NAVY
+        esq = [Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">#{e(it.get("case"))}</font>',
+                         ParagraphStyle("ic", fontName=FB, fontSize=10, leading=12.5, alignment=TA_RIGHT)),
+               Paragraph(e(it.get("equipamento") or ""), ParagraphStyle("ie", fontName=FR, fontSize=8.5, leading=10.5,
+                                                                         alignment=TA_RIGHT, textColor=HexColor(_RSE_MUTED)))]
+        dir_ = [Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">{e(it.get("usina"))}</font>'
+                          f'<font color="{_RSE_MUTED}">  ·  </font><font name="{FB}" color="{cor}">{e(it.get("status"))}</font>',
+                          ParagraphStyle("it", parent=st_s, fontSize=10, leading=13))]
+        if it.get("assunto"):
+            dir_.append(Paragraph(e(it["assunto"]), ParagraphStyle("ia", parent=st_s, spaceBefore=1)))
+        at = it.get("atualizacao") or {}
+        if at.get("texto"):
+            rot = (at.get("rotulo") or "Última atualização") + (f" ({at['data']})" if at.get("data") else "")
+            dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">{e(rot)}:</font> {e(at["texto"])}',
+                                  ParagraphStyle("iu", parent=st_s, alignment=TA_JUSTIFY, spaceBefore=3)))
+        meta = [x for x in [
+            (f"Aberto em {it['aberto']}" + (f" · {it['dias']} dias" if it.get("dias") not in (None, "") else "")) if it.get("aberto") else "",
+            f"OS de campo {it['os']}" if it.get("os") else "", f"RMA {it['rma']}" if it.get("rma") else "",
+            f"S/N {it['serial']}" if it.get("serial") else "", it.get("extra") or ""] if x]
+        if meta:
+            dir_.append(Paragraph(e("   |   ".join(meta)), ParagraphStyle("im", parent=st_m, spaceBefore=3)))
+        t = Table([[esq, dir_]], colWidths=[72, larg - 72])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEAFTER", (0, 0), (0, 0), 1.6, green),
+                               ("RIGHTPADDING", (0, 0), (0, 0), 8), ("LEFTPADDING", (0, 0), (0, 0), 0),
+                               ("LEFTPADDING", (1, 0), (1, 0), 11), ("RIGHTPADDING", (1, 0), (1, 0), 2),
+                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+        return [t, Spacer(1, 5)]
+
+    def bullet(texto):
+        return Paragraph(f'<font name="{FB}" color="{_RSE_GREEN}">•</font>&nbsp;&nbsp;{e(texto)}',
+                         ParagraphStyle("bl", parent=st_p, leftIndent=16, firstLineIndent=-10, spaceAfter=4))
+
+    s = [NextPageTemplate("corpo"), PageBreak()]
+    # 1. Resumo executivo
+    s += [bar("Resumo executivo"), Spacer(1, 8)]
+    for par in d.get("introducao") or []:
+        s.append(Paragraph(e(par), st_p))
+    s += [Spacer(1, 4), kpis(d.get("kpis")), Spacer(1, 10)]
+    if d.get("enquadramento"):
+        s += [callout("POSIÇÃO —", d["enquadramento"])]
+    s.append(Spacer(1, 16))
+    # 2. Visão por usina
+    vu = d.get("porUsina") or []
+    if vu:
+        cab = d.get("porUsinaCab") or ["Usina", "Supervisor", "Total"]
+        larguras = d.get("porUsinaLarguras") or [0.3, 0.3] + [0.4 / (len(cab) - 2)] * (len(cab) - 2)
+        s += [CondPageBreak(120), bar("Visão por usina"), Spacer(1, 8),
+              tabela(cab, vu, larguras, total=d.get("porUsinaTotal"), centro_desde=2), Spacer(1, 16)]
+    # 3+. Grupos de chamados
+    for g in d.get("grupos") or []:
+        itens = g.get("itens") or []
+        if not itens:
+            continue
+        blocos = [CondPageBreak(110), bar(f"{g.get('titulo')} ({len(itens)})"), Spacer(1, 6)]
+        if g.get("descricao"):
+            blocos.append(Paragraph(e(g["descricao"]), ParagraphStyle("gd", parent=st_m, spaceAfter=6)))
+        s += blocos
+        for it in itens:
+            s.append(KeepTogether(item_chamado(it)))
+        s.append(Spacer(1, 12))
+    # Próximos passos
+    if d.get("proximos"):
+        s += [CondPageBreak(100), bar("Próximos passos"), Spacer(1, 8)] + [bullet(x) for x in d["proximos"]] + [Spacer(1, 12)]
+    # Fecho
+    fecho = [Spacer(1, 6)]
+    for par in d.get("conclusao") or []:
+        fecho.append(Paragraph(e(par), st_p))
+    fecho += [Spacer(1, 18), Paragraph(e(d.get("localData") or d.get("dataExtenso") or ""), ParagraphStyle("ld", parent=st_p, alignment=TA_LEFT)),
+              Spacer(1, 30)]
+    ass = Table([[Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">Fred Alexandrino</font>', st_p)],
+                 [Paragraph("Supervisor de O&amp;M — Grid Co.", ParagraphStyle("as", parent=st_s))]],
+                colWidths=[190], hAlign="LEFT")
+    ass.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.75, navy), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    fecho.append(ass)
+    s.append(KeepTogether(fecho))
+    doc.build(s)
+    return buf.getvalue()
+
+
+@app.route("/relatorios/chamados-solaredge", methods=["POST"])
+def relatorio_chamados_solaredge_pdf():
+    try:
+        d = request.get_json(silent=True) or {}
+        pdf = gerar_pdf_relatorio_chamados_se(d)
+        nome = (d.get("arquivo") or "Relatorio_Chamados_SolarEdge.pdf").replace("/", "_")
+        resp = send_file(_rse_io.BytesIO(pdf), mimetype="application/pdf", as_attachment=True, download_name=nome)
+        resp.headers["X-Relatorio-Fonte"] = _rse_fontes()[2]
+        return resp
+    except Exception as ex:
+        try:
+            log.exception("relatorio chamados solaredge")
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": str(ex)}), 500
+
+
 # ── Central de Mensagens (17/11/2026): POST /comunicacao/gerar — código em
 # comunicacao_mensagens.py (padrão: docs/PADRAO_COMUNICACAO_RELATORIOS_GRID.md
 # no repo PAINELDEFALHAS). Não remover estas 2 linhas ao reenviar o app.py.
