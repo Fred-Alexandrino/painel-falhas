@@ -47,6 +47,10 @@ class TestContexto(unittest.TestCase):
         self.assertIn("EXEMPLOS DE REFERÊNCIA", c)
         self.assertIn("Aguardo retorno.", cm.montar_contexto(dict(BASE, tipo="tecnico")))
 
+    def test_cargos_vao_no_contexto(self):
+        c = cm.montar_contexto(dict(BASE, pessoas=[{"nome": "Vitor Valadares", "cargo": "Supervisor de Campo"}]))
+        self.assertIn("CARGOS: Vitor Valadares — Supervisor de Campo", c)
+
     def test_ajuste_leva_versao_atual_completa(self):
         b = dict(BASE, ajuste="mais curto", versaoAtual={"mensagens": [{"texto": "Texto A"}, {"texto": "Texto B"}]})
         c = cm.montar_contexto(b)

@@ -72,7 +72,8 @@ REGRAS_CENTRAL = """REGRAS DESTA CENTRAL (têm prioridade sobre as acima):
 - NÃO escreva saudação: o Fred escreve a saudação. Comece direto no corpo da mensagem (ignore a etapa "saudação" das estruturas acima).
 - Mantenha o encerramento padrão no fim da ÚLTIMA mensagem.
 - Não anuncie a cordialidade ("de forma cordial", "gentilmente", "cordialmente solicitamos"): a cordialidade vem do tom e das palavras.
-- E-mail: só "assunto" e "texto" (com a assinatura); não inclua endereços de e-mail.
+- E-mail: só "assunto" e "texto" (com a assinatura); não inclua endereços de e-mail. Use *asteriscos* só no nome das usinas (viram negrito no Outlook); sem bullets "•" nem emojis.
+- Ao citar uma pessoa, use exatamente o cargo da lista CARGOS abaixo (ex.: supervisor de campo não é "técnico"). Se a pessoa não estiver na lista, não atribua cargo.
 - Formatação igual à dos exemplos: usinas sempre em *negrito* no WhatsApp ("*UFV Nome*"), bullets "•", pedidos numerados.
 - Tipo técnico: a mensagem é postada no grupo de WhatsApp da equipe da usina e é DIRIGIDA AO SUPERVISOR DE CAMPO (o DESTINATÁRIO); o técnico responsável e a equipe também leem. Escreva para o supervisor de campo, citando o técnico pelo nome quando o pedido for para ele.
 - Técnico: termine exatamente com "Aguardo retorno."
@@ -197,6 +198,9 @@ def montar_contexto(body):
         linhas.append("VERSÃO ATUAL (a ser corrigida, em JSON):")
         linhas.append(json.dumps({"mensagens": [{k: m.get(k) for k in ("titulo", "assunto", "texto") if m.get(k)}
                                                 for m in msgs_atuais]}, ensure_ascii=False))
+    pessoas = [p for p in (body.get("pessoas") or []) if isinstance(p, dict) and _txt(p.get("nome"), 80)][:120]
+    if pessoas:
+        linhas.append("CARGOS: " + "; ".join(f"{_txt(p.get('nome'), 80)} — {_txt(p.get('cargo'), 80)}" for p in pessoas))
     linhas.append("")
     linhas.append("EXEMPLOS DE REFERÊNCIA (tom, estrutura e formatação a seguir; não copie os fatos):")
     for k, exemplo in enumerate(EXEMPLOS.get(tipo, []), 1):

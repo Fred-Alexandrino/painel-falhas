@@ -547,6 +547,19 @@ CATALOGO_USINAS = {
         "aliases": ["tupi paulista", "tupi paulista i", "tupi paulista 1", "tupi paulista 2", "tupi paulista ii"],
     },
     # Thopen
+    # Incluídas pelo Fred em 17/11/2026 (em handover; dados do PCM e do 4º aditivo Thopen).
+    "Cambé": {
+        "cliente": "Thopen",
+        "aliases": ["cambe", "cambé", "thopen - cambé - pr", "thopen - cambe - pr", "cambé - pr", "cambe - pr", "thpn-cmb100", "cmb100", "ufv cambé", "ufv cambe"],
+    },
+    "Sapopema": {
+        "cliente": "Thopen",
+        "aliases": ["sapopema", "thopen - sapopema - pr", "sapopema - pr", "thpn-spm100", "spm100", "ufv sapopema"],
+    },
+    "Segredo": {
+        "cliente": "Thopen",
+        "aliases": ["thopen - segredo - pr", "segredo - pr", "thpn-sgd100", "sgd100", "ufv segredo"],
+    },
     "Alto Paraná I": {
         "cliente": "Thopen",
         "aliases": ["alto paraná i", "alto paraná 1", "alto paraná 1a", "alto paraná ia", "alto paraná a"],
@@ -6991,6 +7004,13 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
     {"usina": 'Aparecida do Taboado II', "cliente": 'Thopen', "cluster": 'MS Leste 01', "cidade_uf": 'Aparecida do Taboado/MS',
      "responsavel": 'Paulo Ribeiro', "funcao": 'Eletricista', "membros": [], "alternativo": ''},
+    # ── Incluídas pelo Fred em 17/11/2026 (Thopen, em handover; técnico = responsável das OS no PCM) ──
+    {"usina": 'Cambé', "cliente": 'Thopen', "cluster": 'PR Norte 03', "cidade_uf": 'Cambé/PR',
+     "responsavel": 'Rafael Zocarato', "funcao": '', "membros": [], "alternativo": ''},
+    {"usina": 'Sapopema', "cliente": 'Thopen', "cluster": 'PR Norte 03', "cidade_uf": 'Sapopema/PR',
+     "responsavel": 'Rafael Zocarato', "funcao": '', "membros": [], "alternativo": ''},
+    {"usina": 'Segredo', "cliente": 'Thopen', "cluster": 'PR Oeste 02', "cidade_uf": 'PR',
+     "responsavel": 'Pedro Henrique', "funcao": '', "membros": [], "alternativo": ''},
 ]
 
 # Variações de grafia/apelidos vistas na Fracttal → nome oficial na tabela acima.
