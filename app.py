@@ -2308,11 +2308,6 @@ LOCALIZACOES_SEED = [
     ('Thopen', 'Ribeirão Cascalheira', '35HX+8PR Ribeirão Cascalheira, MT', 'https://maps.app.goo.gl/BL8xuoi7hy5w4yev6', "", ""),
     ('2C Energia', 'Araputanga', 'Rodovia MT 175, Araputanga - MT', 'https://maps.app.goo.gl/AzpfpHjkqxyqBwAV7', "", ""),
     ('2C Energia', 'Sete Lagoas', 'Zona Rural, Sete Lagoas - MG, 35702-087', 'https://maps.app.goo.gl/mCoLpWAobk6K2qLG7', "", ""),
-    ('Sal Energia', 'SunPower (Cascavel)', 'Zona Rural, s/n – Cascavel - CE', 'https://maps.app.goo.gl/gogYXrktX8D3TfFPA', -4.105639, -38.319028),
-    ('Sal Energia', 'Hortina (Quixadá I)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
-    ('Sal Energia', 'Vitesse (Quixadá II)', 'Zona Rural, s/n – Quixadá - CE', 'https://maps.app.goo.gl/oajX7AZNQfBdJNwF9', -4.997056, -38.991528),
-    ('Sal Energia', 'Salvales (Aquiraz I)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
-    ('Sal Energia', 'Carosa (Aquiraz II)', 'Zona Rural, s/n – Aquiraz - CE', 'https://maps.app.goo.gl/XXn34jb8jE1NRvfE9', -4.059083, -38.495917),
 ]
 
 
@@ -7079,6 +7074,11 @@ if _ids_ja:  # .env sem GRUPOS_IDS = aceita todos os grupos; não vira filtro s�
         if _g["id"].replace("@g.us", "") not in _ids_ja:
             GRUPOS_FILTRO.append(_g["id"])
     GRUPOS_FILTRO = [x for x in GRUPOS_FILTRO if x.strip()]
+# 17/11/2026 (Fred): Sal Energia removida COMPLETAMENTE do mapeamento — o grupo
+# "[O&M] - Grid Co. | Sal Energia" deixa de ser aceito pelo webhook e de aparecer
+# nas listas de grupos (comunicado livre, resumos), mesmo que siga no GRUPOS_IDS do .env.
+_GRUPOS_REMOVIDOS = {"120363427259899891"}
+GRUPOS_FILTRO = [x for x in GRUPOS_FILTRO if x.strip().replace("@g.us", "") not in _GRUPOS_REMOVIDOS]
 
 
 # ── Edição do mapeamento pelo painel (Fred, 05/10/2026) ─────────────────────
@@ -12240,6 +12240,8 @@ def listar_localizacoes():
                 continue
             if _norm_usina(row[1].strip()) in _USINAS_SAIDAS_06_10:
                 continue  # saíram do mapeamento do Fred em 06/10/2026 (transição)
+            if _cliente_fora_da_carteira(row[0] if len(row) > 0 else ""):
+                continue  # 17/11/2026: Sal Energia (e demais clientes fora da carteira) não aparecem no mapa
             lat = row[4].strip() if len(row) > 4 else ""
             lng = row[5].strip() if len(row) > 5 else ""
             def _num(v):
@@ -12333,6 +12335,35 @@ def adicionar_localizacao():
         else:
             ws.append_row(nova_linha)
             return jsonify({"ok": True, "acao": "criada"}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/localizacoes-remover", methods=["POST", "OPTIONS"])
+def remover_localizacoes():
+    """Remove linhas da aba 'Localizacoes' (17/11/2026: Fred pediu para tirar a
+    Sal Energia COMPLETAMENTE do mapeamento dele). Body: {cliente} remove todas
+    as usinas do cliente, ou {cliente, usina} remove só aquela. Exige
+    X-Deploy-Secret, porque apaga dados da planilha."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "não autorizado"}), 403
+    body = request.get_json(force=True, silent=True) or {}
+    cliente = str(body.get("cliente", "")).strip().lower()
+    usina = str(body.get("usina", "")).strip().lower()
+    if not cliente:
+        return jsonify({"ok": False, "error": "cliente é obrigatório"}), 400
+    try:
+        ws = get_localizacoes_sheet()
+        todos = ws.get_all_values()
+        alvo = [i for i, row in enumerate(todos[1:], start=2)
+                if len(row) >= 2 and row[0].strip().lower() == cliente
+                and (not usina or row[1].strip().lower() == usina)]
+        removidas = [todos[i - 1][1] for i in alvo]
+        for i in sorted(alvo, reverse=True):
+            _gspread_retry(lambda i=i: ws.delete_rows(i))
+        return jsonify({"ok": True, "removidas": removidas}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -16778,7 +16809,6 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363402559504115": "[O&M] - Grid Co. | 2C",
     "120363426381032089": "[O&M] - Grid Co. | Alves Lima",
     "120363423844956611": "[O&M] - Grid Co. | GD Energy",
-    "120363427259899891": "[O&M] - Grid Co. | Sal Energia",
     "120363406191445169": "O&M - San. Bárb./Pirac. - SP LESTE 03",
     "120363431221706747": "Equipe Guajiru/Sol do Norte I e II",
     "120363421162420788": "COS — Técnicos O&M Centro-Oeste",
