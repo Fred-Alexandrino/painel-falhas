@@ -13403,22 +13403,100 @@ def _chamados_fabricante_itens():
     return itens
 
 
+# ── Cache de leitura do Painel de Chamados (17/11/2026) ─────────────────
+# O GET /chamados-fabricante faz ~5 leituras no Sheets e caía com 429
+# (cota de 60 leituras/min) quando outras rotinas liam ao mesmo tempo.
+# Agora: resposta fica 30s em cache; qualquer gravação em rotas de
+# chamados "toca" um arquivo que invalida o cache nos 2 workers; e, se a
+# leitura falhar, devolve a última resposta boa marcada como "cache".
+_CH_CACHE = {}
+_CH_CACHE_GEN = "/tmp/_chamados_cache_gen"
+_CH_CACHE_TTL = 30
+
+
+def _ch_cache_gen():
+    try:
+        return os.path.getmtime(_CH_CACHE_GEN)
+    except Exception:
+        return 0
+
+
+def _ch_cache_invalida():
+    try:
+        with open(_CH_CACHE_GEN, "a"):
+            pass
+        os.utime(_CH_CACHE_GEN, None)
+    except Exception:
+        pass
+
+
+def _ch_cache_arquivo(chave):
+    return "/tmp/_chamados_cache_" + re.sub(r"[^a-z0-9]+", "_", chave.lower()) + ".json"
+
+
+@app.after_request
+def _ch_cache_after(resp):
+    try:
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and "chamado" in (request.path or "") and resp.status_code < 400:
+            _ch_cache_invalida()
+    except Exception:
+        pass
+    return resp
+
+
+def _ch_cache_servir(chave, gerar):
+    """gerar() -> dict pronto pro jsonify. Cache curto + último bom em caso de erro."""
+    agora = time.time()
+    c = _CH_CACHE.get(chave)
+    if c and agora - c["ts"] < _CH_CACHE_TTL and c["ts"] >= _ch_cache_gen():
+        return jsonify(c["dados"]), 200
+    try:
+        dados = gerar()
+        _CH_CACHE[chave] = {"ts": agora, "dados": dados}
+        try:
+            with open(_ch_cache_arquivo(chave), "w", encoding="utf-8") as f:
+                json.dump({"ts": agora, "dados": dados}, f, ensure_ascii=False)
+        except Exception:
+            pass
+        return jsonify(dados), 200
+    except Exception as e:
+        if not c:
+            try:
+                with open(_ch_cache_arquivo(chave), encoding="utf-8") as f:
+                    c = json.load(f)
+            except Exception:
+                c = None
+        if c:
+            d = dict(c["dados"])
+            d["cache"] = True
+            d["cacheIdadeSeg"] = int(agora - c["ts"])
+            d["avisoCache"] = "Planilha ocupada no momento (cota do Google); mostrando a última leitura boa."
+            log.warning(f"[ChamadosCache] {chave}: servindo cache de {int(agora - c['ts'])}s por erro: {e}")
+            return jsonify(d), 200
+        raise
+
+
 @app.route("/chamados-fabricante", methods=["GET"])
 def listar_chamados_fabricante():
     """Devolve a tabela de chamados de fabricante inteira, pro frontend
     exibir no Painel de Chamados sem precisar de nenhuma cópia manual."""
     try:
+        return _ch_cache_servir("fabricante:" + str(_escopo_atual() or ""), _listar_chamados_fabricante_dados)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _listar_chamados_fabricante_dados():
+    if True:
         itens = _chamados_fabricante_itens()
-        travas = _ler_travas(["chamados_ultima_sincronizacao", "chamados_ultima_tentativa",
+        travas = _gspread_retry(lambda: _ler_travas(["chamados_ultima_sincronizacao", "chamados_ultima_tentativa",
                                "chamados_ultimo_status", "chamados_ultimo_erro",
-                               "chamados_nexus_ultima_sincronizacao", "chamados_nexus_lido_em"])
-        return jsonify({"ok": True, "itens": itens, "total": len(itens), "fonte": "nexus", "nexusLidoEm": travas.get("chamados_nexus_lido_em", ""),
+                               "chamados_nexus_ultima_sincronizacao", "chamados_nexus_lido_em"]))
+        return ({"ok": True, "itens": itens, "total": len(itens), "fonte": "nexus", "nexusLidoEm": travas.get("chamados_nexus_lido_em", ""),
                          "ultimaSincronizacao": travas["chamados_nexus_ultima_sincronizacao"] or travas["chamados_ultima_sincronizacao"],
                          "ultimaTentativa": travas["chamados_ultima_tentativa"],
                          "ultimoStatus": travas["chamados_ultimo_status"],
-                         "ultimoErro": travas["chamados_ultimo_erro"]}), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+                         "ultimoErro": travas["chamados_ultimo_erro"]})
 
 
 # ══════════════════════════════════════════════════════════════════════
