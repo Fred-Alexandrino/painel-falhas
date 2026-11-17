@@ -7056,6 +7056,13 @@ TECNICO_USINAS = _construir_tecnico_usinas(MAPEAMENTO_UFVS)
 #    do mapeamento (MAPEAMENTO_UFVS sempre vence);
 #  - a lista de grupos aceitos pelo webhook (GRUPOS_FILTRO), somada ao
 #    GRUPOS_IDS do .env — sem isso as mensagens do grupo seriam ignoradas.
+# PADRÃO DOS GRUPOS DE EQUIPE (Fred, 17/11/2026) — vale para grupo novo também:
+#  • Nome: "Cluster | Usinas" (ex.: "PR Norte 03 | Sapopema · Cambé"), sem a palavra "Equipe";
+#    sufixo quando dois grupos dividem o cluster ("PR Oeste 01 AP" / "PR Oeste 01 NL").
+#  • Foto: UF grande + região do cluster + usinas + etiqueta "EQUIPE · CLIENTE", cor própria por grupo.
+#  • O código identifica o grupo pelo ID; o "nome" aqui e em _NOMES_GRUPOS_CONHECIDOS é só rótulo —
+#    renomeou no WhatsApp, atualize os dois. Fora do padrão por decisão do Fred:
+#    "Equipe Xavantina Grid Co." (inativo) e "Equipe Crateús - Desativado" (não mexer).
 GRUPOS_EQUIPE_UFVS = [
     {"id": "120363431215102670@g.us", "nome": "GO Leste 02 | Ceilândia · Sítio Nogueiras",
      "usinas": ["Ceilândia I", "Ceilândia II", "Sítio dos Nogueiras"]},
