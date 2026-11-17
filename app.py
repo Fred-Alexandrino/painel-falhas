@@ -24536,7 +24536,7 @@ def nexus_performance():
 _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @name         Grid Performance → Painel
 // @namespace    gridco-fred
-// @version      1.2
+// @version      1.3
 // @updateURL    https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
 // @downloadURL  https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
 // @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
@@ -24643,7 +24643,14 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
     try {
       if (forcar) aviso('lendo o Nexus… (pode levar até 1 min)');
       const p = await coletar(anterior);
+      // v1.3: se a torre Performance do Nexus está fora (ex.: /api/gerencial com 502), avisa em vez de dizer "enviado"
+      const mAtual = Object.values(p.meses)[0] || {};
+      if (mAtual.gerencial && mAtual.gerencial.erro && mAtual.disponibilidade && mAtual.disponibilidade.erro) {
+        const cod = (String(mAtual.gerencial.erro).match(/HTTP (\d+)/) || [])[1] || '?';
+        throw new Error('a torre Performance do Nexus não respondeu (HTTP ' + cod + '). O Painel NOC do próprio Nexus deve estar em branco. Nada foi alterado na Central; tente de novo mais tarde.');
+      }
       const j = await enviar(p);
+      if (!(j.meses || []).length) throw new Error('o Nexus devolveu leitura vazia; nada foi alterado na Central.');
       GM_setValue('gpUltimo', Date.now());
       if (anterior) GM_setValue('gpUltimoAnterior', Date.now());
       aviso('enviado ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : '') + ' às ' + (j.em || '').slice(-5));
