@@ -44,6 +44,8 @@ class TestContexto(unittest.TestCase):
         c = cm.montar_contexto(dict(BASE))
         self.assertIn("NÃO escreva saudação", c)
         self.assertIn("Não anuncie a cordialidade", c)
+        self.assertIn("EXEMPLOS DE REFERÊNCIA", c)
+        self.assertIn("Aguardo retorno.", cm.montar_contexto(dict(BASE, tipo="tecnico")))
 
     def test_ajuste_leva_versao_atual_completa(self):
         b = dict(BASE, ajuste="mais curto", versaoAtual={"mensagens": [{"texto": "Texto A"}, {"texto": "Texto B"}]})

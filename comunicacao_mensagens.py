@@ -73,7 +73,19 @@ REGRAS_CENTRAL = """REGRAS DESTA CENTRAL (têm prioridade sobre as acima):
 - Mantenha o encerramento padrão no fim da ÚLTIMA mensagem.
 - Não anuncie a cordialidade ("de forma cordial", "gentilmente", "cordialmente solicitamos"): a cordialidade vem do tom e das palavras.
 - E-mail: só "assunto" e "texto" (com a assinatura); não inclua endereços de e-mail.
-- Use só as usinas, nomes e dados informados abaixo."""
+- Formatação igual à dos exemplos: usinas sempre em *negrito* no WhatsApp ("*UFV Nome*"), bullets "•", pedidos numerados.
+- Técnico: termine exatamente com "Aguardo retorno." e sem assinatura.
+- Use só as usinas, nomes e dados informados acima."""
+
+# Exemplos de referência (seções 3.8, 4.6 e 8.7 do padrão — "use como few-shot
+# no prompt"), na versão sem saudação e sem a Sal Energia, iguais aos usados
+# nos testes do frontend (tests/comunicacao/exemplos.js no PAINELDEFALHAS).
+EXEMPLOS = {
+    "tecnico": ['Conforme levantamento do PCM, as preventivas abaixo estão com prazo vencido no painel de atividades:\n\n• 🔴 *UFV Colorado I* — preventiva mensal de inversores, vencida em 10/11\n• 🟠 *UFV Sarandi* — inspeção termográfica, vencida em 14/11\n• 🟡 *UFV Mandaguaçu* — limpeza de sala elétrica, vence em 19/11\n\nPreciso que você me informe:\n1. O motivo do atraso em Colorado I e Sarandi;\n2. A data prevista de execução de cada uma.\n\nRetorno ainda hoje, por favor.\nAguardo retorno.'],
+    "cliente": ['Para mantermos o alinhamento sobre a manutenção corretiva da drenagem na *UFV Sete Lagoas*, no cruzamento da vala com os cabos CC, detalho abaixo a atuação de cada parte:\n\n*Responsabilidades da Empresa Contratada:*\n• Execução da escavação e das obras da vala de drenagem.\n• Movimentação segura dos cabos CC.\n• Execução do envelopamento de concreto dos cabos, conforme previsto em projeto.\n\n*Atuação da Grid:*\n1. Acompanhar a atividade no local para orientar a equipe e garantir a segurança das instalações.\n2. Desligar o inversor correspondente antes do início das intervenções nos cabos, assegurando que o trecho esteja totalmente sem energia para o trabalho da contratada. _(Lembrando que, caso os serviços ocorram em período noturno ou fora do horário comercial regular, precisaremos alinhar previamente os custos de homem-hora extra da nossa equipe, conforme previsto contratualmente.)_\n3. Religar o inversor e validar a operação assim que a contratada concluir os trabalhos no trecho.\n\nDiante disso, aguardo a confirmação da data exata da intervenção para que possamos programar e mobilizar nossa equipe técnica em campo.\n\nQualquer dúvida, sigo à disposição!', 'Como parte do cronograma de manutenção preventiva mensal sob responsabilidade da Grid, solicitamos a liberação de acesso ao rack onde o nobreak está instalado na *UFV Araputanga*.\n\nA intervenção tem como finalidade a inspeção técnica do equipamento, abrangendo a medição das tensões de entrada e saída, além da avaliação dos níveis de tensão do banco de baterias, assegurando o pleno funcionamento e a confiabilidade do sistema auxiliar.\n\nFicamos no aguardo da sua autorização para alinharmos o acesso junto à equipe em campo.\nSeguimos à disposição!', 'Em resposta ao seu questionamento sobre o Inversor 2.1 da *UFV Nova Londrina II*, apresentamos abaixo o diagnóstico técnico da falha identificada e o plano de ação proposto pela equipe da Grid:\n\n*1. Diagnóstico Técnico:*\n• Identificamos que a causa da baixa geração e da sinalização de falha no inversor decorre do fusível CC queimado na String 9 (Mesa 6, String 2).\n• No momento, não há dispositivo fusível sobressalente disponível em estoque na usina para substituição imediata.\n• Observação operacional: constatamos que já existem outros inversores na usina operando sem esse fusível de proteção específico — a exemplo do Inversor 3.1 —, condição pré-existente e não realizada pela Grid.\n\n[MENSAGEM 2]\n\n*2. Plano de Ação para Normalização:*\nPara restabelecer a operação plena do Inversor 2.1 com todas as 9 strings conectadas, a alternativa técnica imediata é realizar a ligação provisória sem o fusível CC.\n• Riscos técnicos envolvidos: sem o fusível CC, o circuito dependerá exclusivamente das proteções internas do inversor. Em eventual surto nessa string, o inversor desarmará para garantir sua autoproteção.\n\n*3. Próximos Passos (Alinhamento):*\nSolicitamos a sua validação para definirmos o direcionamento operacional:\n• *Opção A:* autorização para a Grid realizar a ligação provisória da String 9 sem o fusível CC, restabelecendo a capacidade total do inversor de imediato; ou\n• *Opção B:* previsão de envio/disponibilização da nova peça para programarmos a substituição do componente.\n\nFicamos no aguardo de sua decisão para mobilizar a equipe técnica.\nQualquer dúvida, sigo à disposição!'],
+    "email": ['ASSUNTO: UFV Tupi Paulista I — Condição crítica da via de acesso\n\nEncaminhamos em anexo o Relatório de Ocorrência da UFV Tupi Paulista I, com a cronologia da vistoria realizada em 16/11/2026, os riscos identificados no trecho de aclive e as evidências fotográficas do local.\n\nA via apresenta processo erosivo ativo, com sulcos profundos nas trilhas de roda e ausência de drenagem, o que representa risco à equipe de O&M e à continuidade do atendimento à usina.\n\nSolicitamos o posicionamento da 2C Energia quanto à recuperação do acesso, com previsão de execução.\n\nSeguimos à disposição.\n\nAtenciosamente,\n\nFred Alexandrino\nSupervisor de O&M\nGrid Co.'],
+    "envio_relatorio": ['Encaminhamos em anexo o Relatório de Ocorrência referente à condição da via de acesso à *UFV Tupi Paulista I*, com a cronologia da vistoria realizada em 16/11, os riscos identificados, as evidências fotográficas e as recomendações para recuperação do trecho.\n\nSolicitamos, por gentileza, o posicionamento da 2C Energia quanto à recuperação do acesso, com previsão de execução. A Grid permanece à disposição para acompanhar a vistoria no local com a empresa contratada.\n\nSeguimos à disposição.'],
+}
 
 TIPOS = {
     "cliente": "cliente",
@@ -150,6 +162,12 @@ def montar_contexto(body):
         linhas.append("VERSÃO ATUAL (a ser corrigida, em JSON):")
         linhas.append(json.dumps({"mensagens": [{k: m.get(k) for k in ("titulo", "assunto", "texto") if m.get(k)}
                                                 for m in msgs_atuais]}, ensure_ascii=False))
+    linhas.append("")
+    linhas.append("EXEMPLOS DE REFERÊNCIA (tom, estrutura e formatação a seguir; não copie os fatos):")
+    for k, exemplo in enumerate(EXEMPLOS.get(tipo, []), 1):
+        linhas.append(f"--- exemplo {k} ---")
+        linhas.append(exemplo)
+    linhas.append("--- fim dos exemplos ---")
     linhas.append("")
     linhas.append(REGRAS_CENTRAL)
     return "\n".join(linhas)
