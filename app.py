@@ -16639,36 +16639,68 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
 
 
 def _montar_prompt_comunicado_livre(tema, observacoes, tem_imagem=False):
+    # REESCRITO 17/11/2026: a versão anterior ("técnico e direto", "no máximo
+    # UMA frase de contexto", 3-7 linhas) gerava comunicados secos — tirava
+    # quem pediu, o que já se sabe e o porquê, e o técnico recebia só uma
+    # lista de "itens a confirmar" sem entender a história. Agora o contexto
+    # é obrigatório (de onde veio, o que já foi feito, o que falta), com
+    # linguagem simples de colega pra colega, sem virar textão.
     bloco_imagem = ""
     if tem_imagem:
         bloco_imagem = """
-UMA IMAGEM (PRINT) FOI ANEXADA COMO FONTE DE INFORMAÇÃO: extraia dela tudo que for relevante pro comunicado — texto, valores, nomes, datas, contexto visível. Se o tema/observações também tiverem sido preenchidos, combine as duas fontes; se estiverem vazios, baseie o comunicado inteiramente no que a imagem mostra. Não invente nada que não esteja nem no texto nem na imagem — se algo na imagem estiver ilegível ou cortado, não presuma o conteúdo.
+UMA IMAGEM (PRINT) FOI ANEXADA COMO FONTE: leia tudo que for relevante — texto, nomes, empresa, datas, valores. Se o print for uma CONVERSA (WhatsApp, e-mail):
+- Identifique QUEM escreveu e DE QUAL EMPRESA (ex.: um rótulo "Paula - Thopen" = Paula, da Thopen, cliente) e use isso no contexto do comunicado.
+- "Fred Alexandrino" / "@Fred Alexandrino" é o próprio supervisor que está escrevendo o comunicado: fale em primeira pessoa ("me perguntou", "minhas férias"), nunca cite o Fred como terceiro.
+- Aproveite o que a mensagem já informa como SABIDO/FEITO (ex.: "já foram substituídas") separado do que está PENDENTE.
+- Preserve imprecisões do original: se diz "uma das cabines", não invente qual cabine; se não cita a usina, não invente a usina.
+Se o tema/observações também vierem preenchidos, combine as fontes. Se algo estiver ilegível ou cortado, não presuma.
 """
-    return f"""Aja como um Supervisor de O&M da Grid Co. redigindo um comunicado TÉCNICO e DIRETO para ser enviado por WhatsApp às equipes de campo e/ou clientes.
+    return f"""Aja como o Fred Alexandrino, Supervisor de O&M da Grid Co., escrevendo uma mensagem de WhatsApp para os TÉCNICOS DE CAMPO (eletricistas, mantenedores, técnicos). Às vezes o destino é um cliente — nesse caso, mesmo raciocínio, só um pouco mais formal.
 {bloco_imagem}
-REGRA MAIS IMPORTANTE — OS PONTOS ESPECÍFICOS DO USUÁRIO SÃO O NÚCLEO DO COMUNICADO: tudo que foi pedido explicitamente no tema/observações/imagem (itens a verificar, instruções, prazos, ações) tem que aparecer de forma CLARA E DESTACADA — se forem vários itens/verificações, apresente como LISTA curta (um item por linha), nunca dissolvidos dentro de um parágrafo genérico. Uma instrução prática específica (ex.: "verificar selo de calibração") NUNCA pode se perder atrás de linguagem genérica sobre riscos, normas ou importância do assunto. Se ao reler o texto pronto o ponto principal pedido pelo usuário não pular aos olhos em 2 segundos de leitura, o texto está errado.
+OBJETIVO: o técnico tem que ler no celular, entender a história em poucos segundos e saber exatamente o que fazer — SEM ter visto o print ou a conversa original. O texto não pode ser seco (só uma lista solta de itens) nem complexo (textão, termos rebuscados, frases longas).
 
-CONSEQUÊNCIA/IMPACTO INFORMADO PELO USUÁRIO É NÚCLEO, NÃO CONTEXTO GENÉRICO: se o tema/observações/imagem descrevem o que acontece caso a instrução NÃO seja seguida (ex.: "senão vai ficar entendido que não estamos trabalhando", "gera apontamento de improdutividade", "o cliente cobra atraso"), essa consequência é informação específica dada pelo usuário — não uma explicação genérica de risco — e por isso tem que aparecer de forma explícita e destacada no comunicado, com o mesmo peso das instruções em si. Omitir ou diluir essa consequência é o mesmo erro que omitir um item da lista de instruções: o comunicado perde o senso de urgência que o próprio usuário pediu para transmitir. A restrição abaixo sobre contexto genérico NUNCA se aplica a uma consequência que o usuário efetivamente informou.
+1) CONTEXTO É OBRIGATÓRIO (2 a 3 frases curtas, em linguagem de conversa). Sempre que a fonte trouxer essas informações, explique:
+   - De onde veio a demanda (ex.: "A Paula, da Thopen, perguntou…", "O cliente cobrou…", "A engenharia pediu…").
+   - O que já se sabe ou já foi feito (ex.: "a Camila tinha informado que as contatoras já foram trocadas").
+   - O que exatamente ficou em aberto e por que estou pedindo agora.
+   Comunicado que só lista "itens a confirmar" sem dizer quem pediu, o que já foi feito e o que falta está ERRADO.
 
-Contexto técnico GENÉRICO (o "porquê" que o usuário NÃO informou, e que você estaria acrescentando por conta própria) é permitido, mas com moderação: no máximo UMA frase curta de enquadramento, nunca um parágrafo explicando consequências genéricas de segurança/normas regulatórias que não vieram do usuário.
+2) O PEDIDO TEM QUE PULAR AOS OLHOS: o que o técnico precisa fazer/confirmar vai em lista curta (um item por linha, começando com •), em linguagem de campo, com verbo claro. Nunca dissolva o pedido dentro de parágrafo.
+
+3) FECHAMENTO: uma linha dizendo o que espero de volta e, se fizer sentido, para quê (ex.: "Me retornem com o status pra eu dar a resposta pro cliente."). Prazo só se foi informado.
+
+4) CONSEQUÊNCIA: se o usuário informou o que acontece caso a instrução não seja cumprida, ela é ponto central e entra numa linha destacada com ❗. Se NÃO informou, NÃO crie a linha ❗ e NÃO invente consequência (ex. de erro real a evitar: escrever "a ausência dessa confirmação impede a validação das manutenções" quando ninguém disse isso).
 
 O que NÃO fazer:
-- Não inventar critérios técnicos adicionais de verificação que não foram citados (ex.: tipos específicos de dano, passos extras de conferência, registro fotográfico) — isso é diferente do contexto genérico permitido; contexto genérico é só uma frase de enquadramento, nunca uma checklist extra por conta própria.
-- Não inventar FATOS ESPECÍFICOS não informados — datas exatas, números de OS, prazos, quantidades, nomes.
-- Não inventar uma consequência que o usuário não mencionou. Mas se ele mencionou uma, não rebaixá-la a uma frase solta — ela é ponto central, não adorno.
-- Não usar linguagem alarmista ou didática demais (nada de "pode resultar em consequências fatais" se isso não foi pedido) — o tom é de instrução profissional direta entre colegas de O&M, não uma aula de segurança. Isso não significa suavizar uma consequência real que o usuário informou: relatar com clareza o que ele disse que vai acontecer não é alarmismo, é fidelidade ao conteúdo.
+- Não inventar fatos: datas, OS, quantidades, nomes de usina/cabine/equipamento, prazos, consequências, passos técnicos extras de verificação.
+- Não usar linguagem de aula de segurança, alarmista ou corporativa ("Prezados", "Venho por meio desta", "Atenciosamente", "Verificação de pendência:").
+- Não transformar expectativa em certeza: "acredito que", "acho que", "talvez", "devemos conseguir" continuam incertos — se não há data confirmada, diga que ainda não há data. Na dúvida, mais conservador.
 
-Estrutura padrão (adapte ao conteúdo, mas sempre em blocos curtos com emoji de destaque):
-⚠️ Linha de abertura com o assunto principal, direto ao ponto.
-📋 Os pontos/itens específicos pedidos pelo usuário (do texto e/ou da imagem) — em lista, se forem vários.
-❗ Se o usuário informou uma consequência/impacto do não cumprimento, uma linha destacada e explícita com ela (não uma frase genérica de risco).
-✅ Prazo, status ou próximo passo — respeitando rigorosamente o grau de certeza da regra abaixo.
+FORMATO (WhatsApp):
+⚠️ *Assunto curto em negrito*
+(linha em branco)
+Contexto em 2-3 frases normais, sem emoji.
+(linha em branco)
+📋 Frase curta introduzindo o pedido (ex.: "Preciso que me confirmem:")
+• item
+• item
+(linha em branco)
+❗ Consequência — SÓ se foi informada pelo usuário.
+✅ Fechamento / próximo passo.
+Use *negrito* só no assunto e em nomes de usina, datas e números importantes. Tamanho típico: 7 a 12 linhas. Pode abrir o contexto com "Pessoal," quando soar natural.
 
-Regras gerais:
-- Vá direto ao ponto, sem saudação genérica tipo "Prezados" ou assinatura formal no final.
-- Tamanho: enxuto, mas sem cortar conteúdo pedido pelo usuário — normalmente 4 a 7 linhas curtas quando há uma consequência a comunicar, 3 a 5 quando não há. Priorize completude do que foi pedido sobre economia de linhas; nunca sacrifique um ponto específico ou a consequência informada só para caber num tamanho menor.
+EXEMPLO (só para calibrar tom e tamanho — não copie fatos dele para outros comunicados):
+Fonte: print de mensagem de "Paula - Thopen": "@Fred Alexandrino, quando tu estavas de férias, Camila havia mencionado que as contatoras das CMP's já haviam sido substituídas, mas não me recordo de ter visto a respeito da fonte capacitiva de uma das cabines. Poderia confirmar se chegou na casa do técnico e se já foi substituída?"
+Comunicado bom:
+⚠️ *Fonte capacitiva das CMPs*
 
-REGRA CRÍTICA — PRESERVAR O GRAU DE CERTEZA DO TEXTO ORIGINAL: preste muita atenção em palavras que indicam incerteza ou expectativa, como "acredito que", "acho que", "acho possível", "acredito", "acho provável", "talvez", "devemos", "devemos conseguir". NUNCA transforme uma expectativa/crença em uma confirmação ou promessa de prazo. Se o autor disse que "acredita" que algo vai acontecer, sem data confirmada, o comunicado deve deixar claro que ainda NÃO há data definida (ex.: "ainda não temos data para retorno", "sem previsão confirmada", "assim que tivermos confirmação, avisamos") — em vez de anunciar como certo ou "em breve". Errar pra mais confiança do que o texto original tem é pior do que errar pra menos — na dúvida, seja mais conservador, não mais otimista.
+Pessoal, a Paula, da Thopen, me perguntou sobre as CMPs. Enquanto eu estava de férias, a Camila informou que as contatoras já foram substituídas, mas ficou sem retorno a fonte capacitiva de uma das cabines.
+
+📋 Preciso que me confirmem:
+• Se a fonte capacitiva já chegou na casa do técnico
+• Se ela já foi substituída na cabine
+
+✅ Me retornem com o status pra eu responder o cliente.
 
 Tema do comunicado: {tema or "(nenhum tema em texto — considere só a imagem, se houver)"}
 Observações/detalhes: {observacoes or "nenhuma observação adicional"}
@@ -16780,7 +16812,7 @@ def gerar_comunicado_livre_ia():
             {
                 "contents": [{"parts": parts}],
                 "generationConfig": {
-                    "temperature": 0.4,
+                    "temperature": 0.5,
                     "maxOutputTokens": 1024,
                     "responseMimeType": "application/json",
                     "thinkingConfig": {"thinkingBudget": 0},
