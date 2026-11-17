@@ -7077,7 +7077,7 @@ if _ids_ja:  # .env sem GRUPOS_IDS = aceita todos os grupos; não vira filtro s�
 # 17/11/2026 (Fred): Sal Energia removida COMPLETAMENTE do mapeamento — o grupo
 # "[O&M] - Grid Co. | Sal Energia" deixa de ser aceito pelo webhook e de aparecer
 # nas listas de grupos (comunicado livre, resumos), mesmo que siga no GRUPOS_IDS do .env.
-_GRUPOS_REMOVIDOS = {"120363427259899891"}
+_GRUPOS_REMOVIDOS = {"120363427259899891", "120363428178674382"}  # + "Equipe - Aquiraz/Cascavel" (equipe da Sal Energia)
 GRUPOS_FILTRO = [x for x in GRUPOS_FILTRO if x.strip().replace("@g.us", "") not in _GRUPOS_REMOVIDOS]
 
 
@@ -16860,7 +16860,6 @@ _NOMES_GRUPOS_CONHECIDOS = {
     "120363425342949474": "Equipe Araputanga/Poconé",
     "120363406329162612": "Equipe Nobres",
     "120363424804307945": "Thopen & GridCo. | Usinas FRED ALEXANDRINO",
-    "120363428178674382": "Equipe - Aquiraz/Cascavel",
     "120363406919935108": "Arquivos NVX",
     "120363423651075316": "Equipe Camila O&M",
     # Equipes das usinas novas (05/10/2026)
@@ -17344,7 +17343,7 @@ REGRA MAIS IMPORTANTE (NUNCA VIOLAR):
 
 REGRA FIXA DE DIA DA SEMANA (também NUNCA VIOLAR — tem prioridade sobre TODOS os outros critérios abaixo, incluindo o limite de quantidade por turno do critério 3): a equipe do Cláudio Ferreira (cluster CE Leste 01) tem dias fixos por usina, definidos pelo Fred (regra atualizada em 07/08/2026 — as usinas da GD Energy saíram desse cluster/equipe e foram pro cluster CE Norte 01, equipe do Felipe Xavier; não têm mais dia fixo aqui):
 - Segunda-feira: usina ABC Morada Nova (cliente Alves Lima).
-- Terça-feira: NÃO tem usina fixa (Hortina e Vitesse, da Sal Energia, saíram do mapeamento em 02/10/2026). Trate como a sexta-feira: encaixe a usina do cluster com maior backlog.
+- Terça-feira: NÃO tem usina fixa. Trate como a sexta-feira: encaixe a usina do cluster com maior backlog.
 - Quinta-feira: usina Sítio Bonfim (cliente Thopen).
 - Sexta-feira: NÃO tem usina fixa. Olhe todas as atividades em aberto dessa equipe/cluster (as da lista abaixo) e identifique qual usina do cluster tem o maior backlog (mais atividades acumuladas/atrasadas) — encaixe as atividades dessa usina na sexta-feira. Explique esse raciocínio na "justificativa".
 - Se não houver nenhuma data do dia da semana correspondente disponível na lista de dias úteis fornecida, escolha a data disponível mais próxima e explique isso claramente na "justificativa".
@@ -19474,8 +19473,7 @@ def gerar_relatorio_handover_usina_route():
         conteudo, tipo = gerar_handover_usina_completo(dados, fracttal_pdf_bytes)
 
         # Nomenclatura confirmada nos arquivos de referência da Grid Co.
-        # (ex.: "UFV ABC MORADA NOVA - Relatório Handover - Grid Co.docx",
-        # "UFV Hortina - Relatório Handover - Grid Co.docx").
+        # (ex.: "UFV ABC MORADA NOVA - Relatório Handover - Grid Co.docx").
         extensao = "pdf" if tipo == "pdf" else "docx"
         mimetype = ("application/pdf" if tipo == "pdf" else
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
@@ -26248,6 +26246,13 @@ def prosa_web_arquivo(arq):
     resp = send_file(caminho, mimetype=tipos.get(ext))
     resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+
+# ── Central de Mensagens (17/11/2026): POST /comunicacao/gerar — código em
+# comunicacao_mensagens.py (padrão: docs/PADRAO_COMUNICACAO_RELATORIOS_GRID.md
+# no repo PAINELDEFALHAS). Não remover estas 2 linhas ao reenviar o app.py.
+from comunicacao_mensagens import registrar as _cm_registrar  # noqa: E402
+_cm_registrar(app, _chamar_gemini_com_retry, log)
 
 
 if __name__ == "__main__":
