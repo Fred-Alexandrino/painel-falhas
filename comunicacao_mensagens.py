@@ -181,7 +181,8 @@ def montar_contexto(body):
 
     linhas = [
         f"TIPO: {tipo}",
-        f"DESTINATÁRIO(S): {', '.join(destinatarios) if destinatarios else 'a confirmar'}",
+        f"DESTINATÁRIO(S): {', '.join(destinatarios) if destinatarios else 'não informado (o texto não depende do nome)'}",
+        *([f"CLIENTE: {cliente}"] if cliente else []),
         "UFV(s): " + ("; ".join(ufvs) if ufvs else f"não selecionadas (cliente {cliente}); use só as usinas citadas no rascunho/prints, como \"UFV <Nome>\""),
         f"DATA/HORA DE ENVIO: {_txt(body.get('dataHoraEnvio'), 20) or 'a confirmar'}",
         "RASCUNHO/RELATO:",
