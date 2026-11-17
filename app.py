@@ -7009,9 +7009,9 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Rafael Zocarato', "funcao": 'Técnico', "membros": [], "alternativo": ''},
     {"usina": 'Sapopema', "cliente": 'Thopen', "cluster": 'PR Norte 03', "cidade_uf": 'Sapopema/PR',
      "responsavel": 'Rafael Zocarato', "funcao": 'Técnico', "membros": [], "alternativo": ''},
-    # Segredo: técnico ainda não definido (Pedro Henrique de Candido é o supervisor de campo, não o técnico)
+    # Segredo: técnico Pedro Lima (Fred, 17/11/2026); Pedro Henrique de Candido é o supervisor de campo
     {"usina": 'Segredo', "cliente": 'Thopen', "cluster": 'PR Oeste 02', "cidade_uf": 'Reserva do Iguaçu/PR',
-     "responsavel": '', "funcao": '', "membros": [], "alternativo": ''},
+     "responsavel": 'Pedro Lima', "funcao": 'Técnico', "membros": [], "alternativo": ''},
 ]
 
 # Variações de grafia/apelidos vistas na Fracttal → nome oficial na tabela acima.
