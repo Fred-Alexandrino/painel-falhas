@@ -415,6 +415,45 @@ def registrar(app, chamar_gemini, log):
                  + (" (ajuste)" if body.get("ajuste") or body.get("dividir") else ""))
         return jsonify({"ok": True, **saida}), 200
 
+    @app.route("/comunicacao/relatorio", methods=["POST", "OPTIONS"])
+    def comunicacao_relatorio():
+        """18/11/2026: gera o RELATÓRIO (PDF no modelo Grid — Relatório de Ocorrência) a partir do rascunho,
+        fotos, PDFs e documentos (OS da Fracttal). A IA monta os dados do relatório e o servidor desenha o PDF.
+        Body: igual ao /comunicacao/gerar (cliente, ufvs, rascunho, prints, documentos, dataHoraEnvio) +
+        ajuste? + id? (id de um relatório anterior: reaproveita fotos e dados e aplica o ajuste).
+        Resposta: {ok, id, url, nome, dados, resumo}."""
+        if request.method == "OPTIONS":
+            return ("", 204)
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            return jsonify({"ok": True, **gerar_relatorio(body, chamar_gemini, log)}), 200
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        except Exception as e:
+            msg = re.sub(r"key=[^&\s\"']+", "key=***", str(e))
+            log.error(f"[comunicacao/relatorio] {msg[:300]}")
+            if "429" in msg:
+                msg = "cota da IA esgotada no momento — tente de novo em alguns minutos"
+            elif re.search(r"\b(503|UNAVAILABLE|high demand)\b", msg, re.I):
+                msg = "a IA do Google está sobrecarregada agora — tente de novo em 1 ou 2 minutos"
+            return jsonify({"ok": False, "error": msg[:300]}), 502
+
+    @app.route("/comunicacao/relatorio/<rid>.pdf", methods=["GET"])
+    def comunicacao_relatorio_pdf(rid):
+        from flask import send_file
+        if not re.fullmatch(r"[0-9a-f]{20,40}", rid or ""):
+            return jsonify({"ok": False, "error": "id inválido"}), 400
+        caminho = os.path.join(_REL_DIR, rid, "relatorio.pdf")
+        if not os.path.exists(caminho):
+            return jsonify({"ok": False, "error": "relatório não encontrado"}), 404
+        nome = "Relatorio.pdf"
+        try:
+            nome = json.load(open(os.path.join(_REL_DIR, rid, "meta.json"), encoding="utf-8")).get("arquivo") or nome
+        except Exception:
+            pass
+        return send_file(caminho, mimetype="application/pdf", as_attachment=request.args.get("baixar") == "1",
+                         download_name=nome)
+
     @app.route("/comunicacao/os-anexo", methods=["POST", "OPTIONS"])
     def comunicacao_os_anexo():
         """18/11/2026: lê a OS da Fracttal (o mesmo conteúdo do PDF de impressão da OS: dados, ativos,
@@ -584,4 +623,229 @@ def ler_os_fracttal(link, numero=None, max_fotos=3):
         raise ValueError("a Fracttal não devolveu a OS")
     texto = montar_texto_os(d, numero)
     return {"nome": f"OS {d.get('wo_folio') or numero or ''} (Fracttal)", "texto": texto[:_LIM_DOC],
-            "fotos": _fotos_os(d, max(0, min(int(max_fotos or 0), _MAX_PRINTS)))}
+            "fotos": _fotos_os(d, max(0, min(int(max_fotos or 0), _MAX_FOTOS_REL)))}
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RELATÓRIO (PDF) — 18/11/2026. Modelo: Relatório de Ocorrência da UFV Tupi Paulista I
+# (skill grid-relatorio-ocorrencia). A IA devolve os dados; relatorio_ocorrencia_pdf desenha.
+# ══════════════════════════════════════════════════════════════════════════════
+import os  # noqa: E402
+import uuid  # noqa: E402
+
+_REL_DIR = os.path.expanduser("~/relatorios_central")
+_MAX_FOTOS_REL = 8
+
+SYSTEM_RELATORIO = """Você é o redator técnico de relatórios da Grid Co. (O&M de usinas fotovoltaicas). Escreve em português do Brasil, em nome de Fred Alexandrino, Supervisor de O&M. Monta o conteúdo de um RELATÓRIO formal (PDF) no modelo "Relatório de Ocorrência" da Grid, que vai ao cliente.
+
+SAÍDA: responda SOMENTE em JSON, neste formato (todas as chaves; listas podem ser vazias):
+{"rotulo": "RELATÓRIO DE OCORRÊNCIA" | "RELATÓRIO DE ATIVIDADE",
+ "titulo": "<título curto da capa, Iniciais Maiúsculas, ex.: Condição Crítica do Acesso | Falha na TCU do Tracker 50 | Manutenção Preventiva Anual>",
+ "tituloCurto": "<mesmo assunto em minúsculas, para o cabeçalho das páginas>",
+ "usina": "UFV <Nome>", "cidadeUf": "<Cidade/UF ou vazio>", "cliente": "<cliente>",
+ "tema": "<frase curta do contexto, ex.: Via de acesso à usina e segurança da equipe de O&M>",
+ "destaque": "<1 linha: o achado principal>",
+ "referencia": "<ex.: Vistoria de campo em 16/11/2026 | OS 9035 — execução em 08/07/2026>",
+ "objetivo": "<1 parágrafo: o que o documento registra e para quê>",
+ "enquadramento": {"rotulo": "ENQUADRAMENTO", "texto": "<tipo da ocorrência e por que importa, 1-2 frases>"},
+ "cronologia": [{"quando": "<dd/mm hhhmm | dd/mm/aaaa | Rotina>", "texto": "<fato>", "critico": true|false}],
+ "tituloCondicoes": "CONDIÇÕES E RISCOS IDENTIFICADOS" | "EQUIPAMENTOS E DANOS IDENTIFICADOS" | "RESULTADO DA INSPEÇÃO",
+ "condicoes": [{"item": "<item/equipamento>", "situacao": "<o que foi encontrado>", "criticidade": "Crítico|Alto|Médio|Baixo|OK"}],
+ "acoes": [{"data": "<dd/mm/aaaa | Em curso | A definir>", "acao": "<ação>", "status": "Concluído|Em andamento|Aguardando cliente|Pendente"}],
+ "evidencias": [{"foto": <índice da FOTO>, "legenda": "<o que a foto mostra, objetiva>", "data": "<data/hora se visível ou informada, senão vazio>", "registro": "<nome de quem fotografou, se informado, senão vazio>"}],
+ "tituloAtencao": "PONTO DE ATENÇÃO — <TEMA>",
+ "atencao": {"resumo": "<1 frase>", "paragrafos": ["..."], "itens": ["<recomendação>;"], "fecho": ["..."]},
+ "conclusao": ["<parágrafo de conclusão>", "<parágrafo com o pedido ao cliente / próximos passos>"],
+ "local": "<Cidade (UF)>",
+ "observacoes": ["<dados que faltaram e ficaram 'a definir', inconsistências>"]}
+
+REGRAS
+- Use SÓ fatos do rascunho, das fotos, dos PDFs e documentos anexados. Nunca invente datas, horários, nomes, medições, causas ou culpados. Dado essencial faltando: "A definir"/"a confirmar" e registre em "observacoes".
+- Causa não confirmada: "sob investigação"/"a confirmar", nunca como fato.
+- Nomes reais de quem atuou em campo quando informados (em "acoes" e "registro"). Não use "equipe de campo" se o nome foi dado.
+- Tom formal, técnico e cordial; sem bastidores internos, desabafos ou ruídos. Nunca cite WhatsApp, grupo, áudio, print, "conforme conversa" nem frases literais entre aspas. Atribua orientações à área ("De acordo com a engenharia, ...").
+- Não anuncie cordialidade ("de forma cordial", "gentilmente").
+- Grid = monitoramento, acompanhamento de segurança, manobras, validação de laudos. Obras civis/serviços especializados = contratada do cliente. Nunca prometa data que dependa de fabricante, concessionária ou homologação.
+- OS da Fracttal: checklist "Falhou" em item que só se faz sob solicitação do cliente, "se aplicável" ou justificado como não aplicável NÃO é pendência. Pendência é defeito/falta encontrado. Itens aprovados: resuma, não liste um a um. Use o nº da OS na referência.
+- Preventiva: "como parte do cronograma de manutenção preventiva sob responsabilidade da Grid". Use rotulo "RELATÓRIO DE ATIVIDADE" quando não houver ocorrência/incidente (atividade de rotina sem falha relevante).
+- Evidências: escolha as fotos que mostram o problema/serviço (máx. 8), na ordem lógica; legenda curta e objetiva ("Sulco de erosão na faixa de rodagem"), sem floreio. Não use foto de tela/print de conversa como evidência.
+- Criticidade: Crítico = risco imediato a pessoas/ativos ou parada; Alto = perda relevante ou agravamento provável; Médio; Baixo; OK = sem anomalia.
+- "cronologia" em ordem; marque critico=true só nos fatos de falha/risco. Última linha: emissão do relatório na data do relatório.
+- Seções sem fatos: lista vazia (a seção sai do PDF). Não encha linguiça.
+- Usinas sempre "UFV <Nome>". Sem markdown, sem asteriscos."""
+
+
+def _rel_dir(rid):
+    return os.path.join(_REL_DIR, rid)
+
+
+def _salvar_rel(rid, dados, fotos, meta, pdf):
+    d = _rel_dir(rid)
+    os.makedirs(os.path.join(d, "fotos"), exist_ok=True)
+    for i, f in enumerate(fotos):
+        with open(os.path.join(d, "fotos", f"{i:02d}.jpg"), "wb") as fh:
+            fh.write(f)
+    json.dump(dados, open(os.path.join(d, "dados.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    json.dump(meta, open(os.path.join(d, "meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    with open(os.path.join(d, "relatorio.pdf"), "wb") as fh:
+        fh.write(pdf)
+
+
+def _carregar_rel(rid):
+    if not re.fullmatch(r"[0-9a-f]{20,40}", str(rid or "")):
+        raise ValueError("relatório anterior inválido")
+    d = _rel_dir(rid)
+    if not os.path.exists(os.path.join(d, "dados.json")):
+        raise ValueError("relatório anterior não encontrado — gere de novo")
+    dados = json.load(open(os.path.join(d, "dados.json"), encoding="utf-8"))
+    meta = json.load(open(os.path.join(d, "meta.json"), encoding="utf-8"))
+    fotos = []
+    pasta = os.path.join(d, "fotos")
+    for nome in sorted(os.listdir(pasta)) if os.path.isdir(pasta) else []:
+        fotos.append(open(os.path.join(pasta, nome), "rb").read())
+    return dados, fotos, meta
+
+
+def _jpeg(b64):
+    from PIL import Image, ImageOps
+    im = Image.open(io.BytesIO(base64.b64decode(b64)))
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    im.thumbnail((1600, 1600))
+    out = io.BytesIO()
+    im.save(out, "JPEG", quality=84)
+    return out.getvalue()
+
+
+def _resumo_rel(dados):
+    """Texto do relatório (para o texto de envio e para o ajuste)."""
+    L = [f"{dados.get('rotulo')}: {dados.get('titulo')} — {dados.get('usina')} ({dados.get('cliente')})",
+         f"Referência: {dados.get('referencia')}", f"Destaque: {dados.get('destaque')}", f"Objetivo: {dados.get('objetivo')}"]
+    enq = dados.get("enquadramento") or {}
+    if isinstance(enq, dict) and enq.get("texto"):
+        L.append(f"Enquadramento: {enq['texto']}")
+    for c in dados.get("cronologia") or []:
+        L.append(f"Cronologia — {c.get('quando')}: {c.get('texto')}")
+    for c in dados.get("condicoes") or []:
+        L.append(f"Condição — {c.get('item')}: {c.get('situacao')} [{c.get('criticidade')}]")
+    for a in dados.get("acoes") or []:
+        L.append(f"Ação — {a.get('data')}: {a.get('acao')} [{a.get('status')}]")
+    L.append(f"Evidências fotográficas: {len(dados.get('evidencias') or [])} foto(s)")
+    at = dados.get("atencao") or {}
+    if isinstance(at, dict):
+        if at.get("resumo"):
+            L.append(f"{dados.get('tituloAtencao')}: {at['resumo']}")
+        L += [f"Recomendação: {x}" for x in at.get("itens") or []]
+    L += [f"Conclusão: {x}" for x in dados.get("conclusao") or []]
+    return "\n".join(L)
+
+
+def _nome_arquivo(dados):
+    base = f"Relatorio_{'Ocorrencia' if 'OCORR' in str(dados.get('rotulo') or '').upper() else 'Atividade'}_" \
+           f"{dados.get('tituloCurto') or dados.get('titulo') or ''}_{dados.get('usina') or ''}"
+    import unicodedata
+    base = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_")[:90]
+    return base + ".pdf"
+
+
+def gerar_relatorio(body, chamar_gemini, log):
+    import relatorio_ocorrencia_pdf as R
+    ajuste = str(body.get("ajuste") or "").strip()[:_LIM_AJUSTE]
+    data_rel = _txt(body.get("dataHoraEnvio"), 20)[:10] or datetime.now(_TZ).strftime("%d/%m/%Y")
+    if body.get("id"):
+        if not ajuste:
+            raise ValueError("descreva o ajuste")
+        dados_ant, fotos, meta = _carregar_rel(body["id"])
+        partes = [{"text": "RELATÓRIO ATUAL (JSON) — aplique o AJUSTE e devolva o JSON COMPLETO corrigido, no mesmo formato. "
+                           "Mantenha tudo o que o ajuste não muda. Os índices de foto continuam valendo "
+                           f"(há {len(fotos)} foto(s), índices 0 a {len(fotos) - 1}).\n"
+                           + json.dumps(dados_ant, ensure_ascii=False) + f"\n\nAJUSTE PEDIDO: {ajuste}"}]
+        imagens = []
+    else:
+        body = dict(body, tipo="envio_relatorio")
+        itens = body.get("prints") or []
+        imgs = [it for it in itens if isinstance(it, dict) and str(it.get("mimeType") or "").lower() in _MIMES_PRINT][:_MAX_FOTOS_REL + 4]
+        pdfs = [it for it in itens if isinstance(it, dict) and str(it.get("mimeType") or "").lower() == "application/pdf"]
+        fotos = []
+        for it in imgs:
+            try:
+                fotos.append(_jpeg(re.sub(r"^data:[^,]+,", "", str(it.get("base64") or ""))))
+            except Exception:
+                continue
+        docs = documentos_validos(dict(body, prints=pdfs))
+        rascunho = str(body.get("rascunho") or "").strip()[:_LIM_RASCUNHO]
+        if not rascunho and not fotos and not pdfs and not docs:
+            raise ValueError("escreva o relato, anexe fotos ou o PDF da OS antes de gerar o relatório")
+        cliente = _txt(body.get("cliente"), 60)
+        ufvs = []
+        for u in (body.get("ufvs") or [])[:10]:
+            if isinstance(u, dict) and _txt(u.get("ufv"), 80):
+                ufvs.append(_txt(u.get("ufv"), 80) + (f" ({_txt(u.get('cidadeUf'), 60)})" if _txt(u.get("cidadeUf")) else ""))
+        L = [f"CLIENTE: {cliente or 'a confirmar'}",
+             "UFV(s): " + ("; ".join(ufvs) if ufvs else "use a usina citada no material, como \"UFV <Nome>\""),
+             f"DATA DO RELATÓRIO: {data_rel}",
+             "RELATO DO FRED:", rascunho or "(sem relato escrito — use os anexos)"]
+        pessoas = [p for p in (body.get("pessoas") or []) if isinstance(p, dict) and _txt(p.get("nome"), 80)][:120]
+        if pessoas:
+            L.append("CARGOS: " + "; ".join(f"{_txt(p.get('nome'), 80)} — {_txt(p.get('cargo'), 80)}" for p in pessoas))
+        for d in docs:
+            L += [f"DOCUMENTO ANEXADO — {d['nome']}:", d["texto"], "--- fim do documento ---"]
+        if pdfs:
+            L.append(f"PDF(s) ANEXADO(S): {len(pdfs)} logo abaixo — leia inteiro.")
+        if fotos:
+            L.append(f"FOTOS: {len(fotos)} imagem(ns) logo abaixo, na ordem: FOTO 0, FOTO 1, ... Use esses índices em evidencias.foto.")
+        partes = [{"text": "\n".join(L)}]
+        pdf_partes = [p for p in prints_validos(dict(body, prints=pdfs)) if p]
+        partes += pdf_partes
+        imagens = []
+        for i, f in enumerate(fotos):
+            imagens += [{"text": f"FOTO {i}:"}, {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(f).decode()}}]
+        meta = {"cliente": cliente, "criado": datetime.now(_TZ).strftime("%d/%m/%Y %H:%M")}
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_RELATORIO}]},
+        "contents": [{"role": "user", "parts": partes + imagens}],
+        "generationConfig": {"temperature": 0.25, "maxOutputTokens": 8192, "responseMimeType": "application/json",
+                             "thinkingConfig": {"thinkingBudget": 0}},
+    }
+    resp = None
+    for espera in (4, 10, None):
+        try:
+            resp = chamar_gemini(payload, timeout=150)
+            break
+        except Exception as e_g:
+            if espera is None or not re.search(r"\b(503|500|UNAVAILABLE|overloaded|high demand)\b", str(e_g), re.I):
+                raise
+            time.sleep(espera)
+    data = resp.json()
+    cand = (data.get("candidates") or [{}])[0]
+    bruto = "".join(p.get("text", "") for p in ((cand.get("content") or {}).get("parts") or []) if isinstance(p, dict))
+    t = re.sub(r"^```(?:json)?\s*|\s*```$", "", bruto.strip())
+    try:
+        dados = json.loads(t)
+    except Exception:
+        m = re.search(r"\{.*\}", t, re.S)
+        if not m:
+            raise ValueError(f"a IA não devolveu o relatório ({cand.get('finishReason') or 'resposta vazia'})")
+        dados = json.loads(m.group(0))
+    if not isinstance(dados, dict):
+        raise ValueError("a IA devolveu um formato inesperado")
+    dados["dataRelatorio"] = data_rel if not body.get("id") else (dados.get("dataRelatorio") or data_rel)
+    dados.setdefault("responsavelTecnico", "Fred Alexandrino — Supervisor de O&M")
+    dados["assinatura"] = {"nome": "Fred Alexandrino", "cargo": "Supervisor de O&M — Grid Co."}
+    if body.get("id"):
+        try:
+            dados["revisao"] = f"{int(str((dados_ant or {}).get('revisao') or '01')) + 1:02d}"
+        except Exception:
+            dados["revisao"] = "02"
+    else:
+        dados["revisao"] = "01"
+    obs = dados.pop("observacoes", []) or []
+    pdf = R.gerar_pdf(dados, fotos)
+    rid = uuid.uuid4().hex
+    meta = dict(meta, arquivo=_nome_arquivo(dados), anterior=body.get("id") or "", ajuste=ajuste)
+    _salvar_rel(rid, dados, fotos, meta, pdf)
+    log.info(f"[comunicacao/relatorio] {rid} {meta['arquivo']} ({len(pdf) // 1024} KB, {len(fotos)} foto(s))")
+    return {"id": rid, "url": f"/comunicacao/relatorio/{rid}.pdf", "nome": meta["arquivo"], "dados": dados,
+            "resumo": _resumo_rel(dados), "observacoes": [str(o) for o in obs if str(o).strip()],
+            "paginas": pdf.count(b"/Type /Page") - pdf.count(b"/Type /Pages"), "kb": len(pdf) // 1024}
