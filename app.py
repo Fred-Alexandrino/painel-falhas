@@ -17474,6 +17474,9 @@ def _montar_prompt_comunicado_livre(tema, observacoes, tem_imagem=False):
     # lista de "itens a confirmar" sem entender a história. Agora o contexto
     # é obrigatório (de onde veio, o que já foi feito, o que falta), com
     # linguagem simples de colega pra colega, sem virar textão.
+    # 18/11/2026: Fred achou a estrutura com emojis (⚠️📋❗✅) e tópicos com
+    # cara de checklist — agora é TEXTO CORRIDO, como mensagem escrita à mão.
+    # Lista só com 4+ itens. Vale para técnicos e para clientes.
     bloco_imagem = ""
     if tem_imagem:
         bloco_imagem = """
@@ -17494,42 +17497,31 @@ OBJETIVO: o técnico tem que ler no celular, entender a história em poucos segu
    - O que exatamente ficou em aberto e por que estou pedindo agora.
    Comunicado que só lista "itens a confirmar" sem dizer quem pediu, o que já foi feito e o que falta está ERRADO.
 
-2) O PEDIDO TEM QUE PULAR AOS OLHOS: o que o técnico precisa fazer/confirmar vai em lista curta (um item por linha, começando com •), em linguagem de campo, com verbo claro. Nunca dissolva o pedido dentro de parágrafo.
+2) O PEDIDO TEM QUE FICAR CLARO: num parágrafo próprio, logo depois do contexto, diga com verbo claro o que preciso que façam/confirmem. Até 3 itens, eles entram na própria frase (ex.: "Vocês conseguem me confirmar se a fonte já chegou e se já foi substituída?"). SÓ use lista (um item por linha, com •) quando houver 4 itens ou mais.
 
-3) FECHAMENTO: uma linha dizendo o que espero de volta e, se fizer sentido, para quê (ex.: "Me retornem com o status pra eu dar a resposta pro cliente."). Prazo só se foi informado.
+3) FECHAMENTO: junto do pedido, diga o que espero de volta e, se fizer sentido, para quê (ex.: "Preciso dessa informação pra dar o retorno ao cliente."). Prazo só se foi informado.
 
-4) CONSEQUÊNCIA: se o usuário informou o que acontece caso a instrução não seja cumprida, ela é ponto central e entra numa linha destacada com ❗. Se NÃO informou, NÃO crie a linha ❗ e NÃO invente consequência (ex. de erro real a evitar: escrever "a ausência dessa confirmação impede a validação das manutenções" quando ninguém disse isso).
+4) CONSEQUÊNCIA: se o usuário informou o que acontece caso a instrução não seja cumprida, ela é ponto central e entra numa frase clara e explícita (sem emoji). Se NÃO informou, NÃO invente consequência (ex. de erro real a evitar: escrever "a ausência dessa confirmação impede a validação das manutenções" quando ninguém disse isso).
 
 O que NÃO fazer:
 - Não inventar fatos: datas, OS, quantidades, nomes de usina/cabine/equipamento, prazos, consequências, passos técnicos extras de verificação.
 - Não usar linguagem de aula de segurança, alarmista ou corporativa ("Prezados", "Venho por meio desta", "Atenciosamente", "Verificação de pendência:").
 - Não transformar expectativa em certeza: "acredito que", "acho que", "talvez", "devemos conseguir" continuam incertos — se não há data confirmada, diga que ainda não há data. Na dúvida, mais conservador.
 
-FORMATO (WhatsApp):
-⚠️ *Assunto curto em negrito*
-(linha em branco)
-Contexto em 2-3 frases normais, sem emoji.
-(linha em branco)
-📋 Frase curta introduzindo o pedido (ex.: "Preciso que me confirmem:")
-• item
-• item
-(linha em branco)
-❗ Consequência — SÓ se foi informada pelo usuário.
-✅ Fechamento / próximo passo.
-Use *negrito* só no assunto e em nomes de usina, datas e números importantes. Tamanho típico: 7 a 12 linhas. Pode abrir o contexto com "Pessoal," quando soar natural.
+FORMATO (WhatsApp) — TEXTO CORRIDO, como uma mensagem que o supervisor digitaria à mão. NÃO pode parecer checklist ou formulário:
+- SEM título/assunto em linha separada, SEM emojis (nada de ⚠️ 📋 ❗ ✅), SEM rótulos tipo "Itens a confirmar:" ou "Próximo passo:".
+- Abra com uma saudação curta e natural ("Bom dia, pessoal." / "Pessoal,") já emendando o contexto.
+- 2 parágrafos curtos, normalmente: (1) contexto; (2) pedido + fechamento (+ consequência, se informada). Separe os parágrafos com uma linha em branco.
+- Lista com • somente se houver 4 itens ou mais para fazer/conferir.
+- Negrito (*texto*) com moderação, só em nome de usina, data ou número realmente importante — em geral nem precisa.
+- Se o destino for CLIENTE: mesmo formato, tom cordial e profissional ("Bom dia, Paula." / "Bom dia, pessoal."), sem gíria, sem expor problema interno da equipe, sem prometer prazo/causa não confirmados.
 
 EXEMPLO (só para calibrar tom e tamanho — não copie fatos dele para outros comunicados):
 Fonte: print de mensagem de "Paula - Thopen": "@Fred Alexandrino, quando tu estavas de férias, Camila havia mencionado que as contatoras das CMP's já haviam sido substituídas, mas não me recordo de ter visto a respeito da fonte capacitiva de uma das cabines. Poderia confirmar se chegou na casa do técnico e se já foi substituída?"
 Comunicado bom:
-⚠️ *Fonte capacitiva das CMPs*
+Bom dia, pessoal. A Paula, da Thopen, me perguntou sobre as CMPs. Enquanto eu estava de férias, a Camila informou que as contatoras já tinham sido substituídas, mas ficou sem retorno a fonte capacitiva de uma das cabines.
 
-Pessoal, a Paula, da Thopen, me perguntou sobre as CMPs. Enquanto eu estava de férias, a Camila informou que as contatoras já foram substituídas, mas ficou sem retorno a fonte capacitiva de uma das cabines.
-
-📋 Preciso que me confirmem:
-• Se a fonte capacitiva já chegou na casa do técnico
-• Se ela já foi substituída na cabine
-
-✅ Me retornem com o status pra eu responder o cliente.
+Vocês conseguem me confirmar se a fonte já chegou na casa do técnico e se ela já foi substituída na cabine? Preciso dessa informação pra dar o retorno ao cliente.
 
 Tema do comunicado: {tema or "(nenhum tema em texto — considere só a imagem, se houver)"}
 Observações/detalhes: {observacoes or "nenhuma observação adicional"}
@@ -25021,7 +25013,7 @@ def _ajuda_preparar(body):
         '"cliente_pede": [str],\n"ja_feito": [str] (do que consta nas conversas e sistemas),\n"pendente": [str],\n'
         '"acoes_tecnico": [{"acao": str (verbo no imperativo, específica), "equipamento": str, "porque": str}],\n'
         '"conferir_no_projeto": [str] (documentos/desenhos/datasheets/parâmetros a consultar, e por quê),\n'
-        '"resposta_cliente": str (texto pronto para o WhatsApp: cordial e profissional, sem emoji, sem adjetivos inventados, '
+        '"resposta_cliente": str (texto pronto para o WhatsApp: TEXTO CORRIDO como mensagem escrita à mão (sem título, sem tópicos/listas, sem rótulos tipo "Status:"), cordial e profissional, sem emoji, sem adjetivos inventados, '
         'sem prometer prazo, valor ou causa que não esteja confirmado; use [preencher: ...] onde faltar dado),\n'
         '"alertas": [{"tipo": "SLA"|"contratual"|"risco"|"escalonar", "texto": str}],\n'
         '"lacunas": [str] (o que você não conseguiu saber e que mudaria a orientação),\n'
