@@ -573,7 +573,7 @@ def _fotos_os(d, maximo):
     """Escolhe até `maximo` fotos: primeiro as dos itens com Falhou/Alerta, depois uma por ativo."""
     if maximo <= 0:
         return []
-    prioridade, demais = [], []
+    prioridade, demais, resto = [], [], []
     for t in d.get("tasks") or []:
         ruins = {f.get("id_work_orders_tasks_form_items") for f in (t.get("task_form_items") or [])
                  if f.get("id_task_form_item_type") == 4 and str(f.get("value")) in ("2", "3")}
@@ -583,6 +583,13 @@ def _fotos_os(d, maximo):
                 prioridade.append(i)
             elif k == 0:
                 demais.append(i)
+            else:
+                resto.append(i)
+    # 18/11: completa com as demais fotos espalhadas pela OS (OS de um ativo só trazia 1 foto)
+    falta = maximo - len(prioridade) - len(demais)
+    if falta > 0 and resto:
+        passo = len(resto) / falta
+        demais += [resto[int(k * passo)] for k in range(min(falta, len(resto)))]
     saida = []
     try:
         from PIL import Image
