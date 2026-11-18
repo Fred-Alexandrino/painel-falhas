@@ -28,6 +28,7 @@ import base64
 import io
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, unquote
 
@@ -344,7 +345,16 @@ def registrar(app, chamar_gemini, log):
         tipo = body.get("tipo")
         try:
             tem_pdf = any((p.get("inline_data") or {}).get("mime_type") == "application/pdf" for p in prints)
-            resp = chamar_gemini(payload_gemini(contexto, prints), timeout=110 if tem_pdf else (60 if prints else 45))
+            # 18/11/2026: o Gemini às vezes devolve 503 ("high demand") — tenta mais 2 vezes antes de desistir
+            for espera in (4, 10, None):
+                try:
+                    resp = chamar_gemini(payload_gemini(contexto, prints), timeout=110 if tem_pdf else (60 if prints else 45))
+                    break
+                except Exception as e_g:
+                    if espera is None or not re.search(r"\b(503|500|UNAVAILABLE|overloaded|high demand)\b", str(e_g), re.I):
+                        raise
+                    log.warning(f"[comunicacao/gerar] Gemini indisponível, nova tentativa em {espera}s")
+                    time.sleep(espera)
             data = resp.json()
             cand = (data.get("candidates") or [{}])[0]
             partes = ((cand.get("content") or {}).get("parts") or [])
@@ -355,9 +365,11 @@ def registrar(app, chamar_gemini, log):
             saida = interpretar_resposta(bruto, tipo)
         except Exception as e:
             log.error(f"[comunicacao/gerar] {tipo}: {e}")
-            msg = str(e)
+            msg = re.sub(r"key=[^&\s\"']+", "key=***", str(e))   # nunca devolver a chave da API para a tela
             if "429" in msg:
                 msg = "cota da IA esgotada no momento — tente de novo em alguns minutos"
+            elif re.search(r"\b(503|UNAVAILABLE|high demand)\b", msg, re.I):
+                msg = "a IA do Google está sobrecarregada agora — tente de novo em 1 ou 2 minutos"
             return jsonify({"ok": False, "error": msg[:300]}), 502
         log.info(f"[comunicacao/gerar] {tipo}: {len(saida['mensagens'])} mensagem(ns)"
                  + (" (ajuste)" if body.get("ajuste") or body.get("dividir") else ""))
