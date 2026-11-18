@@ -25546,7 +25546,7 @@ def nexus_performance():
 _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @name         Grid Performance → Painel
 // @namespace    gridco-fred
-// @version      1.4
+// @version      1.5
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-performance-painel.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-performance-painel.user.js
 // @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
@@ -25655,6 +25655,8 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
     if (!forcar && agora - trava < 5 * 60000) return;          // outra aba já está enviando
     const ult = GM_getValue('gpUltimo', 0), ultAnt = GM_getValue('gpUltimoAnterior', 0);
     if (!forcar && agora - ult < INTERVALO_MIN * 60000) return;
+    // v1.5 (18/11/2026): envio automático que falhou espera 30 min antes de tentar de novo (não insiste a cada página aberta)
+    if (!forcar && agora - GM_getValue('gpFalhaAuto', 0) < 30 * 60000) return;
     GM_setValue('gpTrava', agora);
     const anterior = forcar || agora - ultAnt > INTERVALO_ANTERIOR_H * 3600000;
     try {
@@ -25664,16 +25666,20 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
       const mAtual = Object.values(p.meses)[0] || {};
       if (mAtual.gerencial && mAtual.gerencial.erro && mAtual.disponibilidade && mAtual.disponibilidade.erro) {
         const cod = (String(mAtual.gerencial.erro).match(/HTTP (\d+)/) || [])[1] || '?';
+        if (cod === '401' || cod === '403') throw new Error('o Nexus recusou o acesso à torre Performance (HTTP ' + cod + '). Confira se o Painel NOC abre no Nexus com o seu login; se lá também estiver bloqueado, é permissão do Nexus. Nada foi alterado na Central.');
         throw new Error('a torre Performance do Nexus não respondeu (HTTP ' + cod + '). O Painel NOC do próprio Nexus deve estar em branco. Nada foi alterado na Central; tente de novo mais tarde.');
       }
       const j = await enviar(p);
       if (!(j.meses || []).length) throw new Error('o Nexus devolveu leitura vazia; nada foi alterado na Central.');
-      GM_setValue('gpUltimo', Date.now());
+      GM_setValue('gpUltimo', Date.now()); GM_setValue('gpFalhaAuto', 0);
       if (anterior) GM_setValue('gpUltimoAnterior', Date.now());
       aviso('enviado ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : '') + ' às ' + (j.em || '').slice(-5));
       return true;
     } catch (e) {
-      aviso('falhou: ' + (e.message || e), true);
+      // v1.5: no envio automático (em segundo plano) não mostra o aviso vermelho em toda página do Nexus;
+      // o erro só aparece quando o Fred pede ("Atualizar do Nexus" na Central ou pelo menu do Tampermonkey).
+      if (forcar) aviso('falhou: ' + (e.message || e), true);
+      else { GM_setValue('gpFalhaAuto', Date.now()); GM_setValue('gpUltimoErro', String(e.message || e)); }
       return false;
     } finally { GM_setValue('gpTrava', 0); }
   }
