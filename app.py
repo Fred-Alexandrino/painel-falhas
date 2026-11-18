@@ -27438,7 +27438,7 @@ def _rse_capa(c, d):
 
     campos = [("CLIENTE", d.get("cliente") or "—"), ("USINAS", d.get("usinasTexto") or "—"),
               ("DATA DO RELATÓRIO", d.get("dataExtenso") or ""),
-              ("RESPONSÁVEL TÉCNICO", d.get("responsavelTecnico") or "Fred Alexandrino — Supervisor de O&M")]
+              ("RESPONSÁVEL TÉCNICO", d.get("responsavelTecnico") or "Fred Alexandrino — Supervisor de Contratos")]
     yb = 150
     for k, v in campos:
         c.setFillColor(HexColor(_RSE_LILAC))
@@ -27654,7 +27654,7 @@ def gerar_pdf_relatorio_chamados_se(d):
     fecho += [Spacer(1, 18), Paragraph(e(d.get("localData") or d.get("dataExtenso") or ""), ParagraphStyle("ld", parent=st_p, alignment=TA_LEFT)),
               Spacer(1, 30)]
     ass = Table([[Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">Fred Alexandrino</font>', st_p)],
-                 [Paragraph("Supervisor de O&amp;M — Grid Co.", ParagraphStyle("as", parent=st_s))]],
+                 [Paragraph("Supervisor de Contratos — Grid Co.", ParagraphStyle("as", parent=st_s))]],
                 colWidths=[190], hAlign="LEFT")
     ass.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.75, navy), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                              ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
