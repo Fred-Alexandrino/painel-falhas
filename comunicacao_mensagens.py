@@ -676,7 +676,8 @@ REGRAS
 - Grid = monitoramento, acompanhamento de segurança, manobras, validação de laudos. Obras civis/serviços especializados = contratada do cliente. Nunca prometa data que dependa de fabricante, concessionária ou homologação.
 - OS da Fracttal: checklist "Falhou" em item que só se faz sob solicitação do cliente, "se aplicável" ou justificado como não aplicável NÃO é pendência. Pendência é defeito/falta encontrado. Itens aprovados: resuma, não liste um a um. Use o nº da OS na referência.
 - Preventiva: "como parte do cronograma de manutenção preventiva sob responsabilidade da Grid". Use rotulo "RELATÓRIO DE ATIVIDADE" quando não houver ocorrência/incidente (atividade de rotina sem falha relevante).
-- Evidências: escolha as fotos que mostram o problema/serviço (máx. 8), na ordem lógica; legenda curta e objetiva ("Sulco de erosão na faixa de rodagem"), sem floreio. Não use foto de tela/print de conversa como evidência.
+- Evidências: havendo FOTOS de campo, "evidencias" NUNCA fica vazia — inclua todas as fotos de campo (máx. 8; só deixe de fora print de tela/conversa ou foto repetida), na ordem lógica do percurso/serviço; legenda curta, objetiva e específica do que aquela foto mostra ("Sulco de erosão na faixa de rodagem", "Cratera na lateral da via, com bordas instáveis"), sem floreio. Data/hora e nome: use o que está carimbado na foto ou informado.
+- Seja completo e específico (o relatório vai formalizar o caso ao cliente): cada achado distinto do relato, das fotos ou do documento vira uma linha em "condicoes" (um problema por linha, não junte tudo numa só) e inclua como linhas próprias os impactos (segurança da equipe/veículos, atendimento à usina, geração) quando o material os indicar. "cronologia": um fato por linha, com o horário de cada registro/foto quando houver. "acoes": o que já foi feito (vistoria, testes, registro fotográfico com o nome de quem fez, emissão do relatório), o que está em curso e o que depende do cliente/fabricante ("Aguardando cliente"/"Pendente"). "atencao.itens": recomendações concretas e técnicas.
 - Criticidade: Crítico = risco imediato a pessoas/ativos ou parada; Alto = perda relevante ou agravamento provável; Médio; Baixo; OK = sem anomalia.
 - "cronologia" em ordem; marque critico=true só nos fatos de falha/risco. Última linha: emissão do relatório na data do relatório.
 - Seções sem fatos: lista vazia (a seção sai do PDF). Não encha linguiça.
@@ -848,6 +849,12 @@ def gerar_relatorio(body, chamar_gemini, log):
     else:
         dados["revisao"] = "01"
     obs = dados.pop("observacoes", []) or []
+    # 18/11: a IA às vezes devolve "evidencias" vazia mesmo com fotos — nenhuma foto de campo fica de fora do PDF
+    evid = [e for e in (dados.get("evidencias") or []) if isinstance(e, dict)]
+    usadas = {e.get("foto") for e in evid}
+    if fotos and not evid:
+        dados["evidencias"] = [{"foto": i, "legenda": "Registro fotográfico de campo", "data": "", "registro": ""}
+                               for i in range(min(len(fotos), _MAX_FOTOS_REL)) if i not in usadas]
     pdf = R.gerar_pdf(dados, fotos)
     rid = uuid.uuid4().hex
     meta = dict(meta, arquivo=_nome_arquivo(dados), anterior=body.get("id") or "", ajuste=ajuste)
