@@ -24011,6 +24011,104 @@ def oc_comunicado_gerar():
         return _oc_resposta_erro(e)
 
 
+# ── Resumo do caso por IA para o relatório de ocorrências em aberto (18/11/2026) ──
+OC_RESUMO_PROMPT = """Você escreve, para a Grid Co. (O&M de usinas solares), o RESUMO DO CASO de cada ocorrência em aberto, que será lido por um SUPERVISOR DE CAMPO para acompanhar e dar sequência. Ele não conhece o histórico: o resumo precisa contar o caso de forma completa e objetiva.
+
+REGRAS
+1. Use SOMENTE os dados abaixo. Não invente datas, nomes, causas, números de OS ou de chamado, prazos ou resultados.
+2. Para cada ocorrência escreva de 3 a 5 frases corridas, em português do Brasil, na ordem: (a) o que aconteceu e onde (usina, equipamento, quando começou); (b) o que já foi feito, em ordem cronológica, citando datas (dd/mm), OS e chamados quando constarem; (c) em que ponto está hoje e o que está pendente ou de quem se aguarda retorno, se os dados mostrarem.
+3. Não repita a "última ação" palavra por palavra (ela aparece em outro campo): conte o que veio ANTES dela e feche com a situação atual.
+4. Ignore marcações entre colchetes no início dos registros (ex.: "[Férias 26/10-09/11]") e nomes de quem registrou, a menos que o nome seja necessário para entender quem executou a ação em campo.
+5. Se o histórico estiver vazio ou for insuficiente, escreva apenas o que os dados dizem e termine com "Sem histórico detalhado no painel."
+6. Sem telefones, sem links, sem listas, sem emojis. No máximo 90 palavras por resumo.
+
+DADOS (uma ocorrência por bloco)
+{dados}
+
+Responda apenas com JSON: {"resumos":[{"id":"OC-0000","resumo":"..."}]} contendo TODAS as ocorrências recebidas."""
+
+_OC_RESUMOS_CACHE = {}
+
+
+def _oc_resumo_bloco(it):
+    hist = [h for h in (it.get("hist") or []) if (h.get("t") or "").strip()][-20:]
+    linhas = [f"ID: {it['id']}",
+              f"USINA: {it.get('usina') or ''}" + (f" (cliente {it['cliente']})" if it.get("cliente") else ""),
+              f"EQUIPAMENTO: {it.get('equip') or ''}" + (f" — {it['nequip']}" if it.get("nequip") else ""),
+              f"TÍTULO/OCORRÊNCIA: {it.get('titulo') or it.get('causa') or ''}",
+              f"STATUS: {it.get('status')} (início {_oc_dmy(it.get('inicio')) if it.get('inicio') else 's/ data'})"]
+    if it.get("causa") and it.get("causa") != it.get("titulo"):
+        linhas.append(f"DESCRIÇÃO: {str(it['causa'])[:400]}")
+    for k, rot in (("impacto", "IMPACTO"), ("fab", "FABRICANTE"), ("chamado", "CHAMADO"), ("os", "OS VINCULADAS")):
+        if it.get(k):
+            linhas.append(f"{rot}: {it[k]}")
+    linhas.append("HISTÓRICO (do mais antigo ao mais recente):" if hist else "HISTÓRICO: vazio")
+    for h in hist:
+        linhas.append(f"- {_oc_dmy(h.get('d')) or 's/ data'}: {str(h['t'])[:500]}")
+    return "\n".join(linhas)
+
+
+def _oc_resumo_chave(it):
+    import hashlib
+    base = json.dumps([it.get("status"), it.get("os"), it.get("chamado"), it.get("titulo"), it.get("causa"),
+                       [(h.get("d"), h.get("t")) for h in (it.get("hist") or [])]], ensure_ascii=False)
+    return hashlib.md5(base.encode("utf-8")).hexdigest()
+
+
+def _oc_resumir_lote(itens):
+    prompt = OC_RESUMO_PROMPT.replace("{dados}", "\n\n---\n\n".join(_oc_resumo_bloco(i) for i in itens))
+    resp = _chamar_gemini_com_retry({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 6000, "responseMimeType": "application/json",
+                              "thinkingConfig": {"thinkingBudget": 0}},
+    }, timeout=60)
+    cand = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    cand = re.sub(r"^```json\s*|\s*```$", "", cand)
+    return {r.get("id"): (r.get("resumo") or "").strip() for r in (json.loads(cand).get("resumos") or [])}
+
+
+@app.route("/ocorrencias/relatorio/resumos", methods=["POST", "OPTIONS"])
+def oc_relatorio_resumos():
+    """Resumo do caso (IA) de cada ocorrência pedida; guarda em cache enquanto o histórico não mudar."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    bloq = _oc_bloqueio()
+    if bloq:
+        return bloq
+    body = request.get_json(force=True, silent=True) or {}
+    ids = [str(i) for i in (body.get("ids") or [])][:80]
+    try:
+        todos = {x["id"]: x for x in _oc_visiveis(_oc_carregar(forcar=True))}
+        alvo = [todos[i] for i in ids if i in todos]
+        out, faltam = {}, []
+        for it in alvo:
+            c = _OC_RESUMOS_CACHE.get(it["id"])
+            if c and c[0] == _oc_resumo_chave(it):
+                out[it["id"]] = c[1]
+            else:
+                faltam.append(it)
+        if faltam:
+            from concurrent.futures import ThreadPoolExecutor
+            lotes = [faltam[i:i + 6] for i in range(0, len(faltam), 6)]
+
+            def _um(lote):
+                try:
+                    return lote, _oc_resumir_lote(lote)
+                except Exception as e:
+                    log.error(f"[ocorrencias/resumos] lote falhou: {e}")
+                    return lote, {}
+            with ThreadPoolExecutor(max_workers=3) as ex:
+                for lote, res in ex.map(_um, lotes):
+                    for it in lote:
+                        t = (res.get(it["id"]) or "").strip()
+                        if t:
+                            _OC_RESUMOS_CACHE[it["id"]] = (_oc_resumo_chave(it), t)
+                            out[it["id"]] = t
+        return jsonify({"ok": True, "resumos": out, "faltaram": [i["id"] for i in alvo if i["id"] not in out]}), 200
+    except Exception as e:
+        return _oc_resposta_erro(e)
+
+
 # ── Preparo para reunião com o cliente (Gemini, restrito aos fatos do registro) ──
 OC_REUNIAO_PROMPT = """Você é o assistente de preparação de reunião do Supervisor de O&M da Grid Co., empresa que opera e mantém usinas solares (O&M). O supervisor vai se reunir com o CLIENTE (dono/gestor da usina) para tratar de UMA ocorrência. Sua tarefa é dizer, de forma objetiva, assertiva e completa, o que o supervisor deve argumentar nessa reunião.
 
@@ -27589,6 +27687,9 @@ def gerar_pdf_relatorio_chamados_se(d):
                           ParagraphStyle("it", parent=st_s, fontSize=10, leading=13))]
         if it.get("assunto"):
             dir_.append(Paragraph(e(it["assunto"]), ParagraphStyle("ia", parent=st_s, spaceBefore=1)))
+        if it.get("resumo"):
+            dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">Resumo do caso:</font> {e(it["resumo"])}',
+                                  ParagraphStyle("ir", parent=st_s, alignment=TA_JUSTIFY, spaceBefore=3)))
         at = it.get("atualizacao") or {}
         if at.get("texto"):
             rot = (at.get("rotulo") or "Última atualização") + (f" ({at['data']})" if at.get("data") else "")
