@@ -13289,8 +13289,11 @@ def chamados_nexus_importar():
         if not novas:
             return jsonify({"ok": False, "error": "nenhuma linha com nº de OS"}), 400
         n = len(CHAMADOS_NEXUS_HEADERS)
-        ws = _oc_aba(CHAMADOS_NEXUS_SHEET_NAME, CHAMADOS_NEXUS_HEADERS, linhas=600)
-        todos = _gspread_retry(lambda: ws.get_all_values())
+        # 17/11/2026: a cota de leitura do Google (60/min) é dividida com as rotinas do servidor;
+        # aqui espera mais (até ~1,5 min) em vez de devolver "Quota exceeded" para o Fred.
+        _R = dict(tentativas=6, esperas=(5, 10, 15, 20, 30))
+        ws = _gspread_retry(lambda: _oc_aba(CHAMADOS_NEXUS_SHEET_NAME, CHAMADOS_NEXUS_HEADERS, linhas=600), **_R)
+        todos = _gspread_retry(lambda: ws.get_all_values(), **_R)
         por_os = {}
         for i, row in enumerate(todos[1:], start=2):
             row = (row + [""] * n)[:n]
@@ -13300,9 +13303,9 @@ def chamados_nexus_importar():
                      for f, l in novas.items() if f in por_os]
         criar = [l for f, l in novas.items() if f not in por_os]
         if atualizar:
-            _gspread_retry(lambda: ws.batch_update([dict(x) for x in atualizar], value_input_option="RAW"))
+            _gspread_retry(lambda: ws.batch_update([dict(x) for x in atualizar], value_input_option="RAW"), **_R)
         if criar:
-            _gspread_retry(lambda: ws.append_rows(criar, value_input_option="RAW"))
+            _gspread_retry(lambda: ws.append_rows(criar, value_input_option="RAW"), **_R)
         removidas = bloqueadas = 0
         if completo:
             sumiram = sorted((i for f, i in por_os.items() if f not in novas), reverse=True)
