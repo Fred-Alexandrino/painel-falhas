@@ -24127,7 +24127,8 @@ def _ajuda_texto_mensagens(dados, max_chars=14000):
         if not t:
             continue
         if t.startswith("[") and t.endswith("]") and any(k in t for k in ("áudio", "imagem", "vídeo", "documento")):
-            midias += 1
+            if "bot" not in _norm_usina(m.get("remetente") or ""):
+                midias += 1  # 18/11/2026: prints automáticos dos robôs (COS) não contam como mídia não lida
         linhas.append(f"[{m.get('quando')}] {m.get('remetente')}: {t[:500]}")
     texto = "\n".join(linhas)
     if len(texto) > max_chars:
@@ -24189,7 +24190,9 @@ def _ajuda_temas(cliente, horas, grupo_id=None):
     usuario = (
         f"Cliente: {cliente}. Janela: últimas {horas} h. Usinas que interessam ao Fred (as únicas): {nomes}.\n"
         "Identifique os TEMAS em andamento no grupo (um por assunto/usina), ignorando conversas sociais. "
-        "Descarte assuntos de usinas que não estão na lista (conte quantos em 'descartados_fora_do_mapeamento').\n"
+        "Descarte assuntos de usinas que não estão na lista (conte quantos em 'descartados_fora_do_mapeamento'). "
+        "Se a conversa citar uma usina/UFV pelo nome e esse nome não estiver na lista, o assunto é de outra carteira: DESCARTE. "
+        "Use usina \"\" só quando o assunto não citar usina nenhuma.\n"
         'Formato: {"temas":[{"titulo":str,"usina":str (nome exato da lista, ou "" se não ficar claro),"resumo":str (até 3 linhas),'
         '"o_cliente_pede":str,"status":"Aberto"|"Aguardando Grid"|"Aguardando cliente"|"Resolvido"|"Incerto",'
         '"prioridade":"alta"|"media"|"baixa","ultima_mensagem":str (quando e quem)}],"descartados_fora_do_mapeamento":int}\n'
@@ -24368,7 +24371,14 @@ def _ajuda_preparar(body):
     )
     # a conversa de acompanhamento usa só os DADOS (sem o formato JSON da análise inicial)
     dados = usuario.partition("Formato da resposta (JSON):")[0]
-    return {"usuario": usuario, "dados": dados, "fontes": fontes, "avisos": avisos}
+    # 18/11/2026 — Copiloto Fase 3: dados para as ações (ocorrência, mensagem ao técnico)
+    acoes = {"usina": (u or {}).get("usina", ""), "cliente": cliente, "cidade_uf": (u or {}).get("cidade_uf", ""),
+             "responsavel": (u or {}).get("responsavel", ""), "funcao": (u or {}).get("funcao", ""),
+             "supervisor_campo": (u or {}).get("supervisor_campo", ""),
+             "grupo_equipe_id": (u or {}).get("grupo", ""), "grupo_equipe_nome": (u or {}).get("grupo_nome", ""),
+             "ocorrencias": [{"id": o.get("id"), "titulo": o.get("titulo"), "status": o.get("status"), "usina": o.get("usina"),
+                              "equipamento": o.get("equipamento")} for o in ctx["ocorrencias"]]}
+    return {"usuario": usuario, "dados": dados, "fontes": fontes, "avisos": avisos, "acoes": acoes}
 
 
 _AJUDA_PREP_CACHE = {}  # contexto reunido por alguns minutos (as conversas de acompanhamento não rebuscam tudo a cada mensagem)
@@ -24393,7 +24403,8 @@ def _ajuda_analisar(body):
     if p.get("erro"):
         return p
     r = _ajuda_gemini(_AJUDA_SYSTEM_BASE, p["usuario"], max_tokens=5000)
-    return {"ok": True, "resultado": r, "fontes": p["fontes"], "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
+    return {"ok": True, "resultado": r, "fontes": p["fontes"], "avisos": p["avisos"], "acoes": p.get("acoes") or {},
+            "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
 
 
 _AJUDA_SYSTEM_WEB = _AJUDA_SYSTEM_BASE.replace("Responda SOMENTE com JSON válido no formato pedido.", "") + """
@@ -24489,6 +24500,66 @@ def _ajuda_conversar(body):
             "avisos": p["avisos"], "geradoEm": agora_br().strftime("%d/%m/%Y %H:%M")}
 
 
+# ── Copiloto: histórico por tema (18/11/2026) ─────────────────────────────
+# Guarda análise + conversa + textos finais por assunto, num JSON na VM1
+# (fora do Sheets, para não pesar na cota). Últimos 400 registros.
+_CP_HIST_PATH = os.path.join(APP_DIR, "copiloto_historico.json")
+_CP_HIST_LOCK = threading.Lock()
+_CP_HIST_MAX = 400
+
+
+def _cp_hist_ler():
+    try:
+        with open(_CP_HIST_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def _cp_hist_api(modo, body):
+    if modo == "historico":
+        usina = canonizar_usina((body.get("usina") or "").strip()) if (body.get("usina") or "").strip() else ""
+        itens = _cp_hist_ler()
+        if body.get("id"):
+            it = next((x for x in itens if x.get("id") == body.get("id")), None)
+            return ({"ok": True, "item": it}, 200) if it else ({"ok": False, "error": "registro não encontrado"}, 404)
+        if usina:
+            itens = [x for x in itens if x.get("usina") == usina]
+        resumo = [{k: x.get(k) for k in ("id", "usina", "cliente", "titulo", "criadoEm", "atualizadoEm", "acoesFeitas")} for x in itens]
+        resumo.sort(key=lambda x: x.get("atualizadoEm") or "", reverse=True)
+        return {"ok": True, "itens": resumo[:int(body.get("limite") or 30)]}, 200
+    if modo == "historico_salvar":
+        reg = body.get("registro") or {}
+        if not isinstance(reg, dict):
+            return {"ok": False, "error": "registro inválido"}, 400
+        bruto = json.dumps(reg, ensure_ascii=False)
+        if len(bruto) > 120000:
+            return {"ok": False, "error": "registro grande demais"}, 400
+        agora = agora_br().strftime("%Y-%m-%d %H:%M")
+        with _CP_HIST_LOCK:
+            itens = _cp_hist_ler()
+            rid = str(reg.get("id") or "")[:20]
+            atual = next((x for x in itens if rid and x.get("id") == rid), None)
+            if not atual:
+                atual = {"id": "CP" + uuid.uuid4().hex[:10], "criadoEm": agora}
+                itens.append(atual)
+            for k in ("usina", "cliente", "titulo", "corpo", "resultado", "fontes", "acoes", "avisos", "geradoEm",
+                      "conversa", "respostaCliente", "msgTecnico", "acoesFeitas"):
+                if k in reg:
+                    atual[k] = reg[k]
+            if atual.get("usina"):
+                atual["usina"] = canonizar_usina(atual["usina"]) or atual["usina"]
+            atual["atualizadoEm"] = agora
+            itens = sorted(itens, key=lambda x: x.get("atualizadoEm") or "")[-_CP_HIST_MAX:]
+            tmp = _CP_HIST_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(itens, f, ensure_ascii=False)
+            os.replace(tmp, _CP_HIST_PATH)
+        return {"ok": True, "id": atual["id"], "atualizadoEm": agora}, 200
+    return {"ok": False, "error": "modo inválido"}, 400
+
+
 @app.route("/ajuda-cliente", methods=["POST", "OPTIONS"])
 def ajuda_cliente():
     """Botão Ajuda: modo 'temas' (varre o grupo do cliente), 'analisar' (orienta sobre uma usina/tema) ou 'conversar' (acompanhamento)."""
@@ -24498,6 +24569,13 @@ def ajuda_cliente():
         return jsonify({"ok": False, "error": "Recurso disponível apenas na visão completa do supervisor."}), 403
     body = request.get_json(force=True, silent=True) or {}
     modo = (body.get("modo") or "analisar").strip().lower()
+    if modo.startswith("historico"):
+        try:
+            r, st = _cp_hist_api(modo, body)
+            return jsonify(r), st
+        except Exception as e:
+            log.error(f"[copiloto-historico] erro: {e}")
+            return jsonify({"ok": False, "error": f"Erro no histórico: {str(e)[:160]}"}), 500
     if modo.startswith("biblioteca"):
         try:
             r, st = _bib_api(modo, body)
