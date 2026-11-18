@@ -127,7 +127,7 @@ PUSH_SHEET_NAME = "Push Subscriptions"
 # ── Cache de credenciais Google (reutiliza a conexão) ────────────────────────
 _gc_cache = None
 
-def get_gc():
+def _get_gc_real():
     global _gc_cache
     if _gc_cache is None:
         creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
@@ -164,6 +164,662 @@ def _gspread_retry(fn, tentativas=3, esperas=(4, 10, 20)):
                 continue
             raise
     raise ultima_excecao
+
+
+
+# ══════════════════════════════════════════════════════════════════
+# ESPELHO LOCAL DO GOOGLE SHEETS (SQLite) — 18/11/2026
+# A planilha deixou de ser lida a cada pedido: as abas listadas em espelho_sheets.json ficam num
+# banco SQLite no próprio servidor (leitura em milissegundos, sem cota do Google). Toda gravação
+# vale na hora no banco e entra numa fila que um processo só (trava em arquivo) replica na planilha
+# em segundo plano, juntando as alterações em lotes. A cada ~2 min, as abas sem nada pendente são
+# relidas da planilha (1 leitura para todas) para pegar edições feitas à mão.
+# Desligar: {"ativo": false} em espelho_sheets.json (ou POST /espelho/config) — volta a ler a planilha.
+# ══════════════════════════════════════════════════════════════════
+import sqlite3 as _esp_sqlite
+import threading as _esp_threading
+
+_ESP_DIR = os.path.dirname(os.path.abspath(__file__))
+_ESP_DB = os.path.join(_ESP_DIR, "espelho_sheets.db")
+_ESP_CFG_PATH = os.path.join(_ESP_DIR, "espelho_sheets.json")
+_ESP_LOCK_PATH = os.path.join(_ESP_DIR, "espelho_sheets.lock")
+_ESP_CFG_PADRAO = {"ativo": False, "abas": [], "reconciliar_seg": 120, "intervalo_api_seg": 1.3}
+_esp_local = _esp_threading.local()
+_esp_cache = {}            # aba -> (versao, linhas)   (por processo)
+_esp_cfg_cache = {"t": 0.0, "v": None}
+_esp_estado = {"replicador": False, "ultima_replica": None, "ultima_reconc": None, "erros": 0, "ultimo_erro": ""}
+
+
+def _esp_cfg():
+    agora = time.time()
+    if _esp_cfg_cache["v"] is not None and agora - _esp_cfg_cache["t"] < 5:
+        return _esp_cfg_cache["v"]
+    cfg = dict(_ESP_CFG_PADRAO)
+    try:
+        with open(_ESP_CFG_PATH, encoding="utf-8") as f:
+            cfg.update(json.load(f))
+    except Exception:
+        pass
+    _esp_cfg_cache.update(t=agora, v=cfg)
+    return cfg
+
+
+_esp_cfg_inicio = {}   # "ativo" e "abas" valem pela vida do processo (trocar no meio misturaria planilha e banco)
+
+
+def _esp_cfg_fixa():
+    if not _esp_cfg_inicio:
+        cfg = _esp_cfg()
+        _esp_cfg_inicio.update(ativo=bool(cfg.get("ativo")), abas=list(cfg.get("abas") or []))
+    return _esp_cfg_inicio
+
+
+def _esp_aba_local(nome):
+    f = _esp_cfg_fixa()
+    return f["ativo"] and nome in f["abas"]
+
+
+def _esp_db():
+    c = getattr(_esp_local, "c", None)
+    if c is None:
+        c = _esp_sqlite.connect(_ESP_DB, timeout=30, isolation_level=None, check_same_thread=False)
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA synchronous=NORMAL")
+        c.execute("PRAGMA busy_timeout=30000")
+        c.execute("CREATE TABLE IF NOT EXISTS linhas (aba TEXT, n INTEGER, v TEXT, PRIMARY KEY (aba, n))")
+        c.execute("CREATE TABLE IF NOT EXISTS meta (aba TEXT PRIMARY KEY, versao INTEGER, carregado REAL, "
+                  "rows INTEGER, cols INTEGER, wsid INTEGER)")
+        c.execute("CREATE TABLE IF NOT EXISTS fila (id INTEGER PRIMARY KEY AUTOINCREMENT, aba TEXT, op TEXT, "
+                  "args TEXT, criado REAL, tent INTEGER DEFAULT 0, erro TEXT, falhou INTEGER DEFAULT 0)")
+        _esp_local.c = c
+    return c
+
+
+def _esp_trim(row):
+    row = ["" if x is None else str(x) for x in (row or [])]
+    while row and row[-1] == "":
+        row.pop()
+    return row
+
+
+def _esp_val(v):
+    """Como o valor volta da planilha depois de gravado (USER_ENTERED / RAW)."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def _esp_a1(rng):
+    rng = str(rng or "A1")
+    if "!" in rng:
+        rng = rng.split("!", 1)[1]
+    ini = rng.split(":", 1)[0].replace("$", "")
+    r, c = gspread.utils.a1_to_rowcol(ini)
+    return r, c
+
+
+def _esp_carregado(aba):
+    r = _esp_db().execute("SELECT versao FROM meta WHERE aba=?", (aba,)).fetchone()
+    return r is not None
+
+
+def _esp_linhas(aba):
+    """Linhas da aba (cópia), lista de listas com as linhas 1..N (vazias como [])."""
+    c = _esp_db()
+    m = c.execute("SELECT versao FROM meta WHERE aba=?", (aba,)).fetchone()
+    if not m:
+        return None
+    v = m[0]
+    hit = _esp_cache.get(aba)
+    if hit and hit[0] == v:
+        return [list(x) for x in hit[1]]
+    rows = c.execute("SELECT n, v FROM linhas WHERE aba=? ORDER BY n", (aba,)).fetchall()
+    tot = rows[-1][0] if rows else 0
+    out = [[] for _ in range(tot)]
+    for n, js in rows:
+        out[n - 1] = json.loads(js)
+    _esp_cache[aba] = (v, out)
+    return [list(x) for x in out]
+
+
+def _esp_meta(aba):
+    r = _esp_db().execute("SELECT rows, cols, wsid FROM meta WHERE aba=?", (aba,)).fetchone()
+    return {"rows": r[0], "cols": r[1], "id": r[2]} if r else None
+
+
+def _esp_carregar(aba, real_ws, valores=None):
+    """(Re)carrega a aba inteira da planilha para o banco."""
+    if valores is None:
+        valores = _gspread_retry(lambda: real_ws.get_all_values())
+    c = _esp_db()
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        c.execute("DELETE FROM linhas WHERE aba=?", (aba,))
+        c.executemany("INSERT INTO linhas (aba, n, v) VALUES (?,?,?)",
+                      [(aba, i + 1, json.dumps(_esp_trim(r), ensure_ascii=False))
+                       for i, r in enumerate(valores) if _esp_trim(r)])
+        rows = getattr(real_ws, "row_count", None) or max(len(valores), 1000)
+        cols = getattr(real_ws, "col_count", None) or 26
+        wsid = getattr(real_ws, "id", None)
+        c.execute("INSERT INTO meta (aba, versao, carregado, rows, cols, wsid) VALUES (?,?,?,?,?,?) "
+                  "ON CONFLICT(aba) DO UPDATE SET versao=meta.versao+1, carregado=excluded.carregado, "
+                  "rows=excluded.rows, cols=excluded.cols, wsid=COALESCE(excluded.wsid, meta.wsid)",
+                  (aba, 1, time.time(), rows, cols, wsid))
+        c.execute("COMMIT")
+    except Exception:
+        c.execute("ROLLBACK")
+        raise
+
+
+def _esp_aplicar(aba, op, args):
+    """Aplica uma operação no banco e põe na fila de replicação (numa transação só)."""
+    c = _esp_db()
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        def get_row(n):
+            r = c.execute("SELECT v FROM linhas WHERE aba=? AND n=?", (aba, n)).fetchone()
+            return json.loads(r[0]) if r else []
+
+        def put_row(n, row):
+            row = _esp_trim(row)
+            if row:
+                c.execute("INSERT OR REPLACE INTO linhas (aba, n, v) VALUES (?,?,?)",
+                          (aba, n, json.dumps(row, ensure_ascii=False)))
+            else:
+                c.execute("DELETE FROM linhas WHERE aba=? AND n=?", (aba, n))
+
+        def ultima():
+            r = c.execute("SELECT MAX(n) FROM linhas WHERE aba=?", (aba,)).fetchone()
+            return r[0] or 0
+
+        def escrever(r0, c0, valores):
+            for i, linha in enumerate(valores or []):
+                n = r0 + i
+                row = get_row(n)
+                for j, v in enumerate(linha or []):
+                    col = c0 - 1 + j
+                    while len(row) <= col:
+                        row.append("")
+                    row[col] = _esp_val(v)
+                put_row(n, row)
+
+        replica = dict(args)
+        if op == "cells":                     # [{"r":..,"c":..,"values":[[..]]}]
+            for b in args["blocos"]:
+                escrever(b["r"], b["c"], b["values"])
+        elif op == "append":                  # vira gravação em posição fixa (mesma linha na planilha)
+            n0 = ultima() + 1
+            escrever(n0, 1, args["rows"])
+            replica = {"blocos": [{"r": n0, "c": 1, "values": [[_esp_val(v) for v in r] for r in args["rows"]]}],
+                       "vio": args.get("vio", "USER_ENTERED")}
+            op = "cells"
+        elif op == "delete":
+            ini, fim = args["ini"], args["fim"]
+            k = fim - ini + 1
+            c.execute("DELETE FROM linhas WHERE aba=? AND n BETWEEN ? AND ?", (aba, ini, fim))
+            # renumera em duas etapas (evita colisão de chave primária)
+            c.execute("UPDATE linhas SET n = -(n - ?) WHERE aba=? AND n > ?", (k, aba, fim))
+            c.execute("UPDATE linhas SET n = -n WHERE aba=? AND n < 0", (aba,))
+            c.execute("UPDATE meta SET rows = MAX(rows - ?, 1) WHERE aba=?", (k, aba))
+        elif op == "clear":
+            c.execute("DELETE FROM linhas WHERE aba=?", (aba,))
+        elif op == "resize":
+            if args.get("rows"):
+                c.execute("UPDATE meta SET rows=? WHERE aba=?", (args["rows"], aba))
+            if args.get("cols"):
+                c.execute("UPDATE meta SET cols=? WHERE aba=?", (args["cols"], aba))
+        elif op == "add":
+            c.execute("UPDATE meta SET rows = rows + ?, cols = cols + ? WHERE aba=?",
+                      (args.get("rows", 0), args.get("cols", 0), aba))
+        c.execute("UPDATE meta SET versao = versao + 1 WHERE aba=?", (aba,))
+        c.execute("INSERT INTO fila (aba, op, args, criado) VALUES (?,?,?,?)",
+                  (aba, op, json.dumps(replica, ensure_ascii=False), time.time()))
+        c.execute("COMMIT")
+    except Exception:
+        c.execute("ROLLBACK")
+        raise
+
+
+class _EspCell:
+    def __init__(self, row, col, value):
+        self.row, self.col, self.value = row, col, value
+
+
+class _EspWorksheet:
+    """Imita o gspread.Worksheet para uma aba espelhada."""
+
+    def __init__(self, aba, real_ss, real_ws=None):
+        self._aba, self._real_ss, self._real_ws = aba, real_ss, real_ws
+
+    # ── planilha de verdade (só quando precisa) ──
+    def _real(self):
+        if self._real_ws is None:
+            self._real_ws = _gspread_retry(lambda: self._real_ss.worksheet(self._aba))
+        return self._real_ws
+
+    @property
+    def title(self):
+        return self._aba
+
+    @property
+    def id(self):
+        m = _esp_meta(self._aba)
+        return m["id"] if m and m["id"] is not None else self._real().id
+
+    @property
+    def row_count(self):
+        m = _esp_meta(self._aba)
+        return m["rows"] if m else self._real().row_count
+
+    @property
+    def col_count(self):
+        m = _esp_meta(self._aba)
+        return m["cols"] if m else self._real().col_count
+
+    @property
+    def spreadsheet(self):
+        return _EspSpreadsheet(self._real_ss)
+
+    # ── leitura ──
+    def get_all_values(self, *a, **k):
+        linhas = _esp_linhas(self._aba) or []
+        while linhas and not linhas[-1]:
+            linhas.pop()
+        larg = max((len(r) for r in linhas), default=0)
+        return [r + [""] * (larg - len(r)) for r in linhas]
+
+    def get_values(self, *a, **k):
+        if a or k:
+            return self.get(*a, **k)
+        return self.get_all_values()
+
+    def row_values(self, n, *a, **k):
+        linhas = _esp_linhas(self._aba) or []
+        return list(linhas[n - 1]) if 0 < n <= len(linhas) else []
+
+    def col_values(self, col, *a, **k):
+        out = [(r[col - 1] if len(r) >= col else "") for r in (_esp_linhas(self._aba) or [])]
+        while out and out[-1] == "":
+            out.pop()
+        return out
+
+    def cell(self, row, col, *a, **k):
+        r = self.row_values(row)
+        return _EspCell(row, col, r[col - 1] if len(r) >= col else "")
+
+    def acell(self, label, *a, **k):
+        r, c = _esp_a1(label)
+        return self.cell(r, c)
+
+    def get(self, rng=None, *a, **k):
+        rng = k.get("range_name", rng)
+        txt = str(rng or "A1").split("!", 1)[-1]
+        p = txt.split(":")
+        r0, c0 = gspread.utils.a1_to_rowcol(p[0].replace("$", ""))
+        r1, c1 = gspread.utils.a1_to_rowcol(p[1].replace("$", "")) if len(p) > 1 else (r0, c0)
+        linhas = _esp_linhas(self._aba) or []
+        out = []
+        for n in range(r0, r1 + 1):
+            row = linhas[n - 1] if n <= len(linhas) else []
+            out.append(_esp_trim(row[c0 - 1:c1]))
+        while out and not out[-1]:
+            out.pop()
+        return out
+
+    def find(self, query, in_row=None, in_column=None, case_sensitive=True, *a, **k):
+        for i, r in enumerate(_esp_linhas(self._aba) or [], start=1):
+            if in_row and i != in_row:
+                continue
+            for j, v in enumerate(r, start=1):
+                if in_column and j != in_column:
+                    continue
+                if (v == str(query)) if case_sensitive else (v.lower() == str(query).lower()):
+                    return _EspCell(i, j, v)
+        return None
+
+    # ── gravação ──
+    def _vio(self, k):
+        return k.get("value_input_option") or "RAW"
+
+    def update_cell(self, row, col, value):
+        _esp_aplicar(self._aba, "cells", {"blocos": [{"r": row, "c": col, "values": [[_esp_val(value)]]}],
+                                          "vio": "USER_ENTERED"})
+
+    def update_acell(self, label, value):
+        r, c = _esp_a1(label)
+        self.update_cell(r, c, value)
+
+    def update(self, *a, **k):
+        rng, vals = k.get("range_name"), k.get("values")
+        pos = list(a)
+        if pos and isinstance(pos[0], list) and vals is None:     # update(values, range)
+            vals = pos.pop(0)
+            if pos and rng is None:
+                rng = pos.pop(0)
+        else:
+            if pos and rng is None:
+                rng = pos.pop(0)
+            if pos and vals is None:
+                vals = pos.pop(0)
+        if vals and not isinstance(vals[0], (list, tuple)):
+            vals = [vals]
+        r, c = _esp_a1(rng)
+        _esp_aplicar(self._aba, "cells", {"blocos": [{"r": r, "c": c, "values": [[_esp_val(v) for v in l] for l in vals]}],
+                                          "vio": self._vio(k)})
+        return {}
+
+    def batch_update(self, data, **k):
+        blocos = []
+        for d in data:
+            r, c = _esp_a1(d["range"])
+            blocos.append({"r": r, "c": c, "values": [[_esp_val(v) for v in l] for l in d["values"]]})
+        if blocos:
+            _esp_aplicar(self._aba, "cells", {"blocos": blocos, "vio": self._vio(k)})
+        return {}
+
+    def append_row(self, values, value_input_option="RAW", **k):
+        _esp_aplicar(self._aba, "append", {"rows": [list(values)], "vio": value_input_option})
+        return {}
+
+    def append_rows(self, values, value_input_option="RAW", **k):
+        if values:
+            _esp_aplicar(self._aba, "append", {"rows": [list(v) for v in values], "vio": value_input_option})
+        return {}
+
+    def delete_rows(self, start_index, end_index=None):
+        _esp_aplicar(self._aba, "delete", {"ini": start_index, "fim": end_index or start_index})
+
+    def delete_row(self, index):
+        self.delete_rows(index)
+
+    def clear(self):
+        _esp_aplicar(self._aba, "clear", {})
+
+    def resize(self, rows=None, cols=None):
+        _esp_aplicar(self._aba, "resize", {"rows": rows, "cols": cols})
+
+    def add_rows(self, rows):
+        _esp_aplicar(self._aba, "add", {"rows": rows})
+
+    def add_cols(self, cols):
+        _esp_aplicar(self._aba, "add", {"cols": cols})
+
+    def __getattr__(self, nome):
+        # Qualquer outra coisa (formatação etc.) vai direto para a planilha; se for gravação,
+        # a aba é relida na próxima reconciliação.
+        log.warning(f"[espelho] {self._aba}.{nome} não emulado — usando a planilha direto")
+        return getattr(self._real(), nome)
+
+
+class _EspSpreadsheet:
+    def __init__(self, real_ss):
+        self._real_ss = real_ss
+
+    def worksheet(self, nome):
+        if not _esp_aba_local(nome):
+            return self._real_ss.worksheet(nome)
+        if not _esp_carregado(nome):
+            real_ws = self._real_ss.worksheet(nome)          # levanta WorksheetNotFound se não existir
+            _esp_carregar(nome, real_ws)
+            return _EspWorksheet(nome, self._real_ss, real_ws)
+        return _EspWorksheet(nome, self._real_ss)
+
+    def add_worksheet(self, title, *a, **k):
+        ws = self._real_ss.add_worksheet(title, *a, **k)
+        if _esp_aba_local(title):
+            _esp_carregar(title, ws, valores=[])
+            return _EspWorksheet(title, self._real_ss, ws)
+        return ws
+
+    def values_batch_get(self, ranges, *a, **k):
+        nomes = [str(r).split("!")[0].strip("'") for r in ranges]
+        if all(_esp_aba_local(n) and _esp_carregado(n) and "!" not in str(r) for n, r in zip(nomes, ranges)):
+            return {"valueRanges": [{"range": r, "values": _EspWorksheet(n, self._real_ss).get_all_values()}
+                                    for n, r in zip(nomes, ranges)]}
+        return self._real_ss.values_batch_get(ranges, *a, **k)
+
+    def __getattr__(self, nome):
+        return getattr(self._real_ss, nome)
+
+
+class _EspLazySS:
+    """Só abre a planilha de verdade (1 chamada à API) se algo precisar dela."""
+
+    def __init__(self, real_gc, key):
+        self._gc, self._key, self._ss = real_gc, key, None
+
+    def __getattr__(self, nome):
+        if self.__dict__.get("_ss") is None:
+            self.__dict__["_ss"] = _gspread_retry(lambda: self._gc.open_by_key(self._key))
+        return getattr(self.__dict__["_ss"], nome)
+
+
+class _EspClient:
+    def __init__(self, real_gc):
+        self._real_gc = real_gc
+
+    def open_by_key(self, key):
+        if key == SHEET_ID and _esp_cfg_fixa()["ativo"]:
+            return _EspSpreadsheet(_EspLazySS(self._real_gc, key))
+        return self._real_gc.open_by_key(key)
+
+    def __getattr__(self, nome):
+        return getattr(self._real_gc, nome)
+
+
+# ── Replicador (um processo só) ──
+def _esp_replicar_lote(real_ss, wss, intervalo):
+    c = _esp_db()
+    ops = c.execute("SELECT id, aba, op, args FROM fila WHERE falhou=0 ORDER BY id LIMIT 300").fetchall()
+    if not ops:
+        return False
+    # junta as gravações de células seguidas da mesma aba numa chamada só
+    grupo, ids = None, []
+    i = 0
+    while i < len(ops):
+        oid, aba, op, args = ops[i]
+        a = json.loads(args)
+        if op == "cells":
+            vio = a.get("vio", "RAW")
+            dados = {}
+            ids = []
+            j = i
+            while j < len(ops) and ops[j][1] == aba and ops[j][2] == "cells" and json.loads(ops[j][3]).get("vio", "RAW") == vio:
+                for b in json.loads(ops[j][3])["blocos"]:
+                    for di, linha in enumerate(b["values"]):
+                        for dj, v in enumerate(linha):
+                            dados[(b["r"] + di, b["c"] + dj)] = v
+                ids.append(ops[j][0])
+                j += 1
+            lote = [(aba, "cells", {"dados": dados, "vio": vio}, ids)]
+            i = j
+        else:
+            lote = [(aba, op, a, [oid])]
+            i += 1
+        for aba_l, op_l, a_l, ids_l in lote:
+            try:
+                ws = wss.get(aba_l)
+                if ws is None:
+                    ws = wss[aba_l] = _gspread_retry(lambda: real_ss.worksheet(aba_l))
+                if op_l == "cells":
+                    dados = a_l["dados"]
+                    maxr = max(r for r, _ in dados)
+                    maxc = max(cc for _, cc in dados)
+                    if maxr > ws.row_count:
+                        _gspread_retry(lambda: ws.add_rows(maxr - ws.row_count + 200))
+                    if maxc > ws.col_count:
+                        _gspread_retry(lambda: ws.add_cols(maxc - ws.col_count))
+                    # células → blocos por linha (faixas contíguas)
+                    por_linha = {}
+                    for (r, cc), v in dados.items():
+                        por_linha.setdefault(r, {})[cc] = v
+                    data = []
+                    for r, cols in sorted(por_linha.items()):
+                        cs = sorted(cols)
+                        ini = ant = cs[0]
+                        vals = [cols[ini]]
+                        for cc in cs[1:]:
+                            if cc == ant + 1:
+                                vals.append(cols[cc])
+                            else:
+                                data.append({"range": f"{gspread.utils.rowcol_to_a1(r, ini)}:{gspread.utils.rowcol_to_a1(r, ant)}", "values": [vals]})
+                                ini, vals = cc, [cols[cc]]
+                            ant = cc
+                        data.append({"range": f"{gspread.utils.rowcol_to_a1(r, ini)}:{gspread.utils.rowcol_to_a1(r, ant)}", "values": [vals]})
+                    _gspread_retry(lambda: ws.batch_update(data, value_input_option=a_l["vio"]), tentativas=6, esperas=(5, 10, 20, 30, 45))
+                elif op_l == "delete":
+                    _gspread_retry(lambda: ws.delete_rows(a_l["ini"], a_l["fim"]), tentativas=6, esperas=(5, 10, 20, 30, 45))
+                elif op_l == "clear":
+                    _gspread_retry(lambda: ws.clear(), tentativas=6, esperas=(5, 10, 20, 30, 45))
+                elif op_l == "resize":
+                    _gspread_retry(lambda: ws.resize(rows=a_l.get("rows"), cols=a_l.get("cols")))
+                elif op_l == "add":
+                    if a_l.get("rows"):
+                        _gspread_retry(lambda: ws.add_rows(a_l["rows"]))
+                    if a_l.get("cols"):
+                        _gspread_retry(lambda: ws.add_cols(a_l["cols"]))
+                c.execute(f"DELETE FROM fila WHERE id IN ({','.join('?' * len(ids_l))})", ids_l)
+                _esp_estado["ultima_replica"] = agora_br()
+            except Exception as e:
+                msg = str(e)[:300]
+                _esp_estado["erros"] += 1
+                _esp_estado["ultimo_erro"] = f"{aba_l}/{op_l}: {msg}"
+                log.error(f"[espelho] falha ao replicar {aba_l}/{op_l}: {msg}")
+                c.execute(f"UPDATE fila SET tent=tent+1, erro=? WHERE id IN ({','.join('?' * len(ids_l))})", [msg] + ids_l)
+                c.execute("UPDATE fila SET falhou=1 WHERE tent>=8")
+                wss.pop(aba_l, None)
+                time.sleep(15)
+                return True
+            time.sleep(intervalo)
+    return True
+
+
+def _esp_reconciliar(real_ss):
+    f = _esp_cfg_fixa()
+    if not f["ativo"]:
+        return
+    c = _esp_db()
+    abas = [a for a in f["abas"] if _esp_carregado(a)]
+    pend = {r[0] for r in c.execute("SELECT DISTINCT aba FROM fila").fetchall()}
+    livres = [a for a in abas if a not in pend]
+    if not livres:
+        return
+    vers = {a: c.execute("SELECT versao FROM meta WHERE aba=?", (a,)).fetchone()[0] for a in livres}
+    resp = _gspread_retry(lambda: real_ss.values_batch_get([f"'{a}'" for a in livres]))
+    vr = resp.get("valueRanges", [])
+    for i, a in enumerate(livres):
+        valores = (vr[i].get("values") if i < len(vr) else None) or []
+        atual = c.execute("SELECT versao FROM meta WHERE aba=?", (a,)).fetchone()[0]
+        tem_fila = c.execute("SELECT 1 FROM fila WHERE aba=? LIMIT 1", (a,)).fetchone()
+        if atual != vers[a] or tem_fila:
+            continue                       # mexeram nela enquanto líamos — fica para a próxima
+        def _norm(rows):
+            rr = [_esp_trim(r) for r in rows]
+            while rr and not rr[-1]:
+                rr.pop()
+            return rr
+        if _norm(valores) != _norm(_esp_linhas(a) or []):
+            class _Fake:  # só para reaproveitar _esp_carregar sem nova leitura
+                pass
+            m = _esp_meta(a) or {}
+            f = _Fake(); f.row_count = m.get("rows"); f.col_count = m.get("cols"); f.id = m.get("id")
+            _esp_carregar(a, f, valores=valores)
+            log.info(f"[espelho] {a}: alterações feitas na planilha trazidas para o banco")
+    _esp_estado["ultima_reconc"] = agora_br()
+
+
+def _esp_loop():
+    import fcntl
+    while True:
+        try:
+            lf = open(_ESP_LOCK_PATH, "a+")
+            try:
+                fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                lf.close()
+                time.sleep(60)
+                continue
+            _esp_estado["replicador"] = True
+            real_ss, wss, t_rec = None, {}, 0.0
+            while True:
+                cfg = _esp_cfg()
+                if not _esp_cfg_fixa()["ativo"] and not _esp_db().execute(
+                        "SELECT 1 FROM fila WHERE falhou=0 LIMIT 1").fetchone():
+                    time.sleep(30)      # desligado e sem nada pendente: não toca na planilha
+                    continue
+                try:
+                    if real_ss is None:
+                        real_ss = _gspread_retry(lambda: _get_gc_real().open_by_key(SHEET_ID))
+                    trabalhou = _esp_replicar_lote(real_ss, wss, float(cfg.get("intervalo_api_seg") or 1.3))
+                    if not trabalhou and time.time() - t_rec > float(cfg.get("reconciliar_seg") or 120):
+                        t_rec = time.time()
+                        _esp_reconciliar(real_ss)
+                except Exception as e:
+                    _esp_estado["ultimo_erro"] = f"loop: {str(e)[:200]}"
+                    log.error(f"[espelho] loop: {e}")
+                    real_ss, wss = None, {}
+                    time.sleep(20)
+                time.sleep(1.0)
+        except Exception as e:
+            log.error(f"[espelho] replicador caiu: {e}")
+            time.sleep(30)
+
+
+_esp_threading.Thread(target=_esp_loop, daemon=True, name="espelho-sheets").start()
+
+
+@app.route("/espelho/status", methods=["GET"])
+def espelho_status():
+    c = _esp_db()
+    cfg = _esp_cfg()
+    abas = []
+    for a in cfg.get("abas") or []:
+        m = c.execute("SELECT versao, carregado FROM meta WHERE aba=?", (a,)).fetchone()
+        n = c.execute("SELECT COUNT(*) FROM linhas WHERE aba=?", (a,)).fetchone()[0]
+        p = c.execute("SELECT COUNT(*) FROM fila WHERE aba=? AND falhou=0", (a,)).fetchone()[0]
+        abas.append({"aba": a, "carregada": bool(m), "linhas": n, "pendentes": p})
+    falhas = c.execute("SELECT id, aba, op, erro FROM fila WHERE falhou=1 ORDER BY id DESC LIMIT 10").fetchall()
+    return jsonify({"ok": True, "ativo": bool(cfg.get("ativo")), "abas": abas,
+                    "falhas": [{"id": f[0], "aba": f[1], "op": f[2], "erro": f[3]} for f in falhas],
+                    "estado_deste_processo": _esp_estado})
+
+
+@app.route("/espelho/config", methods=["POST"])
+def espelho_config():
+    if request.headers.get("X-Deploy-Secret", "") != os.environ.get("DEPLOY_SECRET", "\x00"):
+        return jsonify({"ok": False, "error": "não autorizado"}), 403
+    corpo = request.get_json(silent=True) or {}
+    cfg = dict(_esp_cfg())
+    for k in ("ativo", "abas", "reconciliar_seg", "intervalo_api_seg"):
+        if k in corpo:
+            cfg[k] = corpo[k]
+    if corpo.get("recarregar"):
+        c = _esp_db()
+        for a in corpo["recarregar"]:
+            if not c.execute("SELECT 1 FROM fila WHERE aba=? AND falhou=0 LIMIT 1", (a,)).fetchone():
+                c.execute("DELETE FROM meta WHERE aba=?", (a,))
+                c.execute("DELETE FROM linhas WHERE aba=?", (a,))
+    tmp = _ESP_CFG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, _ESP_CFG_PATH)
+    _esp_cfg_cache.update(t=0.0, v=None)
+    return jsonify({"ok": True, "cfg": cfg, "aviso": "ligar/desligar e a lista de abas valem depois do próximo reinício do servidor"})
+
+
+_esp_gc_cache = None
+
+
+def get_gc():
+    """Cliente do Google Sheets; as abas espelhadas (espelho_sheets.json) são lidas/gravadas no SQLite local."""
+    global _esp_gc_cache
+    if _esp_gc_cache is None:
+        _esp_gc_cache = _EspClient(_get_gc_real())
+    return _esp_gc_cache
 
 
 def get_log_sheet():
