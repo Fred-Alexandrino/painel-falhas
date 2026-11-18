@@ -13999,6 +13999,57 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
 '''
 
 
+# ══════════════════════════════════════════════════════════════════
+# "Atualizar da SolarEdge" no celular (17/11/2026): o Firefox do Android não roda a extensão
+# do Chrome "Grid Sync SolarEdge"; este script do Tampermonkey faz o mesmo papel. Na Central ele
+# só marca que está instalado (a Central então abre o Service Center com #central-sync); no
+# Service Center logado ele espera a lista de cases carregar e roda o mesmo _SE_SYNC_JS.
+# ══════════════════════════════════════════════════════════════════
+_SE_USERSCRIPT_CAB = """// ==UserScript==
+// @name         Grid Sync SolarEdge (Tampermonkey)
+// @namespace    gridco.fred
+// @version      1.0
+// @description  "Atualizar da SolarEdge" da Central O&M sem a extensão do Chrome (Firefox do celular): abre o Service Center já logado, lê os cases e envia ao painel CHAMADOS SOLAREDGE. Só roda quando você clica no botão.
+// @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-sync-solaredge.user.js
+// @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-sync-solaredge.user.js
+// @match        https://fred-alexandrino.github.io/PAINELDEFALHAS/*
+// @match        https://www.solaredge.com/service/support/cases*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+(function () {
+  'use strict';
+  if (location.hostname === 'fred-alexandrino.github.io') {
+    document.documentElement.setAttribute('data-grid-se-us', '1');
+    return;
+  }
+  if (!/central-sync/.test(location.hash)) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  const pronto = () => window.jQuery && window.jQuery('table.dataTable').length && document.querySelector('h4[data-case-id]');
+  let n = 0;
+  const t = setInterval(() => {
+    n++;
+    if (!pronto() && n < 120) return;
+    clearInterval(t);
+"""
+_SE_USERSCRIPT_ROD = """
+  }, 1000);
+})();
+"""
+
+
+@app.route("/userscripts/grid-sync-solaredge.user.js", methods=["GET"])
+def grid_sync_solaredge_user_js():
+    from flask import Response
+    corpo = _SE_SYNC_JS.replace(
+        "const API = 'https://api.168.138.232.237.sslip.io/solaredge-chamados/importar';",
+        "let API = 'https://api.168.138.232.237.sslip.io/solaredge-chamados/importar';\n"
+        "  try { await fetch('https://api.168.138.232.237.sslip.io/health', { cache: 'no-store' }); }\n"
+        "  catch (e) { API = 'https://api.168-138-232-237.nip.io/solaredge-chamados/importar'; }", 1)
+    txt = _SE_USERSCRIPT_CAB + corpo + _SE_USERSCRIPT_ROD
+    return Response(txt, mimetype="text/javascript; charset=utf-8")
+
+
 @app.route("/solaredge-sync.js", methods=["GET"])
 def solaredge_sync_js():
     """Script de sincronização, carregado pelo favorito do Fred no Service Center da SolarEdge."""
