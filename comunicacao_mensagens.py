@@ -24,9 +24,14 @@ Registro no app.py (2 linhas, perto do fim):
     from comunicacao_mensagens import registrar as _cm_registrar
     _cm_registrar(app, _chamar_gemini_com_retry, log)
 """
+import base64
+import io
 import json
 import re
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote, unquote
 
+import requests
 from flask import jsonify, request
 
 # ── seção 11.5 do padrão — copiar e usar (não editar este texto) ─────────────
@@ -110,6 +115,11 @@ _LIM_AJUSTE = 3000
 _MAX_PRINTS = 4
 _MAX_PRINT_B64 = 6 * 1024 * 1024  # ~4,5 MB por imagem (o front já reduz antes de enviar)
 _MIMES_PRINT = ("image/png", "image/jpeg", "image/webp")
+# 18/11/2026: PDF anexado (relatório, OS) — o Gemini lê PDF direto (texto e imagens das páginas)
+_MAX_PDFS = 2
+_MAX_PDF_B64 = 14 * 1024 * 1024   # ~10 MB por PDF (o pedido inteiro ao Gemini tem teto de ~20 MB)
+_MAX_DOCS = 2
+_LIM_DOC = 40000
 
 
 def prints_validos(body):
@@ -118,8 +128,11 @@ def prints_validos(body):
     itens = body.get("prints") or []
     if not isinstance(itens, list):
         raise ValueError("prints em formato inválido")
-    if len(itens) > _MAX_PRINTS:
+    pdfs = [it for it in itens if isinstance(it, dict) and str(it.get("mimeType") or "").lower() == "application/pdf"]
+    if len(itens) - len(pdfs) > _MAX_PRINTS:
         raise ValueError(f"no máximo {_MAX_PRINTS} prints por mensagem")
+    if len(pdfs) > _MAX_PDFS and body.get("tipo") == "envio_relatorio":
+        raise ValueError(f"no máximo {_MAX_PDFS} PDFs por mensagem")
     partes = []
     for it in itens:
         if not isinstance(it, dict):
@@ -128,12 +141,26 @@ def prints_validos(body):
         mime = str(it.get("mimeType") or "image/jpeg").lower()
         if not b64:
             continue
-        if mime not in _MIMES_PRINT:
+        if mime == "application/pdf":
+            if body.get("tipo") != "envio_relatorio":
+                raise ValueError("PDF só no envio de relatório; nos outros tipos o print precisa ser imagem (PNG, JPG ou WEBP)")
+            if len(b64) > _MAX_PDF_B64:
+                raise ValueError("PDF grande demais (máx. ~10 MB)")
+        elif mime not in _MIMES_PRINT:
             raise ValueError("print precisa ser imagem (PNG, JPG ou WEBP)")
-        if len(b64) > _MAX_PRINT_B64:
+        elif len(b64) > _MAX_PRINT_B64:
             raise ValueError("print grande demais")
         partes.append({"inline_data": {"mime_type": mime, "data": b64}})
     return partes
+
+
+def documentos_validos(body):
+    """Documentos em texto anexados (ex.: a OS lida da Fracttal). [{nome, texto}]"""
+    docs = []
+    for d in (body.get("documentos") or [])[:_MAX_DOCS]:
+        if isinstance(d, dict) and str(d.get("texto") or "").strip():
+            docs.append({"nome": _txt(d.get("nome"), 120) or "documento", "texto": str(d["texto"]).strip()[:_LIM_DOC]})
+    return docs
 
 
 def _txt(v, lim=500):
@@ -154,7 +181,10 @@ def montar_contexto(body):
     if dividir:
         ajuste = (ajuste + "\n" if ajuste else "") + INSTRUCAO_DIVIDIR
     n_prints = len(body.get("prints") or [])
-    if not rascunho and not msgs_atuais and not n_prints:
+    n_pdfs = sum(1 for it in (body.get("prints") or []) if isinstance(it, dict) and str(it.get("mimeType") or "").lower() == "application/pdf")
+    n_imgs = n_prints - n_pdfs
+    docs = documentos_validos(body)
+    if not rascunho and not msgs_atuais and not n_prints and not docs:
         raise ValueError("escreva o rascunho ou anexe um print antes de gerar")
     if (ajuste or dividir) and not msgs_atuais:
         raise ValueError("não há versão anterior para ajustar")
@@ -193,11 +223,19 @@ def montar_contexto(body):
         "UFV(s): " + ("; ".join(ufvs) if ufvs else f"não selecionadas (cliente {cliente}); use só as usinas citadas no rascunho/prints, como \"UFV <Nome>\""),
         f"DATA/HORA DE ENVIO: {_txt(body.get('dataHoraEnvio'), 20) or 'a confirmar'}",
         "RASCUNHO/RELATO:",
-        rascunho or ("(ver os prints anexados)" if n_prints else "(ver versão atual abaixo)"),
+        rascunho or ("(ver os anexos)" if (n_prints or docs) else "(ver versão atual abaixo)"),
     ]
-    if n_prints:
-        linhas.append(f"PRINTS ANEXADOS: {n_prints} imagem(ns) logo abaixo deste texto. Leia o conteúdo e use só fatos que estejam "
+    if n_imgs:
+        linhas.append(f"PRINTS ANEXADOS: {n_imgs} imagem(ns) logo abaixo deste texto. Leia o conteúdo e use só fatos que estejam "
                       "visíveis neles ou no rascunho. Não mencione que a informação veio de print, WhatsApp, grupo ou conversa.")
+    if n_pdfs:
+        linhas.append(f"PDF ANEXADO: {n_pdfs} arquivo(s) PDF logo abaixo deste texto — é o relatório/documento que será enviado "
+                      "ao cliente. Leia o PDF inteiro e escreva o texto de envio a partir dele: o que o documento traz (atividade, "
+                      "usina, data, resultado, pendências/recomendações) e o que se pede ao cliente, se houver. Use só fatos do PDF e do rascunho.")
+    for d in docs:
+        linhas.append(f"DOCUMENTO ANEXADO — {d['nome']} (é o documento que vai junto ao texto; use os fatos dele):")
+        linhas.append(d["texto"])
+        linhas.append("--- fim do documento ---")
     if ajuste:
         linhas.append(f"AJUSTE PEDIDO (se houver): {ajuste}  → devolver o texto COMPLETO corrigido")
         linhas.append("VERSÃO ATUAL (a ser corrigida, em JSON):")
@@ -298,11 +336,15 @@ def registrar(app, chamar_gemini, log):
         try:
             prints = prints_validos(body)
             contexto = montar_contexto(body)
+            docs = documentos_validos(body)
+            if docs:
+                log.info(f"[comunicacao/gerar] documentos anexados: {[d['nome'] for d in docs]}")
         except ValueError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         tipo = body.get("tipo")
         try:
-            resp = chamar_gemini(payload_gemini(contexto, prints), timeout=60 if prints else 45)
+            tem_pdf = any((p.get("inline_data") or {}).get("mime_type") == "application/pdf" for p in prints)
+            resp = chamar_gemini(payload_gemini(contexto, prints), timeout=110 if tem_pdf else (60 if prints else 45))
             data = resp.json()
             cand = (data.get("candidates") or [{}])[0]
             partes = ((cand.get("content") or {}).get("parts") or [])
@@ -321,4 +363,173 @@ def registrar(app, chamar_gemini, log):
                  + (" (ajuste)" if body.get("ajuste") or body.get("dividir") else ""))
         return jsonify({"ok": True, **saida}), 200
 
+    @app.route("/comunicacao/os-anexo", methods=["POST", "OPTIONS"])
+    def comunicacao_os_anexo():
+        """18/11/2026: lê a OS da Fracttal (o mesmo conteúdo do PDF de impressão da OS: dados, ativos,
+        checklist com Aprovou/Alerta/Falhou, observações, fotos) para a Central gerar o texto de envio.
+        Body: {link: "https://printwo.fracttal.com/?<id público>", numeroOS?}.
+        Resposta: {ok, nome, texto, fotos[{base64, mimeType}]}."""
+        if request.method == "OPTIONS":
+            return ("", 204)
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            return jsonify({"ok": True, **ler_os_fracttal(body.get("link"), body.get("numeroOS"), int(body.get("maxFotos") or 3))}), 200
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        except Exception as e:
+            log.error(f"[comunicacao/os-anexo] {body.get('numeroOS')}: {e}")
+            return jsonify({"ok": False, "error": f"não consegui ler a OS na Fracttal ({str(e)[:150]})"}), 502
+
     return comunicacao_gerar
+
+
+# ── OS da Fracttal (link público de impressão printwo.fracttal.com) ──────────
+_FT_SHARE = "https://one.fracttal.com/rpc/print/shareWo?idPublic="
+_CHECK = {"1": "Aprovou", "2": "Alerta", "3": "Falhou"}
+_TZ = timezone(timedelta(hours=-3))
+
+
+def _dt(s, so_data=False):
+    if not s:
+        return ""
+    try:
+        d = datetime.fromisoformat(str(s).replace("Z", "+00:00")).astimezone(_TZ)
+        return d.strftime("%d/%m/%Y" if so_data else "%d/%m/%Y %H:%M")
+    except Exception:
+        return str(s)[:16]
+
+
+def _dur(seg):
+    try:
+        seg = int(seg or 0)
+    except Exception:
+        return ""
+    return f"{seg // 3600}h{(seg % 3600) // 60:02d}" if seg else ""
+
+
+def _limpa_ativo(s):
+    return re.sub(r"\s+", " ", str(s or "")).strip()
+
+
+def montar_texto_os(d, numero=None):
+    """Transforma o JSON da OS (shareWo) no texto que o PDF de impressão mostra."""
+    tasks = d.get("tasks") or []
+    t0 = tasks[0] if tasks else {}
+    folio = d.get("wo_folio") or numero or ""
+    L = [f"ORDEM DE TRABALHO Nº {folio} — {(d.get('company') or {}).get('description') or 'Grid Co.'}"]
+    usina = t0.get("items_log_groups_1_description") or ""
+    if usina:
+        L.append(f"Usina (classificação 1): {usina}" + (f" · cluster {t0.get('items_log_groups_2_description')}" if t0.get("items_log_groups_2_description") else ""))
+    L.append(f"Criada em {_dt(d.get('creation_date'))} por {d.get('created_by') or '—'} · responsável: {d.get('personnel_description') or d.get('user_assigned') or '—'}"
+             + (f" · validada por {d['validated_by_description'].strip()}" if (d.get("validated_by_description") or "").strip() else "")
+             + f" · {d.get('completed_percentage', 0)}% concluída"
+             + (f" · finalizada em {_dt(d.get('final_date'))}" if d.get("final_date") else ""))
+    if (d.get("note") or "").strip():
+        L.append(f"Notas da OS: {d['note'].strip()}")
+    falhas, alertas = [], []
+    for t in tasks:
+        ativo = _limpa_ativo(t.get("items_log_description") or t.get("items_description"))
+        L.append("")
+        L.append(f"■ Ativo: {ativo}")
+        if t.get("items_log_parent_description"):
+            L.append(f"  Local: {_limpa_ativo(t['items_log_parent_description']).strip('/ ')}")
+        L.append(f"  Tarefa: {(t.get('tasks_description') or '').strip()} · {t.get('tasks_types_main_description') or ''}"
+                 + (f" / {t['tasks_types_description']}" if t.get("tasks_types_description") else "")
+                 + (f" · {t['tasks_types_2_description']}" if t.get("tasks_types_2_description") else ""))
+        L.append(f"  Agendada: {_dt(t.get('date_maintenance'), True)} · início {_dt(t.get('initial_date')) or '—'} · fim {_dt(t.get('final_date')) or '—'}"
+                 + (f" · tempo de trabalho {_dur(t.get('real_duration'))}" if t.get("real_duration") else "")
+                 + (" · concluída" if t.get("done") else " · não concluída"))
+        if (t.get("task_note") or "").strip():
+            L.append(f"  Nota da tarefa: {t['task_note'].strip()}")
+        if t.get("types_description") or t.get("causes_description"):
+            L.append(f"  Falha: {t.get('types_description') or ''} · causa: {t.get('causes_description') or ''} · severidade: {t.get('severiry_description') or ''}")
+        for f in sorted(t.get("task_form_items") or [], key=lambda x: x.get("order_number") or 0):
+            desc = (f.get("description") or "").strip()
+            v = f.get("value")
+            tipo = f.get("id_task_form_item_type")
+            if v in (None, ""):
+                continue
+            if tipo == 4:
+                res = _CHECK.get(str(v), str(v))
+                if res == "Falhou":
+                    falhas.append(f"{ativo}: {desc}")
+                elif res == "Alerta":
+                    alertas.append(f"{ativo}: {desc}")
+            elif tipo == 2:
+                res = "Sim" if str(v).lower() in ("true", "1") else "Não"
+            else:
+                res = str(v).strip()
+            un = (f.get("unit_description") or "").strip()
+            L.append(f"  - {desc}: {res}{(' ' + un) if un and tipo not in (2, 4) else ''}")
+        obs = [str(i.get("value") or "").strip() for i in (t.get("task_images") or [])
+               if str(i.get("type")) == "3" and str(i.get("value") or "").strip()]
+        for o in obs:
+            L.append(f"  - Observação: {o}")
+        n_fotos = sum(1 for i in (t.get("task_images") or []) if str(i.get("type")) == "1" and "/.ot/" in (i.get("path_image") or ""))
+        if n_fotos:
+            L.append(f"  - Fotos anexadas no item: {n_fotos}")
+    L.append("")
+    L.append("RESUMO DO CHECKLIST: " + (f"{len(falhas)} item(ns) Falhou" if falhas else "nenhum item Falhou")
+             + (f", {len(alertas)} em Alerta" if alertas else ""))
+    for x in falhas[:30]:
+        L.append(f"  Falhou — {x}")
+    for x in alertas[:30]:
+        L.append(f"  Alerta — {x}")
+    return "\n".join(L)
+
+
+def _fotos_os(d, maximo):
+    """Escolhe até `maximo` fotos: primeiro as dos itens com Falhou/Alerta, depois uma por ativo."""
+    if maximo <= 0:
+        return []
+    prioridade, demais = [], []
+    for t in d.get("tasks") or []:
+        ruins = {f.get("id_work_orders_tasks_form_items") for f in (t.get("task_form_items") or [])
+                 if f.get("id_task_form_item_type") == 4 and str(f.get("value")) in ("2", "3")}
+        fotos = [i for i in (t.get("task_images") or []) if str(i.get("type")) == "1" and "/.ot/" in (i.get("path_image") or "")]
+        for k, i in enumerate(fotos):
+            if str(i.get("id_work_orders_tasks_form_items")) in {str(x) for x in ruins}:
+                prioridade.append(i)
+            elif k == 0:
+                demais.append(i)
+    saida = []
+    try:
+        from PIL import Image
+    except Exception:
+        Image = None
+    for i in prioridade + demais:
+        if len(saida) >= maximo:
+            break
+        try:
+            r = requests.get(i["path_image"], timeout=20)
+            r.raise_for_status()
+            dados = r.content
+            if Image is not None:
+                im = Image.open(io.BytesIO(dados)).convert("RGB")
+                im.thumbnail((1280, 1280))
+                b = io.BytesIO()
+                im.save(b, "JPEG", quality=80)
+                dados = b.getvalue()
+            elif len(dados) > 3 * 1024 * 1024:
+                continue
+            saida.append({"base64": base64.b64encode(dados).decode(), "mimeType": "image/jpeg",
+                          "legenda": f"{_limpa_ativo(i.get('form_item_description'))[:80]}"})
+        except Exception:
+            continue
+    return saida
+
+
+def ler_os_fracttal(link, numero=None, max_fotos=3):
+    m = re.search(r"printwo\.fracttal\.com/\?([^\s&#]+)", str(link or ""))
+    if not m:
+        raise ValueError("esta OS não tem o link de impressão da Fracttal (printwo) — abra a OS e baixe o PDF para anexar")
+    id_publico = unquote(m.group(1))
+    r = requests.get(_FT_SHARE + quote(id_publico, safe=""), timeout=40)
+    r.raise_for_status()
+    j = r.json()
+    d = j.get("data") if isinstance(j, dict) else None
+    if not j.get("success") or not isinstance(d, dict):
+        raise ValueError("a Fracttal não devolveu a OS")
+    texto = montar_texto_os(d, numero)
+    return {"nome": f"OS {d.get('wo_folio') or numero or ''} (Fracttal)", "texto": texto[:_LIM_DOC],
+            "fotos": _fotos_os(d, max(0, min(int(max_fotos or 0), _MAX_PRINTS)))}
