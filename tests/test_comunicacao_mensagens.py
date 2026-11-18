@@ -165,3 +165,16 @@ class TestEndpoint(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAssinaturaEmail(unittest.TestCase):
+    def test_corta_bloco_depois_de_atenciosamente(self):
+        from comunicacao_mensagens import cortar_assinatura_email
+        t = "Corpo.\n\nFico no aguardo.\n\nAtenciosamente,\n\nFred Alexandrino\nSupervisor de O&M\nGrid Co."
+        self.assertEqual(cortar_assinatura_email(t), "Corpo.\n\nFico no aguardo.\n\nAtenciosamente,")
+
+    def test_interpretar_email_sem_assinatura(self):
+        from comunicacao_mensagens import interpretar_resposta
+        import json as _j
+        r = interpretar_resposta(_j.dumps({"mensagens": [{"assunto": "X", "texto": "A.\n\nAtenciosamente,\nFred Alexandrino\nSupervisor de O&M\nGrid Co."}]}), "email")
+        self.assertTrue(r["mensagens"][0]["texto"].endswith("Atenciosamente,"))

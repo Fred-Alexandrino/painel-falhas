@@ -217,6 +217,16 @@ def montar_contexto(body):
     return "\n".join(linhas)
 
 
+def cortar_assinatura_email(texto):
+    """O e-mail termina em "Atenciosamente,": a assinatura (nome, cargo, Grid Co.)
+    é a imagem do Outlook. O 11.5 manda escrever a assinatura; a decisão de
+    18/11/2026 do Fred prevalece, então o bloco em texto é removido aqui."""
+    m = re.search(r"(?im)^\s*atenciosamente\s*,?\s*$", texto)
+    if m:
+        return texto[:m.start()].rstrip() + "\n\nAtenciosamente,"
+    return re.sub(r"\n\s*Fred Alexandrino\s*\n\s*Supervisor de O&M\s*(\n\s*Grid Co\.?)?\s*$", "", texto).rstrip()
+
+
 def interpretar_resposta(texto_bruto, tipo):
     """Lê o JSON da IA e normaliza para {introducao, mensagens[], observacoes[]}."""
     t = str(texto_bruto or "").strip()
@@ -239,6 +249,8 @@ def interpretar_resposta(texto_bruto, tipo):
         texto = str(m.get("texto") or "").strip()
         if not texto:
             continue
+        if tipo == "email":
+            texto = cortar_assinatura_email(texto)
         item = {"texto": texto}
         if str(m.get("titulo") or "").strip():
             item["titulo"] = str(m["titulo"]).strip()
