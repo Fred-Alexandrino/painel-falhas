@@ -17393,7 +17393,7 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
         try:
             resp = requests.post(f"{GEMINI_URL}?key={chave}", json=payload, timeout=timeout)
             ultimo_status = resp.status_code
-            if resp.status_code == 429 and tentativa < tentativas - 1:
+            if resp.status_code in (429, 500, 503) and tentativa < tentativas - 1:
                 time.sleep(esperas[tentativa])
                 continue
             resp.raise_for_status()
@@ -17408,8 +17408,9 @@ def _chamar_gemini_com_retry(payload, timeout=45, tentativas=3, usar_chave_teste
                 detalhe = resp.text[:500]
             except Exception:
                 detalhe = ""
-            ultima_excecao = requests.exceptions.HTTPError(f"{e} | corpo: {detalhe}", response=resp)
-            if resp.status_code == 429 and tentativa < tentativas - 1:
+            # 18/11/2026: a mensagem do HTTPError traz a URL com ?key= — tira a chave antes de subir (ia para a tela)
+            ultima_excecao = requests.exceptions.HTTPError(re.sub(r"key=[^&\s]+", "key=***", f"{e} | corpo: {detalhe}"), response=resp)
+            if resp.status_code in (429, 500, 503) and tentativa < tentativas - 1:   # 503 = "high demand" do Gemini
                 time.sleep(esperas[tentativa])
                 continue
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
