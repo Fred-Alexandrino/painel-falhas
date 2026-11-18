@@ -27579,7 +27579,8 @@ def gerar_pdf_relatorio_chamados_se(d):
 
     def item_chamado(it):
         cor = it.get("statusCor") or _RSE_NAVY
-        esq = [Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">#{e(it.get("case"))}</font>',
+        _cs = str(it.get("case") or "")
+        esq = [Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">{"" if _cs[:1].isalpha() else "#"}{e(_cs)}</font>',
                          ParagraphStyle("ic", fontName=FB, fontSize=10, leading=12.5, alignment=TA_RIGHT)),
                Paragraph(e(it.get("equipamento") or ""), ParagraphStyle("ie", fontName=FR, fontSize=8.5, leading=10.5,
                                                                          alignment=TA_RIGHT, textColor=HexColor(_RSE_MUTED)))]
@@ -27593,6 +27594,9 @@ def gerar_pdf_relatorio_chamados_se(d):
             rot = (at.get("rotulo") or "Última atualização") + (f" ({at['data']})" if at.get("data") else "")
             dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">{e(rot)}:</font> {e(at["texto"])}',
                                   ParagraphStyle("iu", parent=st_s, alignment=TA_JUSTIFY, spaceBefore=3)))
+        if it.get("plano"):
+            dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">Próximos passos:</font> {e(it["plano"])}',
+                                  ParagraphStyle("ip", parent=st_s, alignment=TA_JUSTIFY, spaceBefore=3)))
         meta = [x for x in [
             (f"Aberto em {it['aberto']}" + (f" · {it['dias']} dias" if it.get("dias") not in (None, "") else "")) if it.get("aberto") else "",
             f"OS de campo {it['os']}" if it.get("os") else "", f"RMA {it['rma']}" if it.get("rma") else "",
