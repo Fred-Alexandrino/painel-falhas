@@ -25546,7 +25546,7 @@ def nexus_performance():
 _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @name         Grid Performance → Painel
 // @namespace    gridco-fred
-// @version      1.5
+// @version      1.6
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-performance-painel.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-performance-painel.user.js
 // @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
@@ -25567,6 +25567,9 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
   const INTERVALO_MIN = 60;          // mês atual + tempo real + religamentos
   const INTERVALO_ANTERIOR_H = 24;   // mês anterior (fechado): 1x por dia
   if (location.pathname.startsWith('/entrar')) return;
+  // v1.6 (18/11/2026): as telas de OS (/os/…, aberta pelo "Enviar ao Nexus" da Central) são outro sistema:
+  // a torre Performance responde 401 dali. Lá o script não roda nem mostra aviso.
+  if (location.pathname.startsWith('/os/') && !/central-atualizar/.test(location.hash)) return;
 
   function aviso(txt, erro) {
     let el = document.getElementById('gp-aviso');
