@@ -27767,6 +27767,65 @@ def gerar_pdf_relatorio_chamados_se(d):
     return buf.getvalue()
 
 
+_RELPUB_DIR = os.path.expanduser("~/relatorios_publicos")
+
+
+def _relpub_limpar():
+    try:
+        import shutil
+        limite = time.time() - 3 * 86400
+        for d in os.listdir(_RELPUB_DIR):
+            caminho = os.path.join(_RELPUB_DIR, d)
+            if os.path.isdir(caminho) and os.path.getmtime(caminho) < limite:
+                shutil.rmtree(caminho, ignore_errors=True)
+    except Exception:
+        pass
+
+
+@app.route("/relatorios/gerar-link", methods=["POST", "OPTIONS"])
+def relatorio_gerar_link():
+    """Gera o PDF e devolve um endereço real (com o nome do arquivo no fim), para abrir/baixar/compartilhar no celular."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        d = request.get_json(silent=True) or {}
+        pdf = gerar_pdf_relatorio_chamados_se(d)
+        nome = re.sub(r'[\\/:*?"<>|]', "", (d.get("arquivo") or "Relatorio.pdf")).strip() or "Relatorio.pdf"
+        if not nome.lower().endswith(".pdf"):
+            nome += ".pdf"
+        rid = uuid.uuid4().hex[:16]
+        pasta = os.path.join(_RELPUB_DIR, rid)
+        os.makedirs(pasta, exist_ok=True)
+        with open(os.path.join(pasta, nome), "wb") as f:
+            f.write(pdf)
+        _relpub_limpar()
+        return jsonify({"ok": True, "id": rid, "nome": nome}), 200
+    except Exception as ex:
+        try:
+            log.exception("relatorio gerar-link")
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": str(ex)}), 500
+
+
+@app.route("/relatorios/arquivo/<rid>/<path:nome>", methods=["GET"])
+def relatorio_arquivo(rid, nome):
+    if not re.fullmatch(r"[0-9a-f]{16}", rid or ""):
+        return jsonify({"ok": False, "error": "não encontrado"}), 404
+    pasta = os.path.join(_RELPUB_DIR, rid)
+    try:
+        arqs = [x for x in os.listdir(pasta) if x.lower().endswith(".pdf")]
+    except Exception:
+        arqs = []
+    if not arqs:
+        return jsonify({"ok": False, "error": "arquivo expirado ou inexistente"}), 404
+    real = arqs[0]
+    baixar = request.args.get("baixar") == "1"
+    resp = send_file(os.path.join(pasta, real), mimetype="application/pdf", as_attachment=baixar, download_name=real)
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
+
+
 @app.route("/relatorios/chamados-solaredge", methods=["POST"])
 def relatorio_chamados_solaredge_pdf():
     try:
