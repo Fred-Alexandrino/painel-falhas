@@ -14008,7 +14008,7 @@ _SE_SYNC_JS = r'''/* Sincroniza o Painel (CHAMADOS SOLAREDGE) com o Service Cent
 _SE_USERSCRIPT_CAB = """// ==UserScript==
 // @name         Grid Sync SolarEdge (Tampermonkey)
 // @namespace    gridco.fred
-// @version      1.0
+// @version      1.1
 // @description  "Atualizar da SolarEdge" da Central O&M sem a extensão do Chrome (Firefox do celular): abre o Service Center já logado, lê os cases e envia ao painel CHAMADOS SOLAREDGE. Só roda quando você clica no botão.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-sync-solaredge.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-sync-solaredge.user.js
@@ -14020,7 +14020,10 @@ _SE_USERSCRIPT_CAB = """// ==UserScript==
 (function () {
   'use strict';
   if (location.hostname === 'fred-alexandrino.github.io') {
-    document.documentElement.setAttribute('data-grid-se-us', '1');
+    const marcar = () => { try { document.documentElement.setAttribute('data-grid-se-us', '1'); window.__gridSeUS = true; } catch (e) {} };
+    marcar();
+    document.addEventListener('DOMContentLoaded', marcar);
+    window.addEventListener('load', marcar);
     return;
   }
   if (!/central-sync/.test(location.hash)) return;
