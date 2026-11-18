@@ -234,7 +234,10 @@ def montar_contexto(body):
                       "ao cliente. Leia o PDF inteiro e escreva o texto de envio a partir dele: o que o documento traz (atividade, "
                       "usina, data, resultado, pendências/recomendações) e o que se pede ao cliente, se houver. Use só fatos do PDF e do rascunho.")
     for d in docs:
-        linhas.append(f"DOCUMENTO ANEXADO — {d['nome']} (é o documento que vai junto ao texto; use os fatos dele):")
+        linhas.append(f"DOCUMENTO ANEXADO — {d['nome']} (é o documento que vai junto ao texto; use os fatos dele). "
+                      "Checklist: item \"Falhou\" cuja descrição diz que só se faz sob solicitação do cliente, \"se aplicável\" ou "
+                      "que a observação justifica como não aplicável NÃO é pendência — não liste; pendência é o que o técnico "
+                      "encontrou com defeito/faltando. Não liste itens aprovados um a um: resuma o que foi feito.")
         linhas.append(d["texto"])
         linhas.append("--- fim do documento ---")
     if ajuste:
@@ -290,6 +293,9 @@ def interpretar_resposta(texto_bruto, tipo):
             continue
         if tipo == "email":
             texto = cortar_assinatura_email(texto)
+        else:
+            # WhatsApp não leva assinatura (REGRAS_CENTRAL); a IA às vezes fecha com "Atenciosamente, Fred..."
+            texto = re.sub(r"\n\s*Atenciosamente,?\s*(\n\s*Fred Alexandrino.*)?\s*$", "", texto, flags=re.S | re.I).rstrip()
         item = {"texto": texto}
         if str(m.get("titulo") or "").strip():
             item["titulo"] = str(m["titulo"]).strip()
