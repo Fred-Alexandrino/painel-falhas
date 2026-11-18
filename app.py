@@ -24741,9 +24741,9 @@ def nexus_performance():
 _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @name         Grid Performance → Painel
 // @namespace    gridco-fred
-// @version      1.3
-// @updateURL    https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
-// @downloadURL  https://api.168.138.232.237.sslip.io/userscripts/grid-performance-painel.user.js
+// @version      1.4
+// @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-performance-painel.user.js
+// @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-performance-painel.user.js
 // @description  Lê a torre Performance do Nexus (PR, disponibilidade, religamentos, tempo real) e envia para a Central O&M. Roda sozinho a cada 60 min enquanto houver uma aba do Nexus aberta e logada.
 // @match        https://app.gridco.com.br/*
 // @grant        GM_xmlhttpRequest
@@ -24751,6 +24751,7 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @connect      api.168.138.232.237.sslip.io
+// @connect      api.168-138-232-237.nip.io
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
@@ -24829,9 +24830,15 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
     return { meses, religamentos, tempoReal, lidoEm: new Date().toISOString() };
   }
 
-  function enviar(payload) {
+  // v1.4 (17/11/2026): no 5G do Fred o endereço sslip.io dá erro de conexão segura; tenta o nip.io (mesmo servidor).
+  const API_ALT = 'https://api.168-138-232-237.nip.io/nexus-performance/importar';
+  async function enviar(payload) {
+    try { return await enviarPara(API, payload); }
+    catch (e) { if (/sem conexão|tempo esgotado/.test(e.message || '')) return await enviarPara(API_ALT, payload); throw e; }
+  }
+  function enviarPara(url, payload) {
     return new Promise((ok, falha) => GM_xmlhttpRequest({
-      method: 'POST', url: API, headers: { 'Content-Type': 'application/json' }, data: JSON.stringify(payload), timeout: 120000,
+      method: 'POST', url: url, headers: { 'Content-Type': 'application/json' }, data: JSON.stringify(payload), timeout: 120000,
       onload: r => { try { const j = JSON.parse(r.responseText); j.ok ? ok(j) : falha(new Error(j.error || 'erro')); } catch (e) { falha(new Error('HTTP ' + r.status)); } },
       onerror: () => falha(new Error('sem conexão com o painel')), ontimeout: () => falha(new Error('tempo esgotado')),
     }));
@@ -24859,8 +24866,10 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
       GM_setValue('gpUltimo', Date.now());
       if (anterior) GM_setValue('gpUltimoAnterior', Date.now());
       aviso('enviado ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : '') + ' às ' + (j.em || '').slice(-5));
+      return true;
     } catch (e) {
       aviso('falhou: ' + (e.message || e), true);
+      return false;
     } finally { GM_setValue('gpTrava', 0); }
   }
 
@@ -24868,7 +24877,8 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
   // v1.2 (17/11/2026): a Central abre esta aba com #central-atualizar quando o Fred clica em "Atualizar do Nexus"
   if (/central-atualizar/.test(location.hash)) {
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-    rodar(true).then(() => { aviso('pronto: a Central O&M já recebeu os dados. Esta aba fecha sozinha.'); setTimeout(() => { try { window.close(); } catch (e) {} }, 5000); });
+    // v1.4: só diz "pronto" e fecha a aba se o envio deu certo; se falhou, a aba fica aberta com o motivo.
+    rodar(true).then(ok => { if (!ok) return; aviso('pronto: a Central O&M já recebeu os dados. Pode voltar para a Central (esta aba tenta fechar sozinha).'); setTimeout(() => { try { window.close(); } catch (e) {} }, 5000); });
   } else {
     setTimeout(() => rodar(false), 8000);
   }
