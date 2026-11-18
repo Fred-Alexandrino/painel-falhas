@@ -43,6 +43,25 @@ class TestPdfEDocumento(unittest.TestCase):
         self.assertIn("DOCUMENTO ANEXADO — OS 8626 (Fracttal)", c)
         self.assertIn("Termografia", c)
 
+    def test_pdf_grande_vira_texto(self):
+        import base64, io
+        try:
+            from reportlab.pdfgen import canvas
+        except Exception:
+            self.skipTest("sem reportlab")
+        b = io.BytesIO(); c = canvas.Canvas(b); c.drawString(72, 720, "Ordem de Trabalho 8626 Termografia"); c.save()
+        b64 = base64.b64encode(b.getvalue()).decode()
+        antigo = cm._MAX_PDF_B64
+        cm._MAX_PDF_B64 = 10
+        try:
+            body = dict(BASE, prints=[{"base64": b64, "mimeType": "application/pdf", "nome": "OS.pdf"}])
+            self.assertEqual(cm.prints_validos(body), [])
+            ctx = cm.montar_contexto(body)
+            self.assertIn("DOCUMENTO ANEXADO — OS.pdf", ctx)
+            self.assertIn("Termografia", ctx)
+        finally:
+            cm._MAX_PDF_B64 = antigo
+
     def test_link_sem_printwo(self):
         with self.assertRaises(ValueError):
             cm.ler_os_fracttal("https://app.fracttal.com/tasks/wo")

@@ -118,7 +118,8 @@ _MAX_PRINT_B64 = 6 * 1024 * 1024  # ~4,5 MB por imagem (o front já reduz antes 
 _MIMES_PRINT = ("image/png", "image/jpeg", "image/webp")
 # 18/11/2026: PDF anexado (relatório, OS) — o Gemini lê PDF direto (texto e imagens das páginas)
 _MAX_PDFS = 2
-_MAX_PDF_B64 = 14 * 1024 * 1024   # ~10 MB por PDF (o pedido inteiro ao Gemini tem teto de ~20 MB)
+_MAX_PDF_B64 = 14 * 1024 * 1024   # até ~10 MB o PDF vai inteiro para a IA (o pedido ao Gemini tem teto de ~20 MB)
+_MAX_PDF_B64_TEXTO = 56 * 1024 * 1024   # até ~40 MB: o servidor extrai o texto (OS da Fracttal com centenas de fotos)
 _MAX_DOCS = 2
 _LIM_DOC = 40000
 
@@ -145,8 +146,10 @@ def prints_validos(body):
         if mime == "application/pdf":
             if body.get("tipo") != "envio_relatorio":
                 raise ValueError("PDF só no envio de relatório; nos outros tipos o print precisa ser imagem (PNG, JPG ou WEBP)")
+            if len(b64) > _MAX_PDF_B64_TEXTO:
+                raise ValueError("PDF grande demais (máx. ~40 MB)")
             if len(b64) > _MAX_PDF_B64:
-                raise ValueError("PDF grande demais (máx. ~10 MB)")
+                continue   # grande: vai como texto extraído (pdfs_como_texto)
         elif mime not in _MIMES_PRINT:
             raise ValueError("print precisa ser imagem (PNG, JPG ou WEBP)")
         elif len(b64) > _MAX_PRINT_B64:
@@ -155,12 +158,41 @@ def prints_validos(body):
     return partes
 
 
-def documentos_validos(body):
-    """Documentos em texto anexados (ex.: a OS lida da Fracttal). [{nome, texto}]"""
+def pdfs_como_texto(body):
+    """PDF grande demais para ir inteiro: extrai o texto das páginas (pdfplumber) e manda como documento."""
     docs = []
+    for it in body.get("prints") or []:
+        if not (isinstance(it, dict) and str(it.get("mimeType") or "").lower() == "application/pdf"):
+            continue
+        b64 = re.sub(r"^data:[^,]+,", "", str(it.get("base64") or "")).strip()
+        if len(b64) <= _MAX_PDF_B64 or len(b64) > _MAX_PDF_B64_TEXTO:
+            continue
+        try:
+            import pdfplumber
+            partes = []
+            with pdfplumber.open(io.BytesIO(base64.b64decode(b64))) as pdf:
+                for pg in pdf.pages[:80]:
+                    partes.append(pg.extract_text() or "")
+                    if sum(len(x) for x in partes) > _LIM_DOC:
+                        break
+            texto = "\n".join(partes).strip()
+        except Exception as e:
+            raise ValueError(f"não consegui ler o PDF grande ({str(e)[:80]})")
+        if not texto:
+            raise ValueError("o PDF grande não tem texto legível (é só imagem) — envie uma versão menor que 10 MB")
+        docs.append({"nome": _txt(it.get("nome"), 120) or "PDF anexado", "texto": texto[:_LIM_DOC]})
+    return docs
+
+
+def documentos_validos(body):
+    """Documentos em texto anexados (ex.: a OS lida da Fracttal) + PDFs grandes convertidos em texto. [{nome, texto}]"""
+    if "_docs_cache" in body:
+        return body["_docs_cache"]
+    docs = pdfs_como_texto(body)
     for d in (body.get("documentos") or [])[:_MAX_DOCS]:
         if isinstance(d, dict) and str(d.get("texto") or "").strip():
             docs.append({"nome": _txt(d.get("nome"), 120) or "documento", "texto": str(d["texto"]).strip()[:_LIM_DOC]})
+    body["_docs_cache"] = docs
     return docs
 
 
@@ -182,8 +214,10 @@ def montar_contexto(body):
     if dividir:
         ajuste = (ajuste + "\n" if ajuste else "") + INSTRUCAO_DIVIDIR
     n_prints = len(body.get("prints") or [])
-    n_pdfs = sum(1 for it in (body.get("prints") or []) if isinstance(it, dict) and str(it.get("mimeType") or "").lower() == "application/pdf")
-    n_imgs = n_prints - n_pdfs
+    eh_pdf = lambda it: isinstance(it, dict) and str(it.get("mimeType") or "").lower() == "application/pdf"
+    n_imgs = sum(1 for it in (body.get("prints") or []) if not eh_pdf(it))
+    n_pdfs = sum(1 for it in (body.get("prints") or []) if eh_pdf(it)
+                 and len(re.sub(r"^data:[^,]+,", "", str(it.get("base64") or ""))) <= _MAX_PDF_B64)
     docs = documentos_validos(body)
     if not rascunho and not msgs_atuais and not n_prints and not docs:
         raise ValueError("escreva o rascunho ou anexe um print antes de gerar")
