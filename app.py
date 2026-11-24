@@ -16880,7 +16880,8 @@ def atualizar_campo_atividade():
 
             num_os = (linha_atual[13] if len(linha_atual) > 13 else "").strip()
             if field == "status" and _eh_os_fama(num_os) and editor != "fama-sync" and str(value).strip():
-                _fama_travar_status(ws, linha_idx, linha_atual, num_os, str(value).strip(), editor)
+                _fama_travar_status(ws, linha_idx, linha_atual, num_os, str(value).strip(), editor,
+                                    estado=str(body.get("estadoOS") or "").strip())
 
         return jsonify({"ok": True})
     except Exception as e:
@@ -27174,6 +27175,8 @@ def _eh_os_fama(numero_os):
 # Finalizada/Cancelada, para a OS sair de "em processo" em todo o Omni.
 _FAMA_CHAVE_MANUAL = "fama_status_manual:"
 _FAMA_MANUAL_ESTADO = {"Concluído": ("Finalizada", "Concluída"), "Cancelado": ("Cancelada", "Cancelada")}
+# Estado da OS escolhido no Kanban do Omni (coluna onde o card foi solto)
+_FAMA_ESTADO_GERAL = {"Em Processo": "Em Progresso", "Em Revisão": "Concluída", "Finalizada": "Concluída", "Cancelada": "Cancelada"}
 
 
 def _fama_status_manuais():
@@ -27191,7 +27194,8 @@ def _fama_status_manuais():
             partes = ((row[1] if len(row) > 1 else "") or "").split("|")
             if partes[0].strip():
                 out[num] = {"status": partes[0].strip(), "em": (partes[1] if len(partes) > 1 else "").strip(),
-                            "por": (partes[2] if len(partes) > 2 else "").strip()}
+                            "por": (partes[2] if len(partes) > 2 else "").strip(),
+                            "estado": (partes[3] if len(partes) > 3 else "").strip()}
     return out
 
 
@@ -27199,7 +27203,9 @@ def _fama_aplicar_manual(m, trava):
     """Ajusta os campos de estado de uma OS mapeada da FAMA conforme a trava do Omni."""
     rot_fama = m["statusTarefaOS"]
     est = _FAMA_MANUAL_ESTADO.get(trava["status"])
-    if est:
+    if trava.get("estado") in _FAMA_ESTADO_GERAL:
+        m["statusOS"], m["statusGeralOS"] = trava["estado"], _FAMA_ESTADO_GERAL[trava["estado"]]
+    elif est:
         m["statusOS"], m["statusGeralOS"] = est
     m["statusTarefaOS"] = f"{trava['status']} no Omni (FAMA: {rot_fama})"
     m["status"] = trava["status"]
@@ -27556,22 +27562,30 @@ def _fama_disparar_se_devido(forcar=False):
         return False
 
 
-def _fama_travar_status(ws, linha_idx, linha_atual, num_os, valor, editor):
-    """Grava a trava do status definido no Omni para uma OS da FAMA e ajusta o estado da OS na hora."""
+def _fama_travar_status(ws, linha_idx, linha_atual, num_os, valor, editor, estado=""):
+    """Grava a trava do status definido no Omni para uma OS da FAMA e ajusta o estado da OS na hora.
+    estado (opcional) = coluna do Kanban onde o card foi solto: Em Processo / Em Revisão / Finalizada / Cancelada."""
     agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
-    _config_set_lote_core({f"{_FAMA_CHAVE_MANUAL}{num_os.upper()}": f"{valor}|{agora_txt}|{editor}"})
     row = linha_atual + [""] * (ATIV_TOTAL_COLUNAS - len(linha_atual))
     rot_atual = row[ATIV_CAMPO_COL["statusTarefaOS"] - 1].strip()
     rot_fama = re.sub(r"^.* no Omni \(FAMA: (.*)\)$", r"\1", rot_atual) if " no Omni (FAMA: " in rot_atual else rot_atual
+    if estado not in _FAMA_ESTADO_GERAL:
+        if valor in _FAMA_MANUAL_ESTADO:
+            estado = _FAMA_MANUAL_ESTADO[valor][0]
+        else:
+            # status não-final: volta ao estado que a FAMA informa (nunca deixa "Finalizada" com status em aberto)
+            estado = next((v[1] for v in _FAMA_STATUS.values() if v[0] == rot_fama), "Em Processo")
+            if estado in ("Finalizada", "Cancelada"):
+                estado = "Em Processo"
+    _config_set_lote_core({f"{_FAMA_CHAVE_MANUAL}{num_os.upper()}": f"{valor}|{agora_txt}|{editor}|{estado}"})
     col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
-    ups = [{"range": f"{col_letra(ATIV_CAMPO_COL['statusTarefaOS'])}{linha_idx}", "values": [[f"{valor} no Omni (FAMA: {rot_fama})"]]}]
-    est = _FAMA_MANUAL_ESTADO.get(valor)
-    if est:
-        ups.append({"range": f"{col_letra(ATIV_CAMPO_COL['statusOS'])}{linha_idx}", "values": [[est[0]]]})
-        ups.append({"range": f"{col_letra(ATIV_CAMPO_COL['statusGeralOS'])}{linha_idx}", "values": [[est[1]]]})
+    ups = [{"range": f"{col_letra(ATIV_CAMPO_COL['statusTarefaOS'])}{linha_idx}", "values": [[f"{valor} no Omni (FAMA: {rot_fama})"]]},
+           {"range": f"{col_letra(ATIV_CAMPO_COL['statusOS'])}{linha_idx}", "values": [[estado]]},
+           {"range": f"{col_letra(ATIV_CAMPO_COL['statusGeralOS'])}{linha_idx}", "values": [[_FAMA_ESTADO_GERAL[estado]]]}]
     _gspread_retry(lambda: ws.batch_update(ups, value_input_option="RAW"))
     hist = _gspread_retry(lambda: ws.cell(linha_idx, ATIV_COL_HISTORICO).value) or ""
-    nota = (f"{agora_txt} - 🔒 Status \"{valor}\" definido no Omni ({_editor_legivel(editor)}) e travado: "
+    rot_col = {"Em Processo": "OSs em Processo", "Em Revisão": "OSs em Verificação", "Finalizada": "OSs Concluídas", "Cancelada": "Cancelada"}[estado]
+    nota = (f"{agora_txt} - 🔒 Status \"{valor}\" ({rot_col}) definido no Omni ({_editor_legivel(editor)}) e travado: "
             f"a sincronização com a FAMA não altera mais o status desta OS.")
     _gspread_retry(lambda: ws.update_cell(linha_idx, ATIV_COL_HISTORICO, f"{hist}\n{nota}".strip() if hist else nota))
 
@@ -27784,7 +27798,8 @@ def _fama_auditoria_core(aplicar=True, origem="botão Auditoria"):
         st, so_atual = row[ATIV_CAMPO_COL["status"] - 1].strip(), row[ATIV_CAMPO_COL["statusOS"] - 1].strip()
         if st in ("Concluído", "Cancelado") and so_atual in ("Finalizada", "Cancelada"):
             continue
-        if manuais and num in manuais and manuais[num]["status"] in _FAMA_MANUAL_ESTADO:
+        if manuais and num in manuais and (manuais[num]["status"] in _FAMA_MANUAL_ESTADO
+                                           or manuais[num].get("estado") in ("Finalizada", "Cancelada")):
             continue
         escopo += 1
         so = por_num.get(num)
