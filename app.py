@@ -7898,10 +7898,12 @@ GRUPOS_EQUIPE_UFVS = [
     {"id": "120363414813251905@g.us", "nome": "PR Oeste 02 | Segredo",
      "usinas": ["Segredo"]},
 ]
-# Faro Energy (Fred, 24/11/2026): toda a comunicação com a Faro (cliente + campo) é no grupo
-# "FARO E GRID Co - O&M" (grupo da Faro: não segue o padrão "Cluster | Usinas" e não deve ser renomeado).
-GRUPOS_EQUIPE_UFVS.append({"id": "120363164947049562@g.us", "nome": "FARO E GRID Co - O&M",
+# Faro Energy (Fred, 24/11/2026): comunicados de campo das usinas Faro vão para o grupo dos operadores
+# "Operadores Exata - O&M Faro". O grupo "FARO E GRID Co - O&M" é o do CLIENTE (Faro) e continua aceito
+# pelo webhook (_GRUPOS_CLIENTE_EXTRA). Grupos criados pela Faro/Exata: não renomear nem trocar foto.
+GRUPOS_EQUIPE_UFVS.append({"id": "120363164849456435@g.us", "nome": "Operadores Exata - O&M Faro",
                            "usinas": [u["usina"] for u in MAPEAMENTO_UFVS if u["cliente"] == "Faro Energy"]})
+_GRUPOS_CLIENTE_EXTRA = ["120363164947049562@g.us"]  # FARO E GRID Co - O&M (cliente)
 for _g in GRUPOS_EQUIPE_UFVS:
     for _u in MAPEAMENTO_UFVS:
         if _u["usina"] in _g["usinas"]:
@@ -7912,6 +7914,9 @@ if _ids_ja:  # .env sem GRUPOS_IDS = aceita todos os grupos; não vira filtro s�
     for _g in GRUPOS_EQUIPE_UFVS:
         if _g["id"].replace("@g.us", "") not in _ids_ja:
             GRUPOS_FILTRO.append(_g["id"])
+    for _gid in _GRUPOS_CLIENTE_EXTRA:
+        if _gid.replace("@g.us", "") not in _ids_ja:
+            GRUPOS_FILTRO.append(_gid)
     GRUPOS_FILTRO = [x for x in GRUPOS_FILTRO if x.strip()]
 # 17/11/2026 (Fred): Sal Energia removida COMPLETAMENTE do mapeamento — o grupo
 # "[O&M] - Grid Co. | Sal Energia" deixa de ser aceito pelo webhook e de aparecer
@@ -7987,6 +7992,12 @@ def _map_override_aplicar(dados):
         _map_override_estado["assin"] = json.dumps(dados, sort_keys=True, ensure_ascii=False)
 
 
+# Situação de cada UFV = status da usina na intranet (Fred, 24/11/2026). Fica na _Sistema como JSON
+# {usina: {"status", "ufv", "em"}} (chave abaixo), gravado por POST /mapeamento-ufvs/status-intranet.
+_STATUS_INTRANET_KEY = "status_intranet_ufvs"
+_STATUS_INTRANET = {}
+
+
 def _map_override_sincronizar(force=False):
     """Lê o override da _Sistema (cache de 90 s) e reaplica se mudou — assim
     todos os workers do gunicorn convergem sozinhos após uma edição."""
@@ -7998,6 +8009,15 @@ def _map_override_sincronizar(force=False):
         ws_cfg = _get_config_sheet()
         valores = _gspread_retry(lambda: ws_cfg.get_all_values())
         bruto = ""
+        for row in valores[1:]:
+            if row and row[0].strip() == _STATUS_INTRANET_KEY:
+                try:
+                    _si = json.loads(row[1] if len(row) > 1 else "") or {}
+                    if isinstance(_si, dict):
+                        _STATUS_INTRANET.clear()
+                        _STATUS_INTRANET.update(_si)
+                except Exception:
+                    pass
         for row in valores[1:]:
             if row and row[0].strip() == _MAP_OVERRIDE_KEY:
                 bruto = row[1] if len(row) > 1 else ""
@@ -17859,6 +17879,7 @@ def gerar_comunicado_livre_ia():
 
 _NOMES_GRUPOS_CONHECIDOS = {
     "120363164947049562": "FARO E GRID Co - O&M",
+    "120363164849456435": "Operadores Exata - O&M Faro",
     "120363423233716775": "[O&M] - Grid Co. | Renogrid",
     "120363423427343356": "[O&M] - Grid Co. | Thopen",
     "120363402559504115": "[O&M] - Grid Co. | 2C",
@@ -22842,8 +22863,32 @@ def mapeamento_ufvs():
             extra["conjunto"] = _CONJUNTO_DA_USINA[u["usina"]]
         if u["usina"] in SUPERVISOR_CAMPO_UFV:
             extra["supervisor_campo"] = SUPERVISOR_CAMPO_UFV[u["usina"]]
+        _si = _STATUS_INTRANET.get(u["usina"])
+        if _si:
+            extra["status_intranet"] = _si.get("status") or ""
+            extra["status_intranet_em"] = _si.get("em") or ""
+            if _si.get("ufv") and not u.get("ufv_codigo"):
+                extra["ufv_codigo"] = _si["ufv"]
         itens.append(dict(u, **extra) if extra else u)
     return jsonify({"ok": True, "total": len(MAPEAMENTO_UFVS), "itens": itens}), 200
+
+
+@app.route("/mapeamento-ufvs/status-intranet", methods=["POST"])
+def mapeamento_ufvs_status_intranet():
+    """Grava a situação (status da intranet) de cada UFV do mapeamento. X-Deploy-Secret.
+    Body: {"em": "24/11/2026 18:10", "itens": {usina: {"status": "Operação", "ufv": "UFV-247"}}}"""
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(force=True, silent=True) or {}
+    validas = {u["usina"] for u in MAPEAMENTO_UFVS}
+    em = str(b.get("em") or agora_br().strftime("%d/%m/%Y %H:%M"))
+    dados = {k: {"status": str(v.get("status") or "").strip(), "ufv": str(v.get("ufv") or "").strip(), "em": em}
+             for k, v in (b.get("itens") or {}).items() if k in validas and isinstance(v, dict)}
+    fora = sorted(validas - set(dados))
+    _config_set_lote_core({_STATUS_INTRANET_KEY: json.dumps(dados, ensure_ascii=False, sort_keys=True)})
+    _STATUS_INTRANET.clear()
+    _STATUS_INTRANET.update(dados)
+    return jsonify({"ok": True, "gravadas": len(dados), "semStatus": fora}), 200
 
 
 @app.route("/mapeamento-ufvs/editar", methods=["POST", "OPTIONS"])
