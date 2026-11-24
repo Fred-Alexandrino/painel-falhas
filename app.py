@@ -26000,6 +26000,281 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 '''
 
 
+# 24/11/2026: "Grid Omni — atualizar ao abrir": na abertura do Omni lê Nexus (performance, chamados) e SolarEdge
+# via GM_xmlhttpRequest (cookies do navegador do Fred), sem abrir abas, e envia aos mesmos /importar de sempre.
+_USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
+// @name         Grid Omni — atualizar ao abrir
+// @namespace    gridco-fred
+// @version      1.0
+// @description  Ao abrir o Omni (Central O&M), atualiza sozinho, sem abrir abas: performance e chamados do Nexus e os cases do Service Center da SolarEdge. Usa o login que você já tem no Nexus e na SolarEdge (nenhuma senha passa por aqui).
+// @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
+// @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
+// @match        https://fred-alexandrino.github.io/PAINELDEFALHAS/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @connect      app.gridco.com.br
+// @connect      www.solaredge.com
+// @connect      api.168.138.232.237.sslip.io
+// @connect      api.168-138-232-237.nip.io
+// @run-at       document-start
+// @noframes
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  const NEXUS = 'https://app.gridco.com.br';
+  const SE = 'https://www.solaredge.com';
+  const APIS = ['https://api.168-138-232-237.nip.io', 'https://api.168.138.232.237.sslip.io'];
+  const MIN_ENTRE = 10 * 60000;   // não repete a mesma leitura se a última deu certo há menos de 10 min
+
+  // ── estado compartilhado com a página (o DOM é o canal; eventos com objeto falham entre os mundos) ──
+  const estado = { versao: '1.0', inicio: 0, etapas: {} };
+  function publicar() {
+    try {
+      let el = document.getElementById('omni-sync-estado');
+      if (!el) {
+        el = document.createElement('script'); el.type = 'application/json'; el.id = 'omni-sync-estado';
+        (document.head || document.documentElement).appendChild(el);
+      }
+      el.textContent = JSON.stringify(estado);
+      document.dispatchEvent(new Event('omni-sync'));
+    } catch (e) {}
+  }
+  function etapa(k, st, msg) { estado.etapas[k] = { st, msg: msg || '', em: Date.now() }; publicar(); }
+  document.documentElement.setAttribute('data-omni-sync', '1');
+
+  // ── HTTP pelo Tampermonkey (leva os cookies do Nexus/SolarEdge; não abre aba) ──
+  function req(method, url, opt) {
+    opt = opt || {};
+    return new Promise((ok, falha) => GM_xmlhttpRequest({
+      method, url, headers: opt.headers || {}, data: opt.data, timeout: opt.timeout || 60000, anonymous: false,
+      onload: r => ok(r), onerror: () => falha(new Error('sem conexão com ' + new URL(url).hostname)),
+      ontimeout: () => falha(new Error('tempo esgotado em ' + new URL(url).hostname)),
+    }));
+  }
+  const logouNexus = r => /\/entrar/.test(r.finalUrl || '') || /name=["']?senha|id=["']?login/i.test((r.responseText || '').slice(0, 4000));
+  async function nexusJ(path) {
+    const r = await req('GET', NEXUS + path, { headers: { Accept: 'application/json' } });
+    if (logouNexus(r)) throw new Error('LOGIN_NEXUS');
+    if (r.status < 200 || r.status >= 300) throw new Error(path + ' HTTP ' + r.status);
+    return JSON.parse(r.responseText);
+  }
+  async function nexusHtml(path) {
+    const r = await req('GET', NEXUS + path);
+    if (logouNexus(r)) throw new Error('LOGIN_NEXUS');
+    if (r.status < 200 || r.status >= 300) throw new Error(path + ' HTTP ' + r.status);
+    return new DOMParser().parseFromString(r.responseText, 'text/html');
+  }
+  async function api(path, corpo, metodo) {
+    let ult;
+    for (const base of APIS) {
+      try {
+        const r = await req(metodo || 'POST', base + path, { headers: { 'Content-Type': 'application/json' }, data: corpo ? JSON.stringify(corpo) : undefined, timeout: 120000 });
+        const j = JSON.parse(r.responseText);
+        if (!j.ok && j.ok !== undefined) throw Object.assign(new Error(j.error || 'erro no painel'), { painel: true });
+        return j;
+      } catch (e) { ult = e; if (e.painel) throw e; }
+    }
+    throw ult;
+  }
+  const recente = k => Date.now() - GM_getValue(k, 0) < MIN_ENTRE;
+
+  // ── 1) Performance (mesma leitura do script "Grid Performance → Painel") ──
+  async function performance() {
+    if (recente('osPerfOk')) return etapa('performance', 'pulado', 'atualizada há menos de 10 min');
+    etapa('performance', 'rodando', 'lendo a torre Performance…');
+    const hoje = new Date();
+    const ms = [[hoje.getFullYear(), hoje.getMonth() + 1]];
+    const anterior = Date.now() - GM_getValue('osPerfAnterior', 0) > 24 * 3600e3;
+    if (anterior) { const p = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1); ms.push([p.getFullYear(), p.getMonth() + 1]); }
+    const meses = {};
+    for (const [a, m] of ms) {
+      const chave = a + '-' + String(m).padStart(2, '0');
+      const [ger, disp] = await Promise.all([
+        nexusJ('/api/gerencial?mes=' + m + '&ano=' + a).catch(e => { if (e.message === 'LOGIN_NEXUS') throw e; return { erro: String(e.message || e) }; }),
+        nexusJ('/api/gerencial/disponibilidade?mes=' + chave).catch(e => { if (e.message === 'LOGIN_NEXUS') throw e; return { erro: String(e.message || e) }; }),
+      ]);
+      meses[chave] = { gerencial: ger, disponibilidade: disp };
+    }
+    const atual = Object.keys(meses)[0];
+    const mA = meses[atual];
+    if (mA.gerencial.erro && mA.disponibilidade.erro) {
+      const cod = (String(mA.gerencial.erro).match(/HTTP (\d+)/) || [])[1] || '?';
+      throw new Error(cod === '401' || cod === '403' ? 'o Nexus recusou o acesso à torre Performance (HTTP ' + cod + ')' : 'a torre Performance não respondeu (HTTP ' + cod + ')');
+    }
+    let religamentos = null;
+    try {
+      const doc = await nexusHtml('/t/cos/religamentos?dias=30&ver=todos');
+      const num = t => { const n = parseInt(String(t).replace(/\D/g, ''), 10); return isNaN(n) ? 0 : n; };
+      const rows = [...doc.querySelectorAll('main table tbody tr')].map(tr => {
+        const td = [...tr.children];
+        const dets = [...td[0].querySelectorAll('.det')].map(s => s.textContent.trim());
+        const nome = (td[0].querySelector('a,b') || td[0]).textContent.trim();
+        return { usina: nome, escopo: dets[0] || '', tipos: dets[1] || '', total: num(td[1].textContent), remotoResolveu: num(td[2].textContent),
+          remotoDepoisCampo: num(td[3].textContent), remotoAberta: num(td[4].textContent), soLocal: num(td[5].textContent),
+          ultimo: td[6] ? td[6].textContent.trim() : '', os: td[7] ? td[7].textContent.trim() : '' };
+      });
+      religamentos = { dias: 30, rows };
+    } catch (e) { if (e.message === 'LOGIN_NEXUS') throw e; }
+    let tempoReal = null;
+    try { tempoReal = await nexusJ('/api/entrada/tempo-real'); } catch (e) {}
+    try {
+      const f = await nexusJ('/api/painel/falhas');
+      const sr = ((f.strings || {}).rows || []).map(r => ({ usina: r.usina, cliente: r.cliente, inversor: r.inversor, strings: r.strings, qtd: r.qtd, dia: r.dia, perda_kwh: r.perda_kwh, dur_h: r.dur_h, flags: r.flags }));
+      const ta = {};
+      ((f.trackers || {}).rows || []).forEach(r => {
+        const k = r.usina + '|' + r.tracker;
+        const a = ta[k] = ta[k] || { usina: r.usina, cliente: r.cliente, tracker: r.tracker, inversor: r.inversor, episodios: 0, perda_kwh: 0, h_sol: 0, cronico: false, sem_com_desde: r.sem_com_desde || null };
+        a.episodios++; a.perda_kwh += r.perda_kwh || 0; a.h_sol += r.h_sol || 0; if (r.cronico) a.cronico = true;
+      });
+      mA.falhas = { periodo: f.periodo, strings: sr, trackers: Object.values(ta), strings_os: f.strings_os || [] };
+    } catch (e) {}
+    try {
+      const mc = await nexusJ('/api/macro');
+      mA.macro = (mc.usinas || []).map(u => ({ usina: u.usina, fonte: u.fonte, status: u.status, causa: u.causa, sev: u.sev, strings_faltando: u.strings_faltando, str_esp: u.str_esp, inv_off: u.inv_off, qtd_inversores: u.qtd_inversores, ultima_leitura: u.ultima_leitura }));
+    } catch (e) {}
+    etapa('performance', 'rodando', 'enviando ao painel…');
+    const j = await api('/nexus-performance/importar', { meses, religamentos, tempoReal, lidoEm: new Date().toISOString() });
+    if (!(j.meses || []).length) throw new Error('o Nexus devolveu leitura vazia');
+    GM_setValue('osPerfOk', Date.now());
+    if (anterior) GM_setValue('osPerfAnterior', Date.now());
+    etapa('performance', 'ok', 'mês ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : ''));
+  }
+
+  // ── 2) Chamados › Garantias do Nexus (mesma leitura do script "Grid OS → Nexus") ──
+  const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  async function chamados() {
+    if (recente('osChOk')) return etapa('chamados', 'pulado', 'atualizados há menos de 10 min');
+    etapa('chamados', 'rodando', 'lendo Chamados › Garantias…');
+    const doc = await nexusHtml('/os/chamados/acompanhamento');
+    const ths = [...doc.querySelectorAll('table thead th')].map(x => norm(x.textContent));
+    const ix = nome => ths.indexOf(norm(nome));
+    const col = { os: ix('OS'), ativo: ix('Ativo'), usina: ix('Usina'), forn: ix('Fornecedor'), geral: ix('Geral'), status: ix('Status'), ticket: ix('Ticket'), sit: ix('Situação'), resp: ix('Responsável') };
+    if (col.os < 0 || col.ativo < 0 || col.usina < 0 || col.status < 0) throw new Error('a tabela de chamados não veio na leitura direta (o Nexus mudou a tela?)');
+    const tx = (tr, i) => i < 0 ? '' : ((tr.children[i] || {}).textContent || '').replace(/\s+/g, ' ').trim();
+    const rows = [...doc.querySelectorAll('table tbody tr')].map(tr => {
+      const folio = (tr.dataset && tr.dataset.folio) || tx(tr, col.os);
+      return { folio, ativo: tx(tr, col.ativo), usina: tx(tr, col.usina), fornecedor: tx(tr, col.forn), geral: tx(tr, col.geral), status: tx(tr, col.status),
+        ticket: tx(tr, col.ticket), situacao: tx(tr, col.sit), responsavel: tx(tr, col.resp), cliente: (tr.dataset && tr.dataset.cliente) || '',
+        tipo: (tr.dataset && tr.dataset.tipo) || '', supervisor: (tr.dataset && tr.dataset.ufv) || '' };
+    }).filter(r => /^\d{3,}$/.test(String(r.folio).trim()));
+    if (rows.length < 20) throw new Error('a leitura direta trouxe só ' + rows.length + ' chamados (a lista carrega por script); use "Atualizar do Nexus" em Chamados');
+    const lido = ((doc.body.textContent.match(/lido do Fracttal às\s*([^\n]+)/) || [])[1] || '').trim();
+    etapa('chamados', 'rodando', 'enviando ' + rows.length + ' chamados…');
+    const j = await api('/chamados-nexus/importar', { rows, snapshotCompleto: true, lidoEm: lido });
+    GM_setValue('osChOk', Date.now());
+    etapa('chamados', 'ok', j.total + ' chamados (' + j.criadas + ' novos, ' + j.atualizadas + ' atualizados)' + (j.removidasBloqueadas ? ' · remoções bloqueadas por segurança' : ''));
+  }
+
+  // ── 3) SolarEdge Service Center (mesma leitura do "Atualizar da SolarEdge") ──
+  const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().replace(/^\.\s*/, '');
+  const htmlTxt = h => {
+    const d = new DOMParser().parseFromString(String(h || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr)>/gi, '\n'), 'text/html');
+    return (d.body.textContent || '').replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+  const clean = t => t.replace(/\n?= ?=[ =]*\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/^ATENÇÃO: Todas as orientações[^\n]*\n?/m, '').replace(/\n{3,}/g, '\n\n').trim();
+  async function seCase(id) {
+    const r = await req('POST', SE + '/solaredge-support-center/getCaseAjax', {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', Referer: SE + '/service/support/cases' },
+      data: 'caseID=' + encodeURIComponent(id), timeout: 30000 });
+    if (r.status < 200 || r.status >= 300) throw new Error('HTTP ' + r.status);
+    return JSON.parse(r.responseText);
+  }
+  const montar = (j, b, guid) => {
+    const sn = j.serialNumbers || [];
+    const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()))].join(' | ');
+    const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
+    return { ...b, guid, description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
+      rma: j.rma || b.rma, eta: uniq(sn.map(s => s.shipping_eta)) || b.eta, tracking: uniq(sn.map(s => s.tracking_number)) || b.tracking,
+      status: j.status || b.status, comments, documents: [...new Set((j.documents || []).map(d => d.name).filter(Boolean))] };
+  };
+  async function emParalelo(lista, n, fn) {
+    let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, lista.length) }, async () => { while (i < lista.length) { const k = i++; await fn(lista[k], k); } }));
+  }
+  async function solaredge() {
+    if (recente('osSeOk')) return etapa('solaredge', 'pulado', 'atualizada há menos de 10 min');
+    etapa('solaredge', 'rodando', 'lendo o Service Center…');
+    const r = await req('GET', SE + '/service/support/cases');
+    if (/\/login|signin|sso/i.test(r.finalUrl || '') && !/support\/cases/.test(r.finalUrl || '')) throw new Error('LOGIN_SE');
+    const doc = new DOMParser().parseFromString(r.responseText, 'text/html');
+    const ids = {}; doc.querySelectorAll('h4[data-case-id]').forEach(h => { ids[h.textContent.trim()] = h.getAttribute('data-case-id'); });
+    const tabela = [...doc.querySelectorAll('table')].find(t => /subject/i.test(t.querySelector('thead') ? t.querySelector('thead').textContent : ''));
+    if (!tabela || !Object.keys(ids).length) {
+      if (/password|sign in|log in/i.test(r.responseText.slice(0, 20000))) throw new Error('LOGIN_SE');
+      throw new Error('a lista de cases não veio na leitura direta; use "Atualizar da SolarEdge" em Chamados');
+    }
+    const hdr = [...tabela.querySelectorAll('thead th')].map(t => strip(t.textContent));
+    const base = {};
+    tabela.querySelectorAll('tbody tr').forEach(tr => {
+      const a = [...tr.children].map(td => strip(td.textContent)), m = {}; hdr.forEach((h, i) => m[h] = a[i]);
+      const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
+      base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
+    });
+    const nums = Object.keys(base);
+    if (!nums.length) throw new Error('nenhum case na lista do Service Center');
+    const lido = [], faltam = [];
+    let feitos = 0;
+    await emParalelo(nums, 4, async n => {
+      let ok = null;
+      for (let t = 0; t < 3 && !ok && ids[n]; t++) {
+        try { const j = await seCase(ids[n]); if (String(j.case_number) !== n) throw new Error('outro case'); ok = montar(j, base[n], ids[n]); }
+        catch (e) { await new Promise(s => setTimeout(s, 800)); }
+      }
+      if (ok) lido.push(ok); else faltam.push(n);
+      etapa('solaredge', 'rodando', 'case ' + (++feitos) + ' de ' + nums.length);
+    });
+    let fechados = 0;
+    try {
+      const rr = await api('/solaredge-chamados/reler', null, 'GET');
+      const lista = (rr.cases || []).filter(x => !nums.includes(x.case));
+      await emParalelo(lista, 4, async x => {
+        try { const j = await seCase(x.guid); if (String(j.case_number) !== x.case) return; const o = montar(j, { case: x.case }, x.guid); o.fechado = true; lido.push(o); fechados++; } catch (e) {}
+      });
+    } catch (e) {}
+    etapa('solaredge', 'rodando', 'enviando ' + lido.length + ' cases…');
+    const comp = (lido.length - fechados) === nums.length;
+    const j = await api('/solaredge-chamados/importar', { cases: lido, snapshotCompleto: comp });
+    GM_setValue('osSeOk', Date.now());
+    etapa('solaredge', 'ok', lido.length + ' cases (' + j.novos + ' novos, ' + j.atualizados + ' atualizados)' + (comp ? '' : ' · não li: ' + faltam.join(', ')));
+  }
+
+  async function rodar(k, fn) {
+    try { await fn(); }
+    catch (e) {
+      const m = String(e.message || e);
+      etapa(k, 'erro', m === 'LOGIN_NEXUS' ? 'entre no Nexus (app.gridco.com.br) neste navegador' : m === 'LOGIN_SE' ? 'entre no Service Center da SolarEdge neste navegador' : m);
+    }
+  }
+  let iniciado = false;
+  function iniciar() {
+    if (iniciado) return;
+    let role = '';
+    try { role = localStorage.getItem('om_role') || ''; } catch (e) {}
+    if (role !== 'manager') return;           // só no acesso do Fred
+    iniciado = true;
+    estado.inicio = Date.now();
+    ['performance', 'chamados', 'solaredge'].forEach(k => { estado.etapas[k] = { st: 'fila', msg: '' }; });
+    publicar();
+    rodar('performance', performance);
+    rodar('chamados', chamados);
+    rodar('solaredge', solaredge);
+  }
+  publicar();
+  iniciar();
+  // ainda não logado: começa assim que o login acontecer
+  const t = setInterval(() => { if (iniciado) return clearInterval(t); iniciar(); }, 1000);
+})();
+'''
+
+
+@app.route("/userscripts/grid-omni-sync.user.js", methods=["GET"])
+def userscript_grid_omni_sync():
+    from flask import Response
+    return Response(_USERSCRIPT_OMNI_SYNC, mimetype="text/javascript; charset=utf-8")
+
+
 @app.route("/userscripts/grid-performance-painel.user.js", methods=["GET"])
 def userscript_grid_performance():
     """Script do Tampermonkey (instalação: abrir esta URL no Chrome com o Tampermonkey)."""
