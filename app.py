@@ -26010,7 +26010,7 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @name         Grid Omni — atualizar ao abrir
 // @namespace    gridco-fred
-// @version      2.3
+// @version      2.4
 // @description  Ao abrir o Omni (Central O&M), passa pelo Nexus (chamados e performance) e pelo Service Center da SolarEdge na MESMA aba, lê tudo com o login que você já tem e volta para o Omni com os painéis atualizados. Nenhuma senha passa por aqui.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
@@ -26134,6 +26134,8 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
       return;
     }
     const partir = () => {
+      // v2.4: o botão "Atualizar" do Omni pede a volta completa (ignora os 10 min)
+      try { const f = +localStorage.getItem('omniSyncForcar') || 0; if (f) { localStorage.removeItem('omniSyncForcar'); if (Date.now() - f < 120000) GM_setValue('omniHubUltimo', 0); } } catch (e) {}
       const ult = GM_getValue('omniHubUltimo', 0);
       if (Date.now() - ult < INTERVALO) {
         const min = Math.max(1, Math.round((Date.now() - ult) / 60000));
