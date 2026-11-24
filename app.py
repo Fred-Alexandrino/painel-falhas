@@ -9897,7 +9897,8 @@ def _gerar_compromissos_periodo_atual():
     criados = []
 
     for regra in regras:
-        if not regra["ativo"] or _cliente_fora_da_carteira(regra["cliente"]):
+        if (not regra["ativo"] or _cliente_fora_da_carteira(regra["cliente"])
+                or _oculto_nos_entregaveis(regra["cliente"], regra["tipo"])):
             continue
         if regra["frequencia"] in FREQUENCIAS_SOB_DEMANDA:
             continue
@@ -10007,6 +10008,19 @@ def _cliente_fora_da_carteira(nome):
     return str(nome or "").strip().lower() in _CLIENTES_FORA_CARTEIRA
 
 
+# 24/11/2026: Thopen sai do mapeamento do Fred. Por enquanto some só dos
+# Entregáveis (relatórios de Performance/PCM) e dos BMs; o resto do Omni
+# continua com a Thopen. Nada é apagado da planilha: para reverter, tire
+# "thopen" daqui e reative as regras.
+_CLIENTES_OCULTOS_ENTREGAVEIS = {"thopen"}
+_TIPOS_ENTREGAVEIS_OCULTOS = {"BM", "RelatorioPerformance", "RelatorioPCM"}
+
+
+def _oculto_nos_entregaveis(cliente, tipo):
+    return (str(cliente or "").strip().lower() in _CLIENTES_OCULTOS_ENTREGAVEIS
+            and str(tipo or "").strip() in _TIPOS_ENTREGAVEIS_OCULTOS)
+
+
 def _listar_compromissos_core():
     _gerar_compromissos_periodo_atual_se_necessario()
     ws = _get_compromissos_sheet()
@@ -10016,7 +10030,7 @@ def _listar_compromissos_core():
     for row in todos[1:]:
         if len(row) < 12 or not row[0].strip():
             continue
-        if _cliente_fora_da_carteira(row[2]):
+        if _cliente_fora_da_carteira(row[2]) or _oculto_nos_entregaveis(row[2], row[1]):
             continue
         try:
             data_limite = datetime.strptime(row[5].strip(), "%d/%m/%Y")
@@ -10072,7 +10086,8 @@ def listar_regras_compromissos():
         ws_regras = _get_compromissos_regras_sheet()
         valores = ws_regras.get_all_values()
         regras = [_linha_para_regra(row) for row in valores[1:] if row and row[0].strip()]
-        regras = [r for r in regras if not _cliente_fora_da_carteira(r["cliente"])]
+        regras = [r for r in regras if not _cliente_fora_da_carteira(r["cliente"])
+                  and not _oculto_nos_entregaveis(r["cliente"], r["tipo"])]
         for r in regras:
             r["frequenciaLabel"] = FREQUENCIA_LABEL.get(r["frequencia"], r["frequencia"])
         return jsonify({"ok": True, "regras": regras}), 200
