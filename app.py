@@ -26010,7 +26010,7 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @name         Grid Omni — atualizar ao abrir
 // @namespace    gridco-fred
-// @version      2.4
+// @version      2.5
 // @description  Ao abrir o Omni (Central O&M), passa pelo Nexus (chamados e performance) e pelo Service Center da SolarEdge na MESMA aba, lê tudo com o login que você já tem e volta para o Omni com os painéis atualizados. Nenhuma senha passa por aqui.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
@@ -26038,7 +26038,7 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
   const SE_CASES = 'https://www.solaredge.com/service/support/cases';
   const APIS = ['https://api.168-138-232-237.nip.io', 'https://api.168.138.232.237.sslip.io'];
   const HUB = 'omniHub';
-  const INTERVALO = 10 * 60000;      // passa de novo pelos sites só se a última volta foi há mais de 10 min
+  const INTERVALO = 12 * 3600e3;     // v2.5 (Fred): ao abrir, só passa pelos sites se a última volta foi há mais de 12 h (o botão Atualizar força)
   const TETO = 4 * 60000;            // a volta inteira nunca passa de 4 min
   const host = location.hostname;
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
@@ -26139,7 +26139,8 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
       const ult = GM_getValue('omniHubUltimo', 0);
       if (Date.now() - ult < INTERVALO) {
         const min = Math.max(1, Math.round((Date.now() - ult) / 60000));
-        publicar({ versao: '2.0', etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'pulado', msg: 'atualizado há ' + min + ' min' }])) });
+        const quando = min < 60 ? min + ' min' : Math.floor(min / 60) + ' h' + (min % 60 ? String(min % 60).padStart(2, '0') : '');
+        publicar({ versao: '2.0', etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'pulado', msg: 'atualizado há ' + quando + ' (Atualizar para forçar)' }])) });
         return;
       }
       const novo = { inicio: Date.now(), fase: 'chamados', voltar: location.href, etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'fila', msg: '' }])) };
@@ -26162,6 +26163,14 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 
   // ═════════════ NEXUS ═════════════
   if (host === 'app.gridco.com.br') {
+    if (/\/(os\/)?login\b/.test(location.pathname) && !location.pathname.startsWith('/entrar')) {
+      clearTimeout(guarda);
+      return aguardarLogin('Fracttal (área de OS do Nexus)', () => {
+        const x = lerHub(); x.esperandoLogin = '';
+        if (x.fase === 'chamados') { marcar(x, 'chamados', 'erro', 'pulado: sem login do Fracttal na área de OS'); proxima(x, 'performance'); }
+        else proxima(x, x.fase === 'performance' ? 'solaredge' : 'fim');
+      });
+    }
     if (location.pathname.startsWith('/entrar')) {
       clearTimeout(guarda);
       return aguardarLogin('Nexus', () => {
