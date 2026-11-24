@@ -26005,266 +26005,309 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @name         Grid Omni — atualizar ao abrir
 // @namespace    gridco-fred
-// @version      1.0
-// @description  Ao abrir o Omni (Central O&M), atualiza sozinho, sem abrir abas: performance e chamados do Nexus e os cases do Service Center da SolarEdge. Usa o login que você já tem no Nexus e na SolarEdge (nenhuma senha passa por aqui).
+// @version      2.0
+// @description  Ao abrir o Omni (Central O&M), passa pelo Nexus (chamados e performance) e pelo Service Center da SolarEdge na MESMA aba, lê tudo com o login que você já tem e volta para o Omni com os painéis atualizados. Nenhuma senha passa por aqui.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @match        https://fred-alexandrino.github.io/PAINELDEFALHAS/*
+// @match        https://app.gridco.com.br/*
+// @match        https://*.solaredge.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @connect      app.gridco.com.br
-// @connect      www.solaredge.com
+// @grant        unsafeWindow
 // @connect      api.168.138.232.237.sslip.io
 // @connect      api.168-138-232-237.nip.io
 // @run-at       document-start
 // @noframes
 // ==/UserScript==
 
+/* v2.0 (24/11/2026): a v1 buscava Nexus/SolarEdge "por fora" (GM_xmlhttpRequest a partir do Omni) e os sites
+   recusavam (401 / tela de login): o navegador não manda o login deles numa chamada que parte de outro site.
+   Agora a própria aba vai até cada site (onde o login vale), lê e volta: Omni → Nexus › Chamados → Nexus ›
+   Performance → SolarEdge › Cases → Omni. Abrir aba nova é bloqueado sem clique; navegar na mesma aba, não. */
 (function () {
   'use strict';
   const NEXUS = 'https://app.gridco.com.br';
-  const SE = 'https://www.solaredge.com';
+  const SE_CASES = 'https://www.solaredge.com/service/support/cases';
   const APIS = ['https://api.168-138-232-237.nip.io', 'https://api.168.138.232.237.sslip.io'];
-  const MIN_ENTRE = 10 * 60000;   // não repete a mesma leitura se a última deu certo há menos de 10 min
+  const HUB = 'omniHub';
+  const INTERVALO = 10 * 60000;      // passa de novo pelos sites só se a última volta foi há mais de 10 min
+  const TETO = 4 * 60000;            // a volta inteira nunca passa de 4 min
+  const host = location.hostname;
+  const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  const ETAPAS = ['chamados', 'performance', 'solaredge'];
 
-  // ── estado compartilhado com a página (o DOM é o canal; eventos com objeto falham entre os mundos) ──
-  const estado = { versao: '1.0', inicio: 0, etapas: {} };
-  function publicar() {
-    try {
-      let el = document.getElementById('omni-sync-estado');
-      if (!el) {
-        el = document.createElement('script'); el.type = 'application/json'; el.id = 'omni-sync-estado';
-        (document.head || document.documentElement).appendChild(el);
-      }
-      el.textContent = JSON.stringify(estado);
-      document.dispatchEvent(new Event('omni-sync'));
-    } catch (e) {}
-  }
-  function etapa(k, st, msg) { estado.etapas[k] = { st, msg: msg || '', em: Date.now() }; publicar(); }
-  document.documentElement.setAttribute('data-omni-sync', '1');
+  const lerHub = () => { try { const h = JSON.parse(GM_getValue(HUB, 'null')); return h && Date.now() - h.inicio < TETO + 60000 ? h : null; } catch (e) { return null; } };
+  const gravarHub = h => GM_setValue(HUB, JSON.stringify(h));
+  const marcar = (h, k, st, msg) => { h.etapas[k] = { st, msg: msg || '', em: Date.now() }; gravarHub(h); };
+  const ir = url => { try { location.replace(url); } catch (e) { location.href = url; } };
+  const esperar = ms => new Promise(r => setTimeout(r, ms));
+  async function quando(fn, ms, passo) { const fim = Date.now() + ms; while (Date.now() < fim) { try { const v = fn(); if (v) return v; } catch (e) {} await esperar(passo || 500); } return null; }
 
-  // ── HTTP pelo Tampermonkey (leva os cookies do Nexus/SolarEdge; não abre aba) ──
-  function req(method, url, opt) {
-    opt = opt || {};
-    return new Promise((ok, falha) => GM_xmlhttpRequest({
-      method, url, headers: opt.headers || {}, data: opt.data, timeout: opt.timeout || 60000, anonymous: false,
-      onload: r => ok(r), onerror: () => falha(new Error('sem conexão com ' + new URL(url).hostname)),
-      ontimeout: () => falha(new Error('tempo esgotado em ' + new URL(url).hostname)),
+  function api(path, corpo, metodo) {
+    const tentar = i => new Promise((ok, falha) => GM_xmlhttpRequest({
+      method: metodo || 'POST', url: APIS[i] + path, headers: { 'Content-Type': 'application/json' }, data: corpo ? JSON.stringify(corpo) : undefined, timeout: 120000,
+      onload: r => { try { const j = JSON.parse(r.responseText); (j.ok === false) ? falha(Object.assign(new Error(j.error || 'erro no painel'), { painel: 1 })) : ok(j); } catch (e) { falha(new Error('HTTP ' + r.status)); } },
+      onerror: () => falha(new Error('sem conexão com o painel')), ontimeout: () => falha(new Error('tempo esgotado no painel')),
     }));
-  }
-  const logouNexus = r => /\/entrar/.test(r.finalUrl || '') || /name=["']?senha|id=["']?login/i.test((r.responseText || '').slice(0, 4000));
-  async function nexusJ(path) {
-    const r = await req('GET', NEXUS + path, { headers: { Accept: 'application/json' } });
-    if (logouNexus(r)) throw new Error('LOGIN_NEXUS');
-    if (r.status < 200 || r.status >= 300) throw new Error(path + ' HTTP ' + r.status);
-    return JSON.parse(r.responseText);
-  }
-  async function nexusHtml(path) {
-    const r = await req('GET', NEXUS + path);
-    if (logouNexus(r)) throw new Error('LOGIN_NEXUS');
-    if (r.status < 200 || r.status >= 300) throw new Error(path + ' HTTP ' + r.status);
-    return new DOMParser().parseFromString(r.responseText, 'text/html');
-  }
-  async function api(path, corpo, metodo) {
-    let ult;
-    for (const base of APIS) {
-      try {
-        const r = await req(metodo || 'POST', base + path, { headers: { 'Content-Type': 'application/json' }, data: corpo ? JSON.stringify(corpo) : undefined, timeout: 120000 });
-        const j = JSON.parse(r.responseText);
-        if (!j.ok && j.ok !== undefined) throw Object.assign(new Error(j.error || 'erro no painel'), { painel: true });
-        return j;
-      } catch (e) { ult = e; if (e.painel) throw e; }
-    }
-    throw ult;
-  }
-  const recente = k => Date.now() - GM_getValue(k, 0) < MIN_ENTRE;
-
-  // ── 1) Performance (mesma leitura do script "Grid Performance → Painel") ──
-  async function performance() {
-    if (recente('osPerfOk')) return etapa('performance', 'pulado', 'atualizada há menos de 10 min');
-    etapa('performance', 'rodando', 'lendo a torre Performance…');
-    const hoje = new Date();
-    const ms = [[hoje.getFullYear(), hoje.getMonth() + 1]];
-    const anterior = Date.now() - GM_getValue('osPerfAnterior', 0) > 24 * 3600e3;
-    if (anterior) { const p = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1); ms.push([p.getFullYear(), p.getMonth() + 1]); }
-    const meses = {};
-    for (const [a, m] of ms) {
-      const chave = a + '-' + String(m).padStart(2, '0');
-      const [ger, disp] = await Promise.all([
-        nexusJ('/api/gerencial?mes=' + m + '&ano=' + a).catch(e => { if (e.message === 'LOGIN_NEXUS') throw e; return { erro: String(e.message || e) }; }),
-        nexusJ('/api/gerencial/disponibilidade?mes=' + chave).catch(e => { if (e.message === 'LOGIN_NEXUS') throw e; return { erro: String(e.message || e) }; }),
-      ]);
-      meses[chave] = { gerencial: ger, disponibilidade: disp };
-    }
-    const atual = Object.keys(meses)[0];
-    const mA = meses[atual];
-    if (mA.gerencial.erro && mA.disponibilidade.erro) {
-      const cod = (String(mA.gerencial.erro).match(/HTTP (\d+)/) || [])[1] || '?';
-      throw new Error(cod === '401' || cod === '403' ? 'o Nexus recusou o acesso à torre Performance (HTTP ' + cod + ')' : 'a torre Performance não respondeu (HTTP ' + cod + ')');
-    }
-    let religamentos = null;
-    try {
-      const doc = await nexusHtml('/t/cos/religamentos?dias=30&ver=todos');
-      const num = t => { const n = parseInt(String(t).replace(/\D/g, ''), 10); return isNaN(n) ? 0 : n; };
-      const rows = [...doc.querySelectorAll('main table tbody tr')].map(tr => {
-        const td = [...tr.children];
-        const dets = [...td[0].querySelectorAll('.det')].map(s => s.textContent.trim());
-        const nome = (td[0].querySelector('a,b') || td[0]).textContent.trim();
-        return { usina: nome, escopo: dets[0] || '', tipos: dets[1] || '', total: num(td[1].textContent), remotoResolveu: num(td[2].textContent),
-          remotoDepoisCampo: num(td[3].textContent), remotoAberta: num(td[4].textContent), soLocal: num(td[5].textContent),
-          ultimo: td[6] ? td[6].textContent.trim() : '', os: td[7] ? td[7].textContent.trim() : '' };
-      });
-      religamentos = { dias: 30, rows };
-    } catch (e) { if (e.message === 'LOGIN_NEXUS') throw e; }
-    let tempoReal = null;
-    try { tempoReal = await nexusJ('/api/entrada/tempo-real'); } catch (e) {}
-    try {
-      const f = await nexusJ('/api/painel/falhas');
-      const sr = ((f.strings || {}).rows || []).map(r => ({ usina: r.usina, cliente: r.cliente, inversor: r.inversor, strings: r.strings, qtd: r.qtd, dia: r.dia, perda_kwh: r.perda_kwh, dur_h: r.dur_h, flags: r.flags }));
-      const ta = {};
-      ((f.trackers || {}).rows || []).forEach(r => {
-        const k = r.usina + '|' + r.tracker;
-        const a = ta[k] = ta[k] || { usina: r.usina, cliente: r.cliente, tracker: r.tracker, inversor: r.inversor, episodios: 0, perda_kwh: 0, h_sol: 0, cronico: false, sem_com_desde: r.sem_com_desde || null };
-        a.episodios++; a.perda_kwh += r.perda_kwh || 0; a.h_sol += r.h_sol || 0; if (r.cronico) a.cronico = true;
-      });
-      mA.falhas = { periodo: f.periodo, strings: sr, trackers: Object.values(ta), strings_os: f.strings_os || [] };
-    } catch (e) {}
-    try {
-      const mc = await nexusJ('/api/macro');
-      mA.macro = (mc.usinas || []).map(u => ({ usina: u.usina, fonte: u.fonte, status: u.status, causa: u.causa, sev: u.sev, strings_faltando: u.strings_faltando, str_esp: u.str_esp, inv_off: u.inv_off, qtd_inversores: u.qtd_inversores, ultima_leitura: u.ultima_leitura }));
-    } catch (e) {}
-    etapa('performance', 'rodando', 'enviando ao painel…');
-    const j = await api('/nexus-performance/importar', { meses, religamentos, tempoReal, lidoEm: new Date().toISOString() });
-    if (!(j.meses || []).length) throw new Error('o Nexus devolveu leitura vazia');
-    GM_setValue('osPerfOk', Date.now());
-    if (anterior) GM_setValue('osPerfAnterior', Date.now());
-    etapa('performance', 'ok', 'mês ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : ''));
+    return tentar(0).catch(e => e.painel ? Promise.reject(e) : tentar(1));
   }
 
-  // ── 2) Chamados › Garantias do Nexus (mesma leitura do script "Grid OS → Nexus") ──
-  const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-  async function chamados() {
-    if (recente('osChOk')) return etapa('chamados', 'pulado', 'atualizados há menos de 10 min');
-    etapa('chamados', 'rodando', 'lendo Chamados › Garantias…');
-    const doc = await nexusHtml('/os/chamados/acompanhamento');
-    const ths = [...doc.querySelectorAll('table thead th')].map(x => norm(x.textContent));
-    const ix = nome => ths.indexOf(norm(nome));
-    const col = { os: ix('OS'), ativo: ix('Ativo'), usina: ix('Usina'), forn: ix('Fornecedor'), geral: ix('Geral'), status: ix('Status'), ticket: ix('Ticket'), sit: ix('Situação'), resp: ix('Responsável') };
-    if (col.os < 0 || col.ativo < 0 || col.usina < 0 || col.status < 0) throw new Error('a tabela de chamados não veio na leitura direta (o Nexus mudou a tela?)');
-    const tx = (tr, i) => i < 0 ? '' : ((tr.children[i] || {}).textContent || '').replace(/\s+/g, ' ').trim();
-    const rows = [...doc.querySelectorAll('table tbody tr')].map(tr => {
-      const folio = (tr.dataset && tr.dataset.folio) || tx(tr, col.os);
-      return { folio, ativo: tx(tr, col.ativo), usina: tx(tr, col.usina), fornecedor: tx(tr, col.forn), geral: tx(tr, col.geral), status: tx(tr, col.status),
-        ticket: tx(tr, col.ticket), situacao: tx(tr, col.sit), responsavel: tx(tr, col.resp), cliente: (tr.dataset && tr.dataset.cliente) || '',
-        tipo: (tr.dataset && tr.dataset.tipo) || '', supervisor: (tr.dataset && tr.dataset.ufv) || '' };
-    }).filter(r => /^\d{3,}$/.test(String(r.folio).trim()));
-    if (rows.length < 20) throw new Error('a leitura direta trouxe só ' + rows.length + ' chamados (a lista carrega por script); use "Atualizar do Nexus" em Chamados');
-    const lido = ((doc.body.textContent.match(/lido do Fracttal às\s*([^\n]+)/) || [])[1] || '').trim();
-    etapa('chamados', 'rodando', 'enviando ' + rows.length + ' chamados…');
-    const j = await api('/chamados-nexus/importar', { rows, snapshotCompleto: true, lidoEm: lido });
-    GM_setValue('osChOk', Date.now());
-    etapa('chamados', 'ok', j.total + ' chamados (' + j.criadas + ' novos, ' + j.atualizadas + ' atualizados)' + (j.removidasBloqueadas ? ' · remoções bloqueadas por segurança' : ''));
-  }
-
-  // ── 3) SolarEdge Service Center (mesma leitura do "Atualizar da SolarEdge") ──
-  const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().replace(/^\.\s*/, '');
-  const htmlTxt = h => {
-    const d = new DOMParser().parseFromString(String(h || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr)>/gi, '\n'), 'text/html');
-    return (d.body.textContent || '').replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  };
-  const clean = t => t.replace(/\n?= ?=[ =]*\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/^ATENÇÃO: Todas as orientações[^\n]*\n?/m, '').replace(/\n{3,}/g, '\n\n').trim();
-  async function seCase(id) {
-    const r = await req('POST', SE + '/solaredge-support-center/getCaseAjax', {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', Referer: SE + '/service/support/cases' },
-      data: 'caseID=' + encodeURIComponent(id), timeout: 30000 });
-    if (r.status < 200 || r.status >= 300) throw new Error('HTTP ' + r.status);
-    return JSON.parse(r.responseText);
-  }
-  const montar = (j, b, guid) => {
-    const sn = j.serialNumbers || [];
-    const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()))].join(' | ');
-    const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
-    return { ...b, guid, description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
-      rma: j.rma || b.rma, eta: uniq(sn.map(s => s.shipping_eta)) || b.eta, tracking: uniq(sn.map(s => s.tracking_number)) || b.tracking,
-      status: j.status || b.status, comments, documents: [...new Set((j.documents || []).map(d => d.name).filter(Boolean))] };
-  };
-  async function emParalelo(lista, n, fn) {
-    let i = 0;
-    await Promise.all(Array.from({ length: Math.min(n, lista.length) }, async () => { while (i < lista.length) { const k = i++; await fn(lista[k], k); } }));
-  }
-  async function solaredge() {
-    if (recente('osSeOk')) return etapa('solaredge', 'pulado', 'atualizada há menos de 10 min');
-    etapa('solaredge', 'rodando', 'lendo o Service Center…');
-    const r = await req('GET', SE + '/service/support/cases');
-    if (/\/login|signin|sso/i.test(r.finalUrl || '') && !/support\/cases/.test(r.finalUrl || '')) throw new Error('LOGIN_SE');
-    const doc = new DOMParser().parseFromString(r.responseText, 'text/html');
-    const ids = {}; doc.querySelectorAll('h4[data-case-id]').forEach(h => { ids[h.textContent.trim()] = h.getAttribute('data-case-id'); });
-    const tabela = [...doc.querySelectorAll('table')].find(t => /subject/i.test(t.querySelector('thead') ? t.querySelector('thead').textContent : ''));
-    if (!tabela || !Object.keys(ids).length) {
-      if (/password|sign in|log in/i.test(r.responseText.slice(0, 20000))) throw new Error('LOGIN_SE');
-      throw new Error('a lista de cases não veio na leitura direta; use "Atualizar da SolarEdge" em Chamados');
-    }
-    const hdr = [...tabela.querySelectorAll('thead th')].map(t => strip(t.textContent));
-    const base = {};
-    tabela.querySelectorAll('tbody tr').forEach(tr => {
-      const a = [...tr.children].map(td => strip(td.textContent)), m = {}; hdr.forEach((h, i) => m[h] = a[i]);
-      const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
-      base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
-    });
-    const nums = Object.keys(base);
-    if (!nums.length) throw new Error('nenhum case na lista do Service Center');
-    const lido = [], faltam = [];
-    let feitos = 0;
-    await emParalelo(nums, 4, async n => {
-      let ok = null;
-      for (let t = 0; t < 3 && !ok && ids[n]; t++) {
-        try { const j = await seCase(ids[n]); if (String(j.case_number) !== n) throw new Error('outro case'); ok = montar(j, base[n], ids[n]); }
-        catch (e) { await new Promise(s => setTimeout(s, 800)); }
+  // ── cortina com o visual do Omni enquanto a aba passa pelos outros sites ──
+  function cortina(txt) {
+    const pôr = () => {
+      let el = document.getElementById('omniHubCortina');
+      if (!el) {
+        el = document.createElement('div'); el.id = 'omniHubCortina';
+        el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#EDEBE2;color:#0B2622;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:15px/1.4 Poppins,system-ui,sans-serif;text-align:center;padding:24px';
+        el.innerHTML = '<svg viewBox="0 0 96 96" width="88" height="88"><style>@keyframes og{to{transform:rotate(360deg)}}</style><rect width="96" height="96" rx="22" fill="#042F36"/><circle cx="48" cy="48" r="24" fill="none" stroke="#F2E6D3" stroke-width="7"/><path d="M48 24 A24 24 0 0 1 70.6 40" fill="none" stroke="#EA5A2A" stroke-width="7" stroke-linecap="round" style="transform-origin:48px 48px;animation:og 1.1s linear infinite"/><circle cx="48" cy="48" r="7" fill="#EA5A2A"/></svg><b style="font-size:24px">Omni</b><div id="omniHubTxt" style="color:#3F5A54;max-width:340px"></div><button id="omniHubPular" style="margin-top:8px;font:inherit;font-size:13px;padding:8px 14px;border-radius:10px;border:1px solid rgba(4,74,68,.24);background:#fff;color:#0B2622">Voltar ao Omni agora</button>';
+        (document.body || document.documentElement).appendChild(el);
+        el.querySelector('#omniHubPular').onclick = () => finalizar('você voltou antes de terminar');
       }
-      if (ok) lido.push(ok); else faltam.push(n);
-      etapa('solaredge', 'rodando', 'case ' + (++feitos) + ' de ' + nums.length);
-    });
-    let fechados = 0;
-    try {
-      const rr = await api('/solaredge-chamados/reler', null, 'GET');
-      const lista = (rr.cases || []).filter(x => !nums.includes(x.case));
-      await emParalelo(lista, 4, async x => {
-        try { const j = await seCase(x.guid); if (String(j.case_number) !== x.case) return; const o = montar(j, { case: x.case }, x.guid); o.fechado = true; lido.push(o); fechados++; } catch (e) {}
-      });
-    } catch (e) {}
-    etapa('solaredge', 'rodando', 'enviando ' + lido.length + ' cases…');
-    const comp = (lido.length - fechados) === nums.length;
-    const j = await api('/solaredge-chamados/importar', { cases: lido, snapshotCompleto: comp });
-    GM_setValue('osSeOk', Date.now());
-    etapa('solaredge', 'ok', lido.length + ' cases (' + j.novos + ' novos, ' + j.atualizados + ' atualizados)' + (comp ? '' : ' · não li: ' + faltam.join(', ')));
+      el.querySelector('#omniHubTxt').textContent = txt;
+    };
+    if (document.body) pôr(); else document.addEventListener('DOMContentLoaded', pôr);
+  }
+  function finalizar(motivo) {
+    const h = lerHub(); if (!h) return;
+    ETAPAS.forEach(k => { const e = h.etapas[k]; if (!e || e.st === 'fila' || e.st === 'rodando') h.etapas[k] = { st: 'erro', msg: motivo, em: Date.now() }; });
+    h.fase = 'fim'; gravarHub(h); ir(h.voltar);
+  }
+  function proxima(h, fase) {
+    h.fase = fase; gravarHub(h);
+    if (fase === 'performance') ir(NEXUS + '/t/performance/noc');
+    else if (fase === 'solaredge') ir(SE_CASES);
+    else { h.fase = 'fim'; gravarHub(h); ir(h.voltar); }
   }
 
-  async function rodar(k, fn) {
-    try { await fn(); }
-    catch (e) {
-      const m = String(e.message || e);
-      etapa(k, 'erro', m === 'LOGIN_NEXUS' ? 'entre no Nexus (app.gridco.com.br) neste navegador' : m === 'LOGIN_SE' ? 'entre no Service Center da SolarEdge neste navegador' : m);
+  // ═════════════ OMNI ═════════════
+  if (host === 'fred-alexandrino.github.io') {
+    document.documentElement.setAttribute('data-omni-sync', '2');
+    const publicar = est => {
+      const p = () => {
+        let el = document.getElementById('omni-sync-estado');
+        if (!el) { el = document.createElement('script'); el.type = 'application/json'; el.id = 'omni-sync-estado'; (document.head || document.documentElement).appendChild(el); }
+        el.textContent = JSON.stringify(est); document.dispatchEvent(new Event('omni-sync'));
+      };
+      try { p(); } catch (e) {}
+      document.addEventListener('DOMContentLoaded', () => { try { p(); } catch (e) {} });
+    };
+    const sessaoFred = () => { try { const ts = +localStorage.getItem('om_login_ts') || 0; return localStorage.getItem('om_role') === 'manager' && Date.now() - ts < 2592e6; } catch (e) { return false; } };
+    const minhaVolta = (() => { try { return sessionStorage.getItem('omniHubAba') === '1'; } catch (e) { return false; } })();
+    const h = lerHub();
+    if (h && minhaVolta) {                       // esta aba está voltando da volta pelos sites
+      try { sessionStorage.removeItem('omniHubAba'); } catch (e) {}
+      if (h.fase !== 'fim') ETAPAS.forEach(k => { const e = h.etapas[k]; if (!e || e.st === 'fila' || e.st === 'rodando') h.etapas[k] = { st: 'erro', msg: 'interrompido', em: Date.now() }; });
+      GM_setValue(HUB, 'null');
+      publicar({ versao: '2.0', etapas: h.etapas });
+      return;
     }
+    if (h) {                                     // outra aba está no meio da volta
+      publicar({ versao: '2.0', etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'pulado', msg: 'atualizando em outra aba' }])) });
+      return;
+    }
+    const partir = () => {
+      const ult = GM_getValue('omniHubUltimo', 0);
+      if (Date.now() - ult < INTERVALO) {
+        const min = Math.max(1, Math.round((Date.now() - ult) / 60000));
+        publicar({ versao: '2.0', etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'pulado', msg: 'atualizado há ' + min + ' min' }])) });
+        return;
+      }
+      const novo = { inicio: Date.now(), fase: 'chamados', voltar: location.href, etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'fila', msg: '' }])) };
+      gravarHub(novo); GM_setValue('omniHubUltimo', Date.now());
+      try { sessionStorage.setItem('omniHubAba', '1'); } catch (e) {}
+      publicar({ versao: '2.0', etapas: Object.fromEntries(ETAPAS.map(k => [k, { st: 'rodando', msg: 'indo ao ' + (k === 'solaredge' ? 'Service Center' : 'Nexus') + '…' }])) });
+      ir(NEXUS + '/os/chamados/acompanhamento');
+    };
+    if (sessaoFred()) partir();
+    else { const t = setInterval(() => { if (sessaoFred()) { clearInterval(t); partir(); } }, 700); }   // depois do login
+    return;
   }
-  let iniciado = false;
-  function iniciar() {
-    if (iniciado) return;
-    let role = '';
-    try { role = localStorage.getItem('om_role') || ''; } catch (e) {}
-    if (role !== 'manager') return;           // só no acesso do Fred
-    iniciado = true;
-    estado.inicio = Date.now();
-    ['performance', 'chamados', 'solaredge'].forEach(k => { estado.etapas[k] = { st: 'fila', msg: '' }; });
-    publicar();
-    rodar('performance', performance);
-    rodar('chamados', chamados);
-    rodar('solaredge', solaredge);
+
+  const h = lerHub();
+  if (!h || h.fase === 'fim') return;
+  if (Date.now() - h.inicio > TETO) return finalizar('demorou demais');
+  setTimeout(() => { const x = lerHub(); if (x && x.fase !== 'fim' && x.fase === h.fase) finalizar('demorou demais'); }, Math.max(5000, TETO - (Date.now() - h.inicio)));
+
+  // ═════════════ NEXUS ═════════════
+  if (host === 'app.gridco.com.br') {
+    if (location.pathname.startsWith('/entrar')) {
+      ['chamados', 'performance'].forEach(k => { if (h.etapas[k].st !== 'ok') marcar(h, k, 'erro', 'entre no Nexus neste navegador (a sessão expirou)'); });
+      cortina('Sessão do Nexus expirada — seguindo para a SolarEdge…');
+      return setTimeout(() => proxima(h, 'solaredge'), 1500);
+    }
+    if (h.fase === 'chamados') {
+      cortina('Atualizando chamados do Nexus (1/3)…');
+      marcar(h, 'chamados', 'rodando', 'lendo Chamados › Garantias…');
+      (async () => {
+        try {
+          if (!location.pathname.startsWith('/os/chamados/acompanhamento')) throw new Error('o Nexus abriu outra tela (' + location.pathname + ')');
+          const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+          const ler = () => {
+            const ths = [...document.querySelectorAll('table thead th')].map(x => norm(x.innerText));
+            const ix = n => ths.indexOf(norm(n));
+            const col = { os: ix('OS'), ativo: ix('Ativo'), usina: ix('Usina'), forn: ix('Fornecedor'), geral: ix('Geral'), status: ix('Status'), ticket: ix('Ticket'), sit: ix('Situação'), resp: ix('Responsável') };
+            if (col.os < 0 || col.ativo < 0 || col.usina < 0 || col.status < 0) return null;
+            const tx = (tr, i) => i < 0 ? '' : ((tr.children[i] || {}).innerText || '').replace(/\s+/g, ' ').trim();
+            const rows = [...document.querySelectorAll('table tbody tr')].map(tr => {
+              const folio = (tr.dataset && tr.dataset.folio) || tx(tr, col.os);
+              return { folio, ativo: tx(tr, col.ativo), usina: tx(tr, col.usina), fornecedor: tx(tr, col.forn), geral: tx(tr, col.geral), status: tx(tr, col.status),
+                ticket: tx(tr, col.ticket), situacao: tx(tr, col.sit), responsavel: tx(tr, col.resp), cliente: (tr.dataset && tr.dataset.cliente) || '',
+                tipo: (tr.dataset && tr.dataset.tipo) || '', supervisor: (tr.dataset && tr.dataset.ufv) || '' };
+            }).filter(r => /^\d{3,}$/.test(String(r.folio).trim()));
+            return rows.length >= 20 ? rows : null;
+          };
+          const rows = await quando(ler, 45000);
+          if (!rows) throw new Error('a tabela de Chamados › Garantias não carregou em 45 s');
+          await esperar(1500);                       // deixa terminar de preencher
+          const final = ler() || rows;
+          const lido = ((document.body.innerText.match(/lido do Fracttal às\s*([^\n]+)/) || [])[1] || '').trim();
+          marcar(h, 'chamados', 'rodando', 'enviando ' + final.length + ' chamados…');
+          const j = await api('/chamados-nexus/importar', { rows: final, snapshotCompleto: true, lidoEm: lido });
+          marcar(h, 'chamados', 'ok', j.total + ' chamados (' + j.criadas + ' novos, ' + j.atualizadas + ' atualizados)' + (j.removidasBloqueadas ? ' · remoções bloqueadas por segurança' : ''));
+        } catch (e) { marcar(h, 'chamados', 'erro', String(e.message || e)); }
+        proxima(h, 'performance');
+      })();
+      return;
+    }
+    if (h.fase === 'performance') {
+      cortina('Atualizando a performance do Nexus (2/3)…');
+      marcar(h, 'performance', 'rodando', 'lendo a torre Performance…');
+      const getJ = async u => { const r = await W.fetch(u, { credentials: 'include' }); if (!r.ok) throw new Error(u + ' HTTP ' + r.status); return r.json(); };
+      (async () => {
+        try {
+          const hoje = new Date(), ms = [[hoje.getFullYear(), hoje.getMonth() + 1]];
+          const anterior = Date.now() - GM_getValue('omniPerfAnterior', 0) > 24 * 3600e3;
+          if (anterior) { const p = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1); ms.push([p.getFullYear(), p.getMonth() + 1]); }
+          const meses = {};
+          for (const [a, m] of ms) {
+            const chave = a + '-' + String(m).padStart(2, '0');
+            const [ger, disp] = await Promise.all([
+              getJ('/api/gerencial?mes=' + m + '&ano=' + a).catch(e => ({ erro: String(e) })),
+              getJ('/api/gerencial/disponibilidade?mes=' + chave).catch(e => ({ erro: String(e) })),
+            ]);
+            meses[chave] = { gerencial: ger, disponibilidade: disp };
+          }
+          const atual = Object.keys(meses)[0], mA = meses[atual];
+          if (mA.gerencial.erro && mA.disponibilidade.erro) {
+            const cod = (String(mA.gerencial.erro).match(/HTTP (\d+)/) || [])[1] || '?';
+            throw new Error(cod === '401' || cod === '403' ? 'o Nexus recusou o acesso à torre Performance (HTTP ' + cod + ') — confira se o Painel NOC abre com o seu login' : 'a torre Performance não respondeu (HTTP ' + cod + ')');
+          }
+          let religamentos = null;
+          try {
+            const html = await (await W.fetch('/t/cos/religamentos?dias=30&ver=todos', { credentials: 'include' })).text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const num = t => { const n = parseInt(String(t).replace(/\D/g, ''), 10); return isNaN(n) ? 0 : n; };
+            religamentos = { dias: 30, rows: [...doc.querySelectorAll('main table tbody tr')].map(tr => {
+              const td = [...tr.children], dets = [...td[0].querySelectorAll('.det')].map(s => s.textContent.trim());
+              return { usina: (td[0].querySelector('a,b') || td[0]).textContent.trim(), escopo: dets[0] || '', tipos: dets[1] || '', total: num(td[1].textContent),
+                remotoResolveu: num(td[2].textContent), remotoDepoisCampo: num(td[3].textContent), remotoAberta: num(td[4].textContent), soLocal: num(td[5].textContent),
+                ultimo: td[6] ? td[6].textContent.trim() : '', os: td[7] ? td[7].textContent.trim() : '' };
+            }) };
+          } catch (e) {}
+          let tempoReal = null; try { tempoReal = await getJ('/api/entrada/tempo-real'); } catch (e) {}
+          try {
+            const f = await getJ('/api/painel/falhas');
+            const ta = {};
+            ((f.trackers || {}).rows || []).forEach(r => {
+              const k = r.usina + '|' + r.tracker;
+              const a = ta[k] = ta[k] || { usina: r.usina, cliente: r.cliente, tracker: r.tracker, inversor: r.inversor, episodios: 0, perda_kwh: 0, h_sol: 0, cronico: false, sem_com_desde: r.sem_com_desde || null };
+              a.episodios++; a.perda_kwh += r.perda_kwh || 0; a.h_sol += r.h_sol || 0; if (r.cronico) a.cronico = true;
+            });
+            mA.falhas = { periodo: f.periodo, strings: ((f.strings || {}).rows || []).map(r => ({ usina: r.usina, cliente: r.cliente, inversor: r.inversor, strings: r.strings, qtd: r.qtd, dia: r.dia, perda_kwh: r.perda_kwh, dur_h: r.dur_h, flags: r.flags })), trackers: Object.values(ta), strings_os: f.strings_os || [] };
+          } catch (e) {}
+          try {
+            const mc = await getJ('/api/macro');
+            mA.macro = (mc.usinas || []).map(u => ({ usina: u.usina, fonte: u.fonte, status: u.status, causa: u.causa, sev: u.sev, strings_faltando: u.strings_faltando, str_esp: u.str_esp, inv_off: u.inv_off, qtd_inversores: u.qtd_inversores, ultima_leitura: u.ultima_leitura }));
+          } catch (e) {}
+          marcar(h, 'performance', 'rodando', 'enviando ao painel…');
+          const j = await api('/nexus-performance/importar', { meses, religamentos, tempoReal, lidoEm: new Date().toISOString() });
+          if (!(j.meses || []).length) throw new Error('o Nexus devolveu leitura vazia');
+          if (anterior) GM_setValue('omniPerfAnterior', Date.now());
+          marcar(h, 'performance', 'ok', 'mês ' + (j.meses || []).join(', ') + (j.religamentos ? ' + religamentos' : ''));
+        } catch (e) { marcar(h, 'performance', 'erro', String(e.message || e)); }
+        proxima(h, 'solaredge');
+      })();
+      return;
+    }
+    return;
   }
-  publicar();
-  iniciar();
-  // ainda não logado: começa assim que o login acontecer
-  const t = setInterval(() => { if (iniciado) return clearInterval(t); iniciar(); }, 1000);
+
+  // ═════════════ SOLAREDGE ═════════════
+  if (/(^|\.)solaredge\.com$/.test(host) && h.fase === 'solaredge') {
+    cortina('Atualizando os cases da SolarEdge (3/3)…');
+    marcar(h, 'solaredge', 'rodando', 'lendo o Service Center…');
+    if (!/\/service\/support\/cases/.test(location.pathname)) {
+      // tela de login ou outra: espera um pouco (pode ser redirecionamento) e segue
+      setTimeout(() => {
+        if (/\/service\/support\/cases/.test(location.pathname)) return;
+        marcar(h, 'solaredge', 'erro', 'entre no Service Center da SolarEdge neste navegador (a sessão expirou)');
+        proxima(h, 'fim');
+      }, 8000);
+      return;
+    }
+    const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().replace(/^\.\s*/, '');
+    const htmlTxt = x => {
+      const d = new DOMParser().parseFromString(String(x || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr)>/gi, '\n'), 'text/html');
+      return (d.body.textContent || '').replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    };
+    const clean = t => t.replace(/\n?= ?=[ =]*\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/\n?Qualquer dúvida estamos[\s\S]*$/, '').replace(/^ATENÇÃO: Todas as orientações[^\n]*\n?/m, '').replace(/\n{3,}/g, '\n\n').trim();
+    const post = async id => {
+      const r = await W.fetch('/solaredge-support-center/getCaseAjax', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include', body: 'caseID=' + encodeURIComponent(id) });
+      if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
+    };
+    const montar = (j, b, guid) => {
+      const sn = j.serialNumbers || [];
+      const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()))].join(' | ');
+      const comments = (j.comments || []).map(c => ({ data: String(c.date_entered || '').slice(0, 16), autor: (c.created_by_name || '').trim(), quem: /System Administrator/i.test(c.created_by_name || '') ? 'Grid' : 'SolarEdge', texto: clean(htmlTxt(c.description)) })).sort((a, b) => a.data.localeCompare(b.data));
+      return { ...b, guid, description: htmlTxt(j.description), type: j.case_type || '', errorCode: j.error_code_number || '', severity: j.severity || '', created: String(j.date_created || '').slice(0, 16),
+        rma: j.rma || b.rma, eta: uniq(sn.map(s => s.shipping_eta)) || b.eta, tracking: uniq(sn.map(s => s.tracking_number)) || b.tracking,
+        status: j.status || b.status, comments, documents: [...new Set((j.documents || []).map(d => d.name).filter(Boolean))] };
+    };
+    const emParalelo = async (lista, n, fn) => { let i = 0; await Promise.all(Array.from({ length: Math.min(n, lista.length) }, async () => { while (i < lista.length) { const k = i++; await fn(lista[k], k); } })); };
+    (async () => {
+      try {
+        const pronto = await quando(() => W.jQuery && W.jQuery('table.dataTable').length && document.querySelector('h4[data-case-id]'), 60000, 1000);
+        if (!pronto) throw new Error('a lista de cases do Service Center não carregou em 60 s');
+        const sel = document.querySelector('select[name=DataTables_Table_0_length]');
+        if (sel) { sel.value = '100'; W.jQuery(sel).trigger('change'); await esperar(1500); }
+        const dt = W.jQuery('table.dataTable').first().DataTable();
+        const hdr = [...document.querySelectorAll('table.dataTable thead th')].map(t => strip(t.textContent));
+        const base = {};
+        [...dt.rows().data().toArray()].forEach(r => {
+          const a = [...r].map(strip), m = {}; hdr.forEach((x, i) => m[x] = a[i]);
+          const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
+          base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
+        });
+        const ids = {}; document.querySelectorAll('h4[data-case-id]').forEach(x => { ids[x.textContent.trim()] = x.getAttribute('data-case-id'); });
+        const nums = Object.keys(base);
+        if (!nums.length) throw new Error('nenhum case na lista do Service Center');
+        const lido = [], faltam = []; let feitos = 0;
+        await emParalelo(nums, 4, async n => {
+          let ok = null;
+          for (let t = 0; t < 3 && !ok && ids[n]; t++) {
+            try { const j = await post(ids[n]); if (String(j.case_number) !== n) throw new Error('outro case'); ok = montar(j, base[n], ids[n]); } catch (e) { await esperar(800); }
+          }
+          if (ok) lido.push(ok); else faltam.push(n);
+          feitos++; cortina('Atualizando os cases da SolarEdge (3/3) — ' + feitos + ' de ' + nums.length + '…');
+          marcar(h, 'solaredge', 'rodando', 'case ' + feitos + ' de ' + nums.length);
+        });
+        let fechados = 0;
+        try {
+          const rr = await api('/solaredge-chamados/reler', null, 'GET');
+          await emParalelo((rr.cases || []).filter(x => !nums.includes(x.case)), 4, async x => {
+            try { const j = await post(x.guid); if (String(j.case_number) !== x.case) return; const o = montar(j, { case: x.case }, x.guid); o.fechado = true; lido.push(o); fechados++; } catch (e) {}
+          });
+        } catch (e) {}
+        marcar(h, 'solaredge', 'rodando', 'enviando ' + lido.length + ' cases…');
+        const comp = (lido.length - fechados) === nums.length;
+        const j = await api('/solaredge-chamados/importar', { cases: lido, snapshotCompleto: comp });
+        marcar(h, 'solaredge', 'ok', lido.length + ' cases (' + j.novos + ' novos, ' + j.atualizados + ' atualizados)' + (comp ? '' : ' · não li: ' + faltam.join(', ')));
+      } catch (e) { marcar(h, 'solaredge', 'erro', String(e.message || e)); }
+      proxima(h, 'fim');
+    })();
+  }
 })();
 '''
 
