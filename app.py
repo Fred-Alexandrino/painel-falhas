@@ -7725,22 +7725,22 @@ MAPEAMENTO_UFVS = [
 
 # ── FARO ENERGY — 24/11/2026 (Fred). Cluster = nome da EQUIPE na intranet (padrão da intranet
 #    para a Faro, por decisão do Fred); responsável = operador (planilha 'Dados Operadores FARO' +
-#    responsável das OS na FAMA); 'etiqueta' = status da usina na intranet (A mobilizar).
+#    responsável das OS na FAMA); função = cargo na intranet (Mantenedor, revisado 24/11/2026); 'etiqueta' = status da usina na intranet (A mobilizar).
 _MAPEAMENTO_FARO = [
     {"usina": 'Monte Alto I', "cliente": 'Faro Energy', "cluster": 'Monte Alto 1 a 3', "cidade_uf": 'Caridade/CE',
-     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-247', "mwp": '0,245'},
+     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-247', "mwp": '0,245'},
     {"usina": 'Monte Alto II', "cliente": 'Faro Energy', "cluster": 'Monte Alto 1 a 3', "cidade_uf": 'Caridade/CE',
-     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-248', "mwp": '1,45'},
+     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-248', "mwp": '1,45'},
     {"usina": 'Monte Alto III', "cliente": 'Faro Energy', "cluster": 'Monte Alto 1 a 3', "cidade_uf": 'Caridade/CE',
-     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-211', "mwp": '4,801'},
+     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-211', "mwp": '4,801'},
     {"usina": 'Porto Seguro XV', "cliente": 'Faro Energy', "cluster": 'Porto Seguro 15', "cidade_uf": 'Riachão do Jacuípe/BA',
-     "responsavel": 'Lucas Alef Carneiro', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-207', "mwp": '3,049'},
+     "responsavel": 'Lucas Alef Carneiro', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-207', "mwp": '3,049'},
     {"usina": 'Alto do Pajeú I', "cliente": 'Faro Energy', "cluster": 'Alto do Pajeú 1 e 2 / Corisco', "cidade_uf": 'Quixaba/PE',
-     "responsavel": 'Elidimario Siqueira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-202', "mwp": '2,725'},
+     "responsavel": 'Elidimario Siqueira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-202', "mwp": '2,725'},
     {"usina": 'Alto do Pajeú II', "cliente": 'Faro Energy', "cluster": 'Alto do Pajeú 1 e 2 / Corisco', "cidade_uf": 'Quixaba/PE',
-     "responsavel": 'Elidimario Siqueira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-233', "mwp": '2,044'},
+     "responsavel": 'Elidimario Siqueira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-233', "mwp": '2,044'},
     {"usina": 'Corisco', "cliente": 'Faro Energy', "cluster": 'Alto do Pajeú 1 e 2 / Corisco', "cidade_uf": 'Afogados da Ingazeira/PE',
-     "responsavel": 'Elidimario Siqueira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-215', "mwp": '0,479'},
+     "responsavel": 'Elidimario Siqueira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-215', "mwp": '0,479'},
     {"usina": 'Canabrava', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'Belém do São Francisco/PE',
      "responsavel": 'Francisco Aparecido Alves Oliveira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-217', "mwp": '2,267'},
     {"usina": 'Oiticica I', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'Salgueiro/PE',
@@ -7752,67 +7752,67 @@ _MAPEAMENTO_FARO = [
     {"usina": 'Ponta da Pedra III', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'Belém do São Francisco/PE',
      "responsavel": 'Francisco Aparecido Alves Oliveira', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-237', "mwp": '0,32'},
     {"usina": 'Olinda I', "cliente": 'Faro Energy', "cluster": 'Olinda', "cidade_uf": 'Afrânio/PE',
-     "responsavel": 'Fernando dos Santos da Cruz', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-203', "mwp": '1,835'},
+     "responsavel": 'Fernando dos Santos da Cruz', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-203', "mwp": '1,835'},
     {"usina": 'Riacho Fundo I', "cliente": 'Faro Energy', "cluster": 'Riacho Funco 1, 2 e 3', "cidade_uf": 'Caraúbas/RN',
-     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-204', "mwp": '1,34'},
+     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-204', "mwp": '1,34'},
     {"usina": 'Riacho Fundo II', "cliente": 'Faro Energy', "cluster": 'Riacho Funco 1, 2 e 3', "cidade_uf": 'Caraúbas/RN',
-     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-234', "mwp": '1,34'},
+     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-234', "mwp": '1,34'},
     {"usina": 'Riacho Fundo III', "cliente": 'Faro Energy', "cluster": 'Riacho Funco 1, 2 e 3', "cidade_uf": 'Caraúbas/RN',
-     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-235', "mwp": '1,34'},
+     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-235', "mwp": '1,34'},
     {"usina": 'Cabo Branco II', "cliente": 'Faro Energy', "cluster": 'Cabo Branco 2 e 3', "cidade_uf": 'Sousa/PB',
-     "responsavel": 'Damião Alves de Sousa', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-232', "mwp": '1,334'},
+     "responsavel": 'Damião Alves de Sousa', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-232', "mwp": '1,334'},
     {"usina": 'Cabo Branco III', "cliente": 'Faro Energy', "cluster": 'Cabo Branco 2 e 3', "cidade_uf": 'Sousa/PB',
-     "responsavel": 'Damião Alves de Sousa', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-201', "mwp": '1,334'},
+     "responsavel": 'Damião Alves de Sousa', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-201', "mwp": '1,334'},
     {"usina": 'Passé I', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
-     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-222', "mwp": '0,36'},
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-222', "mwp": '0,36'},
     {"usina": 'Passé II', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
-     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-223', "mwp": '0,36'},
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-223', "mwp": '0,36'},
     {"usina": 'Passé III', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
-     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-224', "mwp": '1,288' , "etiqueta": "A mobilizar"},
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-224', "mwp": '1,288' , "etiqueta": "A mobilizar"},
     {"usina": 'Passé IV', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
-     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-198', "mwp": '1,288' , "etiqueta": "A mobilizar"},
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-198', "mwp": '1,288' , "etiqueta": "A mobilizar"},
     {"usina": 'Pedra do Sal I', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Eliseu Martins/PI',
-     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-225', "mwp": '1,068'},
+     "responsavel": 'Bruno Samiel Albuquerque', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-225', "mwp": '1,068'},
     {"usina": 'Pedra do Sal II', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Colônia do Gurguéia/PI',
-     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-226', "mwp": '0,866'},
+     "responsavel": 'Bruno Samiel Albuquerque', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-226', "mwp": '0,866'},
     {"usina": 'Pedra do Sal III', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Colônia do Gurguéia/PI',
-     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-227', "mwp": '1,274'},
+     "responsavel": 'Bruno Samiel Albuquerque', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-227', "mwp": '1,274'},
     {"usina": 'Pedra do Sal IV', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Colônia do Gurguéia/PI',
-     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-199', "mwp": '1,274'},
+     "responsavel": 'Bruno Samiel Albuquerque', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-199', "mwp": '1,274'},
     {"usina": 'Morro Branco II', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Icó/CE',
-     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-200', "mwp": '1,236'},
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-200', "mwp": '1,236'},
     {"usina": 'Morro Branco III', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Icó/CE',
-     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-228', "mwp": '1,236'},
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-228', "mwp": '1,236'},
     {"usina": 'Morro Branco IV', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Iguatu/CE',
-     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-230', "mwp": '1,272'},
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-230', "mwp": '1,272'},
     {"usina": 'Morro Branco VI', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Iguatu/CE',
-     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-231', "mwp": '1,272'},
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-231', "mwp": '1,272'},
     {"usina": 'Morro Branco VIII', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Icó/CE',
-     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-229', "mwp": '1,264'},
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-229', "mwp": '1,264'},
     {"usina": 'Praia Grande I', "cliente": 'Faro Energy', "cluster": 'Praia Grande 1 e 2', "cidade_uf": 'Paraibano/MA',
-     "responsavel": 'Natalício dos Santos Lima', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-210', "mwp": '1,264'},
+     "responsavel": 'Natalício dos Santos Lima', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-210', "mwp": '1,264'},
     {"usina": 'Praia Grande II', "cliente": 'Faro Energy', "cluster": 'Praia Grande 1 e 2', "cidade_uf": 'Paraibano/MA',
-     "responsavel": 'Natalício dos Santos Lima', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-246', "mwp": '1,264'},
+     "responsavel": 'Natalício dos Santos Lima', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-246', "mwp": '1,264'},
     {"usina": 'Praia Grande III', "cliente": 'Faro Energy', "cluster": 'Praia Grande 3, 4 e 8', "cidade_uf": 'São João dos Patos/MA',
-     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-238', "mwp": '1,264'},
+     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-238', "mwp": '1,264'},
     {"usina": 'Praia Grande IV', "cliente": 'Faro Energy', "cluster": 'Praia Grande 3, 4 e 8', "cidade_uf": 'São João dos Patos/MA',
-     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-239', "mwp": '1,264'},
+     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-239', "mwp": '1,264'},
     {"usina": 'Praia Grande VIII', "cliente": 'Faro Energy', "cluster": 'Praia Grande 3, 4 e 8', "cidade_uf": 'São João dos Patos/MA',
-     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-206', "mwp": '1,264'},
+     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-206', "mwp": '1,264'},
     {"usina": 'Praia Grande VI', "cliente": 'Faro Energy', "cluster": 'Praia Grande 6', "cidade_uf": 'Mirador/MA',
-     "responsavel": 'Mykeias Guimarães Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-209', "mwp": '1,264'},
+     "responsavel": 'Mykeias Guimarães Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-209', "mwp": '1,264'},
     {"usina": 'Rio do Fogo I', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Barrolândia/TO',
-     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-241', "mwp": '0,947'},
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-241', "mwp": '0,947'},
     {"usina": 'Rio do Fogo II', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
-     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-242', "mwp": '1,264'},
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-242', "mwp": '1,264'},
     {"usina": 'Rio do Fogo III', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
-     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-243', "mwp": '1,264'},
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-243', "mwp": '1,264'},
     {"usina": 'Rio do Fogo IV', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
-     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-244', "mwp": '1,264' , "etiqueta": "A mobilizar"},
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-244', "mwp": '1,264' , "etiqueta": "A mobilizar"},
     {"usina": 'Rio do Fogo V', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
-     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-245', "mwp": '1,264' , "etiqueta": "A mobilizar"},
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-245', "mwp": '1,264' , "etiqueta": "A mobilizar"},
     {"usina": 'Rio do Fogo VI', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
-     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-208', "mwp": '1,264' , "etiqueta": "A mobilizar"},
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Mantenedor', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-208', "mwp": '1,264' , "etiqueta": "A mobilizar"},
 ]
 MAPEAMENTO_UFVS.extend(_MAPEAMENTO_FARO)
 
@@ -22856,9 +22856,22 @@ def mapeamento_ufvs():
     fonte única MAPEAMENTO_UFVS, definida em 29/09/2026 a partir da planilha
     do projeto, + edições feitas no painel (aba _Sistema, mapeamento_override)."""
     _map_override_sincronizar()
+    # 24/11/2026 (Fred): usinas cujo grupo de WhatsApp está só na _Sistema ("grupo_usina:<Usina>")
+    # também mostram o grupo no painel — antes apareciam com "—" apesar de mapeadas.
+    try:
+        _grupos_sis = _mapa_grupo_usina_base()
+    except Exception as e:
+        log.warning(f"[mapeamento-ufvs] grupo_usina da _Sistema indisponível: {e}")
+        _grupos_sis = {}
     itens = []
     for u in MAPEAMENTO_UFVS:
         extra = {}
+        if not u.get("grupo") and _grupos_sis.get(u["usina"]):
+            _gid = _grupos_sis[u["usina"]]
+            extra["grupo"] = _gid
+            extra["grupo_nome"] = (_NOMES_GRUPOS_CONHECIDOS.get(_gid.replace("@g.us", ""))
+                                   or _nome_amigavel_grupo(_gid) or _gid)
+            extra["grupo_origem"] = "_Sistema"
         if u["usina"] in _CONJUNTO_DA_USINA:
             extra["conjunto"] = _CONJUNTO_DA_USINA[u["usina"]]
         if u["usina"] in SUPERVISOR_CAMPO_UFV:
