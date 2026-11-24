@@ -26010,7 +26010,7 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @name         Grid Omni — atualizar ao abrir
 // @namespace    gridco-fred
-// @version      2.2
+// @version      2.3
 // @description  Ao abrir o Omni (Central O&M), passa pelo Nexus (chamados e performance) e pelo Service Center da SolarEdge na MESMA aba, lê tudo com o login que você já tem e volta para o Omni com os painéis atualizados. Nenhuma senha passa por aqui.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
@@ -26153,7 +26153,7 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 
   const h = lerHub();
   if (!h || h.fase === 'fim') return;
-  if (h.esperandoLogin) { h.esperandoLogin = ''; h.inicio = Date.now(); gravarHub(h); }   // voltou do login: o relógio recomeça
+  if (h.esperandoLogin) { h.esperandoLogin = ''; h.inicio = Date.now(); h.nav = {}; gravarHub(h); }   // voltou do login: o relógio recomeça
   if (Date.now() - h.inicio > TETO) return finalizar('demorou demais');
   const guarda = setTimeout(() => { const x = lerHub(); if (x && x.fase !== 'fim' && x.fase === h.fase && !x.esperandoLogin) finalizar('demorou demais'); }, Math.max(5000, TETO - (Date.now() - h.inicio)));
   const irPara = (url, chave) => { h.nav = h.nav || {}; h.nav[chave] = (h.nav[chave] || 0) + 1; gravarHub(h); if (h.nav[chave] > 3) return false; ir(url); return true; };
@@ -26170,12 +26170,19 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
     // depois do login o Nexus abre a tela inicial: segue para a tela da etapa
     // v2.2: a área de OS (/os/) faz a própria entrada ao carregar e cai em /os/; sair antes disso repetia o desvio.
     // Agora espera a tela terminar de carregar, tenta o link do menu e só então navega de novo.
+    const pularNexus = () => {
+      const x = lerHub(); x.esperandoLogin = '';
+      if (x.fase === 'chamados') { marcar(x, 'chamados', 'erro', 'pulado: sem login do Fracttal na área de OS'); proxima(x, 'performance'); }
+      else { marcar(x, 'performance', 'erro', 'pulado: sem login no Nexus'); proxima(x, 'solaredge'); }
+    };
     const desviar = (alvo, chave, txt) => {
       cortina(txt);
       clearTimeout(guarda);
       quando(() => document.readyState === 'complete', 30000).then(async () => {
         await esperar(3000);
         if (location.pathname.startsWith(alvo)) return;
+        // v2.3: a área de OS pede um segundo login (o do Fracttal) — espera você entrar
+        if (temSenha()) return aguardarLogin(location.pathname.startsWith('/os') ? 'Fracttal (área de OS do Nexus)' : 'Nexus', pularNexus);
         const link = [...document.querySelectorAll('a[href]')].find(a => a.getAttribute('href').indexOf(alvo) >= 0 || a.href.indexOf(NEXUS + alvo) === 0);
         if (link && !(h.nav && h.nav[chave + 'L'])) { h.nav = h.nav || {}; h.nav[chave + 'L'] = 1; gravarHub(h); link.click(); await esperar(8000); if (location.pathname.startsWith(alvo)) return location.reload(); }
         if (!irPara(NEXUS + alvo, chave)) {
@@ -26207,7 +26214,10 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
             }).filter(r => /^\d{3,}$/.test(String(r.folio).trim()));
             return rows.length >= 20 ? rows : null;
           };
-          const rows = await quando(ler, 45000);
+          // login do Fracttal pode aparecer na própria tela de Chamados
+          const achou = await quando(() => ler() || (temSenha() ? 'login' : null), 45000);
+          if (achou === 'login') return aguardarLogin('Fracttal (área de OS do Nexus)', pularNexus);
+          const rows = achou;
           if (!rows) throw new Error('a tabela de Chamados › Garantias não carregou em 45 s');
           await esperar(1500);                       // deixa terminar de preencher
           const final = ler() || rows;
@@ -26320,17 +26330,53 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
       try {
         const pronto = await quando(() => W.jQuery && W.jQuery('table.dataTable').length && document.querySelector('h4[data-case-id]'), 60000, 1000);
         if (!pronto) throw new Error('a lista de cases do Service Center não carregou em 60 s');
-        const sel = document.querySelector('select[name=DataTables_Table_0_length]');
-        if (sel) { sel.value = '100'; W.jQuery(sel).trigger('change'); await esperar(1500); }
-        const dt = W.jQuery('table.dataTable').first().DataTable();
+        // v2.3: a lista abre com 10 por página. Passa para 100 e percorre TODAS as páginas lendo o que está na tela
+        // (a lista pode vir do servidor página a página; ler só a 1ª trazia 10 cases).
+        const tbl = document.querySelector('table.dataTable');
+        const assinatura = () => { const b = document.querySelector('table.dataTable tbody'); return b ? b.textContent.replace(/\s+/g, ' ').slice(0, 400) + '|' + b.children.length : ''; };
+        const ocupado = () => { const p = document.querySelector('.dataTables_processing'); return p && p.offsetParent !== null && getComputedStyle(p).display !== 'none'; };
+        const aguardarTroca = async antes => { await quando(() => assinatura() !== antes && !ocupado(), 15000, 300); await esperar(600); };
+        let dt = null; try { dt = W.jQuery(tbl).DataTable(); } catch (e) {}
+        let antes = assinatura();
+        let mudou = false;
+        try { if (dt && dt.page && dt.page.len() !== 100) { dt.page.len(100).draw(); mudou = true; } } catch (e) {}
+        if (!mudou) {
+          const sel = document.querySelector('.dataTables_length select, select[name$="_length"]');
+          if (sel && sel.value !== '100') { sel.value = '100'; sel.dispatchEvent(new Event('change', { bubbles: true })); try { W.jQuery(sel).trigger('change'); } catch (e) {} mudou = true; }
+        }
+        if (mudou) await aguardarTroca(antes);
         const hdr = [...document.querySelectorAll('table.dataTable thead th')].map(t => strip(t.textContent));
-        const base = {};
-        [...dt.rows().data().toArray()].forEach(r => {
-          const a = [...r].map(strip), m = {}; hdr.forEach((x, i) => m[x] = a[i]);
-          const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
-          base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
-        });
-        const ids = {}; document.querySelectorAll('h4[data-case-id]').forEach(x => { ids[x.textContent.trim()] = x.getAttribute('data-case-id'); });
+        const base = {}, ids = {};
+        const lerPagina = () => {
+          document.querySelectorAll('table.dataTable tbody tr').forEach(tr => {
+            const a = [...tr.children].map(td => strip(td.textContent)), m = {}; hdr.forEach((x, i) => m[x] = a[i]);
+            const num = a.find(x => /^\d{7}$/.test(x)); if (!num) return;
+            base[num] = { case: num, subject: m['Subject'] || '', category: m['Category'] || '', subCategory: m['Sub Category'] || '', siteId: m['Site ID'] || '', siteName: m['Site Name'] || '', serial: m['Inverter S/N'] || '', rma: m['RMA'] || '', eta: m['Shipment ETA'] || '', tracking: m['Tracking'] || '', status: m['Status'] || '' };
+            const h4 = tr.querySelector('h4[data-case-id]'); if (h4) ids[num] = h4.getAttribute('data-case-id');
+          });
+          document.querySelectorAll('h4[data-case-id]').forEach(x => { const t = x.textContent.trim(); if (/^\d{7}$/.test(t)) ids[t] = x.getAttribute('data-case-id'); });
+        };
+        lerPagina();
+        let paginas = 1;
+        try { paginas = dt && dt.page ? dt.page.info().pages : 1; } catch (e) {}
+        for (let pg = 1; pg < Math.min(paginas, 20); pg++) {
+          antes = assinatura();
+          let foi = false;
+          try { dt.page(pg).draw('page'); foi = true; } catch (e) {}
+          if (!foi) { const prox = document.querySelector('.paginate_button.next:not(.disabled), .dataTables_paginate .next:not(.disabled)'); if (!prox) break; prox.click(); }
+          await aguardarTroca(antes);
+          lerPagina();
+          cortina('Atualizando os cases da SolarEdge (3/3) — lendo a lista, página ' + (pg + 1) + ' de ' + paginas + '…');
+        }
+        if (paginas <= 1) {   // sem a API do DataTables: segue pelo botão "Next" enquanto houver
+          for (let k = 0; k < 20; k++) {
+            const prox = document.querySelector('.paginate_button.next:not(.disabled), .dataTables_paginate .next:not(.disabled)');
+            if (!prox) break;
+            antes = assinatura(); prox.click(); await aguardarTroca(antes);
+            if (assinatura() === antes) break;
+            lerPagina();
+          }
+        }
         const nums = Object.keys(base);
         if (!nums.length) throw new Error('nenhum case na lista do Service Center');
         const lido = [], faltam = []; let feitos = 0;
