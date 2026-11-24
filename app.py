@@ -1337,6 +1337,55 @@ def _norm_usina(s):
     return s
 
 # Constrói índice na inicialização
+# ── FARO ENERGY (Fred assumiu o contrato inteiro em 24/11/2026) ─────────────
+# Nome oficial = nome do projeto na FAMA (CMMS da Faro); aliases com o nome/código da intranet.
+_CATALOGO_FARO = {
+    'Monte Alto I': {"cliente": "Faro Energy", "aliases": ['monte alto 1', 'monte alto i', 'ufv monte alto 1', 'ufv monte alto i', 'ufv-247']},
+    'Monte Alto II': {"cliente": "Faro Energy", "aliases": ['monte alto 2', 'monte alto ii', 'ufv monte alto 2', 'ufv monte alto ii', 'ufv-248']},
+    'Monte Alto III': {"cliente": "Faro Energy", "aliases": ['monte alto 3', 'monte alto iii', 'ufv monte alto 3', 'ufv monte alto iii', 'ufv-211']},
+    'Porto Seguro XV': {"cliente": "Faro Energy", "aliases": ['porto seguro 15', 'porto seguro xv', 'ps15', 'psg 15', 'psg15', 'ufv porto seguro 15', 'ufv porto seguro xv', 'ufv-207']},
+    'Alto do Pajeú I': {"cliente": "Faro Energy", "aliases": ['alto do pajeu 1', 'alto do pajeú 1', 'alto do pajeú i', 'alto pajeu 1', 'alto pajeu i', 'ufv alto do pajeú 1', 'ufv alto do pajeú i', 'ufv-202']},
+    'Alto do Pajeú II': {"cliente": "Faro Energy", "aliases": ['alto do pajeu 2', 'alto do pajeú 2', 'alto do pajeú ii', 'alto pajeu 2', 'alto pajeu ii', 'ufv alto do pajeú 2', 'ufv alto do pajeú ii', 'ufv-233']},
+    'Corisco': {"cliente": "Faro Energy", "aliases": ['corisco', 'ufv corisco', 'ufv-215']},
+    'Canabrava': {"cliente": "Faro Energy", "aliases": ['canabrava', 'ufv canabrava', 'ufv-217']},
+    'Oiticica I': {"cliente": "Faro Energy", "aliases": ['oiticica', 'oiticica 1', 'oiticica i', 'ufv oiticica 1', 'ufv oiticica i', 'ufv-205']},
+    'Ponta da Pedra I': {"cliente": "Faro Energy", "aliases": ['ponta da pedra 1', 'ponta da pedra i', 'ufv ponta da pedra 1', 'ufv ponta da pedra i', 'ufv-216']},
+    'Ponta da Pedra II': {"cliente": "Faro Energy", "aliases": ['ponta da pedra 2', 'ponta da pedra ii', 'ufv ponta da pedra 2', 'ufv ponta da pedra ii', 'ufv-236']},
+    'Ponta da Pedra III': {"cliente": "Faro Energy", "aliases": ['ponta da pedra 3', 'ponta da pedra iii', 'ufv ponta da pedra 3', 'ufv ponta da pedra iii', 'ufv-237']},
+    'Olinda I': {"cliente": "Faro Energy", "aliases": ['oli 1', 'oli i', 'olinda', 'olinda 1', 'olinda i', 'ufv olinda 1', 'ufv olinda i', 'ufv-203']},
+    'Riacho Fundo I': {"cliente": "Faro Energy", "aliases": ['riacho funco 1', 'riacho fundo 1', 'riacho fundo i', 'ufv riacho fundo 1', 'ufv riacho fundo i', 'ufv-204']},
+    'Riacho Fundo II': {"cliente": "Faro Energy", "aliases": ['riacho funco 2', 'riacho fundo 2', 'riacho fundo ii', 'ufv riacho fundo 2', 'ufv riacho fundo ii', 'ufv-234']},
+    'Riacho Fundo III': {"cliente": "Faro Energy", "aliases": ['riacho funco 3', 'riacho fundo 3', 'riacho fundo iii', 'ufv riacho fundo 3', 'ufv riacho fundo iii', 'ufv-235']},
+    'Cabo Branco II': {"cliente": "Faro Energy", "aliases": ['cabo branco 2', 'cabo branco ii', 'ufv cabo branco 2', 'ufv cabo branco ii', 'ufv-232']},
+    'Cabo Branco III': {"cliente": "Faro Energy", "aliases": ['cabo branco 3', 'cabo branco iii', 'ufv cabo branco 3', 'ufv cabo branco iii', 'ufv-201']},
+    'Passé I': {"cliente": "Faro Energy", "aliases": ['passe 1', 'passe i', 'passé 1', 'passé i', 'sao sebastiao do passe 1', 'ufv passé 1', 'ufv passé i', 'ufv-222']},
+    'Passé II': {"cliente": "Faro Energy", "aliases": ['passe 2', 'passe ii', 'passé 2', 'passé ii', 'sao sebastiao do passe 2', 'ufv passé 2', 'ufv passé ii', 'ufv-223']},
+    'Passé III': {"cliente": "Faro Energy", "aliases": ['passe 3', 'passe iii', 'passé 3', 'passé iii', 'sao sebastiao do passe 3', 'ufv passé 3', 'ufv passé iii', 'ufv-224']},
+    'Passé IV': {"cliente": "Faro Energy", "aliases": ['passe 4', 'passe iv', 'passé 4', 'passé iv', 'sao sebastiao do passe 4', 'ufv passé 4', 'ufv passé iv', 'ufv-198']},
+    'Pedra do Sal I': {"cliente": "Faro Energy", "aliases": ['pedra do sal 1', 'pedra do sal i', 'ufv pedra do sal 1', 'ufv pedra do sal i', 'ufv-225']},
+    'Pedra do Sal II': {"cliente": "Faro Energy", "aliases": ['pedra do sal 2', 'pedra do sal ii', 'ufv pedra do sal 2', 'ufv pedra do sal ii', 'ufv-226']},
+    'Pedra do Sal III': {"cliente": "Faro Energy", "aliases": ['pedra do sal 3', 'pedra do sal iii', 'ufv pedra do sal 3', 'ufv pedra do sal iii', 'ufv-227']},
+    'Pedra do Sal IV': {"cliente": "Faro Energy", "aliases": ['pedra do sal 4', 'pedra do sal iv', 'ufv pedra do sal 4', 'ufv pedra do sal iv', 'ufv-199']},
+    'Morro Branco II': {"cliente": "Faro Energy", "aliases": ['morro branco 2', 'morro branco ii', 'ufv morro branco 2', 'ufv morro branco ii', 'ufv-200']},
+    'Morro Branco III': {"cliente": "Faro Energy", "aliases": ['morro branco 3', 'morro branco iii', 'ufv morro branco 3', 'ufv morro branco iii', 'ufv-228']},
+    'Morro Branco IV': {"cliente": "Faro Energy", "aliases": ['morro branco 4', 'morro branco iv', 'ufv morro branco 4', 'ufv morro branco iv', 'ufv-230']},
+    'Morro Branco VI': {"cliente": "Faro Energy", "aliases": ['morro branco 6', 'morro branco vi', 'ufv morro branco 6', 'ufv morro branco vi', 'ufv-231']},
+    'Morro Branco VIII': {"cliente": "Faro Energy", "aliases": ['morro branco 8', 'morro branco viii', 'ufv morro branco 8', 'ufv morro branco viii', 'ufv-229']},
+    'Praia Grande I': {"cliente": "Faro Energy", "aliases": ['praia grande 1', 'praia grande i', 'ufv praia grande 1', 'ufv praia grande i', 'ufv-210']},
+    'Praia Grande II': {"cliente": "Faro Energy", "aliases": ['praia grande 2', 'praia grande ii', 'ufv praia grande 2', 'ufv praia grande ii', 'ufv-246']},
+    'Praia Grande III': {"cliente": "Faro Energy", "aliases": ['praia grande 3', 'praia grande iii', 'ufv praia grande 3', 'ufv praia grande iii', 'ufv-238']},
+    'Praia Grande IV': {"cliente": "Faro Energy", "aliases": ['praia grande 4', 'praia grande iv', 'ufv praia grande 4', 'ufv praia grande iv', 'ufv-239']},
+    'Praia Grande VIII': {"cliente": "Faro Energy", "aliases": ['praia grande 8', 'praia grande viii', 'ufv praia grande 8', 'ufv praia grande viii', 'ufv-206']},
+    'Praia Grande VI': {"cliente": "Faro Energy", "aliases": ['praia grande 6', 'praia grande vi', 'ufv praia grande 6', 'ufv praia grande vi', 'ufv-209']},
+    'Rio do Fogo I': {"cliente": "Faro Energy", "aliases": ['rio do fogo 1', 'rio do fogo i', 'ufv rio do fogo 1', 'ufv rio do fogo i', 'ufv-241']},
+    'Rio do Fogo II': {"cliente": "Faro Energy", "aliases": ['rio do fogo 2', 'rio do fogo ii', 'ufv rio do fogo 2', 'ufv rio do fogo ii', 'ufv-242']},
+    'Rio do Fogo III': {"cliente": "Faro Energy", "aliases": ['rio do fogo 3', 'rio do fogo iii', 'ufv rio do fogo 3', 'ufv rio do fogo iii', 'ufv-243']},
+    'Rio do Fogo IV': {"cliente": "Faro Energy", "aliases": ['rio do fogo 4', 'rio do fogo iv', 'ufv rio do fogo 4', 'ufv rio do fogo iv', 'ufv-244']},
+    'Rio do Fogo V': {"cliente": "Faro Energy", "aliases": ['rio do fogo 5', 'rio do fogo v', 'ufv rio do fogo 5', 'ufv rio do fogo v', 'ufv-245']},
+    'Rio do Fogo VI': {"cliente": "Faro Energy", "aliases": ['rio do fogo 6', 'rio do fogo vi', 'ufv rio do fogo 6', 'ufv rio do fogo vi', 'ufv-208']},
+}
+CATALOGO_USINAS.update(_CATALOGO_FARO)
+
 _ALIAS_INDEX = {}   # alias_norm → nome_oficial
 _CLIENTE_INDEX = {} # nome_oficial → cliente
 
@@ -6092,6 +6141,8 @@ def _fracttal_verificar_e_atualizar_uma_os(ws, i, row, numero_os, enviar_notific
 
     Retorna um dict com o resumo do que mudou (ou None em caso de erro,
     já logado)."""
+    if _eh_os_fama(numero_os):  # OS da FAMA (Faro): quem revalida é o sync da FAMA (24/11/2026)
+        return {"numeroOS": numero_os, "id": row[0] if row else "", "mudou": False, "motivo": "OS da FAMA — revalidada pelo sync da FAMA"}
     status_interno_atual = row[8].strip()
     status_os_atual = row[14].strip()
     percentual_atual = row[20].strip()
@@ -6313,7 +6364,7 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
         # como a consistência interna (parte 2) detectar problema nela,
         # porque o statusOS gravado pode estar simplesmente desatualizado
         # há muito tempo, sem ninguém perceber.
-        if status_os_atual not in ("Finalizada", "Cancelada"):
+        if status_os_atual not in ("Finalizada", "Cancelada") and not _eh_os_fama(numero_os):
             ultima_verificacao = row[23].strip()
             se_atrasada = True
             if ultima_verificacao:
@@ -7670,6 +7721,99 @@ MAPEAMENTO_UFVS = [
      "responsavel": 'Pedro Lima', "funcao": 'Técnico', "membros": [], "alternativo": ''},
 ]
 
+# ── FARO ENERGY — 24/11/2026 (Fred). Cluster = nome da EQUIPE na intranet (padrão da intranet
+#    para a Faro, por decisão do Fred); responsável = operador (planilha 'Dados Operadores FARO' +
+#    responsável das OS na FAMA); 'etiqueta' = status da usina na intranet (A mobilizar).
+_MAPEAMENTO_FARO = [
+    {"usina": 'Monte Alto I', "cliente": 'Faro Energy', "cluster": 'Monte Alto 1 a 3', "cidade_uf": 'Caridade/CE',
+     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-247', "mwp": '0,245'},
+    {"usina": 'Monte Alto II', "cliente": 'Faro Energy', "cluster": 'Monte Alto 1 a 3', "cidade_uf": 'Caridade/CE',
+     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-248', "mwp": '1,45'},
+    {"usina": 'Monte Alto III', "cliente": 'Faro Energy', "cluster": 'Monte Alto 1 a 3', "cidade_uf": 'Caridade/CE',
+     "responsavel": 'Paulo Santos Ferreira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-211', "mwp": '4,801'},
+    {"usina": 'Porto Seguro XV', "cliente": 'Faro Energy', "cluster": 'Porto Seguro 15', "cidade_uf": 'Riachão do Jacuípe/BA',
+     "responsavel": 'Lucas Alef Carneiro', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-207', "mwp": '3,049'},
+    {"usina": 'Alto do Pajeú I', "cliente": 'Faro Energy', "cluster": 'Alto do Pajeú 1 e 2 / Corisco', "cidade_uf": 'Quixaba/PE',
+     "responsavel": 'Elidimario Siqueira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-202', "mwp": '2,725'},
+    {"usina": 'Alto do Pajeú II', "cliente": 'Faro Energy', "cluster": 'Alto do Pajeú 1 e 2 / Corisco', "cidade_uf": 'Quixaba/PE',
+     "responsavel": 'Elidimario Siqueira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-233', "mwp": '2,044'},
+    {"usina": 'Corisco', "cliente": 'Faro Energy', "cluster": 'Alto do Pajeú 1 e 2 / Corisco', "cidade_uf": 'Afogados da Ingazeira/PE',
+     "responsavel": 'Elidimario Siqueira', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-215', "mwp": '0,479'},
+    {"usina": 'Canabrava', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'Belém do São Francisco/PE',
+     "responsavel": 'Francisco', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-217', "mwp": '2,267'},
+    {"usina": 'Oiticica I', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'Salgueiro/PE',
+     "responsavel": 'Francisco', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-205', "mwp": '0,966'},
+    {"usina": 'Ponta da Pedra I', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'São José do Belmonte/PE',
+     "responsavel": 'Francisco', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-216', "mwp": '1,34'},
+    {"usina": 'Ponta da Pedra II', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'São José do Belmonte/PE',
+     "responsavel": 'Francisco', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-236', "mwp": '1,161'},
+    {"usina": 'Ponta da Pedra III', "cliente": 'Faro Energy', "cluster": 'Oiticica / Canabrava / Ponta da Pedra 1 a 3', "cidade_uf": 'Belém do São Francisco/PE',
+     "responsavel": 'Francisco', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-237', "mwp": '0,32'},
+    {"usina": 'Olinda I', "cliente": 'Faro Energy', "cluster": 'Olinda', "cidade_uf": 'Afrânio/PE',
+     "responsavel": 'Fernando dos Santos da Cruz', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-203', "mwp": '1,835'},
+    {"usina": 'Riacho Fundo I', "cliente": 'Faro Energy', "cluster": 'Riacho Funco 1, 2 e 3', "cidade_uf": 'Caraúbas/RN',
+     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-204', "mwp": '1,34'},
+    {"usina": 'Riacho Fundo II', "cliente": 'Faro Energy', "cluster": 'Riacho Funco 1, 2 e 3', "cidade_uf": 'Caraúbas/RN',
+     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-234', "mwp": '1,34'},
+    {"usina": 'Riacho Fundo III', "cliente": 'Faro Energy', "cluster": 'Riacho Funco 1, 2 e 3', "cidade_uf": 'Caraúbas/RN',
+     "responsavel": 'Francimauro Elias dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-235', "mwp": '1,34'},
+    {"usina": 'Cabo Branco II', "cliente": 'Faro Energy', "cluster": 'Cabo Branco 2 e 3', "cidade_uf": 'Sousa/PB',
+     "responsavel": 'Damião Alves de Sousa', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-232', "mwp": '1,334'},
+    {"usina": 'Cabo Branco III', "cliente": 'Faro Energy', "cluster": 'Cabo Branco 2 e 3', "cidade_uf": 'Sousa/PB',
+     "responsavel": 'Damião Alves de Sousa', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-201', "mwp": '1,334'},
+    {"usina": 'Passé I', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-222', "mwp": '0,36'},
+    {"usina": 'Passé II', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-223', "mwp": '0,36'},
+    {"usina": 'Passé III', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-224', "mwp": '1,288' , "etiqueta": "A mobilizar"},
+    {"usina": 'Passé IV', "cliente": 'Faro Energy', "cluster": 'Passé 1 a 4', "cidade_uf": 'São Sebastião do Passé/BA',
+     "responsavel": 'Bruno Ferreira dos Santos', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-198', "mwp": '1,288' , "etiqueta": "A mobilizar"},
+    {"usina": 'Pedra do Sal I', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Eliseu Martins/PI',
+     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-225', "mwp": '1,068'},
+    {"usina": 'Pedra do Sal II', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Colônia do Gurguéia/PI',
+     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-226', "mwp": '0,866'},
+    {"usina": 'Pedra do Sal III', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Colônia do Gurguéia/PI',
+     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-227', "mwp": '1,274'},
+    {"usina": 'Pedra do Sal IV', "cliente": 'Faro Energy', "cluster": 'Pedra do Sal 1 a 4', "cidade_uf": 'Colônia do Gurguéia/PI',
+     "responsavel": 'Bruno Samuel Albuquerque', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-199', "mwp": '1,274'},
+    {"usina": 'Morro Branco II', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Icó/CE',
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-200', "mwp": '1,236'},
+    {"usina": 'Morro Branco III', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Icó/CE',
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-228', "mwp": '1,236'},
+    {"usina": 'Morro Branco IV', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Iguatu/CE',
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-230', "mwp": '1,272'},
+    {"usina": 'Morro Branco VI', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Iguatu/CE',
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-231', "mwp": '1,272'},
+    {"usina": 'Morro Branco VIII', "cliente": 'Faro Energy', "cluster": 'Morro Branco 2, 3 e 8', "cidade_uf": 'Icó/CE',
+     "responsavel": 'Cícero Lima Alves', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-229', "mwp": '1,264'},
+    {"usina": 'Praia Grande I', "cliente": 'Faro Energy', "cluster": 'Praia Grande 1 e 2', "cidade_uf": 'Paraibano/MA',
+     "responsavel": 'Natalício dos Santos Lima', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-210', "mwp": '1,264'},
+    {"usina": 'Praia Grande II', "cliente": 'Faro Energy', "cluster": 'Praia Grande 1 e 2', "cidade_uf": 'Paraibano/MA',
+     "responsavel": 'Natalício dos Santos Lima', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-246', "mwp": '1,264'},
+    {"usina": 'Praia Grande III', "cliente": 'Faro Energy', "cluster": 'Praia Grande 3, 4 e 8', "cidade_uf": 'São João dos Patos/MA',
+     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-238', "mwp": '1,264'},
+    {"usina": 'Praia Grande IV', "cliente": 'Faro Energy', "cluster": 'Praia Grande 3, 4 e 8', "cidade_uf": 'São João dos Patos/MA',
+     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-239', "mwp": '1,264'},
+    {"usina": 'Praia Grande VIII', "cliente": 'Faro Energy', "cluster": 'Praia Grande 3, 4 e 8', "cidade_uf": 'São João dos Patos/MA',
+     "responsavel": 'José Cleiton da Silva Gomes', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-206', "mwp": '1,264'},
+    {"usina": 'Praia Grande VI', "cliente": 'Faro Energy', "cluster": 'Praia Grande 6', "cidade_uf": 'Mirador/MA',
+     "responsavel": 'Mykeias Guimarães Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-209', "mwp": '1,264'},
+    {"usina": 'Rio do Fogo I', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Barrolândia/TO',
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-241', "mwp": '0,947'},
+    {"usina": 'Rio do Fogo II', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-242', "mwp": '1,264'},
+    {"usina": 'Rio do Fogo III', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-243', "mwp": '1,264'},
+    {"usina": 'Rio do Fogo IV', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-244', "mwp": '1,264' , "etiqueta": "A mobilizar"},
+    {"usina": 'Rio do Fogo V', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-245', "mwp": '1,264' , "etiqueta": "A mobilizar"},
+    {"usina": 'Rio do Fogo VI', "cliente": 'Faro Energy', "cluster": 'Rio do Fogo 1, 2 e 3', "cidade_uf": 'Nova Rosalândia/TO',
+     "responsavel": 'Marcio Fernandes da Silva', "funcao": 'Operador', "membros": [], "alternativo": '', "ufv_codigo": 'UFV-208', "mwp": '1,264' , "etiqueta": "A mobilizar"},
+]
+MAPEAMENTO_UFVS.extend(_MAPEAMENTO_FARO)
+
 # Variações de grafia/apelidos vistas na Fracttal → nome oficial na tabela acima.
 _TECNICO_ALIASES = {
     "deivity jhon cunha saugo": "Deivity Saugo",
@@ -8381,6 +8525,9 @@ def os_historico_fracttal(numero_os):
     numero_os = (numero_os or "").strip()
     if not numero_os:
         return jsonify({"ok": False, "error": "numero_os vazio"}), 400
+    if _eh_os_fama(numero_os):
+        _n = numero_os[len(FAMA_PREFIXO_OS):]
+        return fama_os_detalhe(int(_n)) if _n.isdigit() else (jsonify({"ok": False, "error": "OS FAMA inválida"}), 400)
     try:
         token = _fracttal_get_token()
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -11282,6 +11429,7 @@ def _editor_legivel(editor):
     mapa = {
         "fracttal-sync": "sincronização automática com a Fracttal",
         "fracttal-backfill": "sincronização automática com a Fracttal",
+        "fama-sync": "sincronização automática com a FAMA (Faro Energy)",
         "claude-chat": "assistente (Claude)",
         "reprogramacao-ia": "reprogramação sugerida por IA",
     }
@@ -11795,7 +11943,7 @@ def _enviar_comunicados_diarios_core():
             # 8025 (Boa Esperança do Sul I), etiquetada PERFORMANCE e
             # atribuída a um analista, mas enviada ao grupo de campo.
             continue
-        if numero_os:
+        if numero_os and not _eh_os_fama(numero_os):
             candidatas_recheck.append((i, row, numero_os))
 
     LIMITE_RECHECK_COMUNICADOS = 20  # trava de segurança de tempo — essa função
@@ -12113,6 +12261,8 @@ def sync_fracttal():
         secret = request.headers.get("X-Webhook-Secret", "") or request.args.get("secret", "")
         if secret != WEBHOOK_SECRET:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    _fama_disparar_se_devido()  # FAMA/Faro (24/11/2026): roda em segundo plano, no máximo a cada 15 min
 
     # Evita sobrepor ciclos: se o anterior ainda está rodando (ex: pico
     # de latência da Fracttal), só confirma o recebimento sem empilhar
@@ -22604,6 +22754,54 @@ SUPERVISOR_CAMPO_UFV = {
 }
 
 
+_SUPERVISOR_CAMPO_FARO = {
+    'Monte Alto I': 'Wesley Silva',
+    'Monte Alto II': 'Wesley Silva',
+    'Monte Alto III': 'Wesley Silva',
+    'Porto Seguro XV': 'Tassio Souza',
+    'Alto do Pajeú I': 'Daniel Rodrigues',
+    'Alto do Pajeú II': 'Daniel Rodrigues',
+    'Corisco': 'Daniel Rodrigues',
+    'Canabrava': 'Tassio Souza',
+    'Oiticica I': 'Tassio Souza',
+    'Ponta da Pedra I': 'Tassio Souza',
+    'Ponta da Pedra II': 'Tassio Souza',
+    'Ponta da Pedra III': 'Tassio Souza',
+    'Olinda I': 'Tassio Souza',
+    'Riacho Fundo I': 'Daniel Rodrigues',
+    'Riacho Fundo II': 'Daniel Rodrigues',
+    'Riacho Fundo III': 'Daniel Rodrigues',
+    'Cabo Branco II': 'Daniel Rodrigues',
+    'Cabo Branco III': 'Daniel Rodrigues',
+    'Passé I': 'Tassio Souza',
+    'Passé II': 'Tassio Souza',
+    'Passé III': 'Tassio Souza',
+    'Passé IV': 'Tassio Souza',
+    'Pedra do Sal I': 'Wesley Silva',
+    'Pedra do Sal II': 'Wesley Silva',
+    'Pedra do Sal III': 'Wesley Silva',
+    'Pedra do Sal IV': 'Wesley Silva',
+    'Morro Branco II': 'Daniel Rodrigues',
+    'Morro Branco III': 'Daniel Rodrigues',
+    'Morro Branco IV': 'Daniel Rodrigues',
+    'Morro Branco VI': 'Daniel Rodrigues',
+    'Morro Branco VIII': 'Daniel Rodrigues',
+    'Praia Grande I': 'Wesley Silva',
+    'Praia Grande II': 'Wesley Silva',
+    'Praia Grande III': 'Wesley Silva',
+    'Praia Grande IV': 'Wesley Silva',
+    'Praia Grande VIII': 'Wesley Silva',
+    'Praia Grande VI': 'Wesley Silva',
+    'Rio do Fogo I': 'Vitor Valadares',
+    'Rio do Fogo II': 'Vitor Valadares',
+    'Rio do Fogo III': 'Vitor Valadares',
+    'Rio do Fogo IV': 'Vitor Valadares',
+    'Rio do Fogo V': 'Vitor Valadares',
+    'Rio do Fogo VI': 'Vitor Valadares',
+}
+SUPERVISOR_CAMPO_UFV.update(_SUPERVISOR_CAMPO_FARO)
+
+
 @app.route("/mapeamento-ufvs", methods=["GET"])
 def mapeamento_ufvs():
     """Mapeamento oficial de UFVs (cliente, cluster, equipe, responsáveis) —
@@ -26474,7 +26672,568 @@ def os_fora_mapeamento_listar():
     return jsonify({"ok": True, "itens": _os_fora_mapa_ler()}), 200
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# FAMA — CMMS da Faro Energy (integração SÓ DE LEITURA, Fred, 24/11/2026)
+# O COS da Faro abre as OS na FAMA; o Omni só LÊ e traz para o Painel de
+# Atividades, no mesmo formato das OS da Fracttal, para o Fred direcionar cada
+# OS a um técnico da Grid. NADA é escrito na FAMA (a rota PATCH de status da API
+# de contratada nunca é chamada).
+#  • Chave: header X-Contractor-Key, lida do .env (FAMA_CONTRACTOR_KEY) ou do
+#    arquivo ~/.fama_contractor_key no VM1 (gravado por POST /fama/chave com
+#    X-Deploy-Secret). Nunca no código — o repositório é público.
+#  • NumeroOS no painel = "FAMA-<id>" (não colide com folio da Fracttal; as rotinas
+#    da Fracttal pulam essas linhas — ver _eh_os_fama).
+#  • Ativo: a FAMA não preenche "assets"; o ativo sai do título/descrição da OS.
+#  • Prazo = data prevista de execução da FAMA; gravidade = a da FAMA (Fred:
+#    "é só utilizar o que tem na FAMA"); multa diária da cl. 11.1-ii dos contratos.
+#  • Preventivas da Faro não são programadas: vêm sob solicitação do cliente.
+#  • Escopo: OS abertas (criada, planejada, em mobilização, em execução, pausada,
+#    em análise) + executadas aguardando aprovação com término desde
+#    FAMA_CORTE_EXECUTADAS. Fechadas só atualizam linhas que já existem.
+# ══════════════════════════════════════════════════════════════════════════════
+FAMA_API_BASE = "https://api.fama.energy"
+FAMA_PREFIXO_OS = "FAMA-"
+FAMA_CLIENTE = "Faro Energy"
+FAMA_CORTE_EXECUTADAS = "2026-08-01"
+FAMA_SYNC_INTERVALO_S = 15 * 60
+_FAMA_KEY_PATH = os.path.expanduser("~/.fama_contractor_key")
+_FAMA_ESTADO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fama_sync.json")
+_FAMA_LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fama_sync.lock")
+_FAMA_AUD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auditoria_fama.json")
+
+# status_id da FAMA -> (rótulo PT, estado no padrão do painel, situação geral)
+_FAMA_STATUS = {
+    1: ("Criada", "Em Processo", "Não Iniciada"),
+    2: ("Planejada", "Em Processo", "Não Iniciada"),
+    3: ("Em mobilização", "Em Processo", "Em Progresso"),
+    4: ("Em execução", "Em Processo", "Em Progresso"),
+    5: ("Pausada", "Em Processo", "Pausada"),
+    6: ("Executada (aguardando aprovação da Faro)", "Em Revisão", "Concluída"),
+    7: ("Aprovada", "Finalizada", "Concluída"),
+    9: ("Encerrada", "Finalizada", "Concluída"),
+    11: ("Em análise pela Faro", "Em Revisão", "Concluída"),
+}
+_FAMA_STATUS_ABERTOS = {1, 2, 3, 4, 5, 11}
+
+# gravidade da FAMA -> (rótulo PT, prioridade do painel, multa % ao dia — cl. 11.1-ii dos contratos Faro)
+_FAMA_GRAVIDADE = {
+    "Critical": ("Crítica", "Alta", "10%"),
+    "Urgent": ("Urgente", "Alta", "7,5%"),
+    "Routine": ("Rotina", "Média", "5%"),
+    "Non-Urgent": ("Não urgente", "Baixa", "5%"),
+}
+_FAMA_TIPO = {
+    "Corrective": "Corretiva", "Preventive/Predictive": "Preventiva sob solicitação",
+    "Vegetation control": "Controle de vegetação", "Modules cleaning": "Limpeza de módulos",
+    "Equipments and Materials movement": "Movimentação de materiais",
+}
+
+
+def _eh_os_fama(numero_os):
+    return str(numero_os or "").strip().upper().startswith(FAMA_PREFIXO_OS)
+
+
+def _fama_chave():
+    k = (os.environ.get("FAMA_CONTRACTOR_KEY") or "").strip()
+    if k:
+        return k
+    try:
+        with open(_FAMA_KEY_PATH, encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _fama_get(caminho, timeout=90):
+    chave = _fama_chave()
+    if not chave:
+        raise RuntimeError("chave da FAMA não configurada (POST /fama/chave)")
+    ultimo = None
+    for tent in range(3):
+        try:
+            r = requests.get(f"{FAMA_API_BASE}{caminho}", headers={"X-Contractor-Key": chave, "Accept": "application/json"},
+                             timeout=timeout)
+            if r.status_code == 429 or r.status_code >= 500:
+                ultimo = f"HTTP {r.status_code}"
+                time.sleep(5 + tent * 10)
+                continue
+            if r.status_code in (401, 403):
+                raise RuntimeError(f"FAMA recusou a chave (HTTP {r.status_code})")
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.RequestException as e:
+            ultimo = str(e)
+            time.sleep(5 + tent * 10)
+    raise RuntimeError(f"FAMA indisponível: {ultimo}")
+
+
+_FAMA_USINA_IDX = None
+
+
+def _fama_usina(nome_projeto):
+    """Projeto da FAMA -> nome oficial (só usinas Faro do mapeamento; Colares II fica de fora)."""
+    global _FAMA_USINA_IDX
+    if _FAMA_USINA_IDX is None:
+        _FAMA_USINA_IDX = {}
+        for nome, info in CATALOGO_USINAS.items():
+            if info.get("cliente") != FAMA_CLIENTE:
+                continue
+            _FAMA_USINA_IDX[_norm_usina(nome)] = nome
+            for a in info.get("aliases", []):
+                _FAMA_USINA_IDX[_norm_usina(a)] = nome
+    return _FAMA_USINA_IDX.get(_norm_usina(nome_projeto or ""))
+
+
+def _fama_sem_acento(s):
+    s = _ud.normalize("NFKD", (s or "").lower())
+    return s.encode("ascii", "ignore").decode("ascii")
+
+
+_FAMA_NUMS = r"(\d{1,3}(?:\s*(?:,|e|/|&|-)\s*\d{1,3})*)"
+_FAMA_ATIVO_REGRAS = [
+    (re.compile(r"\binv(?:ersor(?:es)?)?\.?\s*(?:n[o°º]\.?\s*)?" + _FAMA_NUMS), "Inversor"),
+    (re.compile(r"\b(?:trk|tracker|trackers|trakers?|traker|rastreador(?:es)?)\.?\s*(?:n[o°º]\.?\s*)?" + _FAMA_NUMS), "Tracker"),
+    (re.compile(r"\bstrings?\.?\s*(?:n[o°º]\.?\s*)?" + _FAMA_NUMS), "String"),
+    (re.compile(r"\bcaixa\s+de\s+juncao\s*" + _FAMA_NUMS), "Caixa de junção"),
+]
+_FAMA_ATIVO_PALAVRAS = [
+    ("limpeza", "Módulos (limpeza)"), ("trk", "Trackers"), ("tracker", "Trackers"), ("traker", "Trackers"),
+    ("skc", "SKC (controle de trackers)"), ("tcu", "TCU (trackers)"), ("atuador", "Trackers"),
+    ("aceiro", "Aceiro (vegetação)"), ("qgbt", "QGBT"), ("transformador", "Transformador"), ("trafo", "Transformador"),
+    ("ncu", "NCU (controle de trackers)"), ("religador", "Religador"), ("rele", "Relé de proteção"),
+    ("chave fusivel", "Chave fusível"), ("elo fusivel", "Chave fusível"), ("jump", "Rede de média tensão"),
+    ("cftv", "CFTV"), ("camera", "CFTV"), ("cerca", "Cerca"), ("alambrado", "Cerca"), ("portao", "Portão"),
+    ("datalogger", "Datalogger/comunicação"), ("logger", "Datalogger/comunicação"),
+    ("solarimetrica", "Estação solarimétrica"), ("cabine", "Cabine"), ("subestacao", "Subestação"),
+    ("modulo", "Módulos"), ("vegetac", "Vegetação"), ("rocagem", "Vegetação"), ("capina", "Vegetação"),
+    ("concessionaria", "Rede da concessionária"),
+    ("comunicacao", "Usina (comunicação)"), ("desligad", "Usina (geral)"), ("sem geracao", "Usina (geral)"),
+]
+
+
+_FAMA_MESES = {"january": "Janeiro", "february": "Fevereiro", "march": "Março", "april": "Abril", "may": "Maio",
+               "june": "Junho", "july": "Julho", "august": "Agosto", "september": "Setembro", "october": "Outubro",
+               "november": "Novembro", "december": "Dezembro"}
+_FAMA_RX_PLANO = re.compile(r"manuten[cç][aã]o\s+(mensal|bimestral|trimestral|semestral|anual)", re.I)
+
+
+def _fama_preventiva(titulo):
+    """'Manutenção Mensal - November' (checklist aberto pela Faro) -> ('PREVENTIVA MENSAL — Novembro', 'Preventiva mensal')."""
+    m = _FAMA_RX_PLANO.search(titulo or "")
+    if not m:
+        return None, None
+    per = m.group(1).lower()
+    mes = ""
+    for en, pt in _FAMA_MESES.items():
+        if re.search(r"\b" + en + r"\b", (titulo or "").lower()):
+            mes = pt
+            break
+    return (f"PREVENTIVA {per.upper()}" + (f" — {mes}" if mes else "")), f"Preventiva {per} (checklist)"
+
+
+def _fama_extrair_ativo(titulo, descricao=""):
+    """Ativo da OS a partir do título (prioridade) ou da descrição — a FAMA não preenche 'assets'.
+    Checklist de manutenção (descrição com '[new TODO]') não serve para achar ativo."""
+    _, equip_prev = _fama_preventiva(titulo)
+    if equip_prev:
+        return equip_prev
+    textos = [titulo] + ([] if "[new todo]" in (descricao or "").lower() else [descricao])
+    for texto in textos:
+        t = _fama_sem_acento(texto)
+        if not t:
+            continue
+        for rx, nome in _FAMA_ATIVO_REGRAS:
+            m = rx.search(t)
+            if m:
+                nums = [str(int(n)) for n in re.split(r"\s*(?:,|e|/|&|-)\s*", m.group(1).strip()) if n.isdigit()]
+                if not nums:
+                    continue
+                if len(nums) > 1:
+                    plural = {"Inversor": "Inversores", "Tracker": "Trackers", "String": "Strings"}.get(nome, nome)
+                    return f"{plural} {', '.join(nums[:-1])} e {nums[-1]}"
+                return f"{nome} {nums[0]}"
+        for chave, nome in _FAMA_ATIVO_PALAVRAS:
+            if re.search(r"\b" + chave, t):
+                return nome
+    return "Usina (geral)"
+
+
+def _fama_data_br(iso):
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "")[:19]).strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
+def _fama_mapear(so):
+    """OS da FAMA (item da lista de contratada) -> campos do Painel de Atividades.
+    None = fora do escopo (usina fora do mapeamento)."""
+    usina = _fama_usina((so.get("project") or {}).get("name"))
+    if not usina:
+        return None
+    sid = so.get("status_id") or (so.get("status") or {}).get("id")
+    rot, estado, geral = _FAMA_STATUS.get(sid, ((so.get("status") or {}).get("service_status") or "?", "Em Processo", "Não Iniciada"))
+    grav_raw = (so.get("severity") or {}).get("service_severity") or ""
+    grav, prioridade, multa = _FAMA_GRAVIDADE.get(grav_raw, (grav_raw or "Sem gravidade", "Média", "5%"))
+    tipo_raw = (so.get("type") or {}).get("service_type") or ""
+    tipo = _FAMA_TIPO.get(tipo_raw, tipo_raw)
+    titulo = (so.get("title") or "").strip()
+    desc = (so.get("description") or "").strip()
+    titulo_prev, _ = _fama_preventiva(titulo)
+    if titulo_prev:
+        descricao = titulo_prev  # o checklist inteiro fica na FAMA; aqui vai só o nome da preventiva
+    else:
+        descricao = titulo if (not desc or _norm(desc) in _norm(titulo)) else f"{titulo} — {desc}"
+    equip = _fama_extrair_ativo(titulo, desc)
+    resp = ((so.get("responsible") or {}).get("full_name") or "").strip()
+    if not resp:
+        resp = next((u["responsavel"] for u in MAPEAMENTO_UFVS if u["usina"] == usina), "")
+    prazo = _fama_data_br(so.get("expected_execution_date") or so.get("limit_date"))
+    criador = ((so.get("creator") or {}).get("full_name") or "").strip()
+    obs = [f"OS FAMA {so.get('id')} · {tipo} · gravidade {grav}",
+           f"Multa contratual por dia de atraso: {multa} do preço da OS (cl. 11.1-ii) · atraso na mobilização: 2%/dia",
+           f"Aberta por {criador or '—'} em {_fama_data_br(so.get('creation_date')) or '—'}"]
+    return {
+        "cliente": FAMA_CLIENTE, "usina": usina, "equipamento": equip, "descricao": descricao[:500],
+        "responsavel": resp, "prazo": prazo, "prioridade": prioridade,
+        "status": _status_interno_esperado(estado, "Em Aberto") or "Em Aberto",
+        "numeroOS": f"{FAMA_PREFIXO_OS}{so.get('id')}", "editor": "fama-sync",
+        "statusOS": estado, "observacoesOS": "\n".join(obs), "linkOS": "",
+        "statusTarefaOS": rot, "etiquetasOS": f"FAMA · {tipo} · {grav}",
+        "percentualOS": "", "statusGeralOS": geral,
+        "detalhesEquipamentosOS": json.dumps([{"equipamento": equip, "status": rot}], ensure_ascii=False),
+    }
+
+
+def _fama_no_escopo(so):
+    sid = so.get("status_id")
+    if sid in _FAMA_STATUS_ABERTOS:
+        return True
+    if sid == 6:
+        ref = (so.get("finish_date") or so.get("creation_date") or "")[:10]
+        return ref >= FAMA_CORTE_EXECUTADAS
+    return False
+
+
+# Campos que a FAMA "manda" depois da criação. Responsável e ativo NÃO entram:
+# o Fred direciona a OS a um técnico da Grid no Omni e isso não pode ser desfeito
+# pelo sync (responsável só é preenchido se estiver vazio).
+_FAMA_CAMPOS_SYNC = ["prazo", "statusOS", "statusTarefaOS", "statusGeralOS", "etiquetasOS", "observacoesOS",
+                     "detalhesEquipamentosOS", "descricao"]
+
+
+def _fama_estado_ler():
+    try:
+        with open(_FAMA_ESTADO_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _fama_estado_gravar(d):
+    tmp = _FAMA_ESTADO_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, _FAMA_ESTADO_PATH)
+
+
+def _fama_sync_core(origem="automática"):
+    """Lê todas as OS da contratada na FAMA e cria/atualiza as linhas FAMA-* do Painel de Atividades
+    (aba do Fred). Escrita em lote (append_rows + batch_update) para não estourar a cota do Sheets."""
+    t0 = time.time()
+    lista = _fama_get("/v2/contractor/service-orders/")
+    if not isinstance(lista, list):
+        raise RuntimeError("resposta inesperada da FAMA (esperava lista)")
+    ws = get_atividades_sheet()
+    _garantir_headers_atividades(ws)
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    linhas_fama = {}
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) > 13 and _eh_os_fama(row[13]):
+            linhas_fama.setdefault(row[13].strip().upper(), (i, row + [""] * (ATIV_TOTAL_COLUNAS - len(row))))
+    agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
+    agora_iso = agora_br().strftime("%Y-%m-%dT%H:%M:%S")
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    novas, updates, status_internos, criadas, atualizadas, fora = [], [], [], [], [], 0
+    prox_id = int(_proximo_id_atividade(todos))
+    for so in lista:
+        num = f"{FAMA_PREFIXO_OS}{so.get('id')}"
+        existente = linhas_fama.get(num.upper())
+        if not existente and not _fama_no_escopo(so):
+            continue
+        m = _fama_mapear(so)
+        if m is None:
+            fora += 1
+            continue
+        if not existente:
+            hist = f"{agora_txt} - Atividade criada pela sincronização com a FAMA (CMMS da Faro Energy)."
+            dt = agora_br().strftime("%d/%m/%Y %H:%M:%S")
+            novas.append([str(prox_id), m["cliente"], m["usina"], m["equipamento"], m["descricao"], m["responsavel"],
+                          m["prazo"], m["prioridade"], m["status"], dt,
+                          dt if m["status"] in ("Concluído", "Cancelado") else "", hist, "fama-sync", num,
+                          m["statusOS"], m["observacoesOS"], m["linkOS"], m["statusTarefaOS"], m["etiquetasOS"], "",
+                          m["percentualOS"], m["statusGeralOS"], m["detalhesEquipamentosOS"], agora_iso, ""])
+            criadas.append(num)
+            prox_id += 1
+            continue
+        i, row = existente
+        g = lambda c: row[ATIV_CAMPO_COL[c] - 1]
+        mudou = []
+        for campo in _FAMA_CAMPOS_SYNC:
+            if _aud_ft_norm(campo, g(campo)) != _aud_ft_norm(campo, m[campo]):
+                updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[m[campo]]]})
+                mudou.append(campo)
+        if not g("responsavel").strip() and m["responsavel"]:
+            updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['responsavel'])}{i}", "values": [[m["responsavel"]]]})
+            mudou.append("responsavel")
+        updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['ultimaVerificacaoOS'])}{i}", "values": [[agora_iso]]})
+        st_novo = _status_interno_esperado(m["statusOS"], g("status").strip())
+        if st_novo:
+            status_internos.append((i, st_novo))
+        if "statusOS" in mudou or "statusTarefaOS" in mudou or st_novo:
+            nota = (f"{agora_txt} - FAMA: OS passou para \"{m['statusTarefaOS']}\""
+                    + (f" (status interno → {st_novo})" if st_novo else "") + ".")
+            hist = g("historico")
+            updates.append({"range": f"{col_letra(ATIV_COL_HISTORICO)}{i}", "values": [[f"{hist}\n{nota}".strip() if hist else nota]]})
+        if mudou or st_novo:
+            atualizadas.append({"numeroOS": num, "campos": mudou + (["status"] if st_novo else [])})
+    if novas:
+        for k in range(0, len(novas), 200):
+            lote = novas[k:k + 200]
+            _gspread_retry(lambda lote=lote: ws.append_rows(lote, value_input_option="RAW"))
+    for k in range(0, len(updates), 300):
+        lote = updates[k:k + 300]
+        _gspread_retry(lambda lote=lote: ws.batch_update([dict(x) for x in lote], value_input_option="RAW"))
+    for i, st in status_internos:
+        try:
+            time.sleep(2.5)
+            _gspread_retry(lambda i=i, st=st: _gravar_status_interno(ws, i, st), tentativas=4, esperas=(20, 40, 60, 60))
+        except Exception as e:
+            log.error(f"[FAMA] status interno linha {i}: {e}")
+    res = {"ok": True, "origem": origem, "fim": agora_br().strftime("%d/%m/%Y %H:%M:%S"),
+           "segundos": round(time.time() - t0), "osNaFama": len(lista), "criadas": len(criadas),
+           "atualizadas": len(atualizadas), "foraDoMapeamento": fora,
+           "exemplosCriadas": criadas[:20], "exemplosAtualizadas": atualizadas[:30]}
+    log.info(f"[FAMA] sync ({origem}): {res['criadas']} criadas, {res['atualizadas']} atualizadas em {res['segundos']}s")
+    return res
+
+
+def _fama_rodar_com_trava(origem):
+    """Garante 1 sync por vez entre os 2 workers do gunicorn (flock em arquivo)."""
+    import fcntl
+    with open(_FAMA_LOCK_PATH, "w") as lf:
+        try:
+            fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return {"ok": True, "jaRodando": True}
+        est = _fama_estado_ler()
+        est.update({"rodando": True, "inicio": agora_br().strftime("%d/%m/%Y %H:%M:%S"), "ts": time.time()})
+        _fama_estado_gravar(est)
+        try:
+            res = _fama_sync_core(origem)
+            est = {"rodando": False, "ts": time.time(), "ultimo": res}
+        except Exception as e:
+            log.error(f"[FAMA] sync falhou: {e}")
+            est = {"rodando": False, "ts": time.time(), "ultimo": _fama_estado_ler().get("ultimo"),
+                   "erro": str(e)[:300], "erroEm": agora_br().strftime("%d/%m/%Y %H:%M:%S")}
+            res = {"ok": False, "erro": str(e)[:300]}
+        _fama_estado_gravar(est)
+        return res
+
+
+def _fama_disparar_se_devido(forcar=False):
+    """Chamado pelo /sync-fracttal (UptimeRobot, 5 em 5 min): roda o sync da FAMA em segundo
+    plano no máximo a cada FAMA_SYNC_INTERVALO_S. Nunca bloqueia nem derruba o ciclo da Fracttal."""
+    try:
+        if not _fama_chave():
+            return False
+        est = _fama_estado_ler()
+        if not forcar and time.time() - float(est.get("ts") or 0) < FAMA_SYNC_INTERVALO_S:
+            return False
+        threading.Thread(target=_fama_rodar_com_trava, args=("automática" if not forcar else "manual",), daemon=True).start()
+        return True
+    except Exception as e:
+        log.error(f"[FAMA] disparo: {e}")
+        return False
+
+
+@app.route("/fama/status", methods=["GET"])
+def fama_status():
+    est = _fama_estado_ler()
+    est["chaveConfigurada"] = bool(_fama_chave())
+    return jsonify({"ok": True, **est}), 200
+
+
+@app.route("/fama/sincronizar", methods=["POST", "OPTIONS"])
+def fama_sincronizar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "A sincronização da FAMA é feita só pelo acesso principal."}), 403
+    if not _fama_chave():
+        return jsonify({"ok": False, "error": "chave da FAMA não configurada"}), 400
+    disparou = _fama_disparar_se_devido(forcar=True)
+    return jsonify({"ok": True, "disparado": disparou}), 200
+
+
+@app.route("/fama/chave", methods=["POST"])
+def fama_chave():
+    """Grava a chave de contratada da FAMA no VM1, fora do repositório (X-Deploy-Secret)."""
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    chave = ((request.get_json(force=True, silent=True) or {}).get("chave") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_\-]{20,128}", chave):
+        return jsonify({"ok": False, "error": "chave inválida"}), 400
+    with open(_FAMA_KEY_PATH, "w", encoding="utf-8") as f:
+        f.write(chave)
+    os.chmod(_FAMA_KEY_PATH, 0o600)
+    try:
+        _fama_get("/v2/contractor/service-orders/", timeout=60)
+        teste = "ok"
+    except Exception as e:
+        teste = str(e)[:200]
+    return jsonify({"ok": True, "teste": teste}), 200
+
+
+@app.route("/fama/os/<int:so_id>", methods=["GET"])
+def fama_os_detalhe(so_id):
+    """Linha do tempo de uma OS da FAMA (mudanças de status + registros do campo). Só leitura.
+    As fotos aparecem como contagem: a chave de contratada não dá link de download."""
+    try:
+        so = _fama_get(f"/v2/contractor/service-orders/{so_id}", timeout=30)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:300]}), 502
+    rot = {k: v[0] for k, v in _FAMA_STATUS.items()}
+    eventos = []
+    for t in so.get("transactions") or []:
+        eventos.append({"data": t.get("registered_date") or "", "dataFormatada": _fracttal_datahora_br(t.get("registered_date")) or "",
+                        "titulo": f"Status: {rot.get(t.get('destination_status_id'), t.get('destination_status_id'))}",
+                        "detalhe": t.get("note") or "", "autor": (t.get("user") or {}).get("full_name") or "—"})
+    for lg in so.get("logs") or []:
+        n = len(lg.get("attachments") or [])
+        eventos.append({"data": lg.get("created_at") or "", "dataFormatada": _fracttal_datahora_br(lg.get("created_at")) or "",
+                        "titulo": lg.get("title") or "Registro", "detalhe": (lg.get("description") or "") + (f" · 📷 {n} foto(s) na FAMA" if n else ""),
+                        "autor": (lg.get("creator") or {}).get("full_name") or "—"})
+    eventos.sort(key=lambda e: e["data"])
+    eventos.reverse()
+    return jsonify({"ok": True, "numeroOS": f"{FAMA_PREFIXO_OS}{so_id}", "totalTarefas": 1, "eventos": eventos}), 200
+
+
+@app.route("/fama/aplicar-mapeamento", methods=["POST"])
+def fama_aplicar_mapeamento():
+    """Grava na _Sistema as chaves cluster_usina:/coordenador_cluster: das usinas Faro e cria as linhas
+    da aba Localizacoes que faltarem (lat/lng opcionais no body, vindos da intranet). X-Deploy-Secret."""
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(force=True, silent=True) or {}
+    coords = body.get("coords") or {}  # {usina: {lat, lng, endereco?, maps?}}
+    faro = [u for u in MAPEAMENTO_UFVS if u["cliente"] == FAMA_CLIENTE]
+    pares = {}
+    for u in faro:
+        pares[f"cluster_usina:{u['usina']}"] = u["cluster"]
+    por_cluster = {}
+    for u in faro:
+        lst = por_cluster.setdefault(u["cluster"], [])
+        if u["responsavel"] and u["responsavel"] not in lst:
+            lst.append(u["responsavel"])
+    for c, resps in por_cluster.items():
+        pares[f"coordenador_cluster:{c}"] = " / ".join(resps)
+    gravados = _config_set_lote_core(pares)
+    for _c in (_mapa_grupo_usina_cache, _mapa_cluster_usina_cache):
+        _c["expira_em"] = 0
+    ws = get_localizacoes_sheet()
+    linhas = _gspread_retry(lambda: ws.get_all_values())
+    idx = {(r[1].strip() if len(r) > 1 else ""): k for k, r in enumerate(linhas[1:], start=2)}
+    novas, upd = [], []
+    for u in faro:
+        c = coords.get(u["usina"]) or {}
+        lat, lng = str(c.get("lat") or ""), str(c.get("lng") or "")
+        end = c.get("endereco") or u["cidade_uf"]
+        maps = c.get("maps") or (f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else "")
+        if u["usina"] in idx:
+            if lat and lng:
+                k = idx[u["usina"]]
+                upd.append({"range": f"C{k}:F{k}", "values": [[end, maps, lat, lng]]})
+        else:
+            novas.append([FAMA_CLIENTE, u["usina"], end, maps, lat, lng])
+    if novas:
+        _gspread_retry(lambda: ws.append_rows(novas, value_input_option="RAW"))
+    if upd:
+        _gspread_retry(lambda: ws.batch_update(upd, value_input_option="RAW"))
+    return jsonify({"ok": True, "chavesSistema": len(gravados), "localizacoesNovas": len(novas),
+                    "localizacoesAtualizadas": len(upd)}), 200
+
+
+def _fama_auditoria_core(aplicar=True, origem="botão Auditoria"):
+    """Auditoria FAMA x Central (mesmo padrão da Fracttal): OS FAMA em aberto no painel, comparando
+    estado, situação, prazo, usina e responsável com a FAMA ao vivo. Corrige o que é da FAMA
+    (estado/prazo/usina); responsável só é APONTADO (o Fred pode ter direcionado a outro técnico)."""
+    lista = _fama_get("/v2/contractor/service-orders/")
+    por_num = {f"{FAMA_PREFIXO_OS}{so.get('id')}".upper(): so for so in lista}
+    ws = get_atividades_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    divergencias, updates, status_internos, nao_encontradas, escopo = [], [], [], [], 0
+    agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
+    campos = [("usina", "Usina"), ("statusOS", "Estado da OS"), ("statusTarefaOS", "Status na FAMA"),
+              ("statusGeralOS", "Situação geral"), ("prazo", "Prazo")]
+    for i, row in enumerate(todos[1:], start=2):
+        row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        num = row[13].strip().upper()
+        if not _eh_os_fama(num):
+            continue
+        st, so_atual = row[ATIV_CAMPO_COL["status"] - 1].strip(), row[ATIV_CAMPO_COL["statusOS"] - 1].strip()
+        if st in ("Concluído", "Cancelado") and so_atual in ("Finalizada", "Cancelada"):
+            continue
+        escopo += 1
+        so = por_num.get(num)
+        if not so:
+            nao_encontradas.append(num)
+            continue
+        m = _fama_mapear(so)
+        if not m:
+            continue
+        corrigidos = []
+        for campo, rotulo in campos:
+            atual = row[ATIV_CAMPO_COL[campo] - 1]
+            if _aud_ft_norm(campo, atual) == _aud_ft_norm(campo, m[campo]):
+                continue
+            divergencias.append({"numeroOS": num, "linha": i, "usina": m["usina"], "campo": campo, "rotulo": rotulo,
+                                 "central": str(atual)[:300], "fracttal": str(m[campo])[:300], "fonte": "FAMA",
+                                 "corrigido": bool(aplicar)})
+            if aplicar:
+                updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[m[campo]]]})
+                corrigidos.append(rotulo)
+        resp_atual = row[ATIV_CAMPO_COL["responsavel"] - 1].strip()
+        if m["responsavel"] and _norm(resp_atual) != _norm(m["responsavel"]):
+            divergencias.append({"numeroOS": num, "linha": i, "usina": m["usina"], "campo": "responsavel",
+                                 "rotulo": "Responsável (não corrigido — direcionamento do Omni)",
+                                 "central": resp_atual, "fracttal": m["responsavel"], "fonte": "FAMA", "corrigido": False})
+        st_novo = _status_interno_esperado(m["statusOS"], st)
+        if st_novo:
+            divergencias.append({"numeroOS": num, "linha": i, "usina": m["usina"], "campo": "status", "rotulo": "Status interno",
+                                 "central": st, "fracttal": st_novo, "fonte": "FAMA", "corrigido": bool(aplicar)})
+            status_internos.append((i, st_novo))
+            corrigidos.append("Status interno")
+        if aplicar and corrigidos:
+            hist = row[ATIV_COL_HISTORICO - 1]
+            entrada = f"{agora_txt} - 🔎 Auditoria FAMA ({origem}): corrigido(s) {', '.join(corrigidos)} conforme a FAMA."
+            updates.append({"range": f"{col_letra(ATIV_COL_HISTORICO)}{i}", "values": [[f"{hist}\n{entrada}".strip() if hist else entrada]]})
+    if aplicar:
+        for k in range(0, len(updates), 300):
+            lote = updates[k:k + 300]
+            _gspread_retry(lambda lote=lote: ws.batch_update([dict(x) for x in lote], value_input_option="RAW"))
+        for i, st in status_internos:
+            time.sleep(2.5)
+            _gspread_retry(lambda i=i, st=st: _gravar_status_interno(ws, i, st), tentativas=4, esperas=(20, 40, 60, 60))
+    return {"escopo": escopo, "conferidas": escopo - len(nao_encontradas), "osComDivergencia": len({d["numeroOS"] for d in divergencias}),
+            "divergencias": divergencias, "naoEncontradas": nao_encontradas}
+
+
 # ══════════════════════════════════════════════════════════════════════
+# (módulo FAMA logo acima)
 # AUDITORIA FRACTTAL x CENTRAL O&M — campo a campo (12/11/2026)
 # Pedido do Fred: bater status, estados, nomenclaturas, ativos e usinas entre a
 # Fracttal (banco de dados = fonte da verdade) e o Painel de Atividades.
@@ -26739,6 +27498,14 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
             except Exception as e:
                 erros.append({"linha": i, "erro": f"status interno: {e}"[:200]})
 
+    fama_res = None
+    if _fama_chave():
+        prog(etapa="Conferindo as OS da FAMA (Faro Energy)…")
+        try:
+            fama_res = _fama_auditoria_core(aplicar=aplicar, origem=origem)
+            divergencias.extend(fama_res.get("divergencias") or [])
+        except Exception as e:
+            fama_res = {"erro": str(e)[:300]}
     extras = {}
     if aplicar:
         try:
@@ -26757,6 +27524,7 @@ def _auditoria_fracttal_campos_core(aplicar=True, dias_concluidas=15, origem="ma
         "duplicadas": duplicadas, "celulasGravadas": gravadas, "foraMapeamento": fora_mapa,
         "descoberta": {"criadas": len((descoberta or {}).get("criadas") or [])} if isinstance(descoberta, dict) else None,
         "diasConcluidas": dias_concluidas,
+        "fama": ({k: v for k, v in fama_res.items() if k != "divergencias"} if isinstance(fama_res, dict) else None),
     }
     return resultado
 
