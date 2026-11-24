@@ -27175,6 +27175,21 @@ def _eh_os_fama(numero_os):
 # Finalizada/Cancelada, para a OS sair de "em processo" em todo o Omni.
 _FAMA_CHAVE_MANUAL = "fama_status_manual:"
 _FAMA_MANUAL_ESTADO = {"Concluído": ("Finalizada", "Concluída"), "Cancelado": ("Cancelada", "Cancelada")}
+# ESTADO (coluna do Kanban) x STATUS (situação da OS) — Fred, 24/11/2026: no card da OS FAMA
+# o Fred escolhe os dois separados; o status interno da atividade sai deles.
+_FAMA_GERAIS = ["Não Iniciada", "Em Progresso", "Pausada", "Concluída", "Cancelada"]
+_FAMA_ESTADO_ROTULO = {"Em Processo": "Em Processo", "Em Revisão": "Em Verificação", "Finalizada": "Concluída", "Cancelada": "Cancelada"}
+
+
+def _fama_status_interno(estado, geral):
+    if geral == "Cancelada" or estado == "Cancelada":
+        return "Cancelado"
+    if estado == "Finalizada":
+        return "Concluído"
+    return {"Não Iniciada": "Em Aberto", "Em Progresso": "Em Andamento", "Pausada": "Pausado",
+            "Concluída": "Em Andamento"}.get(geral, "Em Aberto")
+
+
 # Estado da OS escolhido no Kanban do Omni (coluna onde o card foi solto)
 _FAMA_ESTADO_GERAL = {"Em Processo": "Em Progresso", "Em Revisão": "Concluída", "Finalizada": "Concluída", "Cancelada": "Cancelada"}
 
@@ -27195,7 +27210,8 @@ def _fama_status_manuais():
             if partes[0].strip():
                 out[num] = {"status": partes[0].strip(), "em": (partes[1] if len(partes) > 1 else "").strip(),
                             "por": (partes[2] if len(partes) > 2 else "").strip(),
-                            "estado": (partes[3] if len(partes) > 3 else "").strip()}
+                            "estado": (partes[3] if len(partes) > 3 else "").strip(),
+                            "geral": (partes[4] if len(partes) > 4 else "").strip()}
     return out
 
 
@@ -27207,6 +27223,11 @@ def _fama_aplicar_manual(m, trava):
         m["statusOS"], m["statusGeralOS"] = trava["estado"], _FAMA_ESTADO_GERAL[trava["estado"]]
     elif est:
         m["statusOS"], m["statusGeralOS"] = est
+    if trava.get("geral") in _FAMA_GERAIS:
+        m["statusGeralOS"] = trava["geral"]
+        m["statusTarefaOS"] = f"{_FAMA_ESTADO_ROTULO.get(m['statusOS'], m['statusOS'])} · {trava['geral']} no Omni (FAMA: {rot_fama})"
+        m["status"] = trava["status"]
+        return m
     m["statusTarefaOS"] = f"{trava['status']} no Omni (FAMA: {rot_fama})"
     m["status"] = trava["status"]
     return m
@@ -27588,6 +27609,58 @@ def _fama_travar_status(ws, linha_idx, linha_atual, num_os, valor, editor, estad
     nota = (f"{agora_txt} - 🔒 Status \"{valor}\" ({rot_col}) definido no Omni ({_editor_legivel(editor)}) e travado: "
             f"a sincronização com a FAMA não altera mais o status desta OS.")
     _gspread_retry(lambda: ws.update_cell(linha_idx, ATIV_COL_HISTORICO, f"{hist}\n{nota}".strip() if hist else nota))
+
+
+@app.route("/fama/definir-estado", methods=["POST", "OPTIONS"])
+def fama_definir_estado():
+    """Card/Kanban do Omni: define ESTADO (Em Processo / Em Revisão / Finalizada) e STATUS
+    (Não Iniciada / Em Progresso / Pausada / Concluída / Cancelada) de uma OS FAMA e trava os dois.
+    Body: {id, estadoOS, statusGeralOS, editor}. Nada é escrito na FAMA."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if _escopo_atual():
+        return jsonify({"ok": False, "error": "Só o acesso principal altera OS da FAMA."}), 403
+    b = request.get_json(force=True, silent=True) or {}
+    aid, estado, geral = str(b.get("id") or "").strip(), str(b.get("estadoOS") or "").strip(), str(b.get("statusGeralOS") or "").strip()
+    editor = str(b.get("editor") or "dashboard").strip()
+    if estado not in ("Em Processo", "Em Revisão", "Finalizada") or geral not in _FAMA_GERAIS:
+        return jsonify({"ok": False, "error": "estado ou status inválido"}), 400
+    if geral == "Cancelada":
+        estado = "Cancelada"
+    ws = get_atividades_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    alvo = next(((i, r) for i, r in enumerate(todos[1:], start=2) if r and str(r[0]).strip() == aid), None)
+    if not alvo:
+        return jsonify({"ok": False, "error": "atividade não encontrada"}), 404
+    i, row = alvo
+    row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+    num = row[13].strip()
+    if not _eh_os_fama(num):
+        return jsonify({"ok": False, "error": "não é OS da FAMA"}), 400
+    st_novo = _fama_status_interno(estado, geral)
+    agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
+    _config_set_lote_core({f"{_FAMA_CHAVE_MANUAL}{num.upper()}": f"{st_novo}|{agora_txt}|{editor}|{estado}|{geral}"})
+    rot_atual = row[ATIV_CAMPO_COL["statusTarefaOS"] - 1].strip()
+    rot_fama = re.sub(r"^.* no Omni \(FAMA: (.*)\)$", r"\1", rot_atual) if " no Omni (FAMA: " in rot_atual else rot_atual
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    ups = [{"range": f"{col_letra(ATIV_CAMPO_COL['statusOS'])}{i}", "values": [[estado]]},
+           {"range": f"{col_letra(ATIV_CAMPO_COL['statusGeralOS'])}{i}", "values": [[geral]]},
+           {"range": f"{col_letra(ATIV_CAMPO_COL['statusTarefaOS'])}{i}",
+            "values": [[f"{_FAMA_ESTADO_ROTULO[estado]} · {geral} no Omni (FAMA: {rot_fama})"]]}]
+    _gspread_retry(lambda: ws.batch_update(ups, value_input_option="RAW"))
+    st_atual = row[ATIV_CAMPO_COL["status"] - 1].strip()
+    if st_novo != st_atual:
+        _gspread_retry(lambda: _gravar_status_interno(ws, i, st_novo))
+        if st_novo not in ("Concluído", "Cancelado") and st_atual in ("Concluído", "Cancelado"):
+            _gspread_retry(lambda: ws.update_cell(i, ATIV_CAMPO_COL["dataConclusao"], ""))
+    if geral != "Cancelada":
+        _gspread_retry(lambda: ws.update_cell(i, ATIV_CAMPO_COL["statusGeralOS"], geral))
+    hist = row[ATIV_COL_HISTORICO - 1]
+    nota = (f"{agora_txt} - 🔒 Definido no Omni por {_editor_legivel(editor)}: estado \"{_FAMA_ESTADO_ROTULO[estado]}\", "
+            f"status \"{geral}\" (antes: {row[ATIV_CAMPO_COL['statusOS'] - 1] or '—'} · {row[ATIV_CAMPO_COL['statusGeralOS'] - 1] or '—'}). "
+            f"A sincronização com a FAMA não altera mais.")
+    _gspread_retry(lambda: ws.update_cell(i, ATIV_COL_HISTORICO, f"{hist}\n{nota}".strip() if hist else nota))
+    return jsonify({"ok": True, "status": st_novo, "statusOS": estado, "statusGeralOS": geral}), 200
 
 
 @app.route("/fama/status", methods=["GET"])
