@@ -7896,6 +7896,10 @@ GRUPOS_EQUIPE_UFVS = [
     {"id": "120363414813251905@g.us", "nome": "PR Oeste 02 | Segredo",
      "usinas": ["Segredo"]},
 ]
+# Faro Energy (Fred, 24/11/2026): toda a comunicação com a Faro (cliente + campo) é no grupo
+# "FARO E GRID Co - O&M" (grupo da Faro: não segue o padrão "Cluster | Usinas" e não deve ser renomeado).
+GRUPOS_EQUIPE_UFVS.append({"id": "120363164947049562@g.us", "nome": "FARO E GRID Co - O&M",
+                           "usinas": [u["usina"] for u in MAPEAMENTO_UFVS if u["cliente"] == "Faro Energy"]})
 for _g in GRUPOS_EQUIPE_UFVS:
     for _u in MAPEAMENTO_UFVS:
         if _u["usina"] in _g["usinas"]:
@@ -17832,6 +17836,7 @@ def gerar_comunicado_livre_ia():
 
 
 _NOMES_GRUPOS_CONHECIDOS = {
+    "120363164947049562": "FARO E GRID Co - O&M",
     "120363423233716775": "[O&M] - Grid Co. | Renogrid",
     "120363423427343356": "[O&M] - Grid Co. | Thopen",
     "120363402559504115": "[O&M] - Grid Co. | 2C",
