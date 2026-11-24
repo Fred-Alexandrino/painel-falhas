@@ -27187,26 +27187,35 @@ _FAMA_RX_PLANO = re.compile(r"manuten[cç][aã]o\s+(mensal|bimestral|trimestral|
 
 
 def _fama_preventiva(titulo):
-    """'Manutenção Mensal - November' (checklist aberto pela Faro) -> ('Manutenção Preventiva — Novembro', 'Manutenção Preventiva').
-    Fred (24/11/2026): na Faro usar "Manutenção Preventiva", nunca "Preventiva Mensal"/"Anual"."""
-    m = _FAMA_RX_PLANO.search(titulo or "")
-    if not m:
-        return None, None
-    per = m.group(1).lower()
-    mes = ""
-    for en, pt in _FAMA_MESES.items():
-        if re.search(r"\b" + en + r"\b", (titulo or "").lower()):
-            mes = pt
-            break
-    return ("Manutenção Preventiva" + (f" — {mes}" if mes else "")), "Manutenção Preventiva"
+    """Regra do Fred (24/11/2026):
+      • título EXPLÍCITO de periodicidade ('Manutenção Mensal - November', 'Manutenção Anual - ...') →
+        ('PREVENTIVA MENSAL — Novembro', 'Múltiplos equipamentos (Preventiva Mensal)'), padrão das preventivas da Fracttal;
+      • 'manutenção preventiva <ativo>' sem periodicidade → ('Manutenção Preventiva', <ativo do título>);
+      • senão → (None, None)."""
+    t = titulo or ""
+    m = _FAMA_RX_PLANO.search(t)
+    if m:
+        per = m.group(1).lower()
+        mes = ""
+        for en, pt in _FAMA_MESES.items():
+            if re.search(r"\b" + en + r"\b", t.lower()):
+                mes = pt
+                break
+        return (f"PREVENTIVA {per.upper()}" + (f" — {mes}" if mes else "")), f"Múltiplos equipamentos (Preventiva {per.capitalize()})"
+    if re.search(r"\bpreventiv", _fama_sem_acento(t)):
+        resto = re.sub(r"(?i)manuten[cç][aã]o|preventiv[ao]s?", " ", t)
+        ativo = _fama_extrair_ativo(resto) if resto.strip(" -–:") else "Usina (geral)"
+        return "Manutenção Preventiva", ativo
+    return None, None
 
 
 def _fama_extrair_ativo(titulo, descricao=""):
     """Ativo da OS a partir do título (prioridade) ou da descrição — a FAMA não preenche 'assets'.
     Checklist de manutenção (descrição com '[new TODO]') não serve para achar ativo."""
-    _, equip_prev = _fama_preventiva(titulo)
-    if equip_prev:
-        return equip_prev
+    if _FAMA_RX_PLANO.search(titulo or ""):
+        return _fama_preventiva(titulo)[1]
+    if re.search(r"\bpreventiv", _fama_sem_acento(titulo)):
+        return _fama_preventiva(titulo)[1]
     textos = [titulo] + ([] if "[new todo]" in (descricao or "").lower() else [descricao])
     for texto in textos:
         t = _fama_sem_acento(texto)
@@ -27357,7 +27366,7 @@ def _fama_sync_core(origem="automática"):
             if _aud_ft_norm(campo, g(campo)) != _aud_ft_norm(campo, m[campo]):
                 updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[m[campo]]]})
                 mudou.append(campo)
-        if re.fullmatch(r"Preventiva \w+ \(checklist\)", g("equipamento").strip()) and g("equipamento").strip() != m["equipamento"]:
+        if re.fullmatch(r"Preventiva \w+ \(checklist\)|Manutenção Preventiva", g("equipamento").strip()) and g("equipamento").strip() != m["equipamento"]:
             updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['equipamento'])}{i}", "values": [[m["equipamento"]]]})
             mudou.append("equipamento")
         if not g("responsavel").strip() and m["responsavel"]:
