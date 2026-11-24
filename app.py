@@ -26010,7 +26010,7 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @name         Grid Omni — atualizar ao abrir
 // @namespace    gridco-fred
-// @version      2.0
+// @version      2.1
 // @description  Ao abrir o Omni (Central O&M), passa pelo Nexus (chamados e performance) e pelo Service Center da SolarEdge na MESMA aba, lê tudo com o login que você já tem e volta para o Omni com os painéis atualizados. Nenhuma senha passa por aqui.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
@@ -26074,6 +26074,25 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
     };
     if (document.body) pôr(); else document.addEventListener('DOMContentLoaded', pôr);
   }
+  // v2.1: na tela de login do Nexus/SolarEdge a volta ESPERA você entrar (antes desistia em segundos)
+  function aguardarLogin(site, pular) {
+    const h0 = lerHub(); if (!h0) return;
+    h0.esperandoLogin = site; h0.inicio = Date.now(); gravarHub(h0);
+    const vivo = setInterval(() => { const x = lerHub(); if (!x) return clearInterval(vivo); x.inicio = Date.now(); gravarHub(x); }, 10000);
+    const pôr = () => {
+      if (document.getElementById('omniHubLogin')) return;
+      const el = document.createElement('div'); el.id = 'omniHubLogin';
+      el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483647;background:#042F36;color:#F4F3EC;border-radius:14px;padding:14px 16px;font:14px/1.45 Poppins,system-ui,sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.35);max-width:520px;margin:0 auto';
+      el.innerHTML = '<b style="color:#EA5A2A">Omni</b> — entre no ' + site + ' para atualizar o painel. Depois do login a atualização continua sozinha.' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="omniHubPularSite" style="font:inherit;font-size:13px;padding:7px 12px;border-radius:9px;border:1px solid rgba(244,243,236,.35);background:transparent;color:#F4F3EC">Pular o ' + site + '</button>' +
+        '<button id="omniHubVoltar" style="font:inherit;font-size:13px;padding:7px 12px;border-radius:9px;border:0;background:#EA5A2A;color:#fff">Voltar ao Omni</button></div>';
+      document.body.appendChild(el);
+      el.querySelector('#omniHubPularSite').onclick = () => { clearInterval(vivo); pular(); };
+      el.querySelector('#omniHubVoltar').onclick = () => { clearInterval(vivo); finalizar('você voltou antes de entrar no ' + site); };
+    };
+    if (document.body) pôr(); else document.addEventListener('DOMContentLoaded', pôr);
+  }
+  const temSenha = () => !!document.querySelector('input[type=password]');
   function finalizar(motivo) {
     const h = lerHub(); if (!h) return;
     ETAPAS.forEach(k => { const e = h.etapas[k]; if (!e || e.st === 'fila' || e.st === 'rodando') h.etapas[k] = { st: 'erro', msg: motivo, em: Date.now() }; });
@@ -26132,16 +26151,23 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 
   const h = lerHub();
   if (!h || h.fase === 'fim') return;
+  if (h.esperandoLogin) { h.esperandoLogin = ''; h.inicio = Date.now(); gravarHub(h); }   // voltou do login: o relógio recomeça
   if (Date.now() - h.inicio > TETO) return finalizar('demorou demais');
-  setTimeout(() => { const x = lerHub(); if (x && x.fase !== 'fim' && x.fase === h.fase) finalizar('demorou demais'); }, Math.max(5000, TETO - (Date.now() - h.inicio)));
+  const guarda = setTimeout(() => { const x = lerHub(); if (x && x.fase !== 'fim' && x.fase === h.fase && !x.esperandoLogin) finalizar('demorou demais'); }, Math.max(5000, TETO - (Date.now() - h.inicio)));
+  const irPara = (url, chave) => { h.nav = h.nav || {}; h.nav[chave] = (h.nav[chave] || 0) + 1; gravarHub(h); if (h.nav[chave] > 3) return false; ir(url); return true; };
 
   // ═════════════ NEXUS ═════════════
   if (host === 'app.gridco.com.br') {
     if (location.pathname.startsWith('/entrar')) {
-      ['chamados', 'performance'].forEach(k => { if (h.etapas[k].st !== 'ok') marcar(h, k, 'erro', 'entre no Nexus neste navegador (a sessão expirou)'); });
-      cortina('Sessão do Nexus expirada — seguindo para a SolarEdge…');
-      return setTimeout(() => proxima(h, 'solaredge'), 1500);
+      clearTimeout(guarda);
+      return aguardarLogin('Nexus', () => {
+        const x = lerHub(); ['chamados', 'performance'].forEach(k => { if (x.etapas[k].st !== 'ok') marcar(x, k, 'erro', 'pulado: sem login no Nexus'); });
+        x.esperandoLogin = ''; proxima(x, 'solaredge');
+      });
     }
+    // depois do login o Nexus abre a tela inicial: segue para a tela da etapa
+    if (h.fase === 'chamados' && !location.pathname.startsWith('/os/chamados/acompanhamento')) { if (irPara(NEXUS + '/os/chamados/acompanhamento', 'ch')) return; }
+    if (h.fase === 'performance' && !location.pathname.startsWith('/t/')) { if (irPara(NEXUS + '/t/performance/noc', 'pf')) return; }
     if (h.fase === 'chamados') {
       cortina('Atualizando chamados do Nexus (1/3)…');
       marcar(h, 'chamados', 'rodando', 'lendo Chamados › Garantias…');
@@ -26244,12 +26270,13 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
     cortina('Atualizando os cases da SolarEdge (3/3)…');
     marcar(h, 'solaredge', 'rodando', 'lendo o Service Center…');
     if (!/\/service\/support\/cases/.test(location.pathname)) {
-      // tela de login ou outra: espera um pouco (pode ser redirecionamento) e segue
-      setTimeout(() => {
-        if (/\/service\/support\/cases/.test(location.pathname)) return;
-        marcar(h, 'solaredge', 'erro', 'entre no Service Center da SolarEdge neste navegador (a sessão expirou)');
-        proxima(h, 'fim');
-      }, 8000);
+      // tela de login (espera você entrar) ou outra tela do site (vai para Cases)
+      clearTimeout(guarda);
+      const pularSe = () => { const x = lerHub(); marcar(x, 'solaredge', 'erro', 'pulado: sem login na SolarEdge'); x.esperandoLogin = ''; proxima(x, 'fim'); };
+      quando(() => temSenha() || document.readyState === 'complete', 15000).then(() => setTimeout(() => {
+        if (temSenha() || /login|signin|auth/i.test(location.href)) return aguardarLogin('Service Center da SolarEdge', pularSe);
+        if (!irPara(SE_CASES, 'se')) { marcar(h, 'solaredge', 'erro', 'o Service Center não abriu a lista de cases'); proxima(h, 'fim'); }
+      }, 1500));
       return;
     }
     const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().replace(/^\.\s*/, '');
