@@ -26010,7 +26010,7 @@ _USERSCRIPT_PERFORMANCE = r'''// ==UserScript==
 _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @name         Grid Omni — atualizar ao abrir
 // @namespace    gridco-fred
-// @version      2.1
+// @version      2.2
 // @description  Ao abrir o Omni (Central O&M), passa pelo Nexus (chamados e performance) e pelo Service Center da SolarEdge na MESMA aba, lê tudo com o login que você já tem e volta para o Omni com os painéis atualizados. Nenhuma senha passa por aqui.
 // @updateURL    https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
 // @downloadURL  https://api.168-138-232-237.nip.io/userscripts/grid-omni-sync.user.js
@@ -26021,6 +26021,7 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        unsafeWindow
+// @grant        GM_registerMenuCommand
 // @connect      api.168.138.232.237.sslip.io
 // @connect      api.168-138-232-237.nip.io
 // @run-at       document-start
@@ -26119,6 +26120,7 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
     };
     const sessaoFred = () => { try { const ts = +localStorage.getItem('om_login_ts') || 0; return localStorage.getItem('om_role') === 'manager' && Date.now() - ts < 2592e6; } catch (e) { return false; } };
     const minhaVolta = (() => { try { return sessionStorage.getItem('omniHubAba') === '1'; } catch (e) { return false; } })();
+    try { GM_registerMenuCommand('Atualizar Nexus e SolarEdge agora', () => { GM_setValue('omniHubUltimo', 0); GM_setValue(HUB, 'null'); location.reload(); }); } catch (e) {}
     const h = lerHub();
     if (h && minhaVolta) {                       // esta aba está voltando da volta pelos sites
       try { sessionStorage.removeItem('omniHubAba'); } catch (e) {}
@@ -26166,8 +26168,24 @@ _USERSCRIPT_OMNI_SYNC = r'''// ==UserScript==
       });
     }
     // depois do login o Nexus abre a tela inicial: segue para a tela da etapa
-    if (h.fase === 'chamados' && !location.pathname.startsWith('/os/chamados/acompanhamento')) { if (irPara(NEXUS + '/os/chamados/acompanhamento', 'ch')) return; }
-    if (h.fase === 'performance' && !location.pathname.startsWith('/t/')) { if (irPara(NEXUS + '/t/performance/noc', 'pf')) return; }
+    // v2.2: a área de OS (/os/) faz a própria entrada ao carregar e cai em /os/; sair antes disso repetia o desvio.
+    // Agora espera a tela terminar de carregar, tenta o link do menu e só então navega de novo.
+    const desviar = (alvo, chave, txt) => {
+      cortina(txt);
+      clearTimeout(guarda);
+      quando(() => document.readyState === 'complete', 30000).then(async () => {
+        await esperar(3000);
+        if (location.pathname.startsWith(alvo)) return;
+        const link = [...document.querySelectorAll('a[href]')].find(a => a.getAttribute('href').indexOf(alvo) >= 0 || a.href.indexOf(NEXUS + alvo) === 0);
+        if (link && !(h.nav && h.nav[chave + 'L'])) { h.nav = h.nav || {}; h.nav[chave + 'L'] = 1; gravarHub(h); link.click(); await esperar(8000); if (location.pathname.startsWith(alvo)) return location.reload(); }
+        if (!irPara(NEXUS + alvo, chave)) {
+          const x = lerHub(); marcar(x, h.fase, 'erro', 'o Nexus não abriu ' + alvo + ' (ficou em ' + location.pathname + ')');
+          proxima(x, h.fase === 'chamados' ? 'performance' : 'solaredge');
+        }
+      });
+    };
+    if (h.fase === 'chamados' && !location.pathname.startsWith('/os/chamados/acompanhamento')) return desviar('/os/chamados/acompanhamento', 'ch', 'Abrindo Chamados › Garantias no Nexus (1/3)…');
+    if (h.fase === 'performance' && !location.pathname.startsWith('/t/')) return desviar('/t/performance/noc', 'pf', 'Abrindo a Performance no Nexus (2/3)…');
     if (h.fase === 'chamados') {
       cortina('Atualizando chamados do Nexus (1/3)…');
       marcar(h, 'chamados', 'rodando', 'lendo Chamados › Garantias…');
