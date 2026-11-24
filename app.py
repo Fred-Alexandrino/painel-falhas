@@ -29240,7 +29240,7 @@ def _bm_hook_compromisso(cliente_comp, competencia_ref, etapa_index):
             alvo = (i, row)
             break
     if not alvo:
-        return f"Sem card de prazos de {cliente_comp} {periodo} (nada marcado)."
+        return ""  # sem card antigo de Compromissos para esse mês: nada a sincronizar
     linha_idx, linha = alvo
     etapas = json.loads(linha[6]) if linha[6] else []
     concl = json.loads(linha[7]) if linha[7] else [""] * len(etapas)
