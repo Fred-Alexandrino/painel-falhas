@@ -27013,6 +27013,7 @@ FAMA_API_BASE = "https://api.fama.energy"
 FAMA_PREFIXO_OS = "FAMA-"
 FAMA_CLIENTE = "Faro Energy"
 FAMA_CORTE_EXECUTADAS = "2026-08-01"
+FAMA_CORTE_CRIACAO = "2026-09-01"  # Fred, 24/11/2026: só OS da FAMA abertas de setembro/2026 em diante
 FAMA_SYNC_INTERVALO_S = 15 * 60
 _FAMA_KEY_PATH = os.path.expanduser("~/.fama_contractor_key")
 _FAMA_ESTADO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fama_sync.json")
@@ -27136,7 +27137,8 @@ _FAMA_RX_PLANO = re.compile(r"manuten[cç][aã]o\s+(mensal|bimestral|trimestral|
 
 
 def _fama_preventiva(titulo):
-    """'Manutenção Mensal - November' (checklist aberto pela Faro) -> ('PREVENTIVA MENSAL — Novembro', 'Preventiva mensal')."""
+    """'Manutenção Mensal - November' (checklist aberto pela Faro) -> ('Manutenção Preventiva — Novembro', 'Manutenção Preventiva').
+    Fred (24/11/2026): na Faro usar "Manutenção Preventiva", nunca "Preventiva Mensal"/"Anual"."""
     m = _FAMA_RX_PLANO.search(titulo or "")
     if not m:
         return None, None
@@ -27146,7 +27148,7 @@ def _fama_preventiva(titulo):
         if re.search(r"\b" + en + r"\b", (titulo or "").lower()):
             mes = pt
             break
-    return (f"PREVENTIVA {per.upper()}" + (f" — {mes}" if mes else "")), f"Preventiva {per} (checklist)"
+    return ("Manutenção Preventiva" + (f" — {mes}" if mes else "")), "Manutenção Preventiva"
 
 
 def _fama_extrair_ativo(titulo, descricao=""):
@@ -27226,6 +27228,8 @@ def _fama_mapear(so):
 
 
 def _fama_no_escopo(so):
+    if (so.get("creation_date") or "")[:10] < FAMA_CORTE_CRIACAO:
+        return False
     sid = so.get("status_id")
     if sid in _FAMA_STATUS_ABERTOS:
         return True
@@ -27303,6 +27307,9 @@ def _fama_sync_core(origem="automática"):
             if _aud_ft_norm(campo, g(campo)) != _aud_ft_norm(campo, m[campo]):
                 updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[m[campo]]]})
                 mudou.append(campo)
+        if re.fullmatch(r"Preventiva \w+ \(checklist\)", g("equipamento").strip()) and g("equipamento").strip() != m["equipamento"]:
+            updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['equipamento'])}{i}", "values": [[m["equipamento"]]]})
+            mudou.append("equipamento")
         if not g("responsavel").strip() and m["responsavel"]:
             updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['responsavel'])}{i}", "values": [[m["responsavel"]]]})
             mudou.append("responsavel")
@@ -27394,6 +27401,37 @@ def fama_sincronizar():
         return jsonify({"ok": False, "error": "chave da FAMA não configurada"}), 400
     disparou = _fama_disparar_se_devido(forcar=True)
     return jsonify({"ok": True, "disparado": disparou}), 200
+
+
+@app.route("/fama/limpar-anteriores-corte", methods=["POST"])
+def fama_limpar_anteriores_corte():
+    """Remove do Painel de Atividades as linhas FAMA-* (editor fama-sync) de OS abertas na FAMA antes de
+    FAMA_CORTE_CRIACAO (Fred, 24/11/2026). Apaga em blocos contíguos, de baixo para cima. X-Deploy-Secret.
+    ?simular=1 só lista."""
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    simular = request.args.get("simular") == "1"
+    lista = _fama_get("/v2/contractor/service-orders/")
+    criacao = {f"{FAMA_PREFIXO_OS}{so.get('id')}".upper(): (so.get("creation_date") or "")[:10] for so in lista}
+    ws = get_atividades_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    alvo = []
+    for i, row in enumerate(todos[1:], start=2):
+        num = (row[13] if len(row) > 13 else "").strip().upper()
+        ed = (row[12] if len(row) > 12 else "").strip()
+        if _eh_os_fama(num) and ed == "fama-sync" and criacao.get(num, "") < FAMA_CORTE_CRIACAO:
+            alvo.append(i)
+    blocos = []
+    for i in sorted(alvo):
+        if blocos and blocos[-1][1] == i - 1:
+            blocos[-1][1] = i
+        else:
+            blocos.append([i, i])
+    if not simular:
+        for a, b in reversed(blocos):
+            _gspread_retry(lambda a=a, b=b: ws.delete_rows(a, b))
+            time.sleep(1.2)
+    return jsonify({"ok": True, "simulado": simular, "removidas": len(alvo), "blocos": blocos[:50]}), 200
 
 
 @app.route("/fama/chave", methods=["POST"])
