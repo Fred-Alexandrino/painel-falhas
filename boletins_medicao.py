@@ -526,10 +526,14 @@ def registrar(app, log, hook_compromisso=None):
 
     @app.route("/bm/exportar", methods=["GET", "OPTIONS"])
     def bm_exportar():
-        """Backup completo em JSON (inclui snapshots das emissões; não inclui os arquivos)."""
-        g = _guard()
-        if g:
-            return g
+        """Backup completo em JSON (inclui snapshots das emissões; não inclui os arquivos).
+        Chave do BM ou X-Deploy-Secret (24/11/2026: para o Claude conferir/ajustar a pedido do Fred)."""
+        if request.method == "OPTIONS":
+            return ("", 204)
+        if not _deploy_ok():
+            g = _guard()
+            if g:
+                return g
         with _con() as c:
             dados = {
                 "exportadoEm": _agora(),
