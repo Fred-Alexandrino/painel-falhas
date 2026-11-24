@@ -29127,6 +29127,56 @@ from comunicacao_mensagens import registrar as _cm_registrar  # noqa: E402
 _cm_registrar(app, _chamar_gemini_com_retry, log)
 
 
+# ── Boletins de Medição no Omni (24/11/2026): rotas /bm/* — código em
+# boletins_medicao.py (SQLite boletins_medicao.db). Não remover este bloco
+# ao reenviar o app.py.
+def _bm_hook_compromisso(cliente_comp, competencia_ref, etapa_index):
+    """Quando um BM é marcado como enviado/aprovado/NF no módulo novo, marca a
+    etapa correspondente no card de Compromissos (tipo BM) do mesmo cliente e
+    mês, para o alerta de etapas abertas não cobrar algo já feito.
+    competencia_ref = 'AAAA-MM' (mês de referência do BM) -> card 'MM/AAAA'."""
+    ano, mes = competencia_ref.split("-")
+    periodo = f"{mes}/{ano}"
+    ws = _get_compromissos_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values(), tentativas=4, esperas=(3, 6, 12))
+    alvo = None
+    for i, row in enumerate(todos[1:], start=2):
+        if len(row) > 7 and row[1] == "BM" and row[2].strip().lower() == cliente_comp.strip().lower() and row[4].strip() == periodo:
+            alvo = (i, row)
+            break
+    if not alvo:
+        return f"Sem card de prazos de {cliente_comp} {periodo} (nada marcado)."
+    linha_idx, linha = alvo
+    etapas = json.loads(linha[6]) if linha[6] else []
+    concl = json.loads(linha[7]) if linha[7] else [""] * len(etapas)
+    agora = agora_br()
+    mudou = False
+    for k in range(min(etapa_index + 1, len(etapas))):  # aprovar/NF implica as etapas anteriores
+        if not concl[k]:
+            concl[k] = agora.strftime("%d/%m/%Y %H:%M")
+            mudou = True
+    if not mudou:
+        return ""
+    try:
+        data_limite = datetime.strptime(linha[5].strip(), "%d/%m/%Y")
+    except Exception:
+        data_limite = agora
+    novo_status = _status_compromisso(concl, data_limite, agora)
+    hist = (linha[11] if len(linha) > 11 else "")
+    entry = f"{agora.strftime('%d/%m/%Y %H:%M')} - Etapas atualizadas pelo módulo Boletins de Medição."
+    _gspread_retry(lambda: ws.update(f"H{linha_idx}:L{linha_idx}", [[
+        json.dumps(concl, ensure_ascii=False), novo_status,
+        linha[9] if len(linha) > 9 else agora.strftime("%d/%m/%Y %H:%M:%S"),
+        agora.strftime("%d/%m/%Y %H:%M:%S") if novo_status == "Concluído" else "",
+        (hist + "\n" + entry).strip(),
+    ]]), tentativas=4, esperas=(3, 6, 12))
+    return ""
+
+
+from boletins_medicao import registrar as _bm_registrar  # noqa: E402
+_bm_registrar(app, log, _bm_hook_compromisso)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
