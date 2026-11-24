@@ -6405,6 +6405,8 @@ def _auditoria_consistencia_os_core(aplicar=True, limite_atraso_minutos=0, limit
         # ── Parte 2: o status interno bate com o estado já gravado?
         if not status_os_atual:
             continue  # ainda sem estado conhecido — nada a auditar aqui
+        if _eh_os_fama(numero_os):
+            continue  # OS da FAMA: status interno é do sync da FAMA + travas do Omni (24/11/2026)
 
         esperado = _status_interno_esperado(status_os_atual, status_interno_atual)
         if esperado:
@@ -16876,6 +16878,10 @@ def atualizar_campo_atividade():
             if field == "status" and _is_concluido_atividade(value):
                 ws.update_cell(linha_idx, 11, agora_br().strftime('%d/%m/%Y %H:%M:%S'))  # DataConclusao
 
+            num_os = (linha_atual[13] if len(linha_atual) > 13 else "").strip()
+            if field == "status" and _eh_os_fama(num_os) and editor != "fama-sync" and str(value).strip():
+                _fama_travar_status(ws, linha_idx, linha_atual, num_os, str(value).strip(), editor)
+
         return jsonify({"ok": True})
     except Exception as e:
         log.error(f"[Atividades] Erro ao atualizar campo: {e}")
@@ -27159,6 +27165,47 @@ def _eh_os_fama(numero_os):
     return str(numero_os or "").strip().upper().startswith(FAMA_PREFIXO_OS)
 
 
+# ── Status definido no Omni (Fred, 24/11/2026) ───────────────────────────────
+# A chave da FAMA não deixa mudar o status lá e os responsáveis da Faro não
+# atualizam as OS. Quando o Fred muda o status de uma OS FAMA no Omni, o valor
+# fica TRAVADO: o sync e a auditoria da FAMA nunca mais o desfazem. A trava
+# fica na aba _Sistema: "fama_status_manual:FAMA-<id>" = "<status>|<data>|<editor>".
+# Concluído/Cancelado também levam o estado da OS (statusOS) para
+# Finalizada/Cancelada, para a OS sair de "em processo" em todo o Omni.
+_FAMA_CHAVE_MANUAL = "fama_status_manual:"
+_FAMA_MANUAL_ESTADO = {"Concluído": ("Finalizada", "Concluída"), "Cancelado": ("Cancelada", "Cancelada")}
+
+
+def _fama_status_manuais():
+    """{ 'FAMA-123': {'status', 'em', 'por'} } ou None se a _Sistema não pôde ser lida
+    (None = o chamador NÃO mexe em status nesta passada, para nunca desfazer uma trava)."""
+    try:
+        vals = _gspread_retry(lambda: _get_config_sheet().get_all_values())
+    except Exception as e:
+        log.error(f"[FAMA] não li as travas de status na _Sistema: {e}")
+        return None
+    out = {}
+    for row in vals[1:]:
+        if row and row[0].strip().startswith(_FAMA_CHAVE_MANUAL):
+            num = row[0].strip()[len(_FAMA_CHAVE_MANUAL):].strip().upper()
+            partes = ((row[1] if len(row) > 1 else "") or "").split("|")
+            if partes[0].strip():
+                out[num] = {"status": partes[0].strip(), "em": (partes[1] if len(partes) > 1 else "").strip(),
+                            "por": (partes[2] if len(partes) > 2 else "").strip()}
+    return out
+
+
+def _fama_aplicar_manual(m, trava):
+    """Ajusta os campos de estado de uma OS mapeada da FAMA conforme a trava do Omni."""
+    rot_fama = m["statusTarefaOS"]
+    est = _FAMA_MANUAL_ESTADO.get(trava["status"])
+    if est:
+        m["statusOS"], m["statusGeralOS"] = est
+    m["statusTarefaOS"] = f"{trava['status']} no Omni (FAMA: {rot_fama})"
+    m["status"] = trava["status"]
+    return m
+
+
 def _fama_chave():
     k = (os.environ.get("FAMA_CONTRACTOR_KEY") or "").strip()
     if k:
@@ -27396,6 +27443,8 @@ def _fama_sync_core(origem="automática"):
     col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
     novas, updates, status_internos, criadas, atualizadas, fora = [], [], [], [], [], 0
     prox_id = int(_proximo_id_atividade(todos))
+    manuais = _fama_status_manuais() if linhas_fama else {}
+    _CAMPOS_ESTADO = {"statusOS", "statusTarefaOS", "statusGeralOS", "detalhesEquipamentosOS"}
     for so in lista:
         num = f"{FAMA_PREFIXO_OS}{so.get('id')}"
         existente = linhas_fama.get(num.upper())
@@ -27419,7 +27468,14 @@ def _fama_sync_core(origem="automática"):
         i, row = existente
         g = lambda c: row[ATIV_CAMPO_COL[c] - 1]
         mudou = []
+        trava = (manuais or {}).get(num.upper())
+        if trava:
+            _fama_aplicar_manual(m, trava)
         for campo in _FAMA_CAMPOS_SYNC:
+            if manuais is None and campo in _CAMPOS_ESTADO:
+                continue  # sem ler as travas, não mexe em estado nesta passada
+            if trava and campo == "detalhesEquipamentosOS":
+                continue
             if _aud_ft_norm(campo, g(campo)) != _aud_ft_norm(campo, m[campo]):
                 updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[campo])}{i}", "values": [[m[campo]]]})
                 mudou.append(campo)
@@ -27430,7 +27486,7 @@ def _fama_sync_core(origem="automática"):
             updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['responsavel'])}{i}", "values": [[m["responsavel"]]]})
             mudou.append("responsavel")
         updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['ultimaVerificacaoOS'])}{i}", "values": [[agora_iso]]})
-        st_novo = _status_interno_esperado(m["statusOS"], g("status").strip())
+        st_novo = None if (trava or manuais is None) else _status_interno_esperado(m["statusOS"], g("status").strip())
         if st_novo:
             status_internos.append((i, st_novo))
         if "statusOS" in mudou or "statusTarefaOS" in mudou or st_novo:
@@ -27498,6 +27554,26 @@ def _fama_disparar_se_devido(forcar=False):
     except Exception as e:
         log.error(f"[FAMA] disparo: {e}")
         return False
+
+
+def _fama_travar_status(ws, linha_idx, linha_atual, num_os, valor, editor):
+    """Grava a trava do status definido no Omni para uma OS da FAMA e ajusta o estado da OS na hora."""
+    agora_txt = agora_br().strftime("%d/%m/%Y %H:%M")
+    _config_set_lote_core({f"{_FAMA_CHAVE_MANUAL}{num_os.upper()}": f"{valor}|{agora_txt}|{editor}"})
+    row = linha_atual + [""] * (ATIV_TOTAL_COLUNAS - len(linha_atual))
+    rot_atual = row[ATIV_CAMPO_COL["statusTarefaOS"] - 1].strip()
+    rot_fama = re.sub(r"^.* no Omni \(FAMA: (.*)\)$", r"\1", rot_atual) if " no Omni (FAMA: " in rot_atual else rot_atual
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    ups = [{"range": f"{col_letra(ATIV_CAMPO_COL['statusTarefaOS'])}{linha_idx}", "values": [[f"{valor} no Omni (FAMA: {rot_fama})"]]}]
+    est = _FAMA_MANUAL_ESTADO.get(valor)
+    if est:
+        ups.append({"range": f"{col_letra(ATIV_CAMPO_COL['statusOS'])}{linha_idx}", "values": [[est[0]]]})
+        ups.append({"range": f"{col_letra(ATIV_CAMPO_COL['statusGeralOS'])}{linha_idx}", "values": [[est[1]]]})
+    _gspread_retry(lambda: ws.batch_update(ups, value_input_option="RAW"))
+    hist = _gspread_retry(lambda: ws.cell(linha_idx, ATIV_COL_HISTORICO).value) or ""
+    nota = (f"{agora_txt} - 🔒 Status \"{valor}\" definido no Omni ({_editor_legivel(editor)}) e travado: "
+            f"a sincronização com a FAMA não altera mais o status desta OS.")
+    _gspread_retry(lambda: ws.update_cell(linha_idx, ATIV_COL_HISTORICO, f"{hist}\n{nota}".strip() if hist else nota))
 
 
 @app.route("/fama/status", methods=["GET"])
@@ -27692,6 +27768,7 @@ def _fama_auditoria_core(aplicar=True, origem="botão Auditoria"):
     (estado/prazo/usina); responsável só é APONTADO (o Fred pode ter direcionado a outro técnico)."""
     lista = _fama_get("/v2/contractor/service-orders/")
     por_num = {f"{FAMA_PREFIXO_OS}{so.get('id')}".upper(): so for so in lista}
+    manuais = _fama_status_manuais()
     ws = get_atividades_sheet()
     todos = _gspread_retry(lambda: ws.get_all_values())
     col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
@@ -27707,6 +27784,8 @@ def _fama_auditoria_core(aplicar=True, origem="botão Auditoria"):
         st, so_atual = row[ATIV_CAMPO_COL["status"] - 1].strip(), row[ATIV_CAMPO_COL["statusOS"] - 1].strip()
         if st in ("Concluído", "Cancelado") and so_atual in ("Finalizada", "Cancelada"):
             continue
+        if manuais and num in manuais and manuais[num]["status"] in _FAMA_MANUAL_ESTADO:
+            continue
         escopo += 1
         so = por_num.get(num)
         if not so:
@@ -27715,8 +27794,13 @@ def _fama_auditoria_core(aplicar=True, origem="botão Auditoria"):
         m = _fama_mapear(so)
         if not m:
             continue
+        trava = (manuais or {}).get(num)
+        if trava:
+            _fama_aplicar_manual(m, trava)
         corrigidos = []
         for campo, rotulo in campos:
+            if campo != "usina" and campo != "prazo" and (trava or manuais is None):
+                continue  # estado travado no Omni (ou travas ilegíveis): não audita
             atual = row[ATIV_CAMPO_COL[campo] - 1]
             if _aud_ft_norm(campo, atual) == _aud_ft_norm(campo, m[campo]):
                 continue
@@ -27731,7 +27815,7 @@ def _fama_auditoria_core(aplicar=True, origem="botão Auditoria"):
             divergencias.append({"numeroOS": num, "linha": i, "usina": m["usina"], "campo": "responsavel",
                                  "rotulo": "Responsável (não corrigido — direcionamento do Omni)",
                                  "central": resp_atual, "fracttal": m["responsavel"], "fonte": "FAMA", "corrigido": False})
-        st_novo = _status_interno_esperado(m["statusOS"], st)
+        st_novo = None if (trava or manuais is None) else _status_interno_esperado(m["statusOS"], st)
         if st_novo:
             divergencias.append({"numeroOS": num, "linha": i, "usina": m["usina"], "campo": "status", "rotulo": "Status interno",
                                  "central": st, "fracttal": st_novo, "fonte": "FAMA", "corrigido": bool(aplicar)})
