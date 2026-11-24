@@ -27443,6 +27443,13 @@ def fama_limpar_anteriores_corte():
     if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     simular = request.args.get("simular") == "1"
+    import fcntl
+    _lf = open(_FAMA_LOCK_PATH, "w")
+    try:
+        fcntl.flock(_lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        _lf.close()
+        return jsonify({"ok": False, "error": "sync da FAMA rodando — tente em 1 min"}), 409
     lista = _fama_get("/v2/contractor/service-orders/")
     criacao = {f"{FAMA_PREFIXO_OS}{so.get('id')}".upper(): (so.get("creation_date") or "")[:10] for so in lista}
     ws = get_atividades_sheet()
@@ -27459,11 +27466,52 @@ def fama_limpar_anteriores_corte():
             blocos[-1][1] = i
         else:
             blocos.append([i, i])
-    if not simular:
-        for a, b in reversed(blocos):
-            _gspread_retry(lambda a=a, b=b: ws.delete_rows(a, b))
-            time.sleep(1.2)
+    try:
+        if not simular:
+            for a, b in reversed(blocos):
+                _gspread_retry(lambda a=a, b=b: ws.delete_rows(a, b))
+                time.sleep(1.2)
+    finally:
+        _lf.close()
     return jsonify({"ok": True, "simulado": simular, "removidas": len(alvo), "blocos": blocos[:50]}), 200
+
+
+@app.route("/fama/reparar", methods=["POST"])
+def fama_reparar():
+    """Reparo de 24/11/2026: um sync da FAMA calculou as linhas antes da limpeza do corte e gravou o
+    ativo/descrição em linhas deslocadas. Regrava o ativo das linhas FAMA-* (editor fama-sync) e refaz
+    descrição/ativo/detalhes das OS da Fracttal informadas em {"folios": [...]}. X-Deploy-Secret."""
+    if not DEPLOY_SECRET or request.headers.get("X-Deploy-Secret", "") != DEPLOY_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    folios = [str(f).strip() for f in ((request.get_json(force=True, silent=True) or {}).get("folios") or [])]
+    lista = {f"{FAMA_PREFIXO_OS}{so.get('id')}".upper(): so for so in _fama_get("/v2/contractor/service-orders/")}
+    ws = get_atividades_sheet()
+    todos = _gspread_retry(lambda: ws.get_all_values())
+    col_letra = lambda c: gspread.utils.rowcol_to_a1(1, c)[:-1]
+    updates, feitos = [], []
+    for i, row in enumerate(todos[1:], start=2):
+        row = row + [""] * (ATIV_TOTAL_COLUNAS - len(row))
+        num = row[13].strip()
+        if _eh_os_fama(num) and row[12].strip() == "fama-sync" and num.upper() in lista:
+            m = _fama_mapear(lista[num.upper()])
+            if m and row[ATIV_CAMPO_COL["equipamento"] - 1].strip() != m["equipamento"]:
+                updates.append({"range": f"{col_letra(ATIV_CAMPO_COL['equipamento'])}{i}", "values": [[m["equipamento"]]]})
+                feitos.append({"numeroOS": num, "equipamento": m["equipamento"]})
+        elif num in folios:
+            token = _fracttal_get_token()
+            r = requests.get(f"{FRACTTAL_API_BASE}/work_orders/{num}", headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}, timeout=25)
+            r.raise_for_status()
+            tasks = r.json().get("data") or []
+            if isinstance(tasks, dict):
+                tasks = [tasks]
+            esp = _fracttal_mapear_grupo(tasks) if tasks else None
+            if esp and not esp.get("_revisao_manual"):
+                for c in ("descricao", "equipamento", "detalhesEquipamentosOS"):
+                    updates.append({"range": f"{col_letra(ATIV_CAMPO_COL[c])}{i}", "values": [[esp[c]]]})
+                feitos.append({"numeroOS": num, "descricao": esp["descricao"], "equipamento": esp["equipamento"]})
+    if updates:
+        _gspread_retry(lambda: ws.batch_update(updates, value_input_option="RAW"))
+    return jsonify({"ok": True, "corrigidas": len(feitos), "itens": feitos[:80]}), 200
 
 
 @app.route("/fama/chave", methods=["POST"])
