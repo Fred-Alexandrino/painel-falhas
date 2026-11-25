@@ -29205,6 +29205,8 @@ def gerar_pdf_relatorio_chamados_se(d):
                 est.append(("BACKGROUND", (0, k), (-1, k), HexColor(_RSE_ZEBRA)))
         if total:
             est.append(("LINEABOVE", (0, len(dados) - 1), (-1, len(dados) - 1), 1, navy))
+            if len(dados) > 2:  # a linha de total nunca vai sozinha para a página seguinte
+                est.append(("NOSPLIT", (0, len(dados) - 2), (-1, len(dados) - 1)))
         t.setStyle(TableStyle(est))
         return t
 
@@ -29231,6 +29233,13 @@ def gerar_pdf_relatorio_chamados_se(d):
         if it.get("plano"):
             dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">Próximos passos:</font> {e(it["plano"])}',
                                   ParagraphStyle("ip", parent=st_s, alignment=TA_JUSTIFY, spaceBefore=3)))
+        _hist = [h for h in (it.get("historico") or []) if isinstance(h, dict) and h.get("texto")][:15]
+        if _hist:  # punch list por usina (25/11/2026): últimos registros do histórico
+            dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">Histórico recente:</font>',
+                                  ParagraphStyle("ihh", parent=st_s, spaceBefore=3)))
+            for _h in _hist:
+                dir_.append(Paragraph(f'<font name="{FB}" color="{_RSE_MUTED}">{e(_h.get("data") or "")}</font>  {e(_h["texto"])}',
+                                      ParagraphStyle("ih", parent=st_m, alignment=TA_JUSTIFY, spaceBefore=1.5, leftIndent=8)))
         meta = [x for x in [
             (f"Aberto em {it['aberto']}" + (f" · {it['dias']} dias" if it.get("dias") not in (None, "") else "")) if it.get("aberto") else "",
             f"OS de campo {it['os']}" if it.get("os") else "", f"RMA {it['rma']}" if it.get("rma") else "",
@@ -29263,8 +29272,49 @@ def gerar_pdf_relatorio_chamados_se(d):
     if vu:
         cab = d.get("porUsinaCab") or ["Usina", "Supervisor", "Total"]
         larguras = d.get("porUsinaLarguras") or [0.3, 0.3] + [0.4 / (len(cab) - 2)] * (len(cab) - 2)
-        s += [KeepTogether([bar("Visão por usina"), Spacer(1, 8),
-                            tabela(cab, vu, larguras, total=d.get("porUsinaTotal"), centro_desde=2)]), Spacer(1, 16)]
+        _tvu = tabela(cab, vu, larguras, total=d.get("porUsinaTotal"), centro_desde=2)
+        if len(vu) > 12:  # tabela longa: não empurra tudo para a próxima página; quebra repetindo o cabeçalho
+            s += [CondPageBreak(160), bar("Visão por usina"), Spacer(1, 8), _tvu, Spacer(1, 16)]
+        else:
+            s += [KeepTogether([bar("Visão por usina"), Spacer(1, 8), _tvu]), Spacer(1, 16)]
+    # Punch list por usina (modelo "passagem", 25/11/2026) — uma tabela por usina; linhas não quebram
+    _pls = [u for u in (d.get("punchList") or []) if isinstance(u, dict) and u.get("linhas")]
+    if _pls:
+        _cabp = d.get("punchCab") or ["Ocorrência", "Crit.", "Aberta", "Sem atualiz.", "OS", "Próximo passo / situação"]
+        _lgp = d.get("punchLarguras") or [0.27, 0.08, 0.08, 0.1, 0.1, 0.37]
+        _ctr = set(d.get("punchCentro") or [1, 2, 3, 4])
+
+        def _cel(v, i, cab=False):
+            cor = None
+            if isinstance(v, dict):
+                cor, v = v.get("cor"), v.get("t")
+            txt = e(v)
+            if cor:
+                txt = f'<font color="{cor}">{txt}</font>'
+            if cab:
+                return Paragraph(txt, st_thc if i in _ctr else st_th)
+            return Paragraph(txt, st_tdc if i in _ctr else st_td)
+
+        for _k, u in enumerate(_pls):
+            dados = [[_cel(h, i, True) for i, h in enumerate(_cabp)]]
+            for r in u["linhas"]:
+                dados.append([_cel(v, i) for i, v in enumerate(r)])
+            t = Table(dados, colWidths=[larg * f for f in _lgp], repeatRows=1)
+            est = [("BACKGROUND", (0, 0), (-1, 0), navy), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                   ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                   ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                   ("LINEBELOW", (0, 1), (-1, -1), 0.4, HexColor(_RSE_RULE))]
+            for _r in range(1, len(dados)):
+                if _r % 2 == 0:
+                    est.append(("BACKGROUND", (0, _r), (-1, _r), HexColor(_RSE_ZEBRA)))
+            t.setStyle(TableStyle(est))
+            cab_u = [Paragraph(f'<font name="{FB}" color="{_RSE_NAVY}">{e(u.get("usina"))}</font>',
+                               ParagraphStyle("pu", fontName=FB, fontSize=11, leading=14)),
+                     Paragraph(e(u.get("sub") or ""), ParagraphStyle("pus", parent=st_m, spaceAfter=4))]
+            # título da seção (1ª usina) + nome da usina + tabela juntos: nunca ficam órfãos no pé da página
+            bloco = ([bar(d.get("punchTitulo") or "Punch list por usina"), Spacer(1, 8)] if _k == 0 else []) + cab_u + [t]
+            s += [KeepTogether(bloco), Spacer(1, 12)]
+        s.append(Spacer(1, 4))
     # 3+. Grupos de chamados
     for g in d.get("grupos") or []:
         itens = g.get("itens") or []
