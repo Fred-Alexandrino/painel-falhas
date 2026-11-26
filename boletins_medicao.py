@@ -34,7 +34,7 @@ import uuid
 import re
 from datetime import datetime, timezone, timedelta
 
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, Response
 
 _BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(_BASE, "boletins_medicao.db")
@@ -408,6 +408,24 @@ def registrar(app, log, hook_compromisso=None):
         if not r:
             return jsonify({"ok": False, "error": "emissão não encontrada"}), 404
         return jsonify({"ok": True, "emissao": _emissao_row(r, com_snapshot=True)})
+
+    @app.route("/bm/pdf", methods=["POST", "OPTIONS"])
+    def bm_pdf_render():
+        """Desenha o PDF do boletim no servidor (igual em qualquer navegador/aparelho)."""
+        g = _guard()
+        if g:
+            return g
+        body = request.get_json(silent=True) or {}
+        D = body.get("D")
+        if not isinstance(D, dict):
+            return jsonify({"ok": False, "error": "D obrigatório"}), 400
+        try:
+            from bm_pdf import gerar_pdf
+            pdf = gerar_pdf(D, str(body.get("titulo") or ""), body.get("rodape") or None)
+        except Exception as ex:  # noqa: BLE001
+            log.exception("bm/pdf falhou")
+            return jsonify({"ok": False, "error": f"falha ao gerar o PDF: {ex}"}), 500
+        return Response(pdf, mimetype="application/pdf")
 
     @app.route("/bm/emissao/<eid>/pdf", methods=["POST", "OPTIONS"])
     def bm_emissao_pdf(eid):
